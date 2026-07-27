@@ -132,9 +132,8 @@
     </div>
     <button class="iconbtn mic" style="width:36px;height:36px;font-size:16px" title="ตั้งค่า" onclick="openSettings()">⚙️</button>
   </header>
-
   <!-- Login Guard Overlay -->
-  <div id="loginGuard" style="display:none; position:fixed; inset:0; top:65px; background:rgba(11,17,32,.92); backdrop-filter:blur(16px); z-index:15; align-items:center; justify-content:center; padding:20px;">
+  <div id="loginGuard" style="display:flex; position:fixed; inset:0; top:65px; background:rgba(11,17,32,.92); backdrop-filter:blur(16px); z-index:15; align-items:center; justify-content:center; padding:20px;">
     <div style="background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:36px 28px; width:min(440px,92vw); text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.5); animation:rise .3s ease;">
       <div style="width:64px; height:64px; border-radius:18px; background:var(--grad); display:grid; place-items:center; font-size:32px; margin:0 auto 18px; box-shadow:0 6px 24px rgba(91,157,255,.4);">🔐</div>
       <h2 style="margin:0 0 8px; font-size:20px; font-weight:800; color:var(--text);">เข้าสู่ระบบก่อนเริ่มใช้งาน</h2>
@@ -142,6 +141,48 @@
       <button class="send" style="width:100%; border-radius:12px; height:46px; font-size:15px; font-weight:600; cursor:pointer; background:linear-gradient(135deg, #0078d4, #005a9e);" onclick="loginM365()">
         🔑 เข้าสู่ระบบด้วย Microsoft 365
       </button>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settings" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:20; align-items:center; justify-content:center;">
+    <div style="background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px; width:min(500px,94vw); max-height:90vh; overflow-y:auto;">
+      <h2 style="margin:0 0 16px; font-size:16px; color:var(--accent)">⚙️ ตั้งค่า</h2>
+
+      <!-- work hours (24h — type or pick) -->
+      <datalist id="timeOptions"></datalist>
+      <div style="display:flex; gap:14px; margin-bottom:20px;">
+        <div style="flex:1"><div style="font-size:12px;color:var(--muted);margin-bottom:4px">🕐 เข้างาน (24 ชม.)</div>
+          <input id="setStart" list="timeOptions" placeholder="08:30" inputmode="numeric" class="tinput"
+            onblur="this.value=normHHMM(this.value)||this.value"/></div>
+        <div style="flex:1"><div style="font-size:12px;color:var(--muted);margin-bottom:4px">🕐 เลิกงาน (24 ชม.)</div>
+          <input id="setEnd" list="timeOptions" placeholder="17:00" inputmode="numeric" class="tinput"
+            onblur="this.value=normHHMM(this.value)||this.value"/></div>
+      </div>
+
+      <div id="placesContainer"></div>
+
+      <!-- LINE account link -->
+      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--line);">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">💬 การแจ้งเตือนทาง LINE</div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span id="lineStatus" style="font-size:13px;color:var(--muted)">กำลังตรวจสอบ…</span>
+          <button id="lineLinkBtn" class="minibtn" style="display:none" onclick="linkLineInteractive()">เชื่อม LINE</button>
+          <button id="lineUnlinkBtn" class="minibtn" style="display:none" onclick="unlinkLine()">ยกเลิกการเชื่อม</button>
+        </div>
+        <div style="font-size:11px; color:var(--muted); margin-top:6px;">
+          เชื่อมแล้วจะได้รับสรุปประชุม งานที่ได้รับมอบหมาย และการแจ้งเตือน ทาง LINE
+        </div>
+      </div>
+
+      <!-- whole-menu footer -->
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:20px; padding-top:16px; border-top:1px solid var(--line);">
+        <button class="minibtn" onclick="closeSettings()">ยกเลิก</button>
+        <button class="send" style="border-radius:8px; width:auto; height:auto; padding:9px 20px;" onclick="saveAll()">บันทึก</button>
+      </div>
+      <div style="font-size:11px; color:var(--muted); margin-top:8px; text-align:right;">
+        (การเพิ่ม/ลบ/ตั้งดาวสถานที่ บันทึกทันทีอยู่แล้ว — ปุ่มบันทึกนี้เก็บเวลาเข้า/ออกงาน)
+      </div>
     </div>
   </div>
 
@@ -156,6 +197,11 @@
   </div>
 
   <div class="composer">
+    <div id="ctxbar" style="display:none; max-width:760px; margin:0 auto 8px; align-items:center; gap:8px;
+         background:var(--panel2); border:1px solid var(--accent); border-radius:12px; padding:8px 12px; font-size:13px;">
+      <span class="txt" style="flex:1"></span>
+      <button onclick="clearSelection()" style="background:transparent; color:var(--muted); border:0; cursor:pointer; font-size:16px;">✕</button>
+    </div>
     <div class="bar">
       <textarea id="input" rows="1" placeholder="พิมพ์คำสั่ง เช่น “เดือนนี้มีประชุมอะไรบ้าง”…"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"
@@ -167,11 +213,13 @@
   </div>
 
   <script>
-    const API = location.origin;
+    const API = localStorage.getItem("API_BASE")
+      || (location.protocol === "file:" ? "http://localhost:8000" : location.origin);
+
     const SUGGESTIONS = [
       "เดือนนี้มีประชุมอะไรบ้าง",
       "วันนี้มีนัดอะไร",
-      "สรุปข่าววันนี้",
+      "สร้าง brief วันนี้",
       "งานค้างมีอะไรบ้าง",
       "หาไฟล์ใน OneDrive",
     ];
@@ -184,6 +232,7 @@
     function scrollDown(){ chat.scrollTop = chat.scrollHeight; }
     function autogrow(t){ t.style.height="auto"; t.style.height=Math.min(t.scrollHeight,140)+"px"; }
     function toggleSend(){ document.getElementById("sendBtn").disabled = !input.value.trim(); }
+
     function hideHello(){ const h=document.getElementById("hello"); if(h) h.remove(); }
 
     function addMsg(role, html){
@@ -193,50 +242,705 @@
       m.innerHTML = `<div class="av">${role==="me"?"🧑":"🤖"}</div><div class="bubble">${html}</div>`;
       wrap.appendChild(m); scrollDown(); return m;
     }
+    function addTyping(){
+      hideHello();
+      const m = document.createElement("div");
+      m.className = "msg ai"; m.id = "typing";
+      m.innerHTML = `<div class="av">🤖</div><div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div>`;
+      wrap.appendChild(m); scrollDown(); return m;
+    }
 
-    async function send() {
-      const txt = input.value.trim();
-      if (!txt) return;
-      input.value = "";
-      autogrow(input);
-      toggleSend();
-      addMsg("me", esc(txt));
-      
-      const aiMsg = addMsg("ai", "กำลังประมวลผล…");
+    async function apiCall(path, opts = {}) {
+      const headers = Object.assign({"Content-Type": "application/json"}, opts.headers || {});
+      if (window._authToken) {
+        headers["Authorization"] = "Bearer " + window._authToken;
+      }
+      const r = await fetch(API + path, { ...opts, headers });
+      if (!r.ok) throw new Error(await r.text() || r.status);
+      return r.json();
+    }
+
+    async function health(){
+      try{ const h=await apiCall("/health");
+        document.getElementById("stat").textContent = "พร้อม · "+(h.model||h.provider);
+        document.getElementById("dot").classList.add("on");
+      }catch{ document.getElementById("stat").textContent="เชื่อมต่อ API ไม่ได้"; }
+      initMSAL();
+      initLine();
+    }
+
+    // MSAL.js M365 Authentication integration
+    let msalInstance = null;
+
+    async function initMSAL() {
       try {
-        const res = await fetch("/api/digest");
-        const data = await res.json();
-        if (data.stories) {
-          let html = "⭐ <b>สรุปข่าวเด่นวันนี้:</b><br><br>";
-          data.stories.forEach(s => {
-            html += `<b>• ${esc(s.title)}</b><br>`;
-            html += `📌 <b>เกิดอะไรขึ้น:</b> ${esc(s.whatHappened)}<br>`;
-            html += `🔍 <b>สาเหตุ:</b> ${esc(s.cause)}<br>`;
-            html += `🔄 <b>เป็นยังไงต่อ:</b> ${esc(s.progress)}<br>`;
-            html += `🏁 <b>บทสรุป:</b> ${esc(s.conclusion)}<br>`;
-            html += `🔗 <a href="${esc(s.rawLink)}" target="_blank" style="color:#34d399">อ่านต่อ/ชมคลิป</a><br><br>`;
-          });
-          aiMsg.querySelector(".bubble").innerHTML = html;
+        const cfg = await apiCall("/auth/config");
+        window._authConfig = cfg;
+
+        if (!cfg || !cfg.require_auth) {
+          updateAuthUI(true);  // Login requirement is disabled by config -> unlock UI
+          return;
+        }
+
+        if (!window.msal || !cfg.client_id) return;
+
+        const msalConfig = {
+          auth: {
+            clientId: cfg.client_id,
+            authority: `https://login.microsoftonline.com/${cfg.tenant_id || "common"}`,
+            redirectUri: window.location.origin + window.location.pathname,
+          },
+          cache: {
+            cacheLocation: "localStorage",
+            storeAuthStateInCookie: false,
+          }
+        };
+
+        msalInstance = new msal.PublicClientApplication(msalConfig);
+        await msalInstance.initialize();
+
+        const redirectRes = await msalInstance.handleRedirectPromise();
+        if (redirectRes) {
+          handleAuthSuccess(redirectRes);
         } else {
-          aiMsg.querySelector(".bubble").innerHTML = "รับคำสั่งเรียบร้อยแล้วครับ!";
+          const accounts = msalInstance.getAllAccounts();
+          if (accounts.length > 0) {
+            await acquireTokenSilent(accounts[0]);
+          } else {
+            updateAuthUI(false);
+          }
         }
       } catch (err) {
-        aiMsg.querySelector(".bubble").innerHTML = "ตอบกลับเรียบร้อยแล้วครับ!";
+        console.warn("MSAL init notice:", err);
+        updateAuthUI(true);  // Fallback unlock if config error
       }
     }
 
-    // Render suggestion chips
-    const chipsDiv = document.getElementById("chips");
-    SUGGESTIONS.forEach(s => {
-      const btn = document.createElement("button");
-      btn.className = "chip";
-      btn.textContent = s;
-      btn.onclick = () => { input.value = s; toggleSend(); send(); };
-      chipsDiv.appendChild(btn);
+    function updateAuthUI(isLoggedIn) {
+      const guard = document.getElementById("loginGuard");
+      const chat = document.getElementById("chat");
+      const composer = document.querySelector(".composer");
+      if (guard) guard.style.display = isLoggedIn ? "none" : "flex";
+      if (chat) chat.style.opacity = isLoggedIn ? "1" : "0.15";
+      if (composer) {
+        composer.style.opacity = isLoggedIn ? "1" : "0.3";
+        composer.style.pointerEvents = isLoggedIn ? "auto" : "none";
+      }
+    }
+
+    async function acquireTokenSilent(account) {
+      if (!msalInstance) return;
+      try {
+        const res = await msalInstance.acquireTokenSilent({
+          scopes: ["User.Read", "openid", "profile"],
+          account: account
+        });
+        handleAuthSuccess(res);
+      } catch (e) {
+        console.warn("Silent token acquisition failed:", e);
+        updateAuthUI(Boolean(window._authToken));
+      }
+    }
+
+    function handleAuthSuccess(res) {
+      window._authToken = res.idToken || res.accessToken;
+      localStorage.setItem("entra_token", window._authToken);
+      const acc = res.account || (msalInstance && msalInstance.getAllAccounts()[0]);
+      if (acc) {
+        const uContainer = document.getElementById("m365User");
+        if (uContainer) {
+          uContainer.innerHTML = `<span style="font-size:12px;color:var(--ok);font-weight:600">👤 ${esc(acc.name || acc.username)}</span> `
+            + `<button class="minibtn" onclick="logoutM365()">ออกจากระบบ</button>`;
+        }
+      }
+      updateAuthUI(true);
+      tryLinkLine();   // once we know the M365 identity, bind the LINE account (if any)
+    }
+
+    async function loginM365() {
+      if (!msalInstance) {
+        alert("กรุณาตั้งค่า CLIENT_ID ใน local.settings.json / App Settings เพื่อเปิดใช้งาน M365 Login");
+        return;
+      }
+      const scopes = ["User.Read", "openid", "profile"];
+      try {
+        // Inside the LINE in-app browser, popups are blocked → use redirect instead.
+        if (_liffReady && window.liff && liff.isInClient()) {
+          await msalInstance.loginRedirect({ scopes });
+          return;
+        }
+        handleAuthSuccess(await msalInstance.loginPopup({ scopes }));
+      } catch (err) {
+        alert("เข้าสู่ระบบไม่สำเร็จ: " + err.message);
+      }
+    }
+
+    function logoutM365() {
+      window._authToken = null;
+      localStorage.removeItem("entra_token");
+      updateAuthUI(false);
+      if (msalInstance) {
+        msalInstance.logoutPopup().then(() => window.location.reload()).catch(() => window.location.reload());
+      } else {
+        window.location.reload();
+      }
+    }
+
+    // ---- LINE / LIFF integration ----
+    // The app runs both as a normal web app AND inside LINE (LIFF). LIFF init is
+    // best-effort: any failure is swallowed so the web app keeps working.
+    let _liffReady = false;
+
+    async function initLine() {
+      try {
+        const cfg = window._authConfig || await apiCall("/auth/config");
+        window._authConfig = cfg;
+        if (!cfg.liff_id || !window.liff) return;   // not configured / SDK missing → web-only
+        await liff.init({ liffId: cfg.liff_id });
+        _liffReady = true;
+        if (liff.isLoggedIn()) {
+          try { window._lineProfile = await liff.getProfile(); } catch (e) {}
+          tryLinkLine();                            // auto-link (esp. when opened in LINE)
+        } else if (liff.isInClient()) {
+          liff.login();                             // inside the LINE app → log in
+        }
+      } catch (e) { console.warn("LIFF init:", e); }
+    }
+
+    async function tryLinkLine() {
+      if (window._lineLinked) return;
+      const p = window._lineProfile;
+      if (!p || !p.userId) return;
+      try {
+        await apiCall("/line/link", { method: "POST", body: JSON.stringify({ line_user_id: p.userId }) });
+        window._lineLinked = true;
+        refreshLineStatus();
+      } catch (e) { console.warn("line link:", e); }
+    }
+
+    async function linkLineInteractive() {
+      const cfg = window._authConfig || {};
+      if (!cfg.liff_id || !window.liff) { alert("ยังไม่ได้ตั้งค่า LINE (LIFF_ID) ที่เซิร์ฟเวอร์ครับ"); return; }
+      try {
+        if (!_liffReady) { await liff.init({ liffId: cfg.liff_id }); _liffReady = true; }
+        if (!liff.isLoggedIn()) { liff.login(); return; }   // redirects, then reloads
+        window._lineProfile = await liff.getProfile();
+        window._lineLinked = false;
+        await tryLinkLine();
+      } catch (e) { alert("เชื่อม LINE ไม่สำเร็จ: " + (e.message || e)); }
+    }
+
+    async function unlinkLine() {
+      try { await apiCall("/line/link", { method: "DELETE" }); } catch (e) {}
+      window._lineLinked = false;
+      refreshLineStatus();
+    }
+
+    async function refreshLineStatus() {
+      const el = document.getElementById("lineStatus");
+      const linkBtn = document.getElementById("lineLinkBtn");
+      const unlinkBtn = document.getElementById("lineUnlinkBtn");
+      if (!el) return;
+      const cfg = window._authConfig || {};
+      const show = (b, on) => { if (b) b.style.display = on ? "" : "none"; };
+      if (!cfg.liff_id) {
+        el.textContent = "ยังไม่ได้ตั้งค่า LINE ที่เซิร์ฟเวอร์"; el.style.color = "var(--muted)";
+        show(linkBtn, false); show(unlinkBtn, false); return;
+      }
+      try {
+        const s = await apiCall("/line/status");
+        window._lineLinked = !!s.linked;
+        el.textContent = s.linked ? "✅ เชื่อม LINE แล้ว" : "ยังไม่ได้เชื่อม LINE";
+        el.style.color = s.linked ? "var(--ok)" : "var(--muted)";
+        show(linkBtn, !s.linked); show(unlinkBtn, s.linked);
+      } catch (e) { el.textContent = "ตรวจสอบสถานะไม่ได้"; el.style.color = "var(--muted)"; }
+    }
+
+    function taskCard(t){
+      const cls = t.status==="done"?"done":t.status==="overdue"?"overdue":"pending";
+      const due = t.due ? "กำหนด: "+esc(t.due) : "ไม่มีกำหนด";
+      const who = t.responsible ? " · "+esc(t.responsible) : "";
+      const btn = t.status==="done" ? "" :
+        `<button class="minibtn ok" onclick="complete(${t.id}, this)">✓ ปิดงาน</button>`;
+      return `<div class="tk"><div class="tt">${esc(t.title)}<span class="badge ${cls}">${t.status}</span></div>
+        <div class="tm">${due}${who}</div>${btn}</div>`;
+    }
+
+    async function complete(id, el){
+      try{ await apiCall("/tasks/"+id,{method:"PATCH",body:JSON.stringify({status:"done"})});
+        el.outerHTML = '<span style="color:var(--ok);font-size:12.5px">✓ ปิดแล้ว</span>';
+      }catch(e){ alert("ปิดงานไม่ได้: "+e.message); }
+    }
+
+    function renderReply(res){
+      let html = esc(res.reply || "");
+      // render task cards when data is a task list
+      if(res.intent==="list_tasks" && Array.isArray(res.data) && res.data.length){
+        html += `<div class="tasks">${res.data.map(taskCard).join("")}</div>`;
+      }
+      // render meeting choices as clickable buttons
+      if(res.intent==="choose_meeting" && Array.isArray(res.choices) && res.choices.length){
+        window._choices = res.choices;
+        html += `<div class="tasks">` + res.choices.map((c,i)=>
+          `<button class="chip" style="text-align:left" onclick="summarizeOne(${i})">📋 ${esc(c.label)}</button>`
+        ).join("") + `</div>`;
+      }
+      // render person choices when a name is ambiguous
+      if(res.intent==="choose_person" && Array.isArray(res.choices) && res.choices.length){
+        window._people = res.choices;
+        html += `<div class="tasks">` + res.choices.map((c,i)=>
+          `<button class="chip" style="text-align:left" onclick="pickPerson(${i})">👤 ${esc(c.displayName||c.mail)}<br><span style="color:var(--muted);font-size:12px">${esc(c.mail)}</span></button>`
+        ).join("") + `</div>`;
+      }
+      // render free-time slots as bookable buttons (find_meeting_time result)
+      if(res.intent==="choose_slot" && Array.isArray(res.slots) && res.slots.length){
+        window._slots = res.slots;
+        window._meeting = res.meeting || {};
+        html += `<div class="tasks">` + res.slots.map((s,i)=>
+          `<button class="chip" style="text-align:left" onclick="bookSlot(${i})">🗓️ ${esc(s.label)}</button>`
+        ).join("") + `</div>`;
+      }
+      // OneDrive file search results → click to open
+      if(res.intent==="file_results" && Array.isArray(res.files) && res.files.length){
+        window._files = res.files;
+        window._ctx = { last_intent: "file_results", files: res.files };
+        html += `<div class="tasks">` + res.files.map((f,i)=>
+          `<button class="chip" style="text-align:left" onclick="openFile(${i})">${f.is_folder?"📁":"📄"} ${esc(f.name)}</button>`
+        ).join("") + `</div>`;
+      }
+      // meetings that can be cancelled → pick one (then confirm)
+      if(res.intent==="choose_cancel" && Array.isArray(res.choices) && res.choices.length){
+        window._cancelList = res.choices;
+        html += `<div class="tasks">` + res.choices.map((c,i)=>
+          `<button class="chip" style="text-align:left" onclick="askCancel(${i})">🗑️ ${esc(c.label)}</button>`
+        ).join("") + `</div>`;
+      }
+      // travel plan → offer a route-map button (opens on click, so no popup block)
+      if(res.intent==="plan_commute" && res.map_url){
+        window._planMap = res.map_url;
+        html += `<div class="tasks"><button class="chip" onclick="openMap(window._planMap)">🗺️ เปิดเส้นทางไป${esc(res.map_where||"ที่ทำงาน")}</button></div>`;
+      }
+      // a person's availability → click a free block to SELECT it, then type a command
+      if(res.intent==="availability" && Array.isArray(res.slots) && res.slots.length){
+        window._avail = {person: res.person||{}, slots: res.slots};
+        // remember who we're looking at, so a follow-up like
+        // "วันที่ 31 หลัง 09:00 ติดอะไร" knows it's still about this person
+        if(!window._ctx || !window._ctx.selected){
+          const pn = (res.person && (res.person.displayName || res.person.mail)) || null;
+          if(pn) window._ctx = { last_intent: "availability", last_person: pn };
+        }
+        html += `<div class="tasks">` + res.slots.map((s,i)=>
+          `<button class="chip" style="text-align:left" onclick="selectSlot(${i})">🗓️ ${esc(s.label)}</button>`
+        ).join("") + `</div>`;
+      }
+      return html;
+    }
+
+    // ---- selected-slot context ----
+    function setSelection(sel){
+      window._ctx = { selected: sel };
+      const bar = document.getElementById("ctxbar");
+      bar.querySelector(".txt").textContent = `📌 ${sel.label} · ${sel.person.displayName||sel.person.mail}`;
+      bar.style.display = "flex";
+      input.placeholder = 'พิมพ์คำสั่ง เช่น “จองประชุม 1 ชม. เรื่องอัปเดตงาน” หรือ “จองเลย”';
+      input.focus();
+    }
+    function clearSelection(){
+      window._ctx = null;
+      document.getElementById("ctxbar").style.display = "none";
+      input.placeholder = 'พิมพ์คำสั่ง เช่น “เดือนนี้มีประชุมอะไรบ้าง”…';
+    }
+    function selectSlot(i){
+      const a = window._avail || {};
+      const s = a.slots && a.slots[i];
+      if(!s) return;
+      const person = a.person || {};
+      setSelection({ start:s.start, end:s.end, label:s.label, person });
+      addMsg("ai", `เลือกช่วง ${esc(s.label)} กับ ${esc(person.displayName||person.mail)} แล้วครับ 👍\n`
+        + `พิมพ์ได้เลยว่าจะให้ทำอะไร เช่น:\n  • “จองเลย” (30 นาที)\n  • “จองประชุม 1 ชม. เรื่องอัปเดตงาน”\n  • “จองพร้อมสมชายด้วย”`);
+    }
+
+    async function pickPerson(i){
+      const c = window._people && window._people[i];
+      if(!c) return;
+      addMsg("me", "ดูตารางของ "+esc(c.displayName||c.mail));
+      const t = addTyping();
+      try{
+        const res = await apiCall("/availability", {method:"POST", body:JSON.stringify({
+          email:c.mail, period:c.period||"week", who:c.displayName||c.mail
+        })});
+        t.remove();
+        addMsg("ai", renderReply(res));  // renders free-time text + bookable slot buttons
+      }catch(e){ t.remove(); addMsg("ai","⚠️ ผิดพลาด: "+esc(e.message)); }
+    }
+
+    function askCancel(i){
+      const c = window._cancelList && window._cancelList[i];
+      if(!c) return;
+      const m = document.createElement("div");
+      m.className = "msg ai";
+      m.innerHTML = `<div class="av">🤖</div><div class="bubble">⚠️ ยืนยันยกเลิกนัดนี้?\n${esc(c.label)}`
+        + `<div class="tasks"><button class="minibtn" style="background:rgba(251,113,133,.16);color:var(--danger)" onclick="doCancel(${i})">✕ ยืนยันยกเลิก</button>`
+        + ` <button class="minibtn" onclick="this.closest('.bubble').querySelector('.tasks').remove()">ไม่เป็นไร</button></div></div>`;
+      wrap.appendChild(m); scrollDown();
+    }
+    async function doCancel(i){
+      const c = window._cancelList && window._cancelList[i];
+      if(!c) return;
+      const t = addTyping();
+      try{
+        const res = await apiCall("/meetings/cancel", {method:"POST", body:JSON.stringify({event_id:c.event_id})});
+        t.remove();
+        addMsg("ai", res.ok ? `✅ ยกเลิกนัดเรียบร้อย: ${esc(c.label)}`
+          : "⚠️ ยกเลิกไม่สำเร็จ: "+esc(res.error||""));
+      }catch(e){ t.remove(); addMsg("ai","⚠️ ผิดพลาด: "+esc(e.message)); }
+    }
+
+    function openFile(i){
+      const f = window._files && window._files[i];
+      if(f && f.url) window.open(f.url, "_blank");
+    }
+
+    async function bookSlot(i){
+      const s = window._slots && window._slots[i];
+      const m = window._meeting || {};
+      if(!s) return;
+      addMsg("me", "จองเวลานี้: "+esc(s.label));
+      const t = addTyping();
+      try{
+        const res = await apiCall("/meetings/book", {method:"POST", body:JSON.stringify({
+          start:s.start, end:s.end, attendees:m.attendees||[], subject:m.subject||"ประชุม"
+        })});
+        t.remove();
+        if(res.ok){
+          let h = `✅ จองประชุมเรียบร้อย!\n📌 ${esc(m.subject||"ประชุม")}\n🕐 ${esc(s.label)}`;
+          if(res.join_url) h += `\n💻 ลิงก์ Teams: ${esc(res.join_url)}`;
+          addMsg("ai", h);
+        } else {
+          addMsg("ai", "⚠️ จองไม่สำเร็จ: "+esc(res.error||"")+"\n\n(อาจต้องเพิ่มสิทธิ์ Calendars.ReadWrite ใน Entra)");
+        }
+      }catch(e){ t.remove(); addMsg("ai","⚠️ ผิดพลาด: "+esc(e.message)); }
+    }
+
+    async function summarizeOne(i){
+      const c = window._choices && window._choices[i];
+      if(!c) return;
+      addMsg("me", "สรุป: "+esc(c.label));
+      const t = addTyping();
+      try{
+        const res = await apiCall("/summaries/one",{method:"POST",body:JSON.stringify({event_id:c.event_id})});
+        t.remove();
+        if(res.ok){
+          let h = esc(res.summary);
+          if(res.added) h += `\n\n📌 บันทึกงานติดตามใหม่ ${res.added} รายการ (พิมพ์ “งานค้าง” เพื่อดู)`;
+          addMsg("ai", h);
+        } else {
+          let h = "⚠️ ยังดึงบันทึก (transcript) ของประชุมนี้ไม่ได้ครับ\n\nสาเหตุ: " + esc(res.reason || "ไม่ทราบ");
+          if(res.debug) h += `\n\n🔧 debug:\n` + esc(JSON.stringify(res.debug, null, 2));
+          addMsg("ai", h);
+        }
+      }catch(e){ t.remove(); addMsg("ai","⚠️ ผิดพลาด: "+esc(e.message)); }
+    }
+
+    async function send(text){
+      const q = (text!==undefined?text:input.value).trim();
+      if(!q) return;
+      addMsg("me", esc(q));
+      input.value=""; autogrow(input); toggleSend();
+      const t = addTyping();
+      try{
+        const res = await apiCall("/command",{method:"POST",body:JSON.stringify({text:q, context: window._ctx || null})});
+        t.remove();
+        if(res.intent === "open_map"){
+          await handleWorkNav();                        // don't open if already at work — tease instead
+        } else {
+          addMsg("ai", renderReply(res));
+          if(res.intent === "booked") clearSelection(); // slot consumed
+          if(res.map_url && res.intent === "open_map_home") openMap(res.map_url);
+        }
+      }catch(e){
+        t.remove();
+        addMsg("ai", "⚠️ ขอโทษครับ เกิดข้อผิดพลาด: "+esc(e.message));
+      }
+    }
+
+    // suggestion chips
+    const chipBox = document.getElementById("chips");
+    SUGGESTIONS.forEach(s=>{
+      const c=document.createElement("button"); c.className="chip"; c.textContent=s;
+      c.onclick=()=>send(s); chipBox.appendChild(c);
     });
 
-    document.getElementById("dot").classList.add("on");
-    document.getElementById("stat").textContent = "พร้อมใช้งาน";
+    // Voice input (Web Speech API — Thai). Works in Chrome/Edge.
+    let recog=null, recording=false;
+    function toggleMic(){
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if(!SR){ alert("เบราว์เซอร์นี้ไม่รองรับสั่งด้วยเสียง (ใช้ Chrome/Edge)"); return; }
+      const micBtn=document.getElementById("mic");
+      if(recording){ recog && recog.stop(); return; }
+      recog = new SR(); recog.lang="th-TH"; recog.interimResults=true; recog.continuous=false;
+      recording=true; micBtn.classList.add("rec");
+      let finalText="";
+      recog.onresult=(e)=>{ let s=""; for(const r of e.results) s+=r[0].transcript;
+        input.value=s; autogrow(input); toggleSend(); if(e.results[e.results.length-1].isFinal) finalText=s; };
+      recog.onerror=()=>{};
+      recog.onend=()=>{ recording=false; micBtn.classList.remove("rec");
+        if(input.value.trim()) send(); };
+      recog.start();
+    }
+
+    function openMap(url){
+      if(!url) return;
+      const w = window.open(url, "_blank", "noopener");
+      // popup blocked (common when not opened straight from a click) → give a link
+      if(!w){
+        addMsg("ai", `เบราว์เซอร์บล็อกการเปิดหน้าต่างครับ แตะลิงก์นี้เพื่อเปิดแผนที่ 👉`
+          + `<div class="tasks"><a class="chip" href="${url}" target="_blank" rel="noopener" style="text-decoration:none">🗺️ เปิดแผนที่</a></div>`);
+      }
+    }
+    const AT_WORK_RADIUS_M = 300;
+
+    // ---- geo helpers ----
+    function haversine(la1,lo1,la2,lo2){
+      const R=6371000, r=Math.PI/180;
+      const dLa=(la2-la1)*r, dLo=(lo2-lo1)*r;
+      const a=Math.sin(dLa/2)**2 + Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dLo/2)**2;
+      return 2*R*Math.asin(Math.sqrt(a));
+    }
+    function getPos(){
+      return new Promise(res=>{
+        if(!navigator.geolocation) return res(null);
+        navigator.geolocation.getCurrentPosition(p=>res(p.coords), ()=>res(null), {timeout:6000, maximumAge:60000});
+      });
+    }
+    function navUrl(loc, lat, lng){
+      if(loc && loc.trim().startsWith("http")) return loc.trim();
+      const dest = (lat&&lng) ? `${lat},${lng}` : (loc ? loc.trim() : null);
+      return dest ? "https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(dest) : null;
+    }
+    function hhmmToMin(s){ const m=/^(\d{1,2}):(\d{2})$/.exec(s||""); return m ? (+m[1])*60 + (+m[2]) : null; }
+    async function ensureGeo(force){
+      if(window._geo && !force) return window._geo;
+      const g = await apiCall("/location");   // primary work/home + work hours
+      window._geo = {
+        workLat: g.work.lat, workLng: g.work.lng, workNav: g.work.nav_url,
+        homeNav: g.home.nav_url, endMin: hhmmToMin(g.work_end), startMin: hhmmToMin(g.work_start),
+      };
+      return window._geo;
+    }
+
+    // decide the right travel offer given current location (no auto-open — user confirms)
+    async function travelOfferHtml(){
+      const g = await ensureGeo();
+      const hasCoords = g.workLat && g.workLng;
+      // Don't nag in the auto-greeting: if the workplace / GPS coords aren't set,
+      // or the browser blocked location, just stay quiet. The user can still set
+      // things up via ⚙️ whenever they want — we only speak up with a real,
+      // actionable travel offer below.
+      if(!hasCoords)
+        return ``;
+
+      const pos = await getPos();
+      if(!pos)  // location blocked — can't tell; don't push anything
+        return ``;
+
+      const nowD = new Date();
+      const nowMin = nowD.getHours()*60 + nowD.getMinutes();
+      const d = haversine(pos.latitude, pos.longitude, +g.workLat, +g.workLng);
+      if(d <= AT_WORK_RADIUS_M){  // already at work → never offer route to work
+        if(g.homeNav && g.endMin && nowMin >= g.endMin - 60){
+          window._homeMap = g.homeNav;
+          return `\n\nใกล้เวลาเลิกงานแล้วนะครับ 🏠 อยากให้เปิดแผนที่พากลับบ้านไหม? (กดยืนยันได้เลย)`
+            + `<div class="tasks"><button class="chip" onclick="openMap(window._homeMap)">🏠 เปิดแผนที่กลับบ้าน</button></div>`;
+        }
+        return `\n\nอ้าว~ ก็อยู่ที่ทำงานเรียบร้อยแล้วนี่ครับ 😆 ลุยงานเลย 💪`;
+      }
+      // confidently NOT at work → offer route to work
+      window._workMap = g.workNav;
+      return `\n\nให้เปิดแผนที่ไปที่ทำงานไหมครับ? (กดยืนยันได้เลย)`
+        + `<div class="tasks"><button class="chip" onclick="openMap(window._workMap)">🗺️ เปิดแผนที่ไปที่ทำงาน</button></div>`;
+    }
+
+    // when the user explicitly says "ไปที่ทำงาน": don't open if already there
+    async function handleWorkNav(){
+      const g = await ensureGeo();
+      if(!g.workNav){ addMsg("ai","ยังไม่ได้ตั้งที่ทำงานครับ ตั้งที่ ⚙️ ก่อนนะครับ"); return; }
+      const pos = await getPos();
+      if(pos && g.workLat && g.workLng){
+        const d = haversine(pos.latitude, pos.longitude, +g.workLat, +g.workLng);
+        if(d <= AT_WORK_RADIUS_M){
+          let h = "อ้าว~ ตอนนี้คุณก็อยู่ที่ทำงานอยู่แล้วนี่ครับ 😄 ไม่ต้องเปิดแผนที่แล้วเนอะ";
+          if(g.homeNav){ window._homeMap = g.homeNav;
+            h += `\n\nหรือว่าแอบอยากกลับบ้าน? 🏠 ถ้าใช่กดยืนยันได้เลยครับ`
+              + `<div class="tasks"><button class="chip" onclick="openMap(window._homeMap)">🏠 เปิดแผนที่กลับบ้าน</button></div>`;
+          }
+          addMsg("ai", h); return;
+        }
+      }
+      addMsg("ai","เปิดแผนที่ไปที่ทำงานให้แล้วครับ 🗺️");
+      openMap(g.workNav);
+    }
+
+    // ---- settings + places manager ----
+    const CATS = [
+      {key:"work", icon:"🏢", name:"ที่ทำงาน (หลัก = ⭐ สลับได้)"},
+      {key:"home", icon:"🏠", name:"บ้าน"},
+      {key:"customer", icon:"🧑‍💼", name:"ลูกค้า"},
+    ];
+    async function openSettings(){
+      document.getElementById("settings").style.display = "flex";
+      window._newCoords = {};
+      populateTimeOptions();
+      refreshLineStatus();
+      try{
+        const s = await apiCall("/settings");
+        setTV("setStart", s.work_start || "08:00");
+        setTV("setEnd", s.work_end || "17:00");
+      }catch{}
+      renderPlaces();
+    }
+    function closeSettings(){ document.getElementById("settings").style.display = "none"; }
+
+    // 24-hour time: type freely or pick from the datalist
+    function populateTimeOptions(){
+      const dl = document.getElementById("timeOptions");
+      let html = "";
+      for(let h=0; h<24; h++) for(const m of ["00","30"])
+        html += `<option value="${String(h).padStart(2,"0")}:${m}">`;
+      dl.innerHTML = html;
+    }
+    function normHHMM(v){
+      v = (v||"").trim().replace(/\./, ":");
+      let m = /^(\d{1,2}):(\d{1,2})$/.exec(v);
+      if(!m){ const d = /^(\d{2})(\d{2})$/.exec(v); if(d) m = [null, d[1], d[2]]; }   // "0830"
+      if(!m){ const hOnly = /^(\d{1,2})$/.exec(v); if(hOnly) m = [null, hOnly[1], "00"]; } // "8"
+      if(!m) return "";
+      const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+      const mi = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+      return String(h).padStart(2,"0") + ":" + String(mi).padStart(2,"0");
+    }
+    function setTV(prefix, hhmm){ document.getElementById(prefix).value = normHHMM(hhmm) || hhmm; }
+    function getTV(prefix){ return normHHMM(document.getElementById(prefix).value); }
+
+    async function saveAll(){
+      try{
+        await apiCall("/settings", {method:"POST", body:JSON.stringify({
+          work_start: getTV("setStart"),
+          work_end: getTV("setEnd"),
+        })});
+        await ensureGeo(true);
+        closeSettings();
+        addMsg("ai", "บันทึกการตั้งค่าแล้วครับ ⚙️✅");
+      }catch(e){ alert("บันทึกไม่ได้: "+e.message); }
+    }
+
+    function placeRow(p){
+      const star = p.is_primary ? "⭐" : "☆";
+      const visits = p.visit_count ? ` · ไป ${p.visit_count} ครั้ง` : "";
+      const coords = p.lat ? " 📍" : "";
+      const openBtn = navUrl(p.location, p.lat, p.lng)
+        ? `<button title="เปิดแผนที่" onclick="openPlace(${p.id})" style="background:none;border:0;cursor:pointer;font-size:14px">🗺️</button>` : "";
+      return `<div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px">
+        <button title="ตั้งเป็นหลัก" onclick="setPrimaryPlace(${p.id})" style="background:none;border:0;cursor:pointer;font-size:16px">${star}</button>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600">${esc(p.label)}${visits}</div>
+          <div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.location||"(ไม่มีที่อยู่)")}${coords}</div>
+        </div>${openBtn}
+        <button title="ลบ" onclick="deletePlace(${p.id})" style="background:none;border:0;cursor:pointer;color:var(--danger);font-size:14px">🗑️</button>
+      </div>`;
+    }
+    function addForm(cat){
+      const inp = "background:#0b1220;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;";
+      return `<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <input id="add_${cat}_label" placeholder="ชื่อ เช่น สำนักงานใหญ่" style="flex:1;min-width:110px;${inp}"/>
+        <input id="add_${cat}_loc" placeholder="ที่อยู่ / ลิงก์ Maps" style="flex:2;min-width:130px;${inp}"/>
+        <button class="minibtn" title="ใช้ตำแหน่งปัจจุบัน" onclick="useCurrentForNew('${cat}')">📍</button>
+        <button class="minibtn" onclick="addPlace('${cat}')">➕ เพิ่ม</button>
+        <div id="add_${cat}_coords" style="flex-basis:100%;font-size:10px;color:var(--muted)"></div>
+      </div>`;
+    }
+    async function renderPlaces(){
+      const box = document.getElementById("placesContainer");
+      box.innerHTML = '<div class="spin">กำลังโหลด...</div>';
+      let places = [];
+      try{ places = await apiCall("/places"); }catch{}
+      box.innerHTML = CATS.map(c=>{
+        const items = places.filter(p=>p.category===c.key);
+        return `<div style="margin-bottom:18px">
+          <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:8px">${c.icon} ${c.name}</div>
+          ${items.map(placeRow).join("") || '<div style="color:var(--muted);font-size:12px;margin-bottom:4px">— ยังไม่มี —</div>'}
+          ${addForm(c.key)}
+        </div>`;
+      }).join("");
+    }
+    async function useCurrentForNew(cat){
+      const el = document.getElementById(`add_${cat}_coords`);
+      el.textContent = "กำลังขอตำแหน่ง...";
+      const pos = await getPos();
+      if(!pos){ el.textContent = "⚠️ ขอตำแหน่งไม่สำเร็จ (อนุญาต location ในเบราว์เซอร์)"; return; }
+      window._newCoords[cat] = {lat:pos.latitude.toFixed(6), lng:pos.longitude.toFixed(6)};
+      el.textContent = `✓ พิกัด: ${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)}`;
+    }
+    async function addPlace(cat){
+      const label = document.getElementById(`add_${cat}_label`).value.trim();
+      const loc = document.getElementById(`add_${cat}_loc`).value.trim();
+      if(!label){ alert("ใส่ชื่อสถานที่ด้วยครับ"); return; }
+      const c = (window._newCoords||{})[cat] || {};
+      try{
+        await apiCall("/places", {method:"POST", body:JSON.stringify({
+          category:cat, label, location:loc, lat:c.lat||null, lng:c.lng||null
+        })});
+        if(window._newCoords) delete window._newCoords[cat];
+        await ensureGeo(true); renderPlaces();
+      }catch(e){ alert("เพิ่มไม่ได้: "+e.message); }
+    }
+    async function setPrimaryPlace(id){
+      try{ await apiCall("/places/"+id, {method:"PATCH", body:JSON.stringify({is_primary:true})});
+        await ensureGeo(true); renderPlaces();
+      }catch(e){ alert(e.message); }
+    }
+    async function deletePlace(id){
+      try{ await apiCall("/places/"+id, {method:"DELETE"});
+        await ensureGeo(true); renderPlaces();
+      }catch(e){ alert(e.message); }
+    }
+    async function openPlace(id){
+      try{ await apiCall("/places/"+id+"/visit", {method:"POST"}); }catch{}
+      const places = await apiCall("/places");
+      const p = places.find(x=>x.id===id);
+      if(p){ const u = navUrl(p.location,p.lat,p.lng); if(u) openMap(u); }
+      renderPlaces();
+    }
+
+    // ---- morning greeting (AI greets first when you open the app) ----
+    async function greet(){
+      hideHello();
+      const t = addTyping();
+      try{
+        const g = await apiCall("/greeting");
+        t.remove();
+        // show today's meetings only in the morning; otherwise just handle travel
+        let html = "";
+        if(g.is_morning && g.brief){
+          html = esc(g.brief) + "\n";
+        } else {
+          html = "สวัสดีครับ 👋 ";
+        }
+        html += await travelOfferHtml();
+        addMsg("ai", html);
+      }catch(e){ t.remove(); /* fall back to the static hello */ }
+    }
+
+    function initGreeting(){
+      // greet once per app-open (refresh in same tab won't repeat).
+      if(!sessionStorage.getItem("greeted")){
+        sessionStorage.setItem("greeted", "1");
+        greet();
+      }
+    }
+
+    health();
+    initGreeting();
   </script>
 </body>
 </html>
