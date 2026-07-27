@@ -126,6 +126,9 @@
     function tog(id) {
       const el = document.getElementById(id);
       el.classList.toggle("on");
+      const capMap = { t_yt:"src_youtube", t_fb:"src_facebook", t_rss:"src_rss", t_track:"read_tracking" };
+      const cap = capMap[id];
+      if (cap) apiCall("/consents", { method:"POST", body:JSON.stringify({ capability:cap, granted: el.classList.contains("on") }) }).catch(()=>{});
     }
 
     function grantAll() {
@@ -135,11 +138,53 @@
       const btn = document.getElementById("btnGrant");
       btn.textContent = "✅ อนุญาตเรียบร้อยแล้ว!";
       btn.classList.add("done");
+      ["src_youtube","src_facebook","src_rss","read_tracking"].forEach(cap =>
+        apiCall("/consents", { method:"POST", body:JSON.stringify({ capability:cap, granted:true }) }).catch(()=>{})
+      );
     }
 
-    function connectYT() {
-      alert("กำลังนำท่านไปยัง Google OAuth สำหรับเชื่อมต่อ YouTube...\n(ฟีเจอร์นี้จะเปิดใช้เมื่อตั้งค่า Google API Key)");
+    async function connectYT() {
+      const btn = document.querySelector(".btn-yt");
+      btn.textContent = "⏳ กำลังเปิดหน้า Google Login...";
+      btn.disabled = true;
+      try {
+        const res = await apiCall("/oauth/google/start");
+        if (res.auth_url) {
+          window.location.href = res.auth_url;  // redirect to Google OAuth
+        } else {
+          alert("ไม่สามารถรับ URL ได้: " + JSON.stringify(res));
+          btn.textContent = "🔴 เชื่อมต่อบัญชี YouTube (Google Login)";
+          btn.disabled = false;
+        }
+      } catch(e) {
+        alert("ยังไม่ได้ตั้งค่า Google OAuth ที่ Backend ครับ\n(GOOGLE_CLIENT_ID/SECRET/REDIRECT)\n\n" + e.message);
+        btn.textContent = "🔴 เชื่อมต่อบัญชี YouTube (Google Login)";
+        btn.disabled = false;
+      }
     }
+
+    // Call backend API
+    const API_BASE = window.location.hostname === "localhost" ? "http://localhost:8000" : "";
+    async function apiCall(path, opts={}) {
+      const r = await fetch(API_BASE + path, { headers:{"Content-Type":"application/json",...(opts.headers||{})}, ...opts });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    }
+
+    // Load current consent state on open
+    async function loadConsents() {
+      try {
+        const cs = await apiCall("/consents");
+        const capMap = { src_youtube:"t_yt", src_facebook:"t_fb", src_rss:"t_rss", read_tracking:"t_track" };
+        for (const [cap, elId] of Object.entries(capMap)) {
+          const el = document.getElementById(elId);
+          if (cs[cap] === false) el.classList.remove("on");
+          else el.classList.add("on");  // default on if not explicitly denied
+        }
+      } catch(e) { /* backend not running, keep defaults */ }
+    }
+    loadConsents();
+
 
     let feeds = [
       {kind:"yt",name:"YouTube Subscriptions",url:"subscriptions"},
