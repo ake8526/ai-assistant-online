@@ -21,18 +21,6 @@ export interface Story {
 }
 
 const CAP_BY_KIND: Record<string, string> = { rss: "src_rss", youtube: "src_youtube", facebook: "src_facebook" };
-const APP_BASE = process.env.NEXT_PUBLIC_APP_BASE_URL || "";
-
-async function makeShortLink(upn: string, url: string, source: string, title: string): Promise<string> {
-  const code = createHash("sha1").update(`${upn}|${url}`).digest("hex").slice(0, 10);
-  await admin
-    .from("read_links")
-    .upsert(
-      { code, owner_upn: upn, url, source, title: title.slice(0, 200), created_at: new Date().toISOString() },
-      { onConflict: "code" }
-    );
-  return APP_BASE ? `${APP_BASE}/r/${code}` : url;
-}
 
 export async function GET(req: Request) {
   try {
@@ -121,9 +109,7 @@ export async function GET(req: Request) {
     for (let i = 0; i < withText.length; i++) {
       const it = withText[i];
       const s = summaries[String(i)] || {};
-      const shortLink = granted.has("read_tracking")
-        ? await makeShortLink(upn, it.link, it.feedLabel, it.title)
-        : it.link;
+      const shortLink = it.link; // read-tracking removed → always the direct article link
       stories.push({
         id: createHash("sha1").update(it.link).digest("hex").slice(0, 8),
         title: it.title,

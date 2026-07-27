@@ -2,24 +2,23 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
-import { ShieldCheck, Youtube, Facebook, Rss, Layers, CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { ShieldCheck, Youtube, Facebook, Rss, CheckCircle2, Plus, Trash2 } from "lucide-react";
 
 const DEFAULT_UPN = process.env.NEXT_PUBLIC_DEFAULT_UPN || "weerasak.pi@ktisgroup.com";
-type Caps = { src_youtube: boolean; src_facebook: boolean; src_rss: boolean; read_tracking: boolean };
+type Caps = { src_youtube: boolean; src_facebook: boolean; src_rss: boolean };
 type Feed = { id?: number; kind: string; ref: string; label: string };
 
 const CAP_ROWS = [
   { key: "src_youtube", label: "YouTube Subscriptions (ดึงช่องที่ติดตาม)", icon: Youtube, color: "text-red-400" },
   { key: "src_facebook", label: "Facebook Page Feeds", icon: Facebook, color: "text-blue-400" },
   { key: "src_rss", label: "RSS Web News Feeds", icon: Rss, color: "text-amber-400" },
-  { key: "read_tracking", label: "Read Tracking Short Links (/r/<code>)", icon: Layers, color: "text-emerald-400" },
 ] as const;
 
 function ConsentsContent() {
   const { account } = useM365Auth();
   const upn = account?.username || DEFAULT_UPN;
 
-  const [consents, setConsents] = useState<Caps>({ src_youtube: false, src_facebook: false, src_rss: false, read_tracking: false });
+  const [consents, setConsents] = useState<Caps>({ src_youtube: false, src_facebook: false, src_rss: false });
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [newFeed, setNewFeed] = useState<Feed>({ kind: "rss", ref: "", label: "" });
   const [msg, setMsg] = useState("กำลังโหลด…");
@@ -104,7 +103,7 @@ function ConsentsContent() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
               <h2 className="text-sm font-bold text-emerald-400">⚡ อนุญาตสิทธิ์ทั้งหมดในคลิกเดียว</h2>
-              <p className="text-xs text-slate-400 mt-1">เปิด YouTube, Facebook, RSS และ Read Tracking ครบ</p>
+              <p className="text-xs text-slate-400 mt-1">เปิดแหล่งข่าว YouTube, Facebook และ RSS ครบ</p>
             </div>
             <button onClick={grantAll} disabled={busy} className="w-full sm:w-auto px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shrink-0 disabled:opacity-60">
               อนุญาตทั้งหมด (1-Click)
