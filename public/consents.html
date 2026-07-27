@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>ตั้งค่าสิทธิ์ข่าวสาร | AI Assistant</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+    body{
+      font-family:'Sarabun',system-ui,sans-serif;
+      background:radial-gradient(ellipse at 60% -20%,#0e2040 0%,#0b1120 60%);
+      min-height:100dvh;padding:20px;color:#e8eefc;
+    }
+    .wrap{max-width:560px;margin:0 auto;padding-bottom:40px;}
+    .header{text-align:center;padding:32px 0 24px;animation:rise .4s cubic-bezier(.22,1,.36,1);}
+    @keyframes rise{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:none;}}
+    .icon{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#f59e0b,#ef4444);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:28px;box-shadow:0 8px 24px rgba(245,158,11,0.3);}
+    h1{font-size:20px;font-weight:800;color:#fff;margin-bottom:6px;}
+    .sub{font-size:13px;color:#93a4c4;line-height:1.6;}
+
+    .card{background:rgba(21,31,52,0.85);border:1px solid #263450;border-radius:20px;padding:24px;margin-bottom:16px;backdrop-filter:blur(16px);}
+    .card-title{font-size:14px;font-weight:700;color:#5b9dff;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+
+    /* 1-click banner */
+    .banner{background:linear-gradient(135deg,rgba(52,211,153,0.12),rgba(14,165,233,0.08));border:1px solid rgba(52,211,153,0.3);border-radius:20px;padding:20px 24px;margin-bottom:16px;display:flex;flex-wrap:wrap;align-items:center;gap:16px;animation:rise .4s .1s both cubic-bezier(.22,1,.36,1);}
+    .banner-text h2{font-size:14px;font-weight:700;color:#34d399;margin-bottom:4px;}
+    .banner-text p{font-size:12px;color:#93a4c4;}
+    .btn-grant{flex-shrink:0;height:44px;padding:0 24px;border-radius:12px;border:0;cursor:pointer;background:linear-gradient(135deg,#34d399,#0ea5e9);color:#0b1120;font-family:inherit;font-size:13.5px;font-weight:800;transition:all .2s;white-space:nowrap;}
+    .btn-grant:hover{filter:brightness(1.08);transform:translateY(-1px);}
+    .btn-grant.done{background:rgba(52,211,153,0.15);color:#34d399;border:1px solid rgba(52,211,153,0.4);cursor:default;transform:none;}
+
+    /* Toggles */
+    .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(38,52,80,0.6);}
+    .toggle-row:last-child{border-bottom:none;}
+    .toggle-label{display:flex;align-items:center;gap:10px;font-size:13.5px;}
+    .toggle-icon{font-size:18px;width:32px;text-align:center;}
+    .toggle{width:44px;height:26px;background:#1b2740;border-radius:13px;border:0;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;}
+    .toggle.on{background:linear-gradient(135deg,#34d399,#0ea5e9);}
+    .toggle::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 2px 6px rgba(0,0,0,0.3);}
+    .toggle.on::after{transform:translateX(18px);}
+
+    /* YT Connect */
+    .btn-yt{width:100%;height:46px;border-radius:12px;border:0;cursor:pointer;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;font-family:inherit;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;transition:all .2s;}
+    .btn-yt:hover{filter:brightness(1.1);transform:translateY(-1px);}
+
+    /* Feed list */
+    .feed-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(38,52,80,0.5);}
+    .feed-item:last-child{border-bottom:none;}
+    .feed-badge{font-size:10px;padding:2px 8px;border-radius:999px;font-weight:700;flex-shrink:0;}
+    .feed-yt{background:rgba(239,68,68,0.15);color:#f87171;}
+    .feed-fb{background:rgba(59,130,246,0.15);color:#60a5fa;}
+    .feed-rss{background:rgba(245,158,11,0.15);color:#fbbf24;}
+    .feed-name{font-size:13px;color:#c9d6ef;flex:1;}
+    .feed-url{font-size:10px;color:#4a5a7a;font-family:monospace;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;max-width:160px;}
+    .add-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+    .add-row input{flex:1;min-width:100px;background:#0b1220;border:1px solid #263450;color:#e8eefc;border-radius:10px;padding:9px 12px;font-family:inherit;font-size:12.5px;outline:none;}
+    .add-row input:focus{border-color:#5b9dff;}
+    .btn-add{height:38px;padding:0 14px;border-radius:10px;border:0;cursor:pointer;background:rgba(91,157,255,0.15);color:#5b9dff;font-family:inherit;font-size:13px;font-weight:700;white-space:nowrap;}
+    .back{display:inline-block;margin-top:8px;font-size:12px;color:#5b9dff;cursor:pointer;}
+    .back:hover{text-decoration:underline;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div class="icon">📰</div>
+      <h1>ตั้งค่าสิทธิ์ข่าวสาร & YouTube</h1>
+      <p class="sub">อนุญาตให้ระบบดึงและสรุปข่าวสาร Facebook, YouTube, RSS แบบ 4 ขั้นตอน ส่งตรงมาทาง LINE</p>
+    </div>
+
+    <!-- 1-Click Banner -->
+    <div class="banner">
+      <div class="banner-text">
+        <h2>⚡ อนุญาตทุกสิทธิ์ในคลิกเดียว</h2>
+        <p>เปิดใช้งาน YouTube, Facebook, RSS และ Short Link ครบในครั้งเดียว</p>
+      </div>
+      <button class="btn-grant" id="btnGrant" onclick="grantAll()">อนุญาตทั้งหมด (1-Click)</button>
+    </div>
+
+    <!-- Toggles -->
+    <div class="card" style="animation:rise .4s .15s both cubic-bezier(.22,1,.36,1);">
+      <div class="card-title">🛡️ สิทธิ์การเข้าถึงข้อมูล</div>
+      <div id="toggles">
+        <div class="toggle-row">
+          <div class="toggle-label"><span class="toggle-icon">🔴</span>YouTube Subscriptions</div>
+          <button class="toggle on" id="t_yt" onclick="tog('t_yt')"></button>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-label"><span class="toggle-icon">🔵</span>Facebook Page Feeds</div>
+          <button class="toggle on" id="t_fb" onclick="tog('t_fb')"></button>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-label"><span class="toggle-icon">🟡</span>RSS Web News Feeds</div>
+          <button class="toggle on" id="t_rss" onclick="tog('t_rss')"></button>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-label"><span class="toggle-icon">🔗</span>Read Short Links (/r/code)</div>
+          <button class="toggle on" id="t_track" onclick="tog('t_track')"></button>
+        </div>
+      </div>
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid #263450;">
+        <button class="btn-yt" onclick="connectYT()">🔴 เชื่อมต่อบัญชี YouTube (Google Login)</button>
+      </div>
+    </div>
+
+    <!-- Feeds -->
+    <div class="card" style="animation:rise .4s .25s both cubic-bezier(.22,1,.36,1);">
+      <div class="card-title">📋 รายการที่ติดตามอยู่ (<span id="feedCount">3</span>)</div>
+      <div id="feedList">
+        <div class="feed-item"><span class="feed-badge feed-yt">YT</span><span class="feed-name">YouTube Subscriptions</span><span class="feed-url">subscriptions</span></div>
+        <div class="feed-item"><span class="feed-badge feed-rss">RSS</span><span class="feed-name">Blognone IT News</span><span class="feed-url">blognone.com/atom.xml</span></div>
+        <div class="feed-item"><span class="feed-badge feed-fb">FB</span><span class="feed-name">The Standard</span><span class="feed-url">thestandard.co</span></div>
+      </div>
+      <div class="add-row">
+        <input id="addName" placeholder="ชื่อช่อง/เพจ" />
+        <input id="addUrl" placeholder="URL / RSS Link" />
+        <button class="btn-add" onclick="addFeed()">➕ เพิ่ม</button>
+      </div>
+    </div>
+
+    <a class="back" onclick="history.back()">← กลับหน้าหลัก</a>
+  </div>
+
+  <script>
+    function tog(id) {
+      const el = document.getElementById(id);
+      el.classList.toggle("on");
+    }
+
+    function grantAll() {
+      ["t_yt","t_fb","t_rss","t_track"].forEach(id => {
+        document.getElementById(id).classList.add("on");
+      });
+      const btn = document.getElementById("btnGrant");
+      btn.textContent = "✅ อนุญาตเรียบร้อยแล้ว!";
+      btn.classList.add("done");
+    }
+
+    function connectYT() {
+      alert("กำลังนำท่านไปยัง Google OAuth สำหรับเชื่อมต่อ YouTube...\n(ฟีเจอร์นี้จะเปิดใช้เมื่อตั้งค่า Google API Key)");
+    }
+
+    let feeds = [
+      {kind:"yt",name:"YouTube Subscriptions",url:"subscriptions"},
+      {kind:"rss",name:"Blognone IT News",url:"blognone.com/atom.xml"},
+      {kind:"fb",name:"The Standard",url:"thestandard.co"},
+    ];
+
+    function renderFeeds() {
+      document.getElementById("feedCount").textContent = feeds.length;
+      document.getElementById("feedList").innerHTML = feeds.map(f =>
+        `<div class="feed-item">
+          <span class="feed-badge feed-${f.kind}">${f.kind.toUpperCase()}</span>
+          <span class="feed-name">${f.name}</span>
+          <span class="feed-url">${f.url}</span>
+        </div>`
+      ).join("");
+    }
+
+    function addFeed() {
+      const name = document.getElementById("addName").value.trim();
+      const url = document.getElementById("addUrl").value.trim();
+      if (!name || !url) { alert("กรุณากรอกชื่อและ URL ด้วยครับ"); return; }
+      const kind = url.includes("youtube") ? "yt" : url.includes("facebook") ? "fb" : "rss";
+      feeds.push({kind, name, url});
+      document.getElementById("addName").value = "";
+      document.getElementById("addUrl").value = "";
+      renderFeeds();
+    }
+  </script>
+</body>
+</html>

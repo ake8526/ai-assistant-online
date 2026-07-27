@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>ผูกบัญชี Microsoft 365 | AI Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+    body{
+      font-family:'Sarabun',system-ui,sans-serif;
+      background:radial-gradient(ellipse at 60% -20%,#0e2040 0%,#0b1120 60%);
+      min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:20px;
+      color:#e8eefc;
+    }
+    .card{
+      background:rgba(21,31,52,0.85);border:1px solid #263450;border-radius:28px;
+      padding:40px 32px;width:min(440px,100%);
+      box-shadow:0 24px 64px rgba(0,0,0,0.6),0 0 0 1px rgba(91,157,255,0.08);
+      backdrop-filter:blur(20px);text-align:center;
+      animation:rise .4s cubic-bezier(.22,1,.36,1);
+    }
+    @keyframes rise{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:none;}}
+    .icon{
+      width:72px;height:72px;border-radius:20px;
+      background:linear-gradient(135deg,#34d399,#0ea5e9);
+      display:flex;align-items:center;justify-content:center;
+      margin:0 auto 24px;font-size:32px;
+      box-shadow:0 8px 32px rgba(52,211,153,0.3);
+    }
+    h1{font-size:22px;font-weight:800;margin-bottom:8px;color:#fff;}
+    .sub{font-size:13.5px;color:#93a4c4;line-height:1.7;margin-bottom:28px;}
+    .user-box{
+      background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.3);
+      border-radius:16px;padding:14px 16px;margin-bottom:20px;
+      display:flex;align-items:center;gap:12px;text-align:left;
+    }
+    .user-icon{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+    .user-name{font-size:14px;font-weight:700;color:#e8eefc;}
+    .user-mail{font-size:11px;color:#93a4c4;margin-top:2px;}
+    .btn{
+      width:100%;height:50px;border-radius:14px;border:0;cursor:pointer;
+      font-family:inherit;font-size:15px;font-weight:700;
+      display:flex;align-items:center;justify-content:center;gap:10px;
+      transition:all .2s;margin-bottom:12px;
+    }
+    .btn-m365{background:linear-gradient(135deg,#0078d4,#004e8c);color:#fff;box-shadow:0 8px 24px rgba(0,120,212,0.35);}
+    .btn-m365:hover{filter:brightness(1.12);transform:translateY(-1px);}
+    .btn-link{background:linear-gradient(135deg,#34d399,#0ea5e9);color:#0b1120;box-shadow:0 8px 24px rgba(52,211,153,0.35);}
+    .btn-link:hover{filter:brightness(1.08);transform:translateY(-1px);}
+    .btn-link:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+    .btn-done{background:rgba(52,211,153,0.15);color:#34d399;border:1px solid rgba(52,211,153,0.4);cursor:default;}
+    .note{font-size:11px;color:#4a5a7a;margin-top:16px;line-height:1.6;}
+    .back{display:inline-block;margin-top:16px;font-size:12px;color:#5b9dff;text-decoration:none;cursor:pointer;}
+    .back:hover{text-decoration:underline;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🔗</div>
+    <h1>ผูกบัญชี Microsoft 365 กับ LINE</h1>
+    <p class="sub">เชื่อมบัญชีเพื่อรับการแจ้งเตือน สรุปประชุม งานที่ได้รับมอบหมาย และตารางเตรียมตัวประจำวันผ่าน LINE</p>
+
+    <div id="userBox" style="display:none" class="user-box">
+      <div class="user-icon">👤</div>
+      <div>
+        <div class="user-name" id="userName">-</div>
+        <div class="user-mail" id="userMail">-</div>
+      </div>
+    </div>
+
+    <button class="btn btn-m365" id="btnLogin" onclick="doLogin()">
+      🔑 1. เข้าสู่ระบบ Microsoft 365
+    </button>
+
+    <button class="btn btn-link" id="btnLink" onclick="doLink()" disabled>
+      🔗 2. ผูกบัญชีกับ LINE (1-Click)
+    </button>
+
+    <p class="note">ระบบจะเชื่อมต่อ LINE User ID กับ Microsoft 365 ของคุณ เพื่อส่งการแจ้งเตือนผ่านแชทโดยตรง</p>
+    <a class="back" onclick="history.back()">← กลับหน้าหลัก</a>
+  </div>
+
+  <script>
+    const LIFF_ID = "2010856732-BFseuR2p";
+    let msalInstance = null;
+    let lineUserId = null;
+    let linked = false;
+
+    async function init() {
+      // Init LIFF
+      try {
+        if (window.liff) {
+          await liff.init({ liffId: LIFF_ID });
+          if (liff.isLoggedIn()) {
+            const p = await liff.getProfile();
+            lineUserId = p.userId;
+          } else if (liff.isInClient()) {
+            liff.login();
+          }
+        }
+      } catch(e) { console.warn("LIFF:", e); }
+
+      // Init MSAL
+      try {
+        msalInstance = new msal.PublicClientApplication({
+          auth: {
+            clientId: "common",
+            authority: "https://login.microsoftonline.com/common",
+            redirectUri: window.location.href.split("?")[0],
+          },
+          cache: { cacheLocation: "localStorage" }
+        });
+        await msalInstance.initialize();
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) setUser(accounts[0]);
+      } catch(e) { console.warn("MSAL:", e); }
+    }
+
+    function setUser(acc) {
+      document.getElementById("userBox").style.display = "flex";
+      document.getElementById("userName").textContent = acc.name || acc.username;
+      document.getElementById("userMail").textContent = acc.username || "";
+      document.getElementById("btnLogin").style.display = "none";
+      document.getElementById("btnLink").disabled = false;
+    }
+
+    async function doLogin() {
+      if (!msalInstance) { alert("ไม่พบ MSAL — รีเฟรชหน้าแล้วลองใหม่ครับ"); return; }
+      try {
+        const res = await msalInstance.loginPopup({ scopes: ["User.Read","openid","profile"] });
+        setUser(res.account);
+      } catch(e) { alert("เข้าสู่ระบบไม่สำเร็จ: " + e.message); }
+    }
+
+    async function doLink() {
+      if (linked) return;
+      const btn = document.getElementById("btnLink");
+      btn.textContent = "⏳ กำลังผูกบัญชี…";
+      btn.disabled = true;
+
+      // Simulate linking (replace with real API call when backend ready)
+      await new Promise(r => setTimeout(r, 800));
+
+      linked = true;
+      btn.className = "btn btn-done";
+      btn.textContent = "✅ ผูกบัญชีสำเร็จเรียบร้อย!";
+
+      // If inside LINE, close the window after 2s
+      setTimeout(() => {
+        try { if (liff && liff.isInClient()) liff.closeWindow(); } catch(e) {}
+      }, 2000);
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { fetchFeed, fetchArticle, type FeedEntry } from "@/lib/rss";
 import { chat } from "@/lib/llm";
+import * as youtube from "@/lib/youtube";
 
 export const maxDuration = 60;
 
@@ -31,19 +32,19 @@ export async function GET(req: Request) {
     // 1) consents + feeds
     const { data: consentRows } = await admin.from("consents").select("capability, granted").eq("owner_upn", upn);
     const granted = new Set((consentRows || []).filter((r) => r.granted).map((r) => r.capability));
-    const { data: feeds } = await admin
+    const { data: feedsData } = await admin
       .from("feeds")
       .select("*")
       .eq("owner_upn", upn)
       .order("created_at", { ascending: true });
-    if (!feeds || feeds.length === 0)
-      return NextResponse.json({ ok: true, user: upn, count: 0, stories: [], note: "ยังไม่มีแหล่งข่าว" });
+    const feeds = feedsData || [];
+    const newestLabel = feeds.length ? (feeds[feeds.length - 1].label || "") : "";
 
-    const newestLabel = feeds[feeds.length - 1].label || "";
-
-    // 2) gather items from consented RSS feeds (youtube/facebook: not yet on Vercel)
+    // 2) gather items
     const items: (FeedEntry & { kind: string; feedLabel: string })[] = [];
     const skipped: string[] = [];
+
+    // 2a) manually-added feeds (RSS etc.)
     for (const f of feeds) {
       if (!granted.has(CAP_BY_KIND[f.kind])) {
         skipped.push(`${f.label || f.kind} (ไม่ได้อนุญาตแหล่งชนิด ${f.kind})`);
@@ -56,7 +57,24 @@ export async function GET(req: Request) {
         skipped.push(`${f.label || f.kind} (${f.kind} ยังไม่รองรับบน Vercel)`);
       }
     }
-    if (items.length === 0) return NextResponse.json({ ok: true, user: upn, count: 0, stories: [], skipped });
+
+    // 2b) YouTube — auto-pull the user's subscriptions (no manual entry) when connected
+    if (granted.has("src_youtube") && youtube.isConfigured()) {
+      const { data: tok } = await admin.from("oauth_tokens").select("refresh_token").eq("owner_upn", upn).eq("provider", "google").single();
+      if (tok?.refresh_token) {
+        try {
+          const vids = await youtube.recentUploads(tok.refresh_token);
+          vids.forEach((v) => items.push({ ...v, kind: "youtube", feedLabel: v.source }));
+        } catch (e) {
+          skipped.push(`YouTube (ดึงไม่สำเร็จ: ${String(e).slice(0, 60)})`);
+        }
+      } else {
+        skipped.push("YouTube (ยังไม่ได้เชื่อมบัญชี Google)");
+      }
+    }
+
+    if (items.length === 0)
+      return NextResponse.json({ ok: true, user: upn, count: 0, stories: [], skipped, note: "ยังไม่มีเนื้อหา — เชื่อม YouTube หรือเพิ่มแหล่งข่าว" });
 
     items.sort((a, b) => (b.published || "").localeCompare(a.published || ""));
     const pool = items.slice(0, 25);

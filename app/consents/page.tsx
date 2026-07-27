@@ -47,15 +47,9 @@ function ConsentsContent() {
     setBusy(false);
   };
 
-  const connectYouTube = async () => {
-    try {
-      const res = await fetch(`/oauth/google/start?upn=${encodeURIComponent(upn)}`);
-      const data = await res.json();
-      if (data.auth_url) window.location.href = data.auth_url;
-      else alert(data.error || "ยังไม่ได้ตั้งค่า Google OAuth ที่เซิร์ฟเวอร์");
-    } catch (e) {
-      alert("เชื่อม YouTube ไม่สำเร็จ: " + (e as Error).message);
-    }
+  const connectYouTube = () => {
+    // /api/oauth/google/start redirects to Google consent (or 400 JSON if not configured)
+    window.location.href = `/api/oauth/google/start?upn=${encodeURIComponent(upn)}`;
   };
 
   return (
