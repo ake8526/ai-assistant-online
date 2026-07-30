@@ -37,8 +37,13 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
         msalInstance = new PublicClientApplication(msalConfig);
         await msalInstance.initialize();
       }
-      const currentAccounts = msalInstance.getAllAccounts();
-      if (currentAccounts.length > 0) setAccount(currentAccounts[0]);
+      // Complete a redirect-based login if we're returning from Microsoft.
+      try {
+        const resp = await msalInstance.handleRedirectPromise();
+        if (resp?.account) msalInstance.setActiveAccount(resp.account);
+      } catch { /* no redirect in progress */ }
+      const acct = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0] || null;
+      if (acct) setAccount(acct);
       setReady(true);
     };
     boot().catch(() => setReady(true));
@@ -46,9 +51,11 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async () => {
     if (!msalInstance) return;
+    // Redirect flow works everywhere, including the LINE in-app webview where
+    // popups are blocked. The result is picked up by handleRedirectPromise on
+    // return (see boot()).
     try {
-      const response = await msalInstance.loginPopup(loginRequest);
-      setAccount(response.account);
+      await msalInstance.loginRedirect(loginRequest);
     } catch (err) {
       console.error("M365 Login error:", err);
     }

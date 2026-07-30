@@ -87,14 +87,10 @@ function LineLinkContent() {
             return;
           }
         } catch { /* เช็คสถานะไม่ได้/ช้า → ปล่อยให้ผูกบัญชีต่อ */ }
-        // Not linked yet. Opened INSIDE LINE → link straight away (no extra tap).
-        // Opened in a normal browser → show the button.
-        if (window.liff!.isInClient()) {
-          await doLink(p.userId, p.displayName || "");
-        } else {
-          setStatus("ready");
-          setMsg("พร้อมผูกบัญชีแล้ว");
-        }
+        // Not linked yet — always ask first (show the button), never auto-link,
+        // even when opened inside the LINE app.
+        setStatus("ready");
+        setMsg("พร้อมผูกบัญชีแล้ว — กดปุ่มด้านล่างเพื่อยืนยันการผูก");
       } catch (e) {
         setStatus("error");
         setMsg("เชื่อมต่อ LINE ไม่สำเร็จ: " + (e as Error).message);
