@@ -43,11 +43,14 @@ export async function requireUser(req: Request): Promise<string> {
   }
 }
 
-/** Check the cron secret for scheduled endpoints (?key= or x-cron-secret header). */
+/** Check the cron secret for scheduled endpoints.
+ * Accepts ?key=, x-cron-secret header, or Authorization: Bearer <CRON_SECRET>
+ * (the form Vercel Cron sends automatically when the CRON_SECRET env is set). */
 export function checkCronSecret(req: Request): boolean {
   const secret = process.env.CRON_SECRET || "";
   if (!secret) return false;
   const url = new URL(req.url);
-  const provided = req.headers.get("x-cron-secret") || url.searchParams.get("key") || "";
+  const bearer = (req.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i)?.[1] || "";
+  const provided = req.headers.get("x-cron-secret") || url.searchParams.get("key") || bearer;
   return provided === secret;
 }

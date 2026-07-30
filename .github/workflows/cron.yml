@@ -1,0 +1,31 @@
+# Scheduled triggers that Vercel Hobby crons can't cover (sub-daily jobs).
+# Requires the repo secret CRON_SECRET (same value as the Vercel env var).
+# Times are UTC (Bangkok = UTC+7).
+name: scheduled-jobs
+
+on:
+  schedule:
+    # Meeting summaries: every 15 min, 08:00-19:45 BKK (01:00-12:45 UTC), Mon-Fri
+    - cron: "*/15 1-12 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  summaries-and-reminders:
+    runs-on: ubuntu-latest
+    if: ${{ vars.CRON_ENABLED != 'false' }}
+    steps:
+      - name: Run meeting summaries
+        run: |
+          curl -sS -m 280 -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "https://ktis-ai-assistant.vercel.app/api/summaries/run" | head -c 1000
+      - name: Run task reminders (top of the hour only)
+        run: |
+          MIN=$(date -u +%M)
+          if [ "$MIN" -lt 15 ]; then
+            curl -sS -m 60 -X POST \
+              -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+              "https://ktis-ai-assistant.vercel.app/api/reminders/run" | head -c 1000
+          else
+            echo "skip reminders (not top of hour)"
+          fi
