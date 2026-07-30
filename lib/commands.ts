@@ -96,7 +96,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - ใส่ params.person เฉพาะเมื่อผู้ใช้เอ่ย "ชื่อคนใหม่จริง ๆ" เท่านั้น
 
 รายละเอียด params:
-- list_meetings: { "period": "today|tomorrow|week|month|upcoming", "date": "วันที่เจาะจง เช่น 31 หรือ 2026-07-31 (ถ้าผู้ใช้ระบุวัน)", "after": "HH:MM (ถ้าบอก เช่น หลัง 9 โมงครึ่ง)", "before": "HH:MM (ถ้าบอก เช่น ก่อนเที่ยง)", "person": "ชื่อ/อีเมลคนอื่น ถ้าถามว่าคนนั้น 'ติด/ไม่ว่าง/มีนัด' ช่วงไหน (ถ้าไม่ระบุ = ตัวเอง)" }
+- list_meetings: { "period": "today|tomorrow|week|month|upcoming", "date": "วันที่เจาะจง เช่น 31 หรือ 2026-07-31 (ถ้าผู้ใช้ระบุวัน)", "after": "HH:MM (ถ้าบอก เช่น หลัง 9 โมงครึ่ง)", "before": "HH:MM (ถ้าบอก เช่น ก่อนเที่ยง)", "at": "HH:MM (ถ้าถามเจาะจงเวลา 'จุดเดียว' เช่น '10 โมงติดอะไร', 'ตอนบ่ายสองว่างไหม', 'ตอน 9 โมงติดไหม')", "person": "ชื่อ/อีเมลคนอื่น ถ้าถามว่าคนนั้น 'ติด/ไม่ว่าง/มีนัด' ช่วงไหน (ถ้าไม่ระบุ = ตัวเอง)" }
 - summarize_file: { "file_index": 0 }
 - my_availability: { "period": "today|tomorrow|week", "person": "ชื่อ/อีเมลคนที่อยากดูตาราง (ถ้าไม่ระบุ = ตัวเอง)" }
 - add_task: { "title": "...", "responsible": "...", "due": "YYYY-MM-DD HH:MM หรือ null" }
@@ -112,6 +112,10 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "วันที่ 31 มีอะไร" -> {"intent":"list_meetings","params":{"date":"31"}}
 "วันที่ 31 หลัง 09:30 มีอะไร" -> {"intent":"list_meetings","params":{"date":"31","after":"09:30"}}
 "พรุ่งนี้ช่วงบ่ายมีประชุมอะไร" -> {"intent":"list_meetings","params":{"period":"tomorrow","after":"12:00"}}
+"10 โมงติดอะไร" -> {"intent":"list_meetings","params":{"period":"today","at":"10:00"}}
+"ตอนบ่ายสองว่างไหม" -> {"intent":"list_meetings","params":{"period":"today","at":"14:00"}}
+"พรุ่งนี้ 9 โมงติดไหม" -> {"intent":"list_meetings","params":{"period":"tomorrow","at":"09:00"}}
+(หมายเหตุ: "ตอน X โมง / X โมงติดไหม" = ถามจุดเวลาเดียว ใช้ at; ส่วน "หลัง X โมง" = after, "ก่อน X โมง" = before)
 "นนท์วันที่ 31 หลัง 09:00 ติดอะไร" -> {"intent":"list_meetings","params":{"person":"นนท์","date":"31","after":"09:00"}}
 "สมชายพรุ่งนี้ติดประชุมช่วงไหน" -> {"intent":"list_meetings","params":{"person":"สมชาย","period":"tomorrow"}}
 (หมายเหตุ: คำถามที่เจาะจง "วันที่/ช่วงเวลา" ว่ามีนัดอะไร ให้ใช้ list_meetings เสมอ ห้ามใช้ get_brief)
@@ -307,6 +311,7 @@ async function personBusyResponse(
   period: string,
   after: number | null,
   before: number | null,
+  at: number | null,
   preInfo?: UserInfo | null
 ): Promise<CommandResult> {
   let info = preInfo;
@@ -316,10 +321,15 @@ async function personBusyResponse(
   }
   const who = info.displayName || person;
   const range = day || periodRange(period);
-  const label = windowLabel(range.label, after, before);
+  const label = at !== null ? `${range.label} ตอน ${fmtHHMM(at)}` : windowLabel(range.label, after, before);
 
-  const inWindow = (m: number | null) =>
-    m === null || ((after === null || m >= after) && (before === null || m < before));
+  // Point-in-time ("ตอน 10 โมง") → keep events overlapping that minute; otherwise
+  // keep events whose start falls in the after/before window.
+  const keep = (sd: Date, ed: Date): boolean => {
+    if (at !== null) return minutesOfDay(sd) <= at && at < minutesOfDay(ed);
+    const m = minutesOfDay(sd);
+    return (after === null || m >= after) && (before === null || m < before);
+  };
 
   // Prefer the real calendar (shows subjects); fall back to free/busy.
   let events: GraphEvent[] | null = null;
@@ -332,18 +342,18 @@ async function personBusyResponse(
   if (events !== null) {
     const rows: { sd: Date; ed: Date; subj: string }[] = [];
     for (const ev of [...events].sort((a, b) => (a.start?.dateTime || "").localeCompare(b.start?.dateTime || ""))) {
-      const m = eventStartMinutes(ev);
-      if (m !== null && !inWindow(m)) continue;
       const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
       const ed = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
       if (!sd || !ed) continue;
+      if (!keep(sd, ed)) continue;
       const priv = ["private", "personal", "confidential"].includes((ev.sensitivity || "").toLowerCase());
       rows.push({ sd, ed, subj: priv ? "(นัดส่วนตัว)" : ev.subject || "(ไม่มีหัวข้อ)" });
     }
     if (!rows.length) {
+      const none = at !== null ? `ไม่มีนัดตอน ${fmtHHMM(at)}` : "ไม่มีนัดในช่วงนี้";
       return {
         intent: "list_meetings",
-        reply: `✅ ${who} ว่างครับ (${label}) — ไม่มีนัดในช่วงนี้`,
+        reply: `✅ ${who} ว่างครับ (${label}) — ${none}`,
         person: { mail: info.mail, displayName: who },
       };
     }
@@ -362,9 +372,11 @@ async function personBusyResponse(
 
   // fallback: free/busy blocks only (no subjects)
   let ranges = await busyRanges(info.mail, range.start, range.end, requesterUpn);
-  ranges = ranges.filter(
-    (r) => (after === null || minutesOfDay(r.end) > after) && (before === null || minutesOfDay(r.start) < before)
-  );
+  ranges = at !== null
+    ? ranges.filter((r) => minutesOfDay(r.start) <= at && at < minutesOfDay(r.end))
+    : ranges.filter(
+        (r) => (after === null || minutesOfDay(r.end) > after) && (before === null || minutesOfDay(r.start) < before)
+      );
   let reply: string;
   if (!ranges.length) {
     reply = `✅ ${who} ว่างครับ (${label}) — ไม่มีคิวติดในช่วงนี้`;
@@ -623,19 +635,35 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     const day = params.date ? resolveDay(String(params.date)) : null;
     const after = parseHHMM(params.after);
     const before = parseHHMM(params.before);
+    const at = parseHHMM(params.at);
 
     const { name: person, info: personInfo } = await continuedPerson(text, context);
-    if (person) return personBusyResponse(userUpn, person, day, period, after, before, personInfo);
+    if (person) return personBusyResponse(userUpn, person, day, period, after, before, at, personInfo);
 
     let { start, end, label } = day || periodRange(period);
     let events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
 
-    if (!events.length && !day && (period === "today" || period === "tomorrow")) {
+    if (!events.length && !day && (period === "today" || period === "tomorrow") && at === null) {
       const up = periodRange("upcoming");
       events = await getEventsRange(userUpn, wallIso(up.start), wallIso(up.end));
       if (events.length) label = `${label}ไม่มีนัด — นัดที่กำลังจะมาถึง (${up.label})`;
       start = up.start;
       end = up.end;
+    }
+
+    // Point-in-time ("10 โมงติดอะไร") → is there a meeting overlapping that time?
+    if (at !== null) {
+      const overlapping = events.filter((ev) => {
+        const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+        const ed = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
+        return !!sd && !!ed && minutesOfDay(sd) <= at && at < minutesOfDay(ed);
+      });
+      const atLabel = `${label} ตอน ${fmtHHMM(at)}`;
+      if (!overlapping.length) {
+        return { intent, reply: `✅ ${label} ตอน ${fmtHHMM(at)} ว่างครับ — ไม่มีนัด`, data: [] };
+      }
+      const reply = lite ? formatEventsSimple(overlapping, atLabel) : await buildForEvents(userUpn, overlapping, atLabel);
+      return { intent, reply, data: overlapping };
     }
 
     if (after !== null || before !== null) {
