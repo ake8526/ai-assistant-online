@@ -1,11 +1,41 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
-import { Settings as SettingsIcon, MapPin, Clock, Save, CheckCircle2, LogIn } from "lucide-react";
+import {
+  Settings as SettingsIcon,
+  MapPin,
+  Clock,
+  Save,
+  CheckCircle2,
+  LogIn,
+  ArrowLeft,
+  UserCircle2,
+  Rss,
+  MessageCircle,
+  LogOut,
+} from "lucide-react";
+
+const MENU = [
+  {
+    href: "/account",
+    icon: UserCircle2,
+    title: "บัญชีของฉัน",
+    desc: "ดูบัญชีที่เชื่อมต่อ (Microsoft 365 / LINE) และการอนุญาต",
+    accent: "from-emerald-500 to-teal-400",
+  },
+  {
+    href: "/consents",
+    icon: Rss,
+    title: "ติดตามข่าว / ฟีด",
+    desc: "เลือกอนุญาตแหล่งข่าว และดูสรุปข่าวที่ติดตาม",
+    accent: "from-sky-500 to-indigo-400",
+  },
+];
 
 function SettingsContent() {
-  const { account, login, getToken } = useM365Auth();
+  const { account, login, logout, getToken } = useM365Auth();
   const [saved, setSaved] = useState(false);
   const [msg, setMsg] = useState("");
   const [workLocation, setWorkLocation] = useState("");
@@ -66,36 +96,76 @@ function SettingsContent() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
       <div className="max-w-xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 backdrop-blur-2xl text-center shadow-2xl">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
-            <SettingsIcon className="w-7 h-7 text-slate-950" />
+        <div className="flex items-center gap-3">
+          <Link href="/" className="text-slate-400 hover:text-slate-200 p-1">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg font-bold">ตั้งค่า</h1>
+            <p className="text-[11px] text-slate-500 truncate">
+              {account?.username || "ยังไม่ได้เข้าสู่ระบบ"}
+            </p>
           </div>
-          <h1 className="text-xl font-bold mb-1">⚙️ ตั้งค่าทั่วไป (General Settings)</h1>
-          <p className="text-xs text-slate-400">
-            ตั้งค่าเวลาทำงาน สถานที่ทำงาน และบ้าน สำหรับวางแผนการเดินทางและแจ้งเตือนนัดหมาย
-          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950"
+          >
+            <MessageCircle className="w-4 h-4" /> แชท
+          </Link>
         </div>
 
-        {!account && (
+        {/* Menu hub */}
+        <div className="space-y-3">
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-1">เมนู</p>
+          {MENU.map((f) => (
+            <Link
+              key={f.href}
+              href={f.href}
+              className="flex items-center gap-4 p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-600 transition group"
+            >
+              <div className={`w-11 h-11 shrink-0 rounded-xl bg-gradient-to-tr ${f.accent} flex items-center justify-center`}>
+                <f.icon className="w-5 h-5 text-slate-950" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm">{f.title}</div>
+                <div className="text-xs text-slate-400 mt-0.5 leading-relaxed">{f.desc}</div>
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        {!account ? (
           <button
             onClick={() => login()}
-            className="w-full flex items-center justify-center gap-2 p-3.5 rounded-xl bg-blue-500 hover:bg-blue-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-blue-500/20"
+            className="w-full flex items-center justify-center gap-2 p-3.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs transition"
           >
             <LogIn className="w-4 h-4" />
-            เข้าสู่ระบบ Microsoft 365 เพื่อโหลด/บันทึกการตั้งค่า
+            เข้าสู่ระบบ Microsoft 365
+          </button>
+        ) : (
+          <button
+            onClick={() => logout()}
+            className="w-full flex items-center justify-center gap-2 p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-rose-500/40 text-rose-300 font-semibold text-xs transition"
+          >
+            <LogOut className="w-4 h-4" />
+            ออกจากระบบ Microsoft 365
           </button>
         )}
+
         {msg && (
           <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs text-center">{msg}</div>
         )}
 
         <form onSubmit={handleSave} className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 backdrop-blur-2xl space-y-5">
-          {/* Work hours */}
+          <div className="flex items-center gap-2 mb-1">
+            <SettingsIcon className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-sm font-bold">เวลาทำงาน & สถานที่</h2>
+          </div>
+
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
               <Clock className="w-4 h-4 text-emerald-400" />
-              เวลาเข้า-เลิกงาน (Working Hours)
+              เวลาเข้า-เลิกงาน
             </label>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -119,12 +189,11 @@ function SettingsContent() {
             </div>
           </div>
 
-          {/* Locations */}
           <div className="space-y-3 pt-3 border-t border-slate-800">
             <div>
               <label className="text-xs font-semibold text-slate-300 flex items-center gap-2 mb-1">
                 <MapPin className="w-4 h-4 text-blue-400" />
-                สถานที่ทำงาน (Work Location)
+                สถานที่ทำงาน
               </label>
               <input
                 type="text"
@@ -136,7 +205,7 @@ function SettingsContent() {
             <div>
               <label className="text-xs font-semibold text-slate-300 flex items-center gap-2 mb-1">
                 <MapPin className="w-4 h-4 text-amber-400" />
-                บ้าน / ที่พัก (Home Location)
+                บ้าน / ที่พัก
               </label>
               <input
                 type="text"

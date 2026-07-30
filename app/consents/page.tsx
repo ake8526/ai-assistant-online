@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
-import { ShieldCheck, Youtube, Facebook, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, Youtube, Facebook, CheckCircle2, ArrowLeft } from "lucide-react";
 
 const DEFAULT_UPN = process.env.NEXT_PUBLIC_DEFAULT_UPN || "weerasak.pi@ktisgroup.com";
 type Caps = { src_youtube: boolean; src_facebook: boolean };
@@ -55,6 +56,10 @@ function ConsentsContent() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
       <div className="max-w-2xl mx-auto space-y-6">
+        <Link href="/settings" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200">
+          <ArrowLeft className="w-4 h-4" /> ตั้งค่า
+        </Link>
+
         <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 text-center shadow-2xl">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center mx-auto mb-4">
             <ShieldCheck className="w-7 h-7 text-slate-950" />

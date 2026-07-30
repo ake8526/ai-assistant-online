@@ -9,6 +9,8 @@ interface AuthContextType {
   login: () => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  /** True after MSAL has finished initializing (session restore checked). */
+  ready: boolean;
   /** ID token (audience = our app) for calling our protected API routes. */
   getToken: () => Promise<string | null>;
 }
@@ -18,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => {},
   logout: () => {},
   isAuthenticated: false,
+  ready: false,
   getToken: async () => null,
 });
 
@@ -25,17 +28,20 @@ let msalInstance: PublicClientApplication | null = null;
 
 export function M365AuthProvider({ children }: { children: React.ReactNode }) {
   const [account, setAccount] = useState<AccountInfo | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!msalInstance && typeof window !== "undefined") {
-      msalInstance = new PublicClientApplication(msalConfig);
-      msalInstance.initialize().then(() => {
-        const currentAccounts = msalInstance?.getAllAccounts();
-        if (currentAccounts && currentAccounts.length > 0) {
-          setAccount(currentAccounts[0]);
-        }
-      });
-    }
+    if (typeof window === "undefined") return;
+    const boot = async () => {
+      if (!msalInstance) {
+        msalInstance = new PublicClientApplication(msalConfig);
+        await msalInstance.initialize();
+      }
+      const currentAccounts = msalInstance.getAllAccounts();
+      if (currentAccounts.length > 0) setAccount(currentAccounts[0]);
+      setReady(true);
+    };
+    boot().catch(() => setReady(true));
   }, []);
 
   const login = async () => {
@@ -78,6 +84,7 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         logout,
         isAuthenticated: !!account,
+        ready,
         getToken,
       }}
     >

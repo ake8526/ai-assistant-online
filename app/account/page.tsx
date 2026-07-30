@@ -108,8 +108,8 @@ function AccountContent() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
       <div className="max-w-2xl mx-auto space-y-5">
-        <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200">
-          <ArrowLeft className="w-4 h-4" /> หน้าหลัก
+        <Link href="/settings" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200">
+          <ArrowLeft className="w-4 h-4" /> ตั้งค่า
         </Link>
 
         <header className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 text-center">
