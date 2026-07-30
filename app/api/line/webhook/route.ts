@@ -186,5 +186,9 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ ok: true, endpoint: "line webhook" });
+  return NextResponse.json({
+    ok: true,
+    endpoint: "line webhook",
+    version: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || "local",
+  });
 }
