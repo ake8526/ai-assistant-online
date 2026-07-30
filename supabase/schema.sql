@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
     provider TEXT NOT NULL,
     refresh_token TEXT,
     scope TEXT,
+    account_email TEXT,
+    account_name TEXT,
+    account_channel TEXT,
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (owner_upn, provider)
 );

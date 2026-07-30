@@ -12,6 +12,7 @@ const DEFAULT_UPN = process.env.NEXT_PUBLIC_DEFAULT_UPN || "weerasak.pi@ktisgrou
 
 type LineState = { linked: boolean; display_name: string | null; upn: string | null };
 type Caps = { src_youtube: boolean; src_facebook: boolean };
+type YtState = { linked: boolean; email: string | null; name: string | null; channel: string | null };
 
 function Row({ icon, color, title, subtitle, children }: {
   icon: React.ReactNode; color: string; title: string; subtitle?: string; children?: React.ReactNode;
@@ -42,6 +43,7 @@ function AccountContent() {
 
   const [line, setLine] = useState<LineState | null>(null);
   const [caps, setCaps] = useState<Caps>({ src_youtube: false, src_facebook: false });
+  const [yt, setYt] = useState<YtState>({ linked: false, email: null, name: null, channel: null });
   const [msg, setMsg] = useState("กำลังโหลด…");
   const [busy, setBusy] = useState(false);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
@@ -51,14 +53,32 @@ function AccountContent() {
   // ถือว่าเชื่อมต่อ 365 อยู่ ถ้ามี session MSAL หรือระบบรู้จักบัญชีนี้อยู่แล้ว (มี upn จากการผูก LINE)
   const m365Connected = !m365Unlinked && (!!account || !!line?.upn);
 
+  const ytSubtitle = (() => {
+    if (yt.linked) {
+      const bits = [yt.email, yt.channel ? `ช่อง: ${yt.channel}` : null].filter(Boolean);
+      return bits.length ? bits.join(" · ") : (yt.name || "เชื่อม Google/YouTube แล้ว");
+    }
+    if (caps.src_youtube) return "อนุญาตแล้ว แต่ยังไม่ได้เชื่อมบัญชี Google";
+    return "ยังไม่อนุญาต / ยังไม่ได้เชื่อม";
+  })();
+
   const refresh = useCallback(async () => {
     try {
-      const [ls, cs] = await Promise.all([
+      const [ls, cs, ys] = await Promise.all([
         fetch(`/api/line/status?upn=${encodeURIComponent(upn)}`).then((r) => r.json()),
         fetch(`/api/consents?upn=${encodeURIComponent(upn)}`).then((r) => r.json()),
+        fetch(`/api/oauth/google/status?upn=${encodeURIComponent(upn)}`).then((r) => r.json()),
       ]);
       setLine({ linked: !!ls.linked, display_name: ls.display_name || null, upn: ls.upn || null });
       if (cs && !cs.error) setCaps({ src_youtube: !!cs.src_youtube, src_facebook: !!cs.src_facebook });
+      if (ys && !ys.error) {
+        setYt({
+          linked: !!ys.linked,
+          email: ys.email || null,
+          name: ys.name || null,
+          channel: ys.channel || null,
+        });
+      }
       setMsg("");
     } catch (e) {
       setMsg("โหลดไม่สำเร็จ: " + (e as Error).message);
@@ -203,17 +223,17 @@ function AccountContent() {
           <h2 className="text-sm font-bold text-slate-200">🔔 การอนุญาตติดตามข่าว</h2>
 
           <Row icon={<Youtube className="w-5 h-5 text-slate-950" />} color="bg-red-500"
-               title="YouTube" subtitle={caps.src_youtube ? "อนุญาตให้ดึงช่องที่ subscribe" : "ยังไม่อนุญาต"}>
-            {caps.src_youtube ? (
+               title="YouTube" subtitle={ytSubtitle}>
+            {yt.linked || caps.src_youtube ? (
               <button onClick={() => setConsent("src_youtube", false)} disabled={busy}
                 className="text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700">
                 ยกเลิก
               </button>
             ) : (
-              <button onClick={() => setConsent("src_youtube", true)} disabled={busy}
+              <Link href="/consents"
                 className="text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950">
-                อนุญาต
-              </button>
+                เชื่อมบัญชี
+              </Link>
             )}
           </Row>
 
