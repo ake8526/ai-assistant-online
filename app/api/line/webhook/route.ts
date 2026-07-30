@@ -61,10 +61,25 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
   return items.length ? { items } : null;
 }
 
+// LINE quick-reply labels are capped at 20 chars, so button text gets cut off.
+// List the full options in the message body so nothing is hidden.
+function detailText(res: CommandResult): string {
+  let lines: string[] = [];
+  if (res.intent === "choose_person" && Array.isArray(res.choices)) {
+    lines = (res.choices as Choice[]).filter((c) => c.mail).map((c, i) => `${i + 1}) ${c.displayName || c.mail} — ${c.mail}`);
+  } else if (Array.isArray(res.slots) && res.slots.length && (res.intent === "availability" || res.intent === "choose_slot")) {
+    lines = (res.slots as Slot[]).map((s, i) => `${i + 1}) ${s.label || `${s.start}-${s.end}`}`);
+  } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
+    lines = (res.choices as Choice[]).filter((c) => c.event_id).map((c, i) => `${i + 1}) ${c.label || ""}`);
+  }
+  return lines.length ? "\n\n" + lines.join("\n") : "";
+}
+
 // Send a reply, attaching quick-reply buttons when the result needs a choice.
 async function sendResult(replyToken: string, res: CommandResult): Promise<void> {
   let reply = res.reply || "รับทราบครับ";
   if (res.map_url) reply += `\n🗺️ ${res.map_url}`;
+  reply += detailText(res);
   const qr = quickReplyFor(res);
   if (qr) {
     await replyLineMessages(replyToken, [{ type: "text", text: reply.slice(0, 4900), quickReply: qr }]);
