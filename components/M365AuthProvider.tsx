@@ -57,12 +57,16 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     if (!msalInstance) return;
     const acct = msalInstance.getAllAccounts()[0];
+    // No mainWindowRedirectUri: the popup ends the MS session but leaves the main
+    // window alone, so the clearCache below always runs.
     try {
-      await msalInstance.logoutPopup({ account: acct, mainWindowRedirectUri: window.location.origin });
+      await msalInstance.logoutPopup({ account: acct });
     } catch {
-      // popup closed/blocked — clear the local session anyway so it doesn't reconnect
-      try { await msalInstance.clearCache(); } catch { /* ignore */ }
+      // popup closed/blocked — that's fine, we still wipe the local cache next
     }
+    // Always clear the local MSAL cache so the browser truly forgets this account
+    // (otherwise 365 keeps showing as connected even after "sign out").
+    try { await msalInstance.clearCache(); } catch { /* ignore */ }
     setAccount(null);
   };
 

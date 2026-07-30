@@ -77,7 +77,7 @@ function LineLinkContent() {
         try {
           const ctl = new AbortController();
           const to = setTimeout(() => ctl.abort(), 6000);
-          const res = await fetch(`/api/line/status?line_user_id=${encodeURIComponent(p.userId)}`, { signal: ctl.signal });
+          const res = await fetch(`/api/line/status?line_user_id=${encodeURIComponent(p.userId)}`, { signal: ctl.signal, cache: "no-store" });
           clearTimeout(to);
           const data = await res.json();
           if (data.linked) {
