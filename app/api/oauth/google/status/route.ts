@@ -24,7 +24,6 @@ export async function GET(req: Request) {
     let name: string | null = null;
     let channel: string | null = null;
 
-    // Prefer cached identity columns if migration was applied
     try {
       const { data: cached } = await admin
         .from("oauth_tokens")
@@ -55,7 +54,7 @@ export async function GET(req: Request) {
               })
               .eq("owner_upn", upn)
               .eq("provider", "google");
-          } catch { /* columns missing — display still works */ }
+          } catch { /* ignore */ }
         }
       } catch {
         return NextResponse.json({
@@ -63,12 +62,30 @@ export async function GET(req: Request) {
           email: null,
           name: null,
           channel: null,
-          note: "เชื่อมแล้ว แต่ดึงชื่อบัญชีไม่ได้ — ลองเชื่อม YouTube ใหม่",
+          note: "เชื่อมแล้ว แต่ดึงชื่อบัญชีไม่ได้ — ลองเชื่อมใหม่",
         });
       }
     }
 
     return NextResponse.json({ linked: true, email, name, channel });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
+}
+
+/** DELETE /api/oauth/google/status?upn=... → unlink Google/YouTube */
+export async function DELETE(req: Request) {
+  try {
+    assertConfigured();
+    const upn = (new URL(req.url).searchParams.get("upn") || "").toLowerCase().trim();
+    if (!upn) return NextResponse.json({ error: "upn required" }, { status: 400 });
+
+    await admin.from("oauth_tokens").delete().eq("owner_upn", upn).eq("provider", "google");
+    await admin.from("consents").upsert(
+      { owner_upn: upn, capability: "src_youtube", granted: false, updated_at: new Date().toISOString() },
+      { onConflict: "owner_upn,capability" }
+    );
+    return NextResponse.json({ ok: true, linked: false });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

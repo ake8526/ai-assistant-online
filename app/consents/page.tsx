@@ -49,8 +49,7 @@ function ConsentsContent() {
   };
 
   const connectYouTube = () => {
-    // /api/oauth/google/start redirects to Google consent (or 400 JSON if not configured)
-    window.location.href = `/api/oauth/google/start?upn=${encodeURIComponent(upn)}`;
+    window.location.href = `/api/oauth/google/start?upn=${encodeURIComponent(upn)}&back=/consents`;
   };
 
   return (
@@ -89,12 +88,12 @@ function ConsentsContent() {
           <div className="pt-4 border-t border-slate-800 space-y-3">
             <button onClick={connectYouTube} disabled={busy}
               className="w-full flex items-center justify-center gap-2 p-3.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-xs shadow-lg shadow-red-600/20 disabled:opacity-60">
-              <Youtube className="w-4 h-4" /> เชื่อมบัญชี YouTube (Google Login)
+              <Youtube className="w-4 h-4" /> เชื่อม / เปลี่ยนบัญชี YouTube (เลือกบัญชี Google)
             </button>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              💡 <b>YouTube</b> คือแหล่งเดียวที่ระบบ &quot;ไปตามมาให้เอง&quot; ได้จริง — ล็อกอิน Google ครั้งเดียว
-              ระบบจะดึงช่องที่คุณ subscribe มาสรุปให้ ไม่ต้องกรอกเอง (ต้องตั้งค่า Google OAuth ที่เซิร์ฟเวอร์ก่อน)<br />
-              <b>Facebook</b> ยังดึง &quot;เพจที่คุณติดตาม&quot; อัตโนมัติไม่ได้ (ข้อจำกัดของ Facebook API)
+              กดแล้วจะเปิดหน้า Google ให้<b>เลือกบัญชี</b> แล้วกดอนุญาตสิทธิ์อ่านรายการ subscribe + อีเมลโปรไฟล์
+              ระบบจะดึงช่องที่คุณติดตามมาสรุปให้อัตโนมัติ<br />
+              <b>Facebook</b> ยังดึงเพจที่ติดตามอัตโนมัติไม่ได้ (ข้อจำกัดของ Facebook API)
             </p>
           </div>
         </div>

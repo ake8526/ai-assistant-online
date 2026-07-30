@@ -11,7 +11,6 @@ import {
 const DEFAULT_UPN = process.env.NEXT_PUBLIC_DEFAULT_UPN || "weerasak.pi@ktisgroup.com";
 
 type LineState = { linked: boolean; display_name: string | null; upn: string | null };
-type Caps = { src_youtube: boolean; src_facebook: boolean };
 type YtState = { linked: boolean; email: string | null; name: string | null; channel: string | null };
 
 function Row({ icon, color, title, subtitle, children }: {
@@ -42,12 +41,12 @@ function AccountContent() {
   const upn = account?.username || DEFAULT_UPN;
 
   const [line, setLine] = useState<LineState | null>(null);
-  const [caps, setCaps] = useState<Caps>({ src_youtube: false, src_facebook: false });
   const [yt, setYt] = useState<YtState>({ linked: false, email: null, name: null, channel: null });
   const [msg, setMsg] = useState("กำลังโหลด…");
   const [busy, setBusy] = useState(false);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
   const [confirmUnlinkM365, setConfirmUnlinkM365] = useState(false);
+  const [confirmUnlinkYt, setConfirmUnlinkYt] = useState(false);
   const [m365Unlinked, setM365Unlinked] = useState(false);
 
   // ถือว่าเชื่อมต่อ 365 อยู่ ถ้ามี session MSAL หรือระบบรู้จักบัญชีนี้อยู่แล้ว (มี upn จากการผูก LINE)
@@ -58,18 +57,16 @@ function AccountContent() {
       const bits = [yt.email, yt.channel ? `ช่อง: ${yt.channel}` : null].filter(Boolean);
       return bits.length ? bits.join(" · ") : (yt.name || "เชื่อม Google/YouTube แล้ว");
     }
-    return "ยังไม่ได้เชื่อมบัญชี Google";
+    return "กดเชื่อม → เลือกบัญชี Google → อนุญาตสิทธิ์ YouTube";
   })();
 
   const refresh = useCallback(async () => {
     try {
-      const [ls, cs, ys] = await Promise.all([
+      const [ls, ys] = await Promise.all([
         fetch(`/api/line/status?upn=${encodeURIComponent(upn)}`).then((r) => r.json()),
-        fetch(`/api/consents?upn=${encodeURIComponent(upn)}`).then((r) => r.json()),
         fetch(`/api/oauth/google/status?upn=${encodeURIComponent(upn)}`).then((r) => r.json()),
       ]);
       setLine({ linked: !!ls.linked, display_name: ls.display_name || null, upn: ls.upn || null });
-      if (cs && !cs.error) setCaps({ src_youtube: !!cs.src_youtube, src_facebook: !!cs.src_facebook });
       if (ys && !ys.error) {
         setYt({
           linked: !!ys.linked,
@@ -85,6 +82,36 @@ function AccountContent() {
   }, [upn]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    const yt = new URLSearchParams(window.location.search).get("yt");
+    if (!yt) return;
+    const map: Record<string, string> = {
+      connected: "✅ เชื่อม YouTube สำเร็จแล้ว",
+      error: "⚠️ เชื่อม YouTube ไม่สำเร็จ ลองอีกครั้ง",
+      no_refresh: "⚠️ Google ไม่ส่ง refresh token — ลองยกเลิกสิทธิ์แอปในบัญชี Google แล้วเชื่อมใหม่",
+      need_google_oauth: "⚠️ ยังไม่ได้ตั้งค่า Google OAuth บนเซิร์ฟเวอร์",
+      need_login: "⚠️ กรุณาเข้าสู่ระบบ Microsoft 365 ก่อน",
+    };
+    setMsg(map[yt] || "");
+    window.history.replaceState({}, "", "/account");
+    if (yt === "connected") refresh();
+  }, [refresh]);
+
+  const connectYouTube = () => {
+    window.location.href = `/api/oauth/google/start?upn=${encodeURIComponent(upn)}&back=/account`;
+  };
+
+  const unlinkYouTube = async () => {
+    setBusy(true);
+    try {
+      await fetch(`/api/oauth/google/status?upn=${encodeURIComponent(upn)}`, { method: "DELETE" });
+      setConfirmUnlinkYt(false);
+      setYt({ linked: false, email: null, name: null, channel: null });
+      await refresh();
+    } catch { /* ignore */ }
+    setBusy(false);
+  };
 
   const unlinkLine = async () => {
     setBusy(true);
@@ -108,19 +135,6 @@ function AccountContent() {
       setConfirmUnlinkM365(false);
       await refresh();
     } catch { /* ignore */ }
-    setBusy(false);
-  };
-
-  const setConsent = async (capability: keyof Caps, granted: boolean) => {
-    setBusy(true);
-    setCaps((p) => ({ ...p, [capability]: granted }));
-    try {
-      const data = await fetch(`/api/consents?upn=${encodeURIComponent(upn)}`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ capability, granted }),
-      }).then((r) => r.json());
-      if (data && !data.error) setCaps({ src_youtube: !!data.src_youtube, src_facebook: !!data.src_facebook });
-    } catch { /* keep optimistic */ }
     setBusy(false);
   };
 
@@ -215,26 +229,46 @@ function AccountContent() {
               </div>
             </div>
           )}
+
+          <Row icon={<Youtube className="w-5 h-5 text-slate-950" />} color="bg-red-500"
+               title="YouTube" subtitle={ytSubtitle}>
+            {yt.linked ? (
+              <button onClick={() => setConfirmUnlinkYt(true)} disabled={busy}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700">
+                <Unlink className="w-4 h-4" /> ยกเลิก
+              </button>
+            ) : (
+              <button onClick={connectYouTube} disabled={busy}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white">
+                เชื่อมบัญชี
+              </button>
+            )}
+          </Row>
+
+          {confirmUnlinkYt && (
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-100/90 leading-relaxed space-y-3">
+              <div className="font-semibold text-amber-300 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> ยกเลิกการเชื่อม YouTube?</div>
+              <ul className="list-disc list-inside space-y-1">
+                <li>ระบบจะ<b>ไม่ดึง</b>ช่องที่คุณ subscribe มาสรุปข่าวอีก</li>
+                <li>เชื่อมใหม่ได้ทุกเมื่อ (จะให้เลือกบัญชี Google อีกครั้ง)</li>
+              </ul>
+              <div className="flex gap-2">
+                <button onClick={unlinkYouTube} disabled={busy}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 font-semibold px-3 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white">
+                  <Unlink className="w-4 h-4" /> ยืนยันยกเลิก
+                </button>
+                <button onClick={() => setConfirmUnlinkYt(false)} disabled={busy}
+                  className="flex-1 font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700">
+                  ไม่ยกเลิก
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* ---- follow permissions ---- */}
         <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
           <h2 className="text-sm font-bold text-slate-200">🔔 การอนุญาตติดตามข่าว</h2>
-
-          <Row icon={<Youtube className="w-5 h-5 text-slate-950" />} color="bg-red-500"
-               title="YouTube" subtitle={ytSubtitle}>
-            {yt.linked ? (
-              <button onClick={() => setConsent("src_youtube", false)} disabled={busy}
-                className="text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700">
-                ยกเลิก
-              </button>
-            ) : (
-              <Link href="/consents"
-                className="text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950">
-                เชื่อมบัญชี
-              </Link>
-            )}
-          </Row>
 
           <Row icon={<Facebook className="w-5 h-5 text-slate-950" />} color="bg-blue-500"
                title="Facebook" subtitle="ยังดึงเพจที่ติดตามอัตโนมัติไม่ได้ (ข้อจำกัด Facebook API)">
@@ -242,8 +276,9 @@ function AccountContent() {
           </Row>
 
           <p className="text-[11px] text-slate-500 leading-relaxed pt-1">
-            จัดการแหล่งข่าว/เชื่อมบัญชี YouTube และดูสรุปข่าว ได้ที่หน้า{" "}
+            ดูสรุปข่าวที่ติดตามได้ที่หน้า{" "}
             <Link href="/consents" className="text-sky-400 underline">ติดตามข่าว / ฟีด</Link>
+            {" "}· เชื่อม YouTube ได้จากปุ่มด้านบน (จะเปิดหน้า Google ให้เลือกบัญชี แล้วขอสิทธิ์อ่านรายการ subscribe)
           </p>
         </section>
       </div>

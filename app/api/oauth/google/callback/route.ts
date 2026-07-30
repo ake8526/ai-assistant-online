@@ -2,21 +2,34 @@ import { NextResponse } from "next/server";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { exchangeCode, getGoogleAccountFromAccessToken, getGoogleAccount } from "@/lib/youtube";
 
-// GET /api/oauth/google/callback?code=...&state=<base64url upn>
+type OAuthState = { upn: string; back?: string };
+
+function parseState(raw: string): OAuthState {
+  try {
+    const j = JSON.parse(Buffer.from(raw, "base64url").toString("utf-8"));
+    if (j && typeof j.upn === "string") return { upn: j.upn.toLowerCase().trim(), back: j.back || "/account" };
+  } catch { /* legacy: state was plain upn */ }
+  try {
+    return { upn: Buffer.from(raw, "base64url").toString("utf-8").toLowerCase().trim(), back: "/account" };
+  } catch {
+    return { upn: "", back: "/account" };
+  }
+}
+
+// GET /api/oauth/google/callback?code=...&state=...
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code") || "";
-  const state = url.searchParams.get("state") || "";
-  let upn = "";
-  try { upn = Buffer.from(state, "base64url").toString("utf-8").toLowerCase().trim(); } catch { /* bad state */ }
+  const { upn, back } = parseState(url.searchParams.get("state") || "");
+  const dest = (m: string) =>
+    NextResponse.redirect(`${url.origin}${(back || "/account").startsWith("/") ? back || "/account" : "/account"}?yt=${encodeURIComponent(m)}`);
 
-  const back = (m: string) => NextResponse.redirect(`${url.origin}/consents?yt=${encodeURIComponent(m)}`);
-  if (!code || !upn) return back("error");
+  if (!code || !upn) return dest("error");
 
   try {
     assertConfigured();
     const tok = await exchangeCode(code);
-    if (!tok.refresh_token) return back("no_refresh"); // user must revoke + reconsent to get one
+    if (!tok.refresh_token) return dest("no_refresh");
 
     await admin.from("oauth_tokens").upsert(
       {
@@ -29,7 +42,6 @@ export async function GET(req: Request) {
       { onConflict: "owner_upn,provider" }
     );
 
-    // Best-effort: store which Google/YouTube account (needs migration_youtube_account.sql)
     try {
       const info = tok.access_token
         ? await getGoogleAccountFromAccessToken(tok.access_token)
@@ -44,15 +56,15 @@ export async function GET(req: Request) {
         })
         .eq("owner_upn", upn)
         .eq("provider", "google");
-    } catch { /* columns may not exist yet — status API can still live-fetch */ }
+    } catch { /* identity columns optional */ }
 
     await admin.from("consents").upsert(
       { owner_upn: upn, capability: "src_youtube", granted: true, updated_at: new Date().toISOString() },
       { onConflict: "owner_upn,capability" }
     );
-    return back("connected");
+    return dest("connected");
   } catch (e) {
     console.error("google callback", e);
-    return back("error");
+    return dest("error");
   }
 }
