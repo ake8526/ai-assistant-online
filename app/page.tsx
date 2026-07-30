@@ -2,14 +2,14 @@
 
 import React from "react";
 import Link from "next/link";
-import { MessageCircle, Rss, Settings as SettingsIcon, ArrowRight } from "lucide-react";
+import { UserCircle2, Rss, Settings as SettingsIcon, ArrowRight } from "lucide-react";
 
 const FEATURES = [
   {
-    href: "/line-link",
-    icon: MessageCircle,
-    title: "ผูกบัญชี LINE",
-    desc: "เชื่อม Microsoft 365 กับ LINE เพื่อรับสรุปประชุม งานที่ได้รับมอบหมาย และแจ้งเตือนทาง LINE",
+    href: "/account",
+    icon: UserCircle2,
+    title: "บัญชีของฉัน",
+    desc: "ดูบัญชีที่เชื่อมต่อ (Microsoft 365 / LINE) และการอนุญาตติดตามข่าว พร้อมยกเลิกได้จากที่เดียว",
     accent: "from-emerald-500 to-teal-400",
   },
   {
