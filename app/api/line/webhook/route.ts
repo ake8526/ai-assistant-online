@@ -32,30 +32,37 @@ function truncate(s: string, n: number): string {
 // handleSelection() completes. Returns null when nothing to pick.
 function quickReplyFor(res: CommandResult): { items: object[] } | null {
   const items: object[] = [];
-  const add = (label: string, data: string, displayText: string) => {
+  // Button label is just the number (matches the numbered list in the message
+  // body) so the full name/time is always readable above; the postback carries
+  // the real selection data.
+  const add = (num: number, data: string, displayText: string) => {
     if (data.length > 300 || items.length >= 12) return;
-    items.push({ type: "action", action: { type: "postback", label: truncate(label, 20), data, displayText: truncate(displayText, 60) } });
+    items.push({ type: "action", action: { type: "postback", label: `${num}`, data, displayText: truncate(displayText, 60) } });
   };
 
   if (res.intent === "choose_person" && Array.isArray(res.choices)) {
+    let n = 0;
     for (const c of res.choices as Choice[]) {
       if (!c.mail) continue;
+      n++;
       const p = new URLSearchParams({ a: "avail", m: c.mail, n: c.displayName || c.mail, p: c.period || "week" });
-      add(c.displayName || c.mail, p.toString(), `ดูตารางของ ${c.displayName || c.mail}`);
+      add(n, p.toString(), `เลือก ${n}) ${c.displayName || c.mail}`);
     }
   } else if (Array.isArray(res.slots) && res.slots.length && (res.intent === "availability" || res.intent === "choose_slot")) {
     const meeting = (res.meeting as { attendees?: string[]; subject?: string }) || {};
     const attendees = meeting.attendees || (res.person?.mail ? [res.person.mail] : []);
     const subject = meeting.subject || "ประชุม";
-    for (const s of res.slots as Slot[]) {
+    (res.slots as Slot[]).forEach((s, i) => {
       const p = new URLSearchParams({ a: "book", s: s.start, e: s.end, subj: subject, at: attendees.join(",") });
-      add(s.label || "จองช่วงนี้", p.toString(), `จอง ${s.label || ""}`);
-    }
+      add(i + 1, p.toString(), `จอง ${i + 1}) ${s.label || ""}`);
+    });
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
+    let n = 0;
     for (const c of res.choices as Choice[]) {
       if (!c.event_id) continue;
+      n++;
       const p = new URLSearchParams({ a: "cancel", id: c.event_id });
-      add(c.label || "ยกเลิกนัดนี้", p.toString(), `ยกเลิก: ${c.label || ""}`);
+      add(n, p.toString(), `ยกเลิก ${n}) ${c.label || ""}`);
     }
   }
   return items.length ? { items } : null;
