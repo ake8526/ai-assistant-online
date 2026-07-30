@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { getGoogleAccount } from "@/lib/youtube";
 
+export const dynamic = "force-dynamic";
+const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
+
 /** GET /api/oauth/google/status?upn=... → which Google/YouTube account is linked */
 export async function GET(req: Request) {
   try {
@@ -17,7 +20,7 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (!tok?.refresh_token) {
-      return NextResponse.json({ linked: false, email: null, name: null, channel: null });
+      return NextResponse.json({ linked: false, email: null, name: null, channel: null }, { headers: NO_STORE });
     }
 
     let email: string | null = null;
@@ -67,7 +70,7 @@ export async function GET(req: Request) {
       }
     }
 
-    return NextResponse.json({ linked: true, email, name, channel });
+    return NextResponse.json({ linked: true, email, name, channel }, { headers: NO_STORE });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

@@ -31,6 +31,12 @@ export async function GET(req: Request) {
     const tok = await exchangeCode(code);
     if (!tok.refresh_token) return dest("no_refresh");
 
+    // Google silently drops scopes it won't grant (e.g. youtube.readonly not
+    // registered on the OAuth consent screen, or the user unticked it). Without
+    // it the news digest fails with 403 insufficientPermissions, so treat the
+    // connection as incomplete instead of "connected".
+    const hasYouTube = (tok.scope || "").includes("youtube.readonly");
+
     await admin.from("oauth_tokens").upsert(
       {
         owner_upn: upn,
@@ -59,10 +65,10 @@ export async function GET(req: Request) {
     } catch { /* identity columns optional */ }
 
     await admin.from("consents").upsert(
-      { owner_upn: upn, capability: "src_youtube", granted: true, updated_at: new Date().toISOString() },
+      { owner_upn: upn, capability: "src_youtube", granted: hasYouTube, updated_at: new Date().toISOString() },
       { onConflict: "owner_upn,capability" }
     );
-    return dest("connected");
+    return dest(hasYouTube ? "connected" : "no_yt_scope");
   } catch (e) {
     console.error("google callback", e);
     return dest("error");

@@ -78,7 +78,14 @@ async function accessToken(refresh: string): Promise<string> {
 async function api(path: string, token: string, params: Record<string, string>) {
   const url = `${API}/${path}?${new URLSearchParams(params).toString()}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error(`yt ${path} ${res.status}`);
+  if (!res.ok) {
+    let reason = "";
+    try {
+      const body = await res.json();
+      reason = body?.error?.errors?.[0]?.reason || body?.error?.status || "";
+    } catch { /* non-JSON body */ }
+    throw new Error(`yt ${path} ${res.status}${reason ? ` (${reason})` : ""}`);
+  }
   return res.json();
 }
 

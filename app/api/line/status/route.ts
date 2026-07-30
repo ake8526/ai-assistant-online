@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
+export const dynamic = "force-dynamic";
+const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
+
 // GET ?upn=<m365 upn>  OR  ?line_user_id=U...  → is this account linked?
 export async function GET(req: Request) {
   try {
@@ -19,7 +22,7 @@ export async function GET(req: Request) {
       linked: !!data?.line_user_id,
       upn: data?.upn || null,
       display_name: data?.display_name || null,
-    });
+    }, { headers: NO_STORE });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

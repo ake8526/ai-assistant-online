@@ -2,6 +2,7 @@
 // The web / LINE sends free text; the LLM classifies it into an intent + params
 // and we execute. Booking asks for confirmation first (choose_slot) per requirement.
 import { buildForEvents, buildForToday } from "@/lib/brief";
+import { buildDigest, formatStoriesText } from "@/lib/digest";
 import { normalizeDue, resolveResponsible } from "@/lib/followup";
 import {
   GraphEvent,
@@ -71,12 +72,13 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
 
 {
-  "intent": "<หนึ่งใน: get_brief | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | unknown>",
+  "intent": "<หนึ่งใน: get_brief | get_news | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | unknown>",
   "params": { ... }
 }
 
 ความหมายของแต่ละ intent:
 - get_brief = สรุปเตรียมตัว/แนะนำสำหรับนัดวันนี้ (ไม่ใช่การสรุปไฟล์)
+- get_news = สรุป "ข่าว/ฟีดที่ติดตาม" (RSS + คลิป YouTube ที่ subscribe) — เช่น "มีข่าวอะไรบ้าง", "สรุปข่าววันนี้", "ข่าวที่ติดตาม", "มีคลิปใหม่อะไรบ้าง"
 - list_meetings = ดู "รายการประชุม/นัด" ในปฏิทิน (วันนี้/พรุ่งนี้/สัปดาห์นี้/เดือนนี้)
 - my_availability = ดู "เวลาว่างของตัวเอง" ในปฏิทิน (ช่วงไหนว่าง/ตารางว่าง)
 - list_tasks = ดูงานที่ต้องติดตาม (ไม่ใช่ประชุม)
@@ -99,7 +101,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - add_task: { "title": "...", "responsible": "...", "due": "YYYY-MM-DD HH:MM หรือ null" }
 - complete_task: { "task_id": <number> }
 - find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "note": "..." }
-- get_brief / list_tasks / summarize_meetings: {}
+- get_brief / get_news / list_tasks / summarize_meetings: {}
 
 ตัวอย่าง:
 "เดือนนี้มีประชุมอะไรบ้าง" -> {"intent":"list_meetings","params":{"period":"month"}}
@@ -118,6 +120,10 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "เบสว่างช่วงไหน" -> {"intent":"my_availability","params":{"person":"เบส","period":"week"}}
 "งานค้างมีอะไรบ้าง" -> {"intent":"list_tasks","params":{}}
 "สรุปงานเช้านี้ให้หน่อย" -> {"intent":"get_brief","params":{}}
+"มีข่าวอะไรบ้าง" -> {"intent":"get_news","params":{}}
+"สรุปข่าววันนี้" -> {"intent":"get_news","params":{}}
+"มีคลิปใหม่อะไรบ้าง" -> {"intent":"get_news","params":{}}
+(หมายเหตุ: "ข่าว/ฟีด/คลิป/ช่องที่ติดตาม/subscribe" = get_news; ส่วน "สรุปงาน/เตรียมตัวนัดวันนี้" = get_brief — อย่าสับสน)
 "เพิ่มงาน: ส่งรายงานให้ฝ่ายบัญชี ภายในพรุ่งนี้ 5 โมงเย็น" -> {"intent":"add_task","params":{"title":"ส่งรายงานให้ฝ่ายบัญชี","due":"พรุ่งนี้ 17:00"}}
 "ปิดงานหมายเลข 3" -> {"intent":"complete_task","params":{"task_id":3}}
 "นัดประชุมกับสมชายและสมหญิง 30 นาที" -> {"intent":"find_meeting_time","params":{"attendees":["สมชาย","สมหญิง"],"duration_min":30}}
@@ -556,6 +562,22 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       };
     }
     return { intent, reply: await buildForToday(userUpn) };
+  }
+
+  if (intent === "get_news") {
+    const { stories, skipped, note } = await buildDigest(userUpn);
+    if (!stories.length) {
+      const extra = skipped.length ? `\n(ข้าม: ${skipped.join(", ")})` : "";
+      return {
+        intent,
+        reply:
+          (note || "ยังไม่มีข่าวให้สรุปครับ") +
+          "\n\nเชื่อม YouTube หรือเพิ่มแหล่งข่าวได้ที่หน้า “ติดตามข่าว / ฟีด” แล้วลองพิมพ์ “มีข่าวอะไรบ้าง” อีกครั้งครับ" +
+          extra,
+      };
+    }
+    const extra = skipped.length ? `\n\n(ข้ามบางแหล่ง: ${skipped.join(", ")})` : "";
+    return { intent, reply: formatStoriesText(stories) + extra, data: stories };
   }
 
   if (intent === "list_meetings") {

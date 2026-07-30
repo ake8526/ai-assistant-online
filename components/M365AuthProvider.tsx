@@ -7,7 +7,7 @@ import { msalConfig, loginRequest } from "@/lib/msalConfig";
 interface AuthContextType {
   account: AccountInfo | null;
   login: () => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
   /** True after MSAL has finished initializing (session restore checked). */
   ready: boolean;
@@ -18,7 +18,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   account: null,
   login: async () => {},
-  logout: () => {},
+  logout: async () => {},
   isAuthenticated: false,
   ready: false,
   getToken: async () => null,
@@ -54,9 +54,15 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     if (!msalInstance) return;
-    msalInstance.logoutPopup();
+    const acct = msalInstance.getAllAccounts()[0];
+    try {
+      await msalInstance.logoutPopup({ account: acct, mainWindowRedirectUri: window.location.origin });
+    } catch {
+      // popup closed/blocked — clear the local session anyway so it doesn't reconnect
+      try { await msalInstance.clearCache(); } catch { /* ignore */ }
+    }
     setAccount(null);
   };
 
