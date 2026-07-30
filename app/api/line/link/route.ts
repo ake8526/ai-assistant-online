@@ -22,12 +22,18 @@ export async function POST(req: Request) {
   }
 }
 
+// DELETE ?upn=<m365 upn>  OR  ?line_user_id=U...  → unlink
 export async function DELETE(req: Request) {
   try {
     assertConfigured();
-    const upn = (new URL(req.url).searchParams.get("upn") || "").toLowerCase().trim();
-    if (!upn) return NextResponse.json({ error: "upn required" }, { status: 400 });
-    await admin.from("line_links").delete().eq("upn", upn);
+    const url = new URL(req.url);
+    const upn = (url.searchParams.get("upn") || "").toLowerCase().trim();
+    const lineUserId = (url.searchParams.get("line_user_id") || "").trim();
+    if (!upn && !lineUserId) {
+      return NextResponse.json({ error: "upn or line_user_id required" }, { status: 400 });
+    }
+    if (lineUserId) await admin.from("line_links").delete().eq("line_user_id", lineUserId);
+    else await admin.from("line_links").delete().eq("upn", upn);
     return NextResponse.json({ linked: false });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
