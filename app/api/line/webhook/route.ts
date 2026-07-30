@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { handleCommand, handleSelection, type CommandResult } from "@/lib/commands";
+import { handleCommand, handleSelection, type CommandContext, type CommandResult } from "@/lib/commands";
 import { getUpnByLineId, replyLine, replyLineMessages } from "@/lib/line";
+import { getSetting, setSetting } from "@/lib/store";
 import { assertConfigured } from "@/lib/supabaseServer";
 
 export const maxDuration = 60;
@@ -82,6 +83,39 @@ function detailText(res: CommandResult): string {
   return lines.length ? "\n\n" + lines.join("\n") : "";
 }
 
+// --- per-user conversation context (so "วันนี้ 10 โมง ติดอะไร" keeps talking
+// about the same person as the previous turn, like the web app does) ---
+const CTX_KEY = "_line_ctx";
+const CTX_TTL_MS = 30 * 60 * 1000; // forget the thread after 30 min idle
+
+async function loadCtx(upn: string): Promise<CommandContext | undefined> {
+  try {
+    const raw = await getSetting(upn, CTX_KEY);
+    if (!raw) return undefined;
+    const c = JSON.parse(raw);
+    if (!c.ts || Date.now() - c.ts > CTX_TTL_MS) return undefined;
+    return { last_intent: c.last_intent, last_person: c.last_person, last_person_mail: c.last_person_mail };
+  } catch {
+    return undefined;
+  }
+}
+
+async function saveCtx(upn: string, prev: CommandContext | undefined, res: CommandResult): Promise<void> {
+  const next: Record<string, unknown> = {
+    ts: Date.now(),
+    last_intent: res.intent || prev?.last_intent,
+    last_person: prev?.last_person,
+    last_person_mail: prev?.last_person_mail,
+  };
+  if (res.person?.mail) {
+    next.last_person = res.person.displayName || res.person.mail;
+    next.last_person_mail = res.person.mail;
+  }
+  try {
+    await setSetting(upn, CTX_KEY, JSON.stringify(next));
+  } catch { /* context is best-effort */ }
+}
+
 // Send a reply, attaching quick-reply buttons when the result needs a choice.
 async function sendResult(replyToken: string, res: CommandResult): Promise<void> {
   let reply = res.reply || "รับทราบครับ";
@@ -130,8 +164,10 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
   }
   // Linked user → run the assistant (lite mode: no slow per-meeting enrichment)
   try {
-    const res = await handleCommand(upn, text, undefined, true);
+    const ctx = await loadCtx(upn);
+    const res = await handleCommand(upn, text, ctx, true);
     await sendResult(ev.replyToken, res);
+    await saveCtx(upn, ctx, res);
   } catch (e) {
     await replyLine(ev.replyToken, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
   }
@@ -150,6 +186,8 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     const data = new URLSearchParams(ev.postback?.data || "");
     const res = await handleSelection(upn, data);
     await sendResult(ev.replyToken, res);
+    // Remember who this selection was about so text follow-ups continue on them.
+    await saveCtx(upn, await loadCtx(upn), res);
   } catch (e) {
     await replyLine(ev.replyToken, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
   }
