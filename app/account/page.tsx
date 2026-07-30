@@ -37,7 +37,7 @@ function Badge({ ok, on = "เชื่อมต่อแล้ว", off = "ย�
 }
 
 function AccountContent() {
-  const { account, login } = useM365Auth();
+  const { account, login, logout } = useM365Auth();
   const upn = account?.username || DEFAULT_UPN;
 
   const [line, setLine] = useState<LineState | null>(null);
@@ -45,6 +45,11 @@ function AccountContent() {
   const [msg, setMsg] = useState("กำลังโหลด…");
   const [busy, setBusy] = useState(false);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
+  const [confirmUnlinkM365, setConfirmUnlinkM365] = useState(false);
+  const [m365Unlinked, setM365Unlinked] = useState(false);
+
+  // ถือว่าเชื่อมต่อ 365 อยู่ ถ้ามี session MSAL หรือระบบรู้จักบัญชีนี้อยู่แล้ว (มี upn จากการผูก LINE)
+  const m365Connected = !m365Unlinked && (!!account || !!line?.upn);
 
   const refresh = useCallback(async () => {
     try {
@@ -67,6 +72,21 @@ function AccountContent() {
     try {
       await fetch(`/api/line/link?upn=${encodeURIComponent(upn)}`, { method: "DELETE" });
       setConfirmUnlink(false);
+      await refresh();
+    } catch { /* ignore */ }
+    setBusy(false);
+  };
+
+  // ยกเลิก 365 = ออกจากระบบ 365 + ยกเลิกการผูก LINE ด้วย
+  const unlinkM365 = async () => {
+    setBusy(true);
+    try {
+      if (line?.linked) {
+        await fetch(`/api/line/link?upn=${encodeURIComponent(upn)}`, { method: "DELETE" });
+      }
+      if (account) logout();
+      setM365Unlinked(true);
+      setConfirmUnlinkM365(false);
       await refresh();
     } catch { /* ignore */ }
     setBusy(false);
@@ -104,11 +124,40 @@ function AccountContent() {
 
           <Row icon={<Mail className="w-5 h-5 text-slate-950" />} color="bg-blue-400"
                title="Microsoft 365" subtitle={upn}>
-            {account ? <Badge ok on="เข้าสู่ระบบแล้ว" />
-              : <button onClick={login} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white">
-                  <LogIn className="w-4 h-4" /> เข้าสู่ระบบ
-                </button>}
+            {m365Connected ? (
+              <button onClick={() => setConfirmUnlinkM365(true)} disabled={busy}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700">
+                <Unlink className="w-4 h-4" /> ยกเลิก
+              </button>
+            ) : (
+              <button onClick={async () => { await login(); setM365Unlinked(false); }}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white">
+                <LogIn className="w-4 h-4" /> เข้าสู่ระบบ
+              </button>
+            )}
           </Row>
+
+          {confirmUnlinkM365 && (
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-100/90 leading-relaxed space-y-3">
+              <div className="font-semibold text-amber-300 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> ยกเลิกการเชื่อมต่อ Microsoft 365?</div>
+              <ul className="list-disc list-inside space-y-1">
+                <li>จะออกจากระบบ Microsoft 365 และ<b>ใช้งานสรุปประชุม อีเมล ปฏิทิน และงานที่ได้รับมอบหมายไม่ได้</b></li>
+                <li><b>การผูก LINE จะถูกยกเลิกด้วย</b> — ไม่ได้รับการแจ้งเตือนและสรุปข่าว (digest) ทาง LINE อีก</li>
+                <li>ข้อมูลงาน/การตั้งค่าติดตามข่าว <b>ยังอยู่เหมือนเดิม</b> (ลบเฉพาะการเชื่อมต่อ)</li>
+                <li>เข้าสู่ระบบและผูกใหม่ได้ทุกเมื่อ</li>
+              </ul>
+              <div className="flex gap-2">
+                <button onClick={unlinkM365} disabled={busy}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 font-semibold px-3 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white">
+                  <Unlink className="w-4 h-4" /> ยืนยันยกเลิก
+                </button>
+                <button onClick={() => setConfirmUnlinkM365(false)} disabled={busy}
+                  className="flex-1 font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700">
+                  ไม่ยกเลิก
+                </button>
+              </div>
+            </div>
+          )}
 
           <Row icon={<MessageCircle className="w-5 h-5 text-slate-950" />} color="bg-emerald-400"
                title="LINE" subtitle={line?.linked ? (line.display_name || "เชื่อมกับ LINE นี้") : "ยังไม่ได้ผูกกับ LINE"}>
