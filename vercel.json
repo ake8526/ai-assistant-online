@@ -1,8 +1,0 @@
-{
-  "outputDirectory": "public",
-  "rewrites": [
-    { "source": "/line-link", "destination": "/line-link.html" },
-    { "source": "/consents", "destination": "/consents.html" },
-    { "source": "/settings", "destination": "/settings.html" }
-  ]
-}
