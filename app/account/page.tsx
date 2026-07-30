@@ -58,8 +58,7 @@ function AccountContent() {
       const bits = [yt.email, yt.channel ? `ช่อง: ${yt.channel}` : null].filter(Boolean);
       return bits.length ? bits.join(" · ") : (yt.name || "เชื่อม Google/YouTube แล้ว");
     }
-    if (caps.src_youtube) return "อนุญาตแล้ว แต่ยังไม่ได้เชื่อมบัญชี Google";
-    return "ยังไม่อนุญาต / ยังไม่ได้เชื่อม";
+    return "ยังไม่ได้เชื่อมบัญชี Google";
   })();
 
   const refresh = useCallback(async () => {
@@ -224,7 +223,7 @@ function AccountContent() {
 
           <Row icon={<Youtube className="w-5 h-5 text-slate-950" />} color="bg-red-500"
                title="YouTube" subtitle={ytSubtitle}>
-            {yt.linked || caps.src_youtube ? (
+            {yt.linked ? (
               <button onClick={() => setConsent("src_youtube", false)} disabled={busy}
                 className="text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700">
                 ยกเลิก
