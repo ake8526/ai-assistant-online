@@ -8,6 +8,7 @@ import {
   GraphEvent,
   UserInfo,
   createEvent,
+  deleteEvent,
   getEventsRange,
   resolveUser,
   resolveUserInfo,
@@ -499,6 +500,43 @@ export async function handleCommand(
   } catch (e) {
     return { intent: "error", reply: `⚠️ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}` };
   }
+}
+
+// Handle a tap on a LINE quick-reply/postback button. `data` is the postback
+// payload (URLSearchParams). Each action is self-contained (stateless) so it
+// completes in one step without stored conversation context.
+export async function handleSelection(userUpn: string, data: URLSearchParams): Promise<CommandResult> {
+  const a = data.get("a") || "";
+  try {
+    if (a === "avail") {
+      const mail = data.get("m") || "";
+      const name = data.get("n") || mail;
+      const period = data.get("p") || "week";
+      if (!mail) return { intent: "error", reply: "ข้อมูลไม่ครบ ลองใหม่อีกครั้งครับ" };
+      return await availabilityResponse(userUpn, mail, name, period);
+    }
+    if (a === "book") {
+      const start = parseWall(data.get("s") || "");
+      const end = parseWall(data.get("e") || "");
+      const subject = data.get("subj") || "ประชุม";
+      const attendees = (data.get("at") || "").split(",").map((s) => s.trim()).filter(Boolean);
+      if (!start || !end) return { intent: "error", reply: "ช่วงเวลาไม่ถูกต้อง ลองเลือกใหม่ครับ" };
+      await createEvent(userUpn, subject, wallIso(start), wallIso(end), attendees);
+      return {
+        intent: "booked",
+        reply: `✅ จองประชุมแล้ว!\n📌 ${subject}\n🕐 ${fmtDateTime(start)}-${fmtTime(end)}${attendees.length ? `\n👤 ${attendees.join(", ")}` : ""}`,
+      };
+    }
+    if (a === "cancel") {
+      const id = data.get("id") || "";
+      if (!id) return { intent: "error", reply: "ไม่พบนัดที่จะยกเลิกครับ" };
+      await deleteEvent(userUpn, id);
+      return { intent: "cancelled", reply: "✅ ยกเลิกนัดแล้วครับ" };
+    }
+  } catch (e) {
+    return { intent: "error", reply: `⚠️ ทำรายการไม่สำเร็จ: ${String(e).slice(0, 150)}` };
+  }
+  return { intent: "unknown", reply: "ไม่รู้จักคำสั่งนี้ครับ" };
 }
 
 async function handle(userUpn: string, text: string, context?: CommandContext, lite = false): Promise<CommandResult> {
