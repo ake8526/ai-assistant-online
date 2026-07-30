@@ -165,6 +165,11 @@ function stripHonorific(name: string): string {
   return q || name.trim();
 }
 
+/** Exported honorific stripper (used by the command name extractor). */
+export function stripHonorificPublic(name: string): string {
+  return stripHonorific(name);
+}
+
 export type UserInfo = { mail: string; displayName?: string };
 
 const resolveCache = new Map<string, UserInfo | null>();
@@ -314,35 +319,42 @@ export async function deleteEvent(userUpn: string, eventId: string): Promise<voi
 // ---------------------------------------------------------------------------
 // Online meetings + transcripts (needs OnlineMeetings.Read.All + OnlineMeetingTranscript.Read.All)
 // ---------------------------------------------------------------------------
-export async function getOnlineMeetingId(userUpn: string, joinUrl: string): Promise<string | null> {
-  const uid = await getUserId(userUpn);
-  if (!uid) return null;
-  const data = await graphGet(`/users/${uid}/onlineMeetings`, {
-    $filter: `JoinWebUrl eq '${joinUrl.replace(/'/g, "''")}'`,
-  });
-  return data.value?.[0]?.id || null;
+/** Find the onlineMeeting id from its join URL. `ownerId` is the user's GUID. */
+export async function getOnlineMeetingId(ownerId: string, joinUrl: string): Promise<string | null> {
+  try {
+    const data = await graphGet(`/users/${ownerId}/onlineMeetings`, {
+      $filter: `JoinWebUrl eq '${joinUrl.replace(/'/g, "''")}'`,
+    });
+    return data.value?.[0]?.id || null;
+  } catch {
+    return null;
+  }
 }
 
-export async function listTranscripts(userUpn: string, onlineMeetingId: string): Promise<{ id: string }[]> {
-  const uid = await getUserId(userUpn);
-  if (!uid) return [];
-  const data = await graphGet(`/users/${uid}/onlineMeetings/${onlineMeetingId}/transcripts`);
-  return data.value || [];
+export async function listTranscripts(ownerId: string, onlineMeetingId: string): Promise<{ id: string }[]> {
+  try {
+    const data = await graphGet(`/users/${ownerId}/onlineMeetings/${onlineMeetingId}/transcripts`);
+    return data.value || [];
+  } catch {
+    return [];
+  }
 }
 
+/** Download one transcript's VTT content (tries Accept header first, then $format). */
 export async function getTranscriptContent(
-  userUpn: string,
+  ownerId: string,
   onlineMeetingId: string,
   transcriptId: string
-): Promise<string> {
-  const uid = await getUserId(userUpn);
-  if (!uid) return "";
-  const r = await graphFetch(
-    `/users/${uid}/onlineMeetings/${onlineMeetingId}/transcripts/${transcriptId}/content`,
-    { params: { $format: "text/vtt" } }
-  );
-  if (!r.ok) throw new Error(`Graph transcript ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  return r.text();
+): Promise<string | null> {
+  const base = `/users/${ownerId}/onlineMeetings/${onlineMeetingId}/transcripts/${transcriptId}/content`;
+  for (const params of [undefined, { $format: "text/vtt" }]) {
+    const r = await graphFetch(base, { params, headers: { Accept: "text/vtt" } });
+    if (r.ok) {
+      const text = await r.text();
+      if (text.trim()) return text;
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

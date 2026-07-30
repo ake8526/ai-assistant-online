@@ -1,0 +1,169 @@
+// Wall-clock time helpers for the configured timezone (Asia/Bangkok, UTC+7,
+// no DST). We represent local "wall clock" datetimes as JS Dates whose UTC
+// fields hold the local components — mirroring the naive datetimes the Python
+// app used — and convert at the edges (Graph API, Supabase).
+
+export const TZ_OFFSET_MIN = 7 * 60; // Asia/Bangkok
+
+/** Current wall-clock time (UTC fields = Bangkok local components). */
+export function nowWall(): Date {
+  return new Date(Date.now() + TZ_OFFSET_MIN * 60_000);
+}
+
+/** Parse a Graph dateTime (already in local tz thanks to Prefer header) or ISO string to wall clock. */
+export function parseWall(s: string): Date | null {
+  if (!s) return null;
+  let t = s.trim().replace(" ", "T");
+  // Strip sub-second precision Graph adds ("2026-07-30T09:00:00.0000000")
+  t = t.replace(/\.\d+/, "");
+  if (t.endsWith("Z")) t = t.slice(0, -1);
+  // If an explicit offset is present, convert to our wall clock
+  const m = t.match(/([+-]\d{2}):?(\d{2})$/);
+  if (m) {
+    const base = new Date(t);
+    if (isNaN(base.getTime())) return null;
+    return new Date(base.getTime() + TZ_OFFSET_MIN * 60_000);
+  }
+  const d = new Date(t + "Z");
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Wall-clock date -> "YYYY-MM-DDTHH:MM:SS" (no offset). */
+export function wallIso(d: Date): string {
+  return d.toISOString().slice(0, 19);
+}
+
+/** Wall-clock date -> real UTC ISO string (for storing in timestamptz columns). */
+export function wallToUtcIso(d: Date): string {
+  return new Date(d.getTime() - TZ_OFFSET_MIN * 60_000).toISOString();
+}
+
+/** Real UTC ISO (e.g. from Supabase) -> wall-clock date. */
+export function utcIsoToWall(iso: string): Date | null {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : new Date(d.getTime() + TZ_OFFSET_MIN * 60_000);
+}
+
+export function fmtDate(d: Date): string {
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${d.getUTCFullYear()}`;
+}
+
+export function fmtTime(d: Date): string {
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+export function fmtDateTime(d: Date): string {
+  return `${fmtDate(d)} ${fmtTime(d)}`;
+}
+
+export function startOfDay(d: Date): Date {
+  const r = new Date(d);
+  r.setUTCHours(0, 0, 0, 0);
+  return r;
+}
+
+export function endOfDay(d: Date): Date {
+  const r = new Date(d);
+  r.setUTCHours(23, 59, 59, 999);
+  return r;
+}
+
+export function addDays(d: Date, days: number): Date {
+  return new Date(d.getTime() + days * 86_400_000);
+}
+
+export function addMinutes(d: Date, min: number): Date {
+  return new Date(d.getTime() + min * 60_000);
+}
+
+/** Map a period keyword to {start, end, label(th)} in wall-clock time. */
+export function periodRange(period: string): { start: Date; end: Date; label: string } {
+  const now = nowWall();
+  const today = startOfDay(now);
+  if (period === "tomorrow") {
+    const d = addDays(today, 1);
+    return { start: d, end: endOfDay(d), label: "พรุ่งนี้" };
+  }
+  if (period === "week") return { start: today, end: addDays(today, 7), label: "7 วันข้างหน้า" };
+  if (period === "month") {
+    const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    const next = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1));
+    return { start: first, end: next, label: "เดือนนี้" };
+  }
+  if (period === "upcoming") return { start: today, end: addDays(today, 14), label: "ช่วง 2 สัปดาห์ข้างหน้า" };
+  return { start: today, end: endOfDay(today), label: "วันนี้" };
+}
+
+/** Turn a specific-date hint ("31", "31/07", "2026-07-31") into a single-day range, or null. */
+export function resolveDay(dateStr: string): { start: Date; end: Date; label: string } | null {
+  const s = (dateStr || "").trim();
+  const today = startOfDay(nowWall());
+  let d: Date | null = null;
+  try {
+    if (s.includes("-")) {
+      const [y, m, day] = s.split("-").map(Number);
+      if (y && m && day) d = new Date(Date.UTC(y, m - 1, day));
+    } else if (s.includes("/")) {
+      const parts = s.split("/").map(Number);
+      const [day, m] = parts;
+      const y = parts.length > 2 ? parts[2] : today.getUTCFullYear();
+      if (day && m) d = new Date(Date.UTC(y, m - 1, day));
+    } else if (/^\d+$/.test(s)) {
+      const day = Number(s);
+      d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), day));
+      if (d < today) d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, day));
+    }
+  } catch {
+    return null;
+  }
+  if (!d || isNaN(d.getTime())) return null;
+  return { start: d, end: endOfDay(d), label: fmtDate(d) };
+}
+
+/** Parse "HH:MM" into minutes-of-day, or null. */
+export function parseHHMM(s: unknown): number | null {
+  const m = String(s || "").match(/^\s*(\d{1,2}):(\d{2})\s*$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  return h < 24 && mi < 60 ? h * 60 + mi : null;
+}
+
+export function minutesOfDay(d: Date): number {
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
+
+export function fmtHHMM(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Normalize a free-text due date to a real UTC ISO string (or null).
+ * Accepts ISO "YYYY-MM-DD[ HH:MM]" and Thai-style day-first "DD/MM/YYYY [HH:MM]".
+ * Relative words ("พรุ่งนี้") return null — the task keeps no deadline.
+ */
+export function normalizeDue(dueRaw: unknown): string | null {
+  const s = String(dueRaw ?? "").trim();
+  if (!s || ["null", "none", "ไม่ระบุ"].includes(s.toLowerCase())) return null;
+  const m = s.match(
+    /^(?:(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?)(?:[T ](\d{1,2}):(\d{2}))?/
+  );
+  if (!m) return null;
+  let y: number, mo: number, day: number;
+  if (m[1]) {
+    y = Number(m[1]);
+    mo = Number(m[2]);
+    day = Number(m[3]);
+  } else {
+    day = Number(m[4]);
+    mo = Number(m[5]);
+    y = m[6] ? Number(m[6]) : nowWall().getUTCFullYear();
+  }
+  const h = m[7] ? Number(m[7]) : 0;
+  const mi = m[8] ? Number(m[8]) : 0;
+  const wall = new Date(Date.UTC(y, mo - 1, day, h, mi));
+  if (isNaN(wall.getTime())) return null;
+  return wallToUtcIso(wall);
+}

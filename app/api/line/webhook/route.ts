@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { admin, assertConfigured } from "@/lib/supabaseServer";
+import { handleCommand } from "@/lib/commands";
+import { getUpnByLineId, replyLine, replyLineMessages } from "@/lib/line";
+import { assertConfigured } from "@/lib/supabaseServer";
+
+export const maxDuration = 60;
 
 // LINE Messaging API webhook.
-// Set this URL in the LINE Developers console (Messaging API → Webhook URL):
-//   https://<app-domain>/api/line/webhook
-// and turn OFF the OA's default auto-reply so this handler answers instead.
+// Linked users chat with the assistant (same brain as the web); unlinked users
+// get a link-account prompt. Webhook URL: https://<app-domain>/api/line/webhook
 
-const LIFF_LINK_URL = "https://liff.line.me/2010856732-BFseuR2p";
+const LIFF_LINK_URL = `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID || "2010856732-BFseuR2p"}`;
 
 type LineEvent = {
   type: string;
@@ -27,26 +30,6 @@ function validSignature(rawBody: string, signature: string | null): boolean {
   }
 }
 
-async function reply(replyToken: string, messages: object[]) {
-  await fetch("https://api.line.me/v2/bot/message/reply", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
-    },
-    body: JSON.stringify({ replyToken, messages }),
-  });
-}
-
-async function isLinked(lineUserId: string): Promise<boolean> {
-  const { data } = await admin
-    .from("line_links")
-    .select("line_user_id")
-    .eq("line_user_id", lineUserId)
-    .maybeSingle();
-  return !!data?.line_user_id;
-}
-
 function linkPromptMessage() {
   return {
     type: "template",
@@ -57,6 +40,28 @@ function linkPromptMessage() {
       actions: [{ type: "uri", label: "ผูกบัญชี", uri: LIFF_LINK_URL }],
     },
   };
+}
+
+async function handleTextMessage(ev: LineEvent): Promise<void> {
+  const userId = ev.source?.userId;
+  const text = (ev.message?.text || "").trim();
+  if (!ev.replyToken || !userId || !text) return;
+
+  const upn = await getUpnByLineId(userId);
+  if (!upn) {
+    await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
+    return;
+  }
+  // Linked user → run the assistant (lite mode: no slow per-meeting enrichment)
+  let reply: string;
+  try {
+    const res = await handleCommand(upn, text, undefined, true);
+    reply = res.reply || "รับทราบครับ";
+    if (res.map_url) reply += `\n🗺️ ${res.map_url}`;
+  } catch (e) {
+    reply = `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`;
+  }
+  await replyLine(ev.replyToken, reply);
 }
 
 export async function POST(req: Request) {
@@ -70,35 +75,23 @@ export async function POST(req: Request) {
     const events: LineEvent[] = JSON.parse(rawBody).events || [];
 
     for (const ev of events) {
-      const userId = ev.source?.userId;
-      if (!ev.replyToken) continue;
-
-      if (ev.type === "message" && ev.message?.type === "text") {
-        const linked = userId ? await isLinked(userId) : false;
-        if (linked) {
-          await reply(ev.replyToken, [
-            {
-              type: "text",
-              text: "บัญชีของคุณผูกเรียบร้อยแล้ว ✅\nรอรับข่าวสารและการแจ้งเตือนผ่านช่องทางนี้ได้เลย",
-            },
-          ]);
-        } else {
-          await reply(ev.replyToken, [linkPromptMessage()]);
+      try {
+        if (ev.type === "message" && ev.message?.type === "text") {
+          await handleTextMessage(ev);
+        } else if (ev.type === "follow" && ev.replyToken) {
+          await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
         }
-      } else if (ev.type === "follow") {
-        await reply(ev.replyToken, [linkPromptMessage()]);
+      } catch (e) {
+        console.log(`line webhook event failed: ${e}`);
       }
     }
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    // Always return 200-range to LINE where possible to avoid redelivery storms,
-    // but surface real errors during setup.
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
 
-// LINE console "Verify" sends a GET/HEAD-less POST; a simple GET helps manual checks.
 export async function GET() {
   return NextResponse.json({ ok: true, endpoint: "line webhook" });
 }

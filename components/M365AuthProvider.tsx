@@ -9,6 +9,8 @@ interface AuthContextType {
   login: () => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  /** ID token (audience = our app) for calling our protected API routes. */
+  getToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -16,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => {},
   logout: () => {},
   isAuthenticated: false,
+  getToken: async () => null,
 });
 
 let msalInstance: PublicClientApplication | null = null;
@@ -51,6 +54,23 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
     setAccount(null);
   };
 
+  const getToken = async (): Promise<string | null> => {
+    if (!msalInstance) return null;
+    const acct = account || msalInstance.getAllAccounts()[0];
+    if (!acct) return null;
+    try {
+      const res = await msalInstance.acquireTokenSilent({ ...loginRequest, account: acct });
+      return res.idToken || null;
+    } catch {
+      try {
+        const res = await msalInstance.acquireTokenPopup(loginRequest);
+        return res.idToken || null;
+      } catch {
+        return null;
+      }
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -58,6 +78,7 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         logout,
         isAuthenticated: !!account,
+        getToken,
       }}
     >
       {children}

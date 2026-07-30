@@ -2,9 +2,16 @@
 
 import React from "react";
 import Link from "next/link";
-import { UserCircle2, Rss, Settings as SettingsIcon, ArrowRight } from "lucide-react";
+import { UserCircle2, Rss, Settings as SettingsIcon, ArrowRight, MessageCircle } from "lucide-react";
 
 const FEATURES = [
+  {
+    href: "/chat",
+    icon: MessageCircle,
+    title: "แชทสั่งงาน",
+    desc: "ถามนัดประชุม เวลาว่าง งานค้าง สั่งนัด/ยกเลิกประชุม สรุปประชุม และค้นไฟล์ ด้วยภาษาไทย",
+    accent: "from-amber-500 to-orange-400",
+  },
   {
     href: "/account",
     icon: UserCircle2,
