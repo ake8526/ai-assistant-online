@@ -65,6 +65,11 @@ function SettingsContent() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    const hhmm = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!hhmm.test(workHours.start) || !hhmm.test(workHours.end)) {
+      setMsg("เวลาต้องเป็นรูปแบบ 24 ชม. เช่น 09:00 หรือ 17:00");
+      return;
+    }
     const token = await getToken();
     if (!token) {
       setMsg("กรุณาเข้าสู่ระบบ M365 ก่อนบันทึก");
@@ -169,21 +174,35 @@ function SettingsContent() {
             </label>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <span className="text-[10px] text-slate-500">เวลาเริ่มงาน</span>
+                <span className="text-[10px] text-slate-500">เวลาเริ่มงาน (เช่น 09:00)</span>
                 <input
-                  type="time"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="09:00"
+                  pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                  maxLength={5}
                   value={workHours.start}
-                  onChange={(e) => setWorkHours({ ...workHours, start: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^\d:]/g, "").slice(0, 5);
+                    setWorkHours({ ...workHours, start: v });
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 tabular-nums"
                 />
               </div>
               <div>
-                <span className="text-[10px] text-slate-500">เวลาเลิกงาน</span>
+                <span className="text-[10px] text-slate-500">เวลาเลิกงาน (เช่น 17:00)</span>
                 <input
-                  type="time"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="17:00"
+                  pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                  maxLength={5}
                   value={workHours.end}
-                  onChange={(e) => setWorkHours({ ...workHours, end: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^\d:]/g, "").slice(0, 5);
+                    setWorkHours({ ...workHours, end: v });
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 tabular-nums"
                 />
               </div>
             </div>
