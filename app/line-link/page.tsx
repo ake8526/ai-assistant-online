@@ -36,39 +36,60 @@ function loadLiffSdk(): Promise<void> {
 
 type Status = "init" | "ready" | "linking" | "linked" | "confirmUnlink" | "unlinking" | "error";
 
+// Reject a hanging promise after `ms` so a slow SDK/network step can't freeze the
+// page forever on "กำลังเชื่อมต่อ…".
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} ใช้เวลานานเกินไป`)), ms)),
+  ]);
+}
+
 function LineLinkContent() {
   const { account, login } = useM365Auth();
   const [status, setStatus] = useState<Status>("init");
-  const [msg, setMsg] = useState("กำลังเชื่อมต่อ LINE…");
+  const [msg, setMsg] = useState("กำลังเริ่มต้น…");
   const [profile, setProfile] = useState<LiffProfile | null>(null);
   // upn this LINE account is currently linked to (from the server), if any
   const [linkedUpn, setLinkedUpn] = useState<string | null>(null);
 
   useEffect(() => {
+    document.title = "ผูกบัญชี Microsoft 365 กับ LINE";
     (async () => {
       if (!LIFF_ID) { setStatus("error"); setMsg("ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LIFF_ID ที่เซิร์ฟเวอร์"); return; }
       try {
-        await loadLiffSdk();
-        await window.liff!.init({ liffId: LIFF_ID });
-        if (!window.liff!.isLoggedIn()) { window.liff!.login(); return; }
-        const p = await window.liff!.getProfile();
+        setMsg("กำลังโหลด LINE SDK…");
+        await withTimeout(loadLiffSdk(), 10000, "โหลด LINE SDK");
+        setMsg("กำลังเริ่ม LIFF…");
+        await withTimeout(window.liff!.init({ liffId: LIFF_ID }), 10000, "เริ่ม LIFF");
+        if (!window.liff!.isLoggedIn()) {
+          setMsg("กำลังพาไปเข้าสู่ระบบ LINE…");
+          window.liff!.login();      // redirects to LINE, then returns here
+          return;
+        }
+        setMsg("กำลังดึงข้อมูลบัญชี LINE…");
+        const p = await withTimeout(window.liff!.getProfile(), 10000, "ดึงข้อมูล LINE");
         setProfile(p);
-        // check whether THIS LINE account is already linked
+        // We can act now — show the button immediately, then check "already linked?"
+        // in the background with a short timeout so a cold API call can't hang the UI.
+        setStatus("ready");
+        setMsg("พร้อมผูกบัญชีแล้ว");
         try {
-          const res = await fetch(`/api/line/status?line_user_id=${encodeURIComponent(p.userId)}`);
+          const ctl = new AbortController();
+          const to = setTimeout(() => ctl.abort(), 6000);
+          const res = await fetch(`/api/line/status?line_user_id=${encodeURIComponent(p.userId)}`, { signal: ctl.signal });
+          clearTimeout(to);
           const data = await res.json();
           if (data.linked) {
             setLinkedUpn(data.upn || null);
             setStatus("linked");
             setMsg(`เชื่อมต่อแล้ว${data.upn ? ` — ระบบจะส่งข้อความหา ${data.upn} ทาง LINE นี้` : ""}`);
-            return;
           }
-        } catch { /* ถ้าเช็คไม่ได้ ให้ถือว่ายังไม่เชื่อม แล้วให้ผูกได้ */ }
-        setStatus("ready");
-        setMsg("พร้อมผูกบัญชีแล้ว");
+        } catch { /* เช็คสถานะไม่ได้/ช้า → ปล่อยให้ผูกบัญชีได้ตามปกติ */ }
       } catch (e) {
         setStatus("error");
-        setMsg("เริ่ม LIFF ไม่สำเร็จ: " + (e as Error).message);
+        setMsg("เชื่อมต่อ LINE ไม่สำเร็จ: " + (e as Error).message);
       }
     })();
   }, []);
@@ -109,7 +130,7 @@ function LineLinkContent() {
     }
   };
 
-  const linkedName = linkedUpn || account?.username || `${DEFAULT_UPN} (pilot)`;
+  const linkedName = linkedUpn || account?.username || DEFAULT_UPN;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans">
@@ -186,10 +207,11 @@ function LineLinkContent() {
               </button>
             )}
             <button
-              onClick={handleLink}
+              onClick={status === "error" ? () => window.location.reload() : handleLink}
               disabled={status === "linking" || status === "unlinking" || status === "init"}
               className={`w-full flex items-center justify-center gap-2 p-3.5 rounded-xl font-semibold text-sm ${
                 status === "error" ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                : status === "init" ? "bg-slate-800 text-slate-400 border border-slate-700"
                 : "bg-emerald-500 hover:bg-emerald-400 text-slate-950"
               }`}
             >
