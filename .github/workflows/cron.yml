@@ -1,31 +1,53 @@
 # Scheduled triggers that Vercel Hobby crons can't cover (sub-daily jobs).
 # Requires the repo secret CRON_SECRET (same value as the Vercel env var).
-# Times are UTC (Bangkok = UTC+7).
+# Times are UTC (Bangkok = UTC+7). The delivery endpoints decide per-user whether
+# "now" is due, so this just needs to fire often enough across the day.
 name: scheduled-jobs
 
 on:
   schedule:
-    # Meeting summaries: every 15 min, 08:00-19:45 BKK (01:00-12:45 UTC), Mon-Fri
-    - cron: "*/15 1-12 * * 1-5"
+    # every 15 min, 00:00–13:45 UTC = 07:00–20:45 BKK, all week
+    - cron: "*/15 0-13 * * *"
   workflow_dispatch: {}
 
+env:
+  BASE: https://ktis-ai-assistant.vercel.app
+
 jobs:
-  summaries-and-reminders:
+  scheduled:
     runs-on: ubuntu-latest
     if: ${{ vars.CRON_ENABLED != 'false' }}
     steps:
-      - name: Run meeting summaries
+      - name: Morning brief (endpoint checks each user's schedule)
         run: |
           curl -sS -m 280 -X POST \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            "https://ktis-ai-assistant.vercel.app/api/summaries/run" | head -c 1000
-      - name: Run task reminders (top of the hour only)
+            "$BASE/api/brief/run" | head -c 1000
+
+      - name: News digest (endpoint checks each user's schedule)
         run: |
-          MIN=$(date -u +%M)
-          if [ "$MIN" -lt 15 ]; then
+          curl -sS -m 280 -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "$BASE/api/digest/push" | head -c 1000
+
+      - name: Meeting summaries (Mon-Fri, 08:00-19:45 BKK only)
+        run: |
+          H=$(date -u +%H); D=$(date -u +%u)   # D: 1=Mon … 7=Sun
+          if [ "$D" -le 5 ] && [ "$H" -ge 1 ] && [ "$H" -le 12 ]; then
+            curl -sS -m 280 -X POST \
+              -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+              "$BASE/api/summaries/run" | head -c 1000
+          else
+            echo "skip summaries (outside window)"
+          fi
+
+      - name: Task reminders (top of hour, Mon-Fri 08:00-19:45 BKK)
+        run: |
+          MIN=$(date -u +%M); H=$(date -u +%H); D=$(date -u +%u)
+          if [ "$MIN" -lt 15 ] && [ "$D" -le 5 ] && [ "$H" -ge 1 ] && [ "$H" -le 12 ]; then
             curl -sS -m 60 -X POST \
               -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-              "https://ktis-ai-assistant.vercel.app/api/reminders/run" | head -c 1000
+              "$BASE/api/reminders/run" | head -c 1000
           else
-            echo "skip reminders (not top of hour)"
+            echo "skip reminders (not top of hour / outside window)"
           fi
