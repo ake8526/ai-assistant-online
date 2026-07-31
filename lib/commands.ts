@@ -37,6 +37,7 @@ import {
   fmtHHMM,
   fmtTime,
   minutesOfDay,
+  nowWall,
   parseHHMM,
   parseWall,
   periodRange,
@@ -95,6 +96,13 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - ถ้าผู้ใช้พิมพ์ต่อเนื่องโดย "ไม่ได้เอ่ยชื่อคนใหม่" (เช่น เจาะจงวัน/เวลาเพิ่ม เช่น "วันที่ 30 ตอน 9 โมง", "แล้วบ่ายล่ะ", "ช่วงเช้าว่างไหม") ให้เข้าใจว่ายังพูดถึงคน/เรื่องเดิมใน last_person — ต้องปล่อย params.person ให้ "ว่าง" ไว้ (ระบบจะเติม last_person ให้เอง)
 - ห้ามตีความคำบอกวัน/เวลา เช่น "ตอน", "โมง", "เช้า", "บ่าย", "เย็น", "ครึ่ง", "ทุ่ม" เป็นชื่อคนเด็ดขาด
 - ใส่ params.person เฉพาะเมื่อผู้ใช้เอ่ย "ชื่อคนใหม่จริง ๆ" เท่านั้น
+
+การอ้างอิงวัน/เวลา (สำคัญมาก — คำนวณเองจาก [เวลาปัจจุบัน] ที่แนบมา):
+ระบบจะแนบ [เวลาปัจจุบัน] (รู้ว่าวันนี้วันอะไร วันที่เท่าไร) มาให้ทุกครั้ง ให้ใช้คำนวณคำพูดสัมพัทธ์เกี่ยวกับวันเป็น "วันที่จริง" แล้วใส่ params.date รูปแบบ YYYY-MM-DD เสมอ:
+- ชื่อวัน (จันทร์/อังคาร/พุธ/พฤหัส/ศุกร์/เสาร์/อาทิตย์), "เสาร์นี้", "จันทร์หน้า", "มะรืน", "อีก 3 วัน", "สิ้นเดือน", "วันที่ 5" ฯลฯ → คำนวณเป็นวันที่จริง (วันถัดไปที่ตรง ถ้าไม่ได้พูดถึงอดีต)
+- ใช้ period เฉพาะช่วงกว้างที่ไม่ใช่วันเดียว: today/tomorrow/week/month/upcoming
+- เวลา (โมง/นาฬิกา/ตอน..โมง) → ใส่ at/after/before ตามเดิม
+อย่าเดาวันที่ถ้าผู้ใช้ไม่ได้พูดถึงวัน — ปล่อยว่างไว้
 
 รายละเอียด params:
 - list_meetings: { "period": "today|tomorrow|week|month|upcoming", "date": "วันที่เจาะจง เช่น 31 หรือ 2026-07-31 (ถ้าผู้ใช้ระบุวัน)", "weekday": "ชื่อวันในสัปดาห์เป็น mon|tue|wed|thu|fri|sat|sun (ถ้าผู้ใช้พูดชื่อวัน เช่น วันจันทร์/เสาร์นี้/อาทิตย์หน้า)", "after": "HH:MM (ถ้าบอก เช่น หลัง 9 โมงครึ่ง)", "before": "HH:MM (ถ้าบอก เช่น ก่อนเที่ยง)", "at": "HH:MM (ถ้าถามเจาะจงเวลา 'จุดเดียว' เช่น '10 โมงติดอะไร', 'ตอนบ่ายสองว่างไหม', 'ตอน 9 โมงติดไหม')", "person": "ชื่อ/อีเมลคนอื่น ถ้าถามว่าคนนั้น 'ติด/ไม่ว่าง/มีนัด' ช่วงไหน (ถ้าไม่ระบุ = ตัวเอง)" }
@@ -239,9 +247,16 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
     }
   }
 
-  let prompt = textClean;
+  // Always tell the model the current date/time so it can resolve relative day
+  // expressions itself (วันจันทร์ / เสาร์นี้ / มะรืน / อีก 3 วัน / สิ้นเดือน …)
+  // into a concrete date — instead of us hand-coding each pattern.
+  const now = nowWall();
+  const THAI_DOW = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+  const ymd = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+  const timeCtx = `[เวลาปัจจุบัน: วัน${THAI_DOW[now.getUTCDay()]} ที่ ${ymd} เวลา ${fmtHHMM(minutesOfDay(now))} น. (เขตเวลาไทย)]`;
+
+  const parts: string[] = [timeCtx];
   if (context) {
-    const parts: string[] = [];
     const hist = historyLines(context);
     if (hist.length) parts.push("[ประวัติการสนทนาก่อนหน้า]\n" + hist.join("\n"));
     const compact: Record<string, unknown> = {};
@@ -249,9 +264,9 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
     if (context.last_person) compact.last_person = context.last_person;
     if (context.files?.length) compact.files = context.files.slice(0, 3).map((f) => f.name).filter(Boolean);
     if (Object.keys(compact).length) parts.push(`[บริบทล่าสุด: ${JSON.stringify(compact)}]`);
-    parts.push(`คำสั่งผู้ใช้ล่าสุด: ${textClean}`);
-    prompt = parts.join("\n");
   }
+  parts.push(`คำสั่งผู้ใช้ล่าสุด: ${textClean}`);
+  const prompt = parts.join("\n");
 
   const raw = await chat(INTENT_SYSTEM, prompt, { temperature: 0, json: true, fast: true });
   try {
