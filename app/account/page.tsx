@@ -5,20 +5,12 @@ import Link from "next/link";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import {
   ArrowLeft, CheckCircle2, XCircle, LogIn, LogOut, Unlink, AlertTriangle,
-  Mail, MessageCircle, Link2, CalendarClock, Newspaper, Clock,
+  Mail, MessageCircle, Link2,
 } from "lucide-react";
 
 const DEFAULT_UPN = process.env.NEXT_PUBLIC_DEFAULT_UPN || "weerasak.pi@ktisgroup.com";
 
 type LineState = { linked: boolean; display_name: string | null; upn: string | null };
-type NotifyKindCfg = { enabled: boolean; time: string; days: number[] };
-type NotifyCfg = { brief: NotifyKindCfg; news: NotifyKindCfg };
-
-// Thai weekday chips in display order → JS day numbers (0=Sun … 6=Sat)
-const DAY_CHIPS: { label: string; d: number }[] = [
-  { label: "จ", d: 1 }, { label: "อ", d: 2 }, { label: "พ", d: 3 },
-  { label: "พฤ", d: 4 }, { label: "ศ", d: 5 }, { label: "ส", d: 6 }, { label: "อา", d: 0 },
-];
 
 function Row({ icon, color, title, subtitle, children }: {
   icon: React.ReactNode; color: string; title: string; subtitle?: string; children?: React.ReactNode;
@@ -43,69 +35,6 @@ function Badge({ ok, on = "เชื่อมต่อแล้ว", off = "ย�
   );
 }
 
-function NotifyCard({
-  icon, color, title, hint, cfg, disabled, onChange,
-}: {
-  icon: React.ReactNode; color: string; title: string; hint: string;
-  cfg: NotifyKindCfg; disabled?: boolean;
-  onChange: (patch: Partial<NotifyKindCfg>) => void;
-}) {
-  const toggleDay = (d: number) => {
-    const has = cfg.days.includes(d);
-    onChange({ days: has ? cfg.days.filter((x) => x !== d) : [...cfg.days, d] });
-  };
-  return (
-    <div className={`p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-3 ${cfg.enabled ? "" : "opacity-70"}`}>
-      <div className="flex items-center gap-3">
-        <div className={`w-9 h-9 shrink-0 rounded-lg flex items-center justify-center ${color}`}>{icon}</div>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-slate-100">{title}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5">{hint}</div>
-        </div>
-        <button
-          onClick={() => onChange({ enabled: !cfg.enabled })}
-          disabled={disabled}
-          role="switch"
-          aria-checked={cfg.enabled}
-          className={`relative w-11 h-6 shrink-0 rounded-full transition ${cfg.enabled ? "bg-emerald-500" : "bg-slate-600"}`}
-        >
-          <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition ${cfg.enabled ? "translate-x-5" : ""}`} />
-        </button>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Clock className="w-4 h-4 text-slate-400" />
-        <span className="text-xs text-slate-300">เวลาส่ง</span>
-        <input
-          type="time"
-          value={cfg.time}
-          disabled={disabled || !cfg.enabled}
-          onChange={(e) => onChange({ time: e.target.value })}
-          className="text-sm px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:border-sky-500 disabled:opacity-50"
-        />
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {DAY_CHIPS.map(({ label, d }) => {
-          const on = cfg.days.includes(d);
-          return (
-            <button
-              key={d}
-              onClick={() => toggleDay(d)}
-              disabled={disabled || !cfg.enabled}
-              className={`w-9 h-9 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${
-                on ? "bg-sky-500 text-slate-950 border-sky-400" : "bg-slate-950/40 text-slate-400 border-slate-700"
-              }`}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function AccountContent() {
   const { account, login, logout } = useM365Auth();
   const upn = account?.username || DEFAULT_UPN;
@@ -115,19 +44,14 @@ function AccountContent() {
   const [busy, setBusy] = useState(false);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
   const [confirmLogoutM365, setConfirmLogoutM365] = useState(false);
-  const [notify, setNotify] = useState<NotifyCfg | null>(null);
 
   // 365 = ลงชื่อเข้า/ออกด้วย MSAL เท่านั้น (แยกจากการผูก LINE โดยสิ้นเชิง)
   const m365Connected = !!account;
 
   const refresh = useCallback(async () => {
     try {
-      const [ls, nt] = await Promise.all([
-        fetch(`/api/line/status?upn=${encodeURIComponent(upn)}`, { cache: "no-store" }).then((r) => r.json()),
-        fetch(`/api/notify?upn=${encodeURIComponent(upn)}`, { cache: "no-store" }).then((r) => r.json()),
-      ]);
+      const ls = await fetch(`/api/line/status?upn=${encodeURIComponent(upn)}`, { cache: "no-store" }).then((r) => r.json());
       setLine({ linked: !!ls.linked, display_name: ls.display_name || null, upn: ls.upn || null });
-      if (nt && !nt.error && nt.brief && nt.news) setNotify(nt as NotifyCfg);
       setMsg("");
     } catch (e) {
       setMsg("โหลดไม่สำเร็จ: " + (e as Error).message);
@@ -144,19 +68,6 @@ function AccountContent() {
       await refresh();
     } catch { /* ignore */ }
     setBusy(false);
-  };
-
-  const saveNotify = async (kind: "brief" | "news", patch: Partial<NotifyKindCfg>) => {
-    setNotify((prev) => (prev ? { ...prev, [kind]: { ...prev[kind], ...patch } } : prev));
-    try {
-      const res = await fetch(`/api/notify?upn=${encodeURIComponent(upn)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, ...patch }),
-      });
-      const data = await res.json();
-      if (data && !data.error && data.brief && data.news) setNotify(data as NotifyCfg);
-    } catch { /* keep optimistic value */ }
   };
 
   // ลงชื่อออกจาก 365 เท่านั้น — ไม่ยุ่งกับการผูก LINE
@@ -262,40 +173,8 @@ function AccountContent() {
 
         </section>
 
-        {/* ---- proactive notification schedule ---- */}
-        <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
-          <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2"><CalendarClock className="w-4 h-4" /> เวลาที่ AI ส่งให้อัตโนมัติ (ทาง LINE)</h2>
-          <p className="text-[11px] text-slate-500 leading-relaxed -mt-1">
-            ตั้งเวลาและวันที่อยากให้ผู้ช่วยส่ง “สรุปตารางเช้า” และ “สรุปข่าว” เข้ามาใน LINE เอง · ปิด/เปิดแยกกันได้ · บันทึกทันที
-          </p>
-
-          {notify ? (
-            <>
-              <NotifyCard
-                icon={<CalendarClock className="w-5 h-5 text-slate-950" />} color="bg-amber-400"
-                title="สรุปตารางเช้า (Morning Brief)"
-                hint="นัดหมาย/งานของวันนี้"
-                cfg={notify.brief} disabled={busy}
-                onChange={(patch) => saveNotify("brief", patch)}
-              />
-              <NotifyCard
-                icon={<Newspaper className="w-5 h-5 text-slate-950" />} color="bg-sky-400"
-                title="สรุปข่าวที่ติดตาม (News Digest)"
-                hint="ข่าว RSS + คลิป YouTube ที่ติดตาม"
-                cfg={notify.news} disabled={busy}
-                onChange={(patch) => saveNotify("news", patch)}
-              />
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                ค่าเริ่มต้น: ตาราง จ–ศ 07:00 · ข่าว จ–อา 07:01 (ระบบส่งให้ภายใน ~15 นาทีของเวลาที่ตั้ง)
-              </p>
-            </>
-          ) : (
-            <p className="text-xs text-slate-500">กำลังโหลดการตั้งค่า…</p>
-          )}
-        </section>
-
         <p className="text-[11px] text-slate-500 text-center leading-relaxed">
-          จัดการแหล่งข่าว/ฟีดที่ติดตาม (YouTube · ลิงก์ RSS) ได้ที่หน้า{" "}
+          ตั้งเวลาแจ้งเตือน · จัดการแหล่งข่าว/ฟีด (YouTube · ลิงก์ RSS) ได้ที่หน้า{" "}
           <Link href="/consents" className="text-sky-400 underline">ติดตามข่าว / ฟีด</Link>
         </p>
       </div>

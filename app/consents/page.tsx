@@ -5,12 +5,92 @@ import Link from "next/link";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import {
   ArrowLeft, Youtube, Facebook, Rss, Plus, Trash2, Unlink, AlertTriangle,
+  CalendarClock, Newspaper, Clock,
 } from "lucide-react";
 
 const DEFAULT_UPN = process.env.NEXT_PUBLIC_DEFAULT_UPN || "weerasak.pi@ktisgroup.com";
 
 type YtState = { linked: boolean; email: string | null; name: string | null; channel: string | null };
 type Feed = { id: number; kind: string; ref: string; label: string };
+type NotifyKindCfg = { enabled: boolean; time: string; days: number[] };
+type NotifyCfg = { brief: NotifyKindCfg; news: NotifyKindCfg };
+
+// Thai weekday chips in display order → JS day numbers (0=Sun … 6=Sat)
+const DAY_CHIPS: { label: string; d: number }[] = [
+  { label: "จ", d: 1 }, { label: "อ", d: 2 }, { label: "พ", d: 3 },
+  { label: "พฤ", d: 4 }, { label: "ศ", d: 5 }, { label: "ส", d: 6 }, { label: "อา", d: 0 },
+];
+
+function NotifyCard({
+  icon, color, title, hint, cfg, disabled, onChange,
+}: {
+  icon: React.ReactNode; color: string; title: string; hint: string;
+  cfg: NotifyKindCfg; disabled?: boolean;
+  onChange: (patch: Partial<NotifyKindCfg>) => void;
+}) {
+  const toggleDay = (d: number) => {
+    const has = cfg.days.includes(d);
+    onChange({ days: has ? cfg.days.filter((x) => x !== d) : [...cfg.days, d] });
+  };
+  const [hh, mm] = (cfg.time || "07:00").split(":");
+  const setPart = (h: string, m: string) => onChange({ time: `${h.padStart(2, "0")}:${m.padStart(2, "0")}` });
+  const selCls = "text-sm px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:border-sky-500 disabled:opacity-50";
+  return (
+    <div className={`p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-3 ${cfg.enabled ? "" : "opacity-70"}`}>
+      <div className="flex items-center gap-3">
+        <div className={`w-9 h-9 shrink-0 rounded-lg flex items-center justify-center ${color}`}>{icon}</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-slate-100">{title}</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">{hint}</div>
+        </div>
+        <button
+          onClick={() => onChange({ enabled: !cfg.enabled })}
+          disabled={disabled}
+          role="switch"
+          aria-checked={cfg.enabled}
+          className={`relative w-11 h-6 shrink-0 rounded-full transition ${cfg.enabled ? "bg-emerald-500" : "bg-slate-600"}`}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition ${cfg.enabled ? "translate-x-5" : ""}`} />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Clock className="w-4 h-4 text-slate-400" />
+        <span className="text-xs text-slate-300">เวลาส่ง</span>
+        <select value={hh} disabled={disabled || !cfg.enabled} onChange={(e) => setPart(e.target.value, mm)} className={selCls} aria-label="ชั่วโมง">
+          {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((h) => (
+            <option key={h} value={h}>{h}</option>
+          ))}
+        </select>
+        <span className="text-slate-400 font-semibold">:</span>
+        <select value={mm} disabled={disabled || !cfg.enabled} onChange={(e) => setPart(hh, e.target.value)} className={selCls} aria-label="นาที">
+          {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0")).map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+        <span className="text-[11px] text-slate-500">น. (24 ชม.)</span>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {DAY_CHIPS.map(({ label, d }) => {
+          const on = cfg.days.includes(d);
+          return (
+            <button
+              key={d}
+              onClick={() => toggleDay(d)}
+              disabled={disabled || !cfg.enabled}
+              className={`w-9 h-9 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${
+                on ? "bg-sky-500 text-slate-950 border-sky-400" : "bg-slate-950/40 text-slate-400 border-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function Row({ icon, color, title, subtitle, children }: {
   icon: React.ReactNode; color: string; title: string; subtitle?: string; children?: React.ReactNode;
@@ -39,6 +119,7 @@ function ConsentsContent() {
   const [newUrl, setNewUrl] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [feedMsg, setFeedMsg] = useState("");
+  const [notify, setNotify] = useState<NotifyCfg | null>(null);
 
   const ytSubtitle = (() => {
     if (yt.linked) {
@@ -50,14 +131,16 @@ function ConsentsContent() {
 
   const refresh = useCallback(async () => {
     try {
-      const [ys, fs] = await Promise.all([
+      const [ys, fs, nt] = await Promise.all([
         fetch(`/api/oauth/google/status?upn=${encodeURIComponent(upn)}`, { cache: "no-store" }).then((r) => r.json()),
         fetch(`/api/feeds?upn=${encodeURIComponent(upn)}`, { cache: "no-store" }).then((r) => r.json()),
+        fetch(`/api/notify?upn=${encodeURIComponent(upn)}`, { cache: "no-store" }).then((r) => r.json()),
       ]);
       if (ys && !ys.error) {
         setYt({ linked: !!ys.linked, email: ys.email || null, name: ys.name || null, channel: ys.channel || null });
       }
       if (Array.isArray(fs)) setFeeds(fs.filter((f: Feed) => f.kind === "rss"));
+      if (nt && !nt.error && nt.brief && nt.news) setNotify(nt as NotifyCfg);
     } catch (e) {
       setMsg("โหลดไม่สำเร็จ: " + (e as Error).message);
     }
@@ -137,6 +220,19 @@ function ConsentsContent() {
       await refresh();
     } catch { /* ignore */ }
     setBusy(false);
+  };
+
+  const saveNotify = async (kind: "brief" | "news", patch: Partial<NotifyKindCfg>) => {
+    setNotify((prev) => (prev ? { ...prev, [kind]: { ...prev[kind], ...patch } } : prev));
+    try {
+      const res = await fetch(`/api/notify?upn=${encodeURIComponent(upn)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, ...patch }),
+      });
+      const data = await res.json();
+      if (data && !data.error && data.brief && data.news) setNotify(data as NotifyCfg);
+    } catch { /* keep optimistic value */ }
   };
 
   return (
@@ -241,6 +337,38 @@ function ConsentsContent() {
               </p>
             </div>
           </div>
+        </section>
+
+        {/* ---- proactive notification schedule ---- */}
+        <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
+          <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2"><CalendarClock className="w-4 h-4" /> เวลาที่ AI ส่งให้อัตโนมัติ (ทาง LINE)</h2>
+          <p className="text-[11px] text-slate-500 leading-relaxed -mt-1">
+            ตั้งเวลาและวันที่อยากให้ผู้ช่วยส่ง “สรุปตารางเช้า” และ “สรุปข่าว” เข้ามาใน LINE เอง · ปิด/เปิดแยกกันได้ · บันทึกทันที
+          </p>
+
+          {notify ? (
+            <>
+              <NotifyCard
+                icon={<CalendarClock className="w-5 h-5 text-slate-950" />} color="bg-amber-400"
+                title="สรุปตารางเช้า (Morning Brief)"
+                hint="นัดหมาย/งานของวันนี้"
+                cfg={notify.brief} disabled={busy}
+                onChange={(patch) => saveNotify("brief", patch)}
+              />
+              <NotifyCard
+                icon={<Newspaper className="w-5 h-5 text-slate-950" />} color="bg-sky-400"
+                title="สรุปข่าวที่ติดตาม (News Digest)"
+                hint="ข่าว RSS + คลิป YouTube ที่ติดตาม"
+                cfg={notify.news} disabled={busy}
+                onChange={(patch) => saveNotify("news", patch)}
+              />
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                ค่าเริ่มต้น: ตาราง จ–ศ 07:00 · ข่าว จ–อา 07:01 (ระบบส่งให้ภายใน ~15 นาทีของเวลาที่ตั้ง)
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-slate-500">กำลังโหลดการตั้งค่า…</p>
+          )}
         </section>
       </div>
     </div>
