@@ -41,6 +41,7 @@ import {
   parseWall,
   periodRange,
   resolveDay,
+  resolveWeekday,
   wallIso,
 } from "@/lib/time";
 
@@ -96,9 +97,9 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - ใส่ params.person เฉพาะเมื่อผู้ใช้เอ่ย "ชื่อคนใหม่จริง ๆ" เท่านั้น
 
 รายละเอียด params:
-- list_meetings: { "period": "today|tomorrow|week|month|upcoming", "date": "วันที่เจาะจง เช่น 31 หรือ 2026-07-31 (ถ้าผู้ใช้ระบุวัน)", "after": "HH:MM (ถ้าบอก เช่น หลัง 9 โมงครึ่ง)", "before": "HH:MM (ถ้าบอก เช่น ก่อนเที่ยง)", "at": "HH:MM (ถ้าถามเจาะจงเวลา 'จุดเดียว' เช่น '10 โมงติดอะไร', 'ตอนบ่ายสองว่างไหม', 'ตอน 9 โมงติดไหม')", "person": "ชื่อ/อีเมลคนอื่น ถ้าถามว่าคนนั้น 'ติด/ไม่ว่าง/มีนัด' ช่วงไหน (ถ้าไม่ระบุ = ตัวเอง)" }
+- list_meetings: { "period": "today|tomorrow|week|month|upcoming", "date": "วันที่เจาะจง เช่น 31 หรือ 2026-07-31 (ถ้าผู้ใช้ระบุวัน)", "weekday": "ชื่อวันในสัปดาห์เป็น mon|tue|wed|thu|fri|sat|sun (ถ้าผู้ใช้พูดชื่อวัน เช่น วันจันทร์/เสาร์นี้/อาทิตย์หน้า)", "after": "HH:MM (ถ้าบอก เช่น หลัง 9 โมงครึ่ง)", "before": "HH:MM (ถ้าบอก เช่น ก่อนเที่ยง)", "at": "HH:MM (ถ้าถามเจาะจงเวลา 'จุดเดียว' เช่น '10 โมงติดอะไร', 'ตอนบ่ายสองว่างไหม', 'ตอน 9 โมงติดไหม')", "person": "ชื่อ/อีเมลคนอื่น ถ้าถามว่าคนนั้น 'ติด/ไม่ว่าง/มีนัด' ช่วงไหน (ถ้าไม่ระบุ = ตัวเอง)" }
 - summarize_file: { "file_index": 0 }
-- my_availability: { "period": "today|tomorrow|week", "person": "ชื่อ/อีเมลคนที่อยากดูตาราง (ถ้าไม่ระบุ = ตัวเอง)" }
+- my_availability: { "period": "today|tomorrow|week", "weekday": "mon|tue|wed|thu|fri|sat|sun (ถ้าพูดชื่อวัน เช่น เสาร์นี้ว่างไหม)", "person": "ชื่อ/อีเมลคนที่อยากดูตาราง (ถ้าไม่ระบุ = ตัวเอง)" }
 - add_task: { "title": "...", "responsible": "...", "due": "YYYY-MM-DD HH:MM หรือ null" }
 - complete_task: { "task_id": <number> }
 - find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "note": "..." }
@@ -115,6 +116,10 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "10 โมงติดอะไร" -> {"intent":"list_meetings","params":{"period":"today","at":"10:00"}}
 "ตอนบ่ายสองว่างไหม" -> {"intent":"list_meetings","params":{"period":"today","at":"14:00"}}
 "พรุ่งนี้ 9 โมงติดไหม" -> {"intent":"list_meetings","params":{"period":"tomorrow","at":"09:00"}}
+"วันจันทร์ 9 โมงติดอะไร" -> {"intent":"list_meetings","params":{"weekday":"mon","at":"09:00"}}
+"วันศุกร์มีประชุมอะไร" -> {"intent":"list_meetings","params":{"weekday":"fri"}}
+"เสาร์นี้ว่างกี่โมง" -> {"intent":"my_availability","params":{"weekday":"sat"}}
+(หมายเหตุ: ชื่อวัน จันทร์/อังคาร/พุธ/พฤหัส/ศุกร์/เสาร์/อาทิตย์ = ใส่ weekday (mon..sun); "วันนี้/พรุ่งนี้" = period; วันที่ตัวเลข = date)
 (หมายเหตุ: "ตอน X โมง / X โมงติดไหม" = ถามจุดเวลาเดียว ใช้ at; ส่วน "หลัง X โมง" = after, "ก่อน X โมง" = before)
 "นนท์วันที่ 31 หลัง 09:00 ติดอะไร" -> {"intent":"list_meetings","params":{"person":"นนท์","date":"31","after":"09:00"}}
 "สมชายพรุ่งนี้ติดประชุมช่วงไหน" -> {"intent":"list_meetings","params":{"person":"สมชาย","period":"tomorrow"}}
@@ -281,9 +286,9 @@ async function availabilityResponse(
   requesterUpn: string,
   email: string,
   displayName: string,
-  period: string
+  range: { start: Date; end: Date; label: string }
 ): Promise<CommandResult> {
-  const { start, end, label } = periodRange(period);
+  const { start, end, label } = range;
   const ranges = await freeRanges(email, start, end, requesterUpn);
   const slots = ranges.map((r) => ({
     start: wallIso(r.start),
@@ -588,9 +593,10 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
     if (a === "avail") {
       const mail = data.get("m") || "";
       const name = data.get("n") || mail;
-      const period = data.get("p") || "week";
       if (!mail) return { intent: "error", reply: "ข้อมูลไม่ครบ ลองใหม่อีกครั้งครับ" };
-      return await availabilityResponse(userUpn, mail, name, period);
+      const d = data.get("d");
+      const range = d ? resolveDay(d) || periodRange("week") : periodRange(data.get("p") || "week");
+      return await availabilityResponse(userUpn, mail, name, range);
     }
     if (a === "book") {
       const start = parseWall(data.get("s") || "");
@@ -701,7 +707,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
 
   if (intent === "list_meetings") {
     const period = (params.period as string) || "upcoming";
-    const day = params.date ? resolveDay(String(params.date)) : null;
+    const day = params.date ? resolveDay(String(params.date)) : params.weekday ? resolveWeekday(String(params.weekday)) : null;
     const after = parseHHMM(params.after);
     const before = parseHHMM(params.before);
     const at = parseHHMM(params.at);
@@ -762,6 +768,13 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
 
   if (intent === "my_availability") {
     const period = (params.period as string) || "week";
+    const dayRange = params.weekday ? resolveWeekday(String(params.weekday)) : params.date ? resolveDay(String(params.date)) : null;
+    const range = dayRange || periodRange(period);
+    // token the disambiguation buttons carry so they reuse the same day/period
+    const dayIso = dayRange
+      ? `${dayRange.start.getUTCFullYear()}-${String(dayRange.start.getUTCMonth() + 1).padStart(2, "0")}-${String(dayRange.start.getUTCDate()).padStart(2, "0")}`
+      : undefined;
+
     const det = mentionsSelf(text) ? "" : personFromText(text);
     if (det) {
       const cands = await searchUsers(det);
@@ -769,26 +782,25 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         return {
           intent: "choose_person",
           reply: `เจอหลายคนที่ตรงกับ “${det}” เลือกคนที่ต้องการดูตารางครับ 👇`,
-          choices: cands.map((c) => ({ mail: c.mail, displayName: c.displayName, period })),
+          choices: cands.map((c) => ({ mail: c.mail, displayName: c.displayName, period, date: dayIso })),
         };
       }
       if (cands.length === 1) {
-        return availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || det, period);
+        return availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || det, range);
       }
       // name didn't resolve → fall through to the ongoing subject
     }
     if (!mentionsSelf(text)) {
       const lastMail = context?.last_person_mail;
       const lastName = context?.last_person;
-      if (lastMail) return availabilityResponse(userUpn, lastMail, lastName || lastMail, period);
+      if (lastMail) return availabilityResponse(userUpn, lastMail, lastName || lastMail, range);
       if (lastName) {
         const cands = await searchUsers(lastName);
-        if (cands.length === 1) return availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || lastName, period);
+        if (cands.length === 1) return availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || lastName, range);
       }
     }
-    const { start, end, label } = periodRange(period);
-    const ranges = await freeRanges(userUpn, start, end, userUpn);
-    return { intent, reply: formatFree(ranges, label) };
+    const ranges = await freeRanges(userUpn, range.start, range.end, userUpn);
+    return { intent, reply: formatFree(ranges, range.label) };
   }
 
   if (intent === "set_work_location" || intent === "set_home_location") {

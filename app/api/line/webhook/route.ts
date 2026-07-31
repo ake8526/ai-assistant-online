@@ -23,7 +23,7 @@ type LineEvent = {
   postback?: { data?: string };
 };
 
-type Choice = { mail?: string; displayName?: string; period?: string; event_id?: string; label?: string; data?: string };
+type Choice = { mail?: string; displayName?: string; period?: string; date?: string; event_id?: string; label?: string; data?: string };
 type Slot = { start: string; end: string; label?: string };
 
 function truncate(s: string, n: number): string {
@@ -48,7 +48,8 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
     for (const c of res.choices as Choice[]) {
       if (!c.mail) continue;
       n++;
-      const p = new URLSearchParams({ a: "avail", m: c.mail, n: c.displayName || c.mail, p: c.period || "week" });
+      const p = new URLSearchParams({ a: "avail", m: c.mail, n: c.displayName || c.mail });
+      if (c.date) p.set("d", c.date); else p.set("p", c.period || "week");
       add(n, p.toString(), `เลือก ${n}) ${c.displayName || c.mail}`);
     }
   } else if (res.intent === "choose_mt_person" && Array.isArray(res.choices)) {

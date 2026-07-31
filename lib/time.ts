@@ -122,6 +122,30 @@ export function resolveDay(dateStr: string): { start: Date; end: Date; label: st
   return { start: d, end: endOfDay(d), label: fmtDate(d) };
 }
 
+const WEEKDAYS: Record<string, number> = {
+  sun: 0, sunday: 0, "อาทิตย์": 0,
+  mon: 1, monday: 1, "จันทร์": 1,
+  tue: 2, tuesday: 2, "อังคาร": 2,
+  wed: 3, wednesday: 3, "พุธ": 3,
+  thu: 4, thursday: 4, "พฤหัส": 4, "พฤหัสบดี": 4,
+  fri: 5, friday: 5, "ศุกร์": 5,
+  sat: 6, saturday: 6, "เสาร์": 6,
+};
+
+/** Turn a weekday name ("mon", "จันทร์", "เสาร์นี้", "อาทิตย์หน้า") into that
+ *  day's single-day range (the next upcoming occurrence), or null. */
+export function resolveWeekday(name: string): { start: Date; end: Date; label: string } | null {
+  const raw = (name || "").toLowerCase().trim();
+  const key = raw.replace(/^วัน/, "").replace(/(นี้|หน้า)$/, "").trim();
+  const wd = WEEKDAYS[key];
+  if (wd === undefined) return null;
+  const today = startOfDay(nowWall());
+  let diff = (wd - today.getUTCDay() + 7) % 7; // 0 = today
+  if (/หน้า/.test(raw) && diff === 0) diff = 7; // "…หน้า" on the same weekday = next week
+  const d = addDays(today, diff);
+  return { start: d, end: endOfDay(d), label: fmtDate(d) };
+}
+
 /** Parse "HH:MM" into minutes-of-day, or null. */
 export function parseHHMM(s: unknown): number | null {
   const m = String(s || "").match(/^\s*(\d{1,2}):(\d{2})\s*$/);
