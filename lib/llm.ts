@@ -27,7 +27,7 @@ function settings(provider: Provider): { baseUrl: string; key: string; model: st
     return {
       baseUrl: process.env.QWEN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
       key,
-      model: process.env.QWEN_MODEL || "qwen3.7-plus",
+      model: process.env.QWEN_MODEL || "qwen3-max",
     };
   }
   const key = process.env.GROQ_API_KEY || "";
