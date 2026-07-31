@@ -167,7 +167,7 @@ const DRAFT_KEY = "_line_draft";
 const DRAFT_TTL_MS = 30 * 60 * 1000;
 type Draft = {
   start: string; end: string; attendees: string[];
-  subject: string; detail: string; await?: "subject" | "attendee"; ts: number;
+  subject: string; detail: string; await?: "subject" | "detail" | "attendee"; ts: number;
 };
 
 async function loadDraft(upn: string): Promise<Draft | null> {
@@ -204,7 +204,8 @@ function confirmCardMessage(d: Draft, prefix = ""): object {
     quickReply: {
       items: [
         { type: "action", action: { type: "postback", label: "✅ ยืนยันส่งนัด", data: "a=confirmbook", displayText: "ยืนยันส่งนัด" } },
-        { type: "action", action: { type: "postback", label: "✏️ ตั้งหัวข้อ", data: "a=setsubj", displayText: "ตั้งหัวข้อ/รายละเอียด" } },
+        { type: "action", action: { type: "postback", label: "✏️ หัวข้อ", data: "a=setsubj", displayText: "ตั้งหัวข้อประชุม" } },
+        { type: "action", action: { type: "postback", label: "📝 รายละเอียด", data: "a=setdetail", displayText: "ใส่รายละเอียด" } },
         { type: "action", action: { type: "postback", label: "➕ เพิ่มคน", data: "a=addppl", displayText: "เพิ่มคนเข้าประชุม" } },
         { type: "action", action: { type: "postback", label: "❌ ยกเลิก", data: "a=canceldraft", displayText: "ยกเลิกการนัด" } },
       ],
@@ -212,7 +213,7 @@ function confirmCardMessage(d: Draft, prefix = ""): object {
   };
 }
 
-const BOOKING_ACTIONS = new Set(["book", "confirmbook", "setsubj", "addppl", "canceldraft"]);
+const BOOKING_ACTIONS = new Set(["book", "confirmbook", "setsubj", "setdetail", "addppl", "canceldraft"]);
 
 async function handleBookingFlow(upn: string, act: string, params: URLSearchParams, replyToken: string): Promise<void> {
   if (act === "book") {
@@ -238,7 +239,13 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
   if (act === "setsubj") {
     draft.await = "subject";
     await saveDraft(upn, draft);
-    await replyLine(replyToken, "พิมพ์หัวข้อประชุมมาได้เลยครับ (ใส่รายละเอียดในบรรทัดถัดไปได้ เช่น\nอัปเดตงาน IT\nสรุปความคืบหน้าโปรเจกต์)");
+    await replyLine(replyToken, "พิมพ์หัวข้อประชุมมาได้เลยครับ (เช่น “อัปเดตงาน IT”)");
+    return;
+  }
+  if (act === "setdetail") {
+    draft.await = "detail";
+    await saveDraft(upn, draft);
+    await replyLine(replyToken, "พิมพ์รายละเอียด/วาระการประชุมมาได้เลยครับ (จะแนบไว้ในคำเชิญ)");
     return;
   }
   if (act === "addppl") {
@@ -281,12 +288,18 @@ async function handleDraftInput(upn: string, text: string, replyToken: string): 
   if (!draft?.await) return false;
 
   if (draft.await === "subject") {
-    const [first, ...rest] = text.split("\n");
-    draft.subject = (first || "ประชุม").trim().slice(0, 200);
-    draft.detail = rest.join("\n").trim().slice(0, 1000);
+    draft.subject = text.trim().slice(0, 200) || "ประชุม";
     draft.await = undefined;
     await saveDraft(upn, draft);
     await replyLineMessages(replyToken, [confirmCardMessage(draft, "ตั้งหัวข้อแล้ว ✅\n\n")]);
+    return true;
+  }
+
+  if (draft.await === "detail") {
+    draft.detail = text.trim().slice(0, 1000);
+    draft.await = undefined;
+    await saveDraft(upn, draft);
+    await replyLineMessages(replyToken, [confirmCardMessage(draft, "ใส่รายละเอียดแล้ว ✅\n\n")]);
     return true;
   }
 

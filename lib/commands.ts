@@ -248,7 +248,7 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
     prompt = parts.join("\n");
   }
 
-  const raw = await chat(INTENT_SYSTEM, prompt, { temperature: 0, json: true });
+  const raw = await chat(INTENT_SYSTEM, prompt, { temperature: 0, json: true, fast: true });
   try {
     const parsed = JSON.parse(raw);
     return { intent: parsed.intent || "unknown", params: parsed.params || {} };
@@ -435,7 +435,7 @@ const BOOK_CTX_SYSTEM = `ผู้ใช้ได้เลือกช่วง�
 "ดูงานค้าง" -> {"is_booking":false,"duration_min":30,"subject":"","extra_people":[]}`;
 
 async function bookFromContext(userUpn: string, text: string, sel: NonNullable<CommandContext["selected"]>): Promise<CommandResult | null> {
-  const raw = await chat(BOOK_CTX_SYSTEM, text, { temperature: 0, json: true });
+  const raw = await chat(BOOK_CTX_SYSTEM, text, { temperature: 0, json: true, fast: true });
   let p: { is_booking?: boolean; duration_min?: number; subject?: string; extra_people?: string[] };
   try {
     p = JSON.parse(raw);
