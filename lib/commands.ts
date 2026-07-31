@@ -123,6 +123,10 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "ดูตารางว่าง" -> {"intent":"my_availability","params":{"period":"week"}}
 "วันนี้ว่างกี่โมง" -> {"intent":"my_availability","params":{"period":"today"}}
 "เบสว่างช่วงไหน" -> {"intent":"my_availability","params":{"person":"เบส","period":"week"}}
+"ดูตารางเบสกับพี่นนท์" -> {"intent":"find_meeting_time","params":{"attendees":["เบส","พี่นนท์"]}}
+"เบสกับนนท์ว่างตรงกันช่วงไหน" -> {"intent":"find_meeting_time","params":{"attendees":["เบส","นนท์"]}}
+"หาเวลาที่สมชาย สมหญิง ว่างตรงกัน" -> {"intent":"find_meeting_time","params":{"attendees":["สมชาย","สมหญิง"]}}
+(หมายเหตุสำคัญมาก: ถ้าถามดูตาราง/เวลาว่างของ "คนตั้งแต่ 2 คนขึ้นไปพร้อมกัน" (มีคำเชื่อม กับ/และ/, คั่นชื่อ) ให้ใช้ find_meeting_time เพื่อหาเวลาที่ทุกคนว่างตรงกัน — ห้ามใช้ my_availability หรือ list_meetings ที่รองรับทีละคน และห้าม fallback เป็นตารางของผู้ถามเอง)
 "งานค้างมีอะไรบ้าง" -> {"intent":"list_tasks","params":{}}
 "สรุปงานเช้านี้ให้หน่อย" -> {"intent":"get_brief","params":{}}
 "มีข่าวอะไรบ้าง" -> {"intent":"get_news","params":{}}
