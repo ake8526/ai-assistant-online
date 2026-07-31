@@ -1,16 +1,12 @@
 import { NextResponse } from "next/server";
+import { AuthError, resolveUser } from "@/lib/auth";
 import { sendLine } from "@/lib/line";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
-
-function getUpn(req: Request): string {
-  return (new URL(req.url).searchParams.get("upn") || "").toLowerCase().trim();
-}
 
 export async function GET(req: Request) {
   try {
     assertConfigured();
-    const upn = getUpn(req);
-    if (!upn) return NextResponse.json({ error: "upn required" }, { status: 400 });
+    const upn = await resolveUser(req);
     const { data, error } = await admin
       .from("feeds")
       .select("*")
@@ -19,17 +15,18 @@ export async function GET(req: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data || []);
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    const status = e instanceof AuthError ? 401 : 500;
+    return NextResponse.json({ error: String(e instanceof AuthError ? e.message : e) }, { status });
   }
 }
 
 export async function POST(req: Request) {
   try {
     assertConfigured();
-    const upn = getUpn(req);
+    const upn = await resolveUser(req);
     const body = await req.json();
     const kind = String(body.kind || "").toLowerCase();
-    if (!upn || !["rss", "youtube", "facebook"].includes(kind)) {
+    if (!["rss", "youtube", "facebook"].includes(kind)) {
       return NextResponse.json({ error: "kind must be rss|youtube|facebook" }, { status: 400 });
     }
     const ref = String(body.ref || "").trim() || (kind === "youtube" ? "subscriptions" : "");
@@ -50,7 +47,6 @@ export async function POST(req: Request) {
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Optional: push the preview list to LINE so the user sees what's being followed
     let lineNotified = false;
     if (body.notify && Array.isArray(body.items) && body.items.length) {
       const source = label || (kind === "facebook" ? "Facebook" : "RSS");
@@ -77,20 +73,22 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ...data, lineNotified });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    const status = e instanceof AuthError ? 401 : 500;
+    return NextResponse.json({ error: String(e instanceof AuthError ? e.message : e) }, { status });
   }
 }
 
 export async function DELETE(req: Request) {
   try {
     assertConfigured();
-    const upn = getUpn(req);
+    const upn = await resolveUser(req);
     const id = new URL(req.url).searchParams.get("id");
-    if (!upn || !id) return NextResponse.json({ error: "upn and id required" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
     const { error } = await admin.from("feeds").delete().eq("owner_upn", upn).eq("id", Number(id));
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    const status = e instanceof AuthError ? 401 : 500;
+    return NextResponse.json({ error: String(e instanceof AuthError ? e.message : e) }, { status });
   }
 }

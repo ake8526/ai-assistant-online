@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
+import { AuthError, resolveUser } from "@/lib/auth";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
 const CAPS = ["read_tracking", "src_rss", "src_youtube", "src_facebook"] as const;
-
-function getUpn(req: Request): string {
-  return (new URL(req.url).searchParams.get("upn") || "").toLowerCase().trim();
-}
 
 async function currentConsents(upn: string) {
   const { data } = await admin.from("consents").select("capability, granted").eq("owner_upn", upn);
@@ -18,20 +15,20 @@ async function currentConsents(upn: string) {
 export async function GET(req: Request) {
   try {
     assertConfigured();
-    const upn = getUpn(req);
-    if (!upn) return NextResponse.json({ error: "upn required" }, { status: 400 });
+    const upn = await resolveUser(req);
     return NextResponse.json(await currentConsents(upn));
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    const status = e instanceof AuthError ? 401 : 500;
+    return NextResponse.json({ error: String(e instanceof AuthError ? e.message : e) }, { status });
   }
 }
 
 export async function POST(req: Request) {
   try {
     assertConfigured();
-    const upn = getUpn(req);
+    const upn = await resolveUser(req);
     const body = await req.json();
-    if (!upn || !CAPS.includes(body.capability)) {
+    if (!CAPS.includes(body.capability)) {
       return NextResponse.json({ error: "bad request" }, { status: 400 });
     }
     const { error } = await admin
@@ -43,6 +40,7 @@ export async function POST(req: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(await currentConsents(upn));
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    const status = e instanceof AuthError ? 401 : 500;
+    return NextResponse.json({ error: String(e instanceof AuthError ? e.message : e) }, { status });
   }
 }

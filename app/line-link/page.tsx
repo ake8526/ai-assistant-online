@@ -21,8 +21,6 @@ declare global {
 }
 
 const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "";
-// pilot fallback so linking works even when M365 login isn't available in the LINE webview
-const DEFAULT_UPN = process.env.NEXT_PUBLIC_DEFAULT_UPN || "weerasak.pi@ktisgroup.com";
 
 function loadLiffSdk(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -48,7 +46,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 }
 
 function LineLinkContent() {
-  const { account, login } = useM365Auth();
+  const { account, login, getToken } = useM365Auth();
   const [status, setStatus] = useState<Status>("init");
   const [msg, setMsg] = useState("กำลังเริ่มต้น…");
   const [profile, setProfile] = useState<LiffProfile | null>(null);
@@ -99,32 +97,36 @@ function LineLinkContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const upn = account?.username || DEFAULT_UPN;
+  const upn = account?.username || "";
 
   const doLink = async (lineUserId: string, displayName: string) => {
+    if (!upn) { setStatus("error"); setMsg("กรุณาเข้าสู่ระบบ Microsoft 365 ก่อนผูกบัญชี"); return; }
     setStatus("linking"); setMsg("กำลังผูกบัญชี…");
     try {
-      const res = await fetch(`/api/line/link?upn=${encodeURIComponent(upn)}`, {
+      const token = await getToken();
+      if (!token) throw new Error("เข้าสู่ระบบ Microsoft 365 ไม่สำเร็จ — ลองใหม่อีกครั้ง");
+      const res = await fetch("/api/line/link", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ line_user_id: lineUserId, display_name: displayName }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-      setLinkedUpn(upn);
+      setLinkedUpn(data.upn || upn);
       setStatus("linked");
-      setMsg(`เชื่อมสำเร็จ! ระบบจะส่งข้อความหา ${upn} ทาง LINE นี้`);
+      setMsg(`เชื่อมสำเร็จ! ระบบจะส่งข้อความหา ${data.upn || upn} ทาง LINE นี้`);
     } catch (e) {
       setStatus("error"); setMsg("ผูกบัญชีไม่สำเร็จ: " + (e as Error).message);
     }
   };
 
   const handleLink = () => {
+    if (!account) { login(); return; }
     if (!profile?.userId) { setMsg("ยังไม่ได้ LINE userId — ลองเปิดหน้านี้ในแอป LINE"); return; }
     doLink(profile.userId, profile.displayName || "");
   };
 
-  const linkedName = linkedUpn || account?.username || DEFAULT_UPN;
+  const linkedName = linkedUpn || account?.username || "(ยังไม่ได้เข้าสู่ระบบ M365)";
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans">
@@ -163,21 +165,22 @@ function LineLinkContent() {
           <>
             {!account && status !== "linking" && (
               <button onClick={login} className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm mb-3">
-                <LogIn className="w-4 h-4" /> เข้าสู่ระบบ Microsoft 365 (ถ้าต้องการระบุตัวตนเอง)
+                <LogIn className="w-4 h-4" /> เข้าสู่ระบบ Microsoft 365 ก่อน
               </button>
             )}
             <button
               onClick={status === "error" ? () => window.location.reload() : handleLink}
-              disabled={status === "linking" || status === "init"}
+              disabled={status === "linking" || status === "init" || !account}
               className={`w-full flex items-center justify-center gap-2 p-3.5 rounded-xl font-semibold text-sm ${
                 status === "error" ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                : status === "init" ? "bg-slate-800 text-slate-400 border border-slate-700"
+                : status === "init" || !account ? "bg-slate-800 text-slate-400 border border-slate-700"
                 : "bg-emerald-500 hover:bg-emerald-400 text-slate-950"
               }`}
             >
               {status === "error" ? <><AlertTriangle className="w-4 h-4" /> ลองอีกครั้ง</>
                 : status === "linking" ? "กำลังผูก…"
                 : status === "init" ? "กำลังเตรียม…"
+                : !account ? "เข้าสู่ระบบ M365 ก่อนผูก LINE"
                 : "กดผูกบัญชีกับ LINE"}
             </button>
           </>

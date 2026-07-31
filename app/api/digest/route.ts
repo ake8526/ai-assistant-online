@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { AuthError, requireUserOrCron } from "@/lib/auth";
 import { assertConfigured } from "@/lib/supabaseServer";
 import { buildDigest } from "@/lib/digest";
 
@@ -8,12 +9,11 @@ export type { Story } from "@/lib/digest";
 export async function GET(req: Request) {
   try {
     assertConfigured();
-    const upn = (new URL(req.url).searchParams.get("upn") || "").toLowerCase().trim();
-    if (!upn) return NextResponse.json({ error: "upn required" }, { status: 400 });
-
+    const upn = await requireUserOrCron(req);
     const { stories, skipped, note } = await buildDigest(upn);
     return NextResponse.json({ ok: true, user: upn, count: stories.length, stories, skipped, ...(note ? { note } : {}) });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    const status = e instanceof AuthError ? 401 : 500;
+    return NextResponse.json({ error: String(e instanceof AuthError ? e.message : e) }, { status });
   }
 }

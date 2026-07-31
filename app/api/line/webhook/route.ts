@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { handleCommand, handleSelection, type CommandContext, type CommandResult } from "@/lib/commands";
 import { getUpnByLineId, replyLine, replyLineMessages } from "@/lib/line";
-import { getSetting, setSetting } from "@/lib/store";
+import { getSetting, setSetting, deleteSetting } from "@/lib/store";
+import { createEvent, resolveUser } from "@/lib/graph";
+import { parseWall, wallIso, fmtDateTime, fmtTime } from "@/lib/time";
 import { assertConfigured } from "@/lib/supabaseServer";
 
 export const maxDuration = 60;
@@ -159,6 +161,153 @@ function linkPromptMessage() {
   };
 }
 
+// --- booking confirmation: tapping a time slot opens an editable draft (time,
+// subject, details, attendees) that the user confirms before the invite is sent ---
+const DRAFT_KEY = "_line_draft";
+const DRAFT_TTL_MS = 30 * 60 * 1000;
+type Draft = {
+  start: string; end: string; attendees: string[];
+  subject: string; detail: string; await?: "subject" | "attendee"; ts: number;
+};
+
+async function loadDraft(upn: string): Promise<Draft | null> {
+  try {
+    const raw = await getSetting(upn, DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Draft;
+    if (!d.ts || Date.now() - d.ts > DRAFT_TTL_MS) return null;
+    return d;
+  } catch {
+    return null;
+  }
+}
+const saveDraft = (upn: string, d: Draft) => setSetting(upn, DRAFT_KEY, JSON.stringify({ ...d, ts: Date.now() }));
+const clearDraft = (upn: string) => deleteSetting(upn, DRAFT_KEY);
+
+function draftWhen(d: Draft): string {
+  const s = parseWall(d.start), e = parseWall(d.end);
+  return s && e ? `${fmtDateTime(s)}-${fmtTime(e)}` : `${d.start} - ${d.end}`;
+}
+
+// A text message that shows the draft and offers confirm/edit quick replies.
+function confirmCardMessage(d: Draft, prefix = ""): object {
+  const text =
+    `${prefix}📋 ตรวจสอบก่อนส่งนัดประชุม\n` +
+    `🕐 ${draftWhen(d)}\n` +
+    `📌 หัวข้อ: ${d.subject}\n` +
+    (d.detail ? `📝 รายละเอียด: ${d.detail}\n` : "") +
+    `👤 ผู้เข้าร่วม: ${d.attendees.length ? d.attendees.join(", ") : "(ยังไม่มี)"}\n\n` +
+    `ยืนยันเพื่อส่งนัด หรือแก้ไขก่อนได้ครับ 👇`;
+  return {
+    type: "text",
+    text,
+    quickReply: {
+      items: [
+        { type: "action", action: { type: "postback", label: "✅ ยืนยันส่งนัด", data: "a=confirmbook", displayText: "ยืนยันส่งนัด" } },
+        { type: "action", action: { type: "postback", label: "✏️ ตั้งหัวข้อ", data: "a=setsubj", displayText: "ตั้งหัวข้อ/รายละเอียด" } },
+        { type: "action", action: { type: "postback", label: "➕ เพิ่มคน", data: "a=addppl", displayText: "เพิ่มคนเข้าประชุม" } },
+        { type: "action", action: { type: "postback", label: "❌ ยกเลิก", data: "a=canceldraft", displayText: "ยกเลิกการนัด" } },
+      ],
+    },
+  };
+}
+
+const BOOKING_ACTIONS = new Set(["book", "confirmbook", "setsubj", "addppl", "canceldraft"]);
+
+async function handleBookingFlow(upn: string, act: string, params: URLSearchParams, replyToken: string): Promise<void> {
+  if (act === "book") {
+    const draft: Draft = {
+      start: params.get("s") || "",
+      end: params.get("e") || "",
+      attendees: (params.get("at") || "").split(",").map((x) => x.trim()).filter(Boolean),
+      subject: params.get("subj") || "ประชุม",
+      detail: "",
+      ts: Date.now(),
+    };
+    await saveDraft(upn, draft);
+    await replyLineMessages(replyToken, [confirmCardMessage(draft)]);
+    return;
+  }
+
+  const draft = await loadDraft(upn);
+  if (!draft) {
+    await replyLine(replyToken, "ไม่พบรายการนัดที่ค้างอยู่ (อาจหมดเวลา 30 นาที) — เริ่มเลือกช่วงเวลาใหม่อีกครั้งได้ครับ");
+    return;
+  }
+
+  if (act === "setsubj") {
+    draft.await = "subject";
+    await saveDraft(upn, draft);
+    await replyLine(replyToken, "พิมพ์หัวข้อประชุมมาได้เลยครับ (ใส่รายละเอียดในบรรทัดถัดไปได้ เช่น\nอัปเดตงาน IT\nสรุปความคืบหน้าโปรเจกต์)");
+    return;
+  }
+  if (act === "addppl") {
+    draft.await = "attendee";
+    await saveDraft(upn, draft);
+    await replyLine(replyToken, "พิมพ์ชื่อคนที่จะเพิ่มเข้าประชุมครับ (หลายคนคั่นด้วย , หรือขึ้นบรรทัดใหม่)");
+    return;
+  }
+  if (act === "canceldraft") {
+    await clearDraft(upn);
+    await replyLine(replyToken, "ยกเลิกแล้วครับ — ไม่มีการส่งนัดออกไป");
+    return;
+  }
+  if (act === "confirmbook") {
+    const s = parseWall(draft.start), e = parseWall(draft.end);
+    if (!s || !e) {
+      await replyLine(replyToken, "ช่วงเวลาไม่ถูกต้อง ลองเลือกใหม่ครับ");
+      return;
+    }
+    try {
+      await createEvent(upn, draft.subject, wallIso(s), wallIso(e), draft.attendees, true, draft.detail || undefined);
+      await clearDraft(upn);
+      await replyLine(
+        replyToken,
+        `✅ ส่งนัดประชุมแล้ว!\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}` +
+          (draft.detail ? `\n📝 ${draft.detail}` : "") +
+          `\n👤 ${draft.attendees.join(", ")}`
+      );
+    } catch (err) {
+      await replyLine(replyToken, `⚠️ ส่งนัดไม่สำเร็จ: ${String(err).slice(0, 150)}`);
+    }
+    return;
+  }
+}
+
+// If the user is filling in a pending draft (subject or attendees), capture that
+// free text; returns true when handled so the normal command flow is skipped.
+async function handleDraftInput(upn: string, text: string, replyToken: string): Promise<boolean> {
+  const draft = await loadDraft(upn);
+  if (!draft?.await) return false;
+
+  if (draft.await === "subject") {
+    const [first, ...rest] = text.split("\n");
+    draft.subject = (first || "ประชุม").trim().slice(0, 200);
+    draft.detail = rest.join("\n").trim().slice(0, 1000);
+    draft.await = undefined;
+    await saveDraft(upn, draft);
+    await replyLineMessages(replyToken, [confirmCardMessage(draft, "ตั้งหัวข้อแล้ว ✅\n\n")]);
+    return true;
+  }
+
+  // await === "attendee"
+  const names = text.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+  const notFound: string[] = [];
+  for (const nm of names) {
+    const em = await resolveUser(nm);
+    if (em) {
+      if (!draft.attendees.includes(em)) draft.attendees.push(em);
+    } else {
+      notFound.push(nm);
+    }
+  }
+  draft.await = undefined;
+  await saveDraft(upn, draft);
+  const extra = notFound.length ? `(หาไม่เจอ: ${notFound.join(", ")})\n\n` : "";
+  await replyLineMessages(replyToken, [confirmCardMessage(draft, `เพิ่มคนแล้ว ✅ ${extra}`)]);
+  return true;
+}
+
 async function handleTextMessage(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
   const text = (ev.message?.text || "").trim();
@@ -169,8 +318,10 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
     return;
   }
-  // Linked user → run the assistant (lite mode: no slow per-meeting enrichment)
   try {
+    // A pending booking draft awaiting subject/attendee input takes priority.
+    if (await handleDraftInput(upn, text, ev.replyToken)) return;
+    // Otherwise run the assistant (lite mode: no slow per-meeting enrichment)
     const ctx = await loadCtx(upn);
     const res = await handleCommand(upn, text, ctx, true);
     await sendResult(ev.replyToken, res);
@@ -191,6 +342,12 @@ async function handlePostback(ev: LineEvent): Promise<void> {
   }
   try {
     const data = new URLSearchParams(ev.postback?.data || "");
+    const act = data.get("a") || "";
+    // Booking confirmation flow (tap slot → draft → confirm) is handled here.
+    if (BOOKING_ACTIONS.has(act)) {
+      await handleBookingFlow(upn, act, data, ev.replyToken);
+      return;
+    }
     const res = await handleSelection(upn, data);
     await sendResult(ev.replyToken, res);
     // Remember who this selection was about so text follow-ups continue on them.

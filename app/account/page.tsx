@@ -8,8 +8,6 @@ import {
   Mail, MessageCircle, Link2,
 } from "lucide-react";
 
-const DEFAULT_UPN = process.env.NEXT_PUBLIC_DEFAULT_UPN || "weerasak.pi@ktisgroup.com";
-
 type LineState = { linked: boolean; display_name: string | null; upn: string | null };
 
 function Row({ icon, color, title, subtitle, children }: {
@@ -36,8 +34,8 @@ function Badge({ ok, on = "เชื่อมต่อแล้ว", off = "ย�
 }
 
 function AccountContent() {
-  const { account, login, logout } = useM365Auth();
-  const upn = account?.username || DEFAULT_UPN;
+  const { account, login, logout, getToken, ready } = useM365Auth();
+  const upn = account?.username || "";
 
   const [line, setLine] = useState<LineState | null>(null);
   const [msg, setMsg] = useState("กำลังโหลด…");
@@ -49,21 +47,40 @@ function AccountContent() {
   const m365Connected = !!account;
 
   const refresh = useCallback(async () => {
+    if (!account) {
+      setLine(null);
+      setMsg("กรุณาเข้าสู่ระบบ Microsoft 365 เพื่อดูบัญชีของตัวเอง");
+      return;
+    }
     try {
-      const ls = await fetch(`/api/line/status?upn=${encodeURIComponent(upn)}`, { cache: "no-store" }).then((r) => r.json());
+      const token = await getToken();
+      if (!token) throw new Error("ได้ token ไม่สำเร็จ");
+      const ls = await fetch("/api/line/status", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((r) => r.json());
+      if (ls.error) throw new Error(ls.error);
       setLine({ linked: !!ls.linked, display_name: ls.display_name || null, upn: ls.upn || null });
       setMsg("");
     } catch (e) {
       setMsg("โหลดไม่สำเร็จ: " + (e as Error).message);
     }
-  }, [upn]);
+  }, [account, getToken]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    if (!ready) return;
+    refresh();
+  }, [ready, refresh]);
 
   const unlinkLine = async () => {
     setBusy(true);
     try {
-      await fetch(`/api/line/link?upn=${encodeURIComponent(upn)}`, { method: "DELETE" });
+      const token = await getToken();
+      if (!token) throw new Error("เข้าสู่ระบบก่อน");
+      await fetch("/api/line/link", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setConfirmUnlink(false);
       await refresh();
     } catch { /* ignore */ }
@@ -98,7 +115,7 @@ function AccountContent() {
           <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2"><Link2 className="w-4 h-4" /> บัญชีที่เชื่อมต่อ</h2>
 
           <Row icon={<Mail className="w-5 h-5 text-slate-950" />} color="bg-blue-400"
-               title="Microsoft 365" subtitle={upn}>
+               title="Microsoft 365" subtitle={upn || "ยังไม่ได้เข้าสู่ระบบ"}>
             {m365Connected ? (
               <button onClick={() => setConfirmLogoutM365(true)} disabled={busy}
                 className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700">

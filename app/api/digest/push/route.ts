@@ -3,7 +3,7 @@ import { checkCronSecret } from "@/lib/auth";
 import { sendLine } from "@/lib/line";
 import { isDueNow, markSent } from "@/lib/notify";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
-import { formatStoriesText } from "@/lib/digest";
+import { buildDigest, formatStoriesText } from "@/lib/digest";
 
 export const maxDuration = 300;
 
@@ -16,7 +16,6 @@ async function run(req: Request) {
     if (!checkCronSecret(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const force = new URL(req.url).searchParams.get("force") === "1";
-    const base = process.env.NEXT_PUBLIC_APP_BASE_URL || new URL(req.url).origin;
     const { data } = await admin.from("line_links").select("upn");
     const users = (data || []).map((r) => r.upn);
 
@@ -27,15 +26,14 @@ async function run(req: Request) {
           results[upn] = "skip (not due)";
           continue;
         }
-        const r = await fetch(`${base}/api/digest?upn=${encodeURIComponent(upn)}`);
-        const d = await r.json();
-        if (!d.ok || !d.stories?.length) {
-          results[upn] = d.note || "no stories";
+        const { stories, note } = await buildDigest(upn);
+        if (!stories?.length) {
+          results[upn] = note || "no stories";
           continue;
         }
-        await sendLine(upn, "", formatStoriesText(d.stories));
+        await sendLine(upn, "", formatStoriesText(stories));
         await markSent(upn, "news");
-        results[upn] = `delivered ${d.stories.length} stories`;
+        results[upn] = `delivered ${stories.length} stories`;
       } catch (e) {
         results[upn] = `ERROR: ${String(e).slice(0, 150)}`;
       }

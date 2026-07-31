@@ -292,12 +292,14 @@ export async function createEvent(
   startIso: string,
   endIso: string,
   attendeeEmails: string[],
-  online = true
+  online = true,
+  description?: string
 ): Promise<GraphEvent & { id: string; webLink?: string }> {
   const r = await graphFetch(`/users/${encodeURIComponent(organizerUpn)}/events`, {
     method: "POST",
     body: {
       subject,
+      ...(description ? { body: { contentType: "text", content: description } } : {}),
       start: { dateTime: startIso, timeZone: TIMEZONE },
       end: { dateTime: endIso, timeZone: TIMEZONE },
       attendees: attendeeEmails.map((a) => ({ emailAddress: { address: a }, type: "required" })),

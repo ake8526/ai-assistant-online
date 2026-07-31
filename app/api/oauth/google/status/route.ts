@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
+import { AuthError, resolveUser } from "@/lib/auth";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { getGoogleAccount } from "@/lib/youtube";
 
 export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
 
-/** GET /api/oauth/google/status?upn=... → which Google/YouTube account is linked */
+/** GET /api/oauth/google/status + Bearer → which Google/YouTube account is linked */
 export async function GET(req: Request) {
   try {
     assertConfigured();
-    const upn = (new URL(req.url).searchParams.get("upn") || "").toLowerCase().trim();
-    if (!upn) return NextResponse.json({ error: "upn required" }, { status: 400 });
+    const upn = await resolveUser(req);
 
     const { data: tok } = await admin
       .from("oauth_tokens")
@@ -72,16 +72,16 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ linked: true, email, name, channel }, { headers: NO_STORE });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    const status = e instanceof AuthError ? 401 : 500;
+    return NextResponse.json({ error: String(e instanceof AuthError ? e.message : e) }, { status });
   }
 }
 
-/** DELETE /api/oauth/google/status?upn=... → unlink Google/YouTube */
+/** DELETE /api/oauth/google/status + Bearer → unlink Google/YouTube */
 export async function DELETE(req: Request) {
   try {
     assertConfigured();
-    const upn = (new URL(req.url).searchParams.get("upn") || "").toLowerCase().trim();
-    if (!upn) return NextResponse.json({ error: "upn required" }, { status: 400 });
+    const upn = await resolveUser(req);
 
     await admin.from("oauth_tokens").delete().eq("owner_upn", upn).eq("provider", "google");
     await admin.from("consents").upsert(
@@ -90,6 +90,7 @@ export async function DELETE(req: Request) {
     );
     return NextResponse.json({ ok: true, linked: false });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    const status = e instanceof AuthError ? 401 : 500;
+    return NextResponse.json({ error: String(e instanceof AuthError ? e.message : e) }, { status });
   }
 }

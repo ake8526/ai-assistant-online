@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
+import { AuthError, resolveUser } from "@/lib/auth";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
-// POST { line_user_id }  ?upn=<m365 upn>  → link the LINE account to the M365 user
+// POST { line_user_id } + Bearer → link the LINE account to the signed-in M365 user
 export async function POST(req: Request) {
   try {
     assertConfigured();
-    const upn = (new URL(req.url).searchParams.get("upn") || "").toLowerCase().trim();
+    const upn = await resolveUser(req);
     const body = await req.json();
     const lineUserId = String(body.line_user_id || "").trim();
-    if (!upn || !lineUserId.startsWith("U")) {
-      return NextResponse.json({ error: "upn and valid line_user_id required" }, { status: 400 });
+    if (!lineUserId.startsWith("U")) {
+      return NextResponse.json({ error: "valid line_user_id required" }, { status: 400 });
     }
     const { error } = await admin.from("line_links").upsert(
       { upn, line_user_id: lineUserId, display_name: String(body.display_name || ""), linked_at: new Date().toISOString() },
@@ -18,24 +19,20 @@ export async function POST(req: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ linked: true, upn });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    const status = e instanceof AuthError ? 401 : 500;
+    return NextResponse.json({ error: String(e instanceof AuthError ? e.message : e) }, { status });
   }
 }
 
-// DELETE ?upn=<m365 upn>  OR  ?line_user_id=U...  → unlink
+// DELETE + Bearer → unlink the signed-in user's LINE link
 export async function DELETE(req: Request) {
   try {
     assertConfigured();
-    const url = new URL(req.url);
-    const upn = (url.searchParams.get("upn") || "").toLowerCase().trim();
-    const lineUserId = (url.searchParams.get("line_user_id") || "").trim();
-    if (!upn && !lineUserId) {
-      return NextResponse.json({ error: "upn or line_user_id required" }, { status: 400 });
-    }
-    if (lineUserId) await admin.from("line_links").delete().eq("line_user_id", lineUserId);
-    else await admin.from("line_links").delete().eq("upn", upn);
+    const upn = await resolveUser(req);
+    await admin.from("line_links").delete().eq("upn", upn);
     return NextResponse.json({ linked: false });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    const status = e instanceof AuthError ? 401 : 500;
+    return NextResponse.json({ error: String(e instanceof AuthError ? e.message : e) }, { status });
   }
 }

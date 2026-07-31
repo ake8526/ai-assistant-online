@@ -1,21 +1,28 @@
 import { NextResponse } from "next/server";
+import { AuthError, verifyToken } from "@/lib/auth";
 import { buildAuthUrl, isConfigured } from "@/lib/youtube";
 
-// GET /api/oauth/google/start?upn=...  → redirect to Google account picker + consent
+// GET /api/oauth/google/start?token=<idToken>&back=/consents
+// Redirect browsers can't send Authorization headers, so the ID token is
+// passed as ?token= (verified server-side) instead of trusting ?upn=.
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const upn = (url.searchParams.get("upn") || "").toLowerCase().trim();
+  const token = url.searchParams.get("token") || "";
   const back = url.searchParams.get("back") || "/account";
+  const destBase = `${url.origin}${back.startsWith("/") ? back : "/account"}`;
 
   if (!isConfigured()) {
-    const dest = `${url.origin}${back.startsWith("/") ? back : "/account"}?yt=need_google_oauth`;
-    return NextResponse.redirect(dest);
-  }
-  if (!upn) {
-    return NextResponse.redirect(`${url.origin}/account?yt=need_login`);
+    return NextResponse.redirect(`${destBase}?yt=need_google_oauth`);
   }
 
-  // state = upn + return path so callback can send the user back
+  let upn = "";
+  try {
+    if (!token) throw new AuthError("Missing token");
+    upn = await verifyToken(token);
+  } catch {
+    return NextResponse.redirect(`${destBase}?yt=need_login`);
+  }
+
   const state = Buffer.from(JSON.stringify({ upn, back }), "utf-8").toString("base64url");
   return NextResponse.redirect(buildAuthUrl(state));
 }

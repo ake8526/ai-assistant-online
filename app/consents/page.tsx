@@ -5,10 +5,8 @@ import Link from "next/link";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import {
   ArrowLeft, Youtube, Facebook, Rss, Plus, Trash2, Unlink, AlertTriangle,
-  CalendarClock, Newspaper, Clock,
+  CalendarClock, Newspaper, Clock, LogIn,
 } from "lucide-react";
-
-const DEFAULT_UPN = process.env.NEXT_PUBLIC_DEFAULT_UPN || "weerasak.pi@ktisgroup.com";
 
 type YtState = { linked: boolean; email: string | null; name: string | null; channel: string | null };
 type Feed = { id: number; kind: string; ref: string; label: string };
@@ -133,8 +131,8 @@ function Row({ icon, color, title, subtitle, children }: {
 }
 
 function ConsentsContent() {
-  const { account } = useM365Auth();
-  const upn = account?.username || DEFAULT_UPN;
+  const { account, login, getToken, ready } = useM365Auth();
+  const upn = account?.username || "";
 
   const [yt, setYt] = useState<YtState>({ linked: false, email: null, name: null, channel: null });
   const [feeds, setFeeds] = useState<Feed[]>([]);
@@ -161,24 +159,40 @@ function ConsentsContent() {
   const rssFeeds = feeds.filter((f) => f.kind === "rss");
   const fbFeeds = feeds.filter((f) => f.kind === "facebook");
 
+  const authHeaders = useCallback(async (): Promise<HeadersInit | null> => {
+    const token = await getToken();
+    if (!token) return null;
+    return { Authorization: `Bearer ${token}` };
+  }, [getToken]);
+
   const refresh = useCallback(async () => {
+    if (!account) {
+      setMsg("กรุณาเข้าสู่ระบบ Microsoft 365 ก่อนจัดการแหล่งข่าว");
+      return;
+    }
     try {
+      const headers = await authHeaders();
+      if (!headers) throw new Error("ได้ token ไม่สำเร็จ");
       const [ys, fs, nt] = await Promise.all([
-        fetch(`/api/oauth/google/status?upn=${encodeURIComponent(upn)}`, { cache: "no-store" }).then((r) => r.json()),
-        fetch(`/api/feeds?upn=${encodeURIComponent(upn)}`, { cache: "no-store" }).then((r) => r.json()),
-        fetch(`/api/notify?upn=${encodeURIComponent(upn)}`, { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/oauth/google/status", { cache: "no-store", headers }).then((r) => r.json()),
+        fetch("/api/feeds", { cache: "no-store", headers }).then((r) => r.json()),
+        fetch("/api/notify", { cache: "no-store", headers }).then((r) => r.json()),
       ]);
       if (ys && !ys.error) {
         setYt({ linked: !!ys.linked, email: ys.email || null, name: ys.name || null, channel: ys.channel || null });
       }
       if (Array.isArray(fs)) setFeeds(fs.filter((f: Feed) => f.kind === "rss" || f.kind === "facebook"));
       if (nt && !nt.error && nt.brief && nt.news) setNotify(nt as NotifyCfg);
+      setMsg("");
     } catch (e) {
       setMsg("โหลดไม่สำเร็จ: " + (e as Error).message);
     }
-  }, [upn]);
+  }, [account, authHeaders]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    if (!ready) return;
+    refresh();
+  }, [ready, refresh]);
 
   useEffect(() => {
     const ytParam = new URLSearchParams(window.location.search).get("yt");
@@ -196,14 +210,18 @@ function ConsentsContent() {
     if (ytParam === "connected") refresh();
   }, [refresh]);
 
-  const connectYouTube = () => {
-    window.location.href = `/api/oauth/google/start?upn=${encodeURIComponent(upn)}&back=/consents`;
+  const connectYouTube = async () => {
+    const token = await getToken();
+    if (!token) { login(); return; }
+    window.location.href = `/api/oauth/google/start?token=${encodeURIComponent(token)}&back=/consents`;
   };
 
   const unlinkYouTube = async () => {
     setBusy(true);
     try {
-      await fetch(`/api/oauth/google/status?upn=${encodeURIComponent(upn)}`, { method: "DELETE" });
+      const headers = await authHeaders();
+      if (!headers) throw new Error("need login");
+      await fetch("/api/oauth/google/status", { method: "DELETE", headers });
       setConfirmUnlinkYt(false);
       setYt({ linked: false, email: null, name: null, channel: null });
       await refresh();
@@ -253,9 +271,11 @@ function ConsentsContent() {
     if (!preview) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/feeds?upn=${encodeURIComponent(upn)}`, {
+      const headers = await authHeaders();
+      if (!headers) throw new Error("กรุณาเข้าสู่ระบบก่อน");
+      const res = await fetch("/api/feeds", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({
           kind: preview.kind,
           ref: preview.url,
@@ -270,9 +290,9 @@ function ConsentsContent() {
         else setFbMsg("เพิ่มไม่สำเร็จ: " + data.error);
       } else {
         const cap = preview.kind === "facebook" ? "src_facebook" : "src_rss";
-        await fetch(`/api/consents?upn=${encodeURIComponent(upn)}`, {
+        await fetch("/api/consents", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...headers },
           body: JSON.stringify({ capability: cap, granted: true }),
         });
         if (preview.kind === "rss") {
@@ -302,7 +322,9 @@ function ConsentsContent() {
   const removeFeed = async (id: number) => {
     setBusy(true);
     try {
-      await fetch(`/api/feeds?upn=${encodeURIComponent(upn)}&id=${id}`, { method: "DELETE" });
+      const headers = await authHeaders();
+      if (!headers) throw new Error("need login");
+      await fetch(`/api/feeds?id=${id}`, { method: "DELETE", headers });
       await refresh();
     } catch { /* ignore */ }
     setBusy(false);
@@ -311,9 +333,11 @@ function ConsentsContent() {
   const saveNotify = async (kind: "brief" | "news", patch: Partial<NotifyKindCfg>) => {
     setNotify((prev) => (prev ? { ...prev, [kind]: { ...prev[kind], ...patch } } : prev));
     try {
-      const res = await fetch(`/api/notify?upn=${encodeURIComponent(upn)}`, {
+      const headers = await authHeaders();
+      if (!headers) return;
+      const res = await fetch("/api/notify", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ kind, ...patch }),
       });
       const data = await res.json();
@@ -331,6 +355,14 @@ function ConsentsContent() {
         <header className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 text-center">
           <h1 className="text-xl font-bold">📰 ติดตามข่าว / ฟีด</h1>
           <p className="text-xs text-slate-400 mt-1">เลือกแหล่งข่าวให้ผู้ช่วยไปดึงมาสรุปให้ · ถามในแชทได้ว่า “มีข่าวอะไรบ้าง”</p>
+          {upn ? (
+            <p className="text-[11px] text-emerald-400/80 mt-2">บัญชี: {upn}</p>
+          ) : (
+            <button onClick={login}
+              className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white">
+              <LogIn className="w-4 h-4" /> เข้าสู่ระบบ Microsoft 365
+            </button>
+          )}
           {msg && <p className="text-xs text-amber-300 mt-2">{msg}</p>}
         </header>
 
