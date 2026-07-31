@@ -34,7 +34,17 @@ CREATE TABLE IF NOT EXISTS places (
 -- Track last reminder time per task (used by the hourly reminder job)
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMPTZ;
 
+-- Calendar events already pushed to LINE as "นัดใหม่"
+CREATE TABLE IF NOT EXISTS calendar_notified (
+    owner_upn TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    subject TEXT,
+    notified_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (owner_upn, event_id)
+);
+
 -- RLS on (no policies): service key only, same as existing tables
 ALTER TABLE seen_meetings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE places ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calendar_notified ENABLE ROW LEVEL SECURITY;

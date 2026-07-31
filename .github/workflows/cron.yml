@@ -51,3 +51,9 @@ jobs:
           else
             echo "skip reminders (not top of hour / outside window)"
           fi
+
+      - name: New calendar appointments → LINE
+        run: |
+          curl -sS -m 120 -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "$BASE/api/calendar/notify" | head -c 1000

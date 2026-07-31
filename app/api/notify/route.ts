@@ -35,6 +35,7 @@ export async function POST(req: Request) {
     if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
     if (typeof body.time === "string") patch.time = body.time;
     if (Array.isArray(body.days)) patch.days = body.days.map((n: unknown) => Number(n));
+    if (body.count !== undefined) patch.count = Number(body.count);
     await saveNotifyKind(upn, kind, patch);
     return NextResponse.json(await getNotifyConfig(upn), { headers: NO_STORE });
   } catch (e) {

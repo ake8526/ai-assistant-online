@@ -13,8 +13,19 @@ export const NOTIFY_DEFAULTS: Record<NotifyKind, { enabled: boolean; time: strin
   news: { enabled: true, time: "07:01", days: [0, 1, 2, 3, 4, 5, 6] },  // จ–อา
 };
 
-export type KindConfig = { enabled: boolean; time: string; days: number[] };
+export type KindConfig = { enabled: boolean; time: string; days: number[]; count?: number };
 export type NotifyConfig = { brief: KindConfig; news: KindConfig };
+
+/** How many news stories to deliver per day (RSS/YouTube/Facebook digest). Default 3. */
+export const NEWS_COUNT_DEFAULT = 3;
+export const NEWS_COUNT_MIN = 1;
+export const NEWS_COUNT_MAX = 10;
+
+export function clampNewsCount(n: unknown): number {
+  const v = typeof n === "number" ? n : parseInt(String(n ?? ""), 10);
+  if (!Number.isFinite(v)) return NEWS_COUNT_DEFAULT;
+  return Math.min(NEWS_COUNT_MAX, Math.max(NEWS_COUNT_MIN, Math.round(v)));
+}
 
 function parseDays(s: string | null, def: number[]): number[] {
   if (s === null || s === undefined) return def;
@@ -41,7 +52,12 @@ async function kindConfig(upn: string, kind: NotifyKind): Promise<KindConfig> {
 }
 
 export async function getNotifyConfig(upn: string): Promise<NotifyConfig> {
-  const [brief, news] = await Promise.all([kindConfig(upn, "brief"), kindConfig(upn, "news")]);
+  const [brief, news, countRaw] = await Promise.all([
+    kindConfig(upn, "brief"),
+    kindConfig(upn, "news"),
+    getSetting(upn, "news_count"),
+  ]);
+  news.count = clampNewsCount(countRaw === null ? NEWS_COUNT_DEFAULT : countRaw);
   return { brief, news };
 }
 
@@ -52,6 +68,14 @@ export async function saveNotifyKind(upn: string, kind: NotifyKind, cfg: Partial
     const days = cfg.days.filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
     await setSetting(upn, `${kind}_days`, Array.from(new Set(days)).sort((a, b) => a - b).join(","));
   }
+  if (kind === "news" && cfg.count !== undefined) {
+    await setSetting(upn, "news_count", String(clampNewsCount(cfg.count)));
+  }
+}
+
+export async function getNewsCount(upn: string): Promise<number> {
+  const raw = await getSetting(upn, "news_count");
+  return clampNewsCount(raw === null ? NEWS_COUNT_DEFAULT : raw);
 }
 
 function bkkNow(): { min: number; day: number; date: string } {

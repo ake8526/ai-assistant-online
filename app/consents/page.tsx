@@ -12,20 +12,27 @@ const DEFAULT_UPN = process.env.NEXT_PUBLIC_DEFAULT_UPN || "weerasak.pi@ktisgrou
 
 type YtState = { linked: boolean; email: string | null; name: string | null; channel: string | null };
 type Feed = { id: number; kind: string; ref: string; label: string };
-type NotifyKindCfg = { enabled: boolean; time: string; days: number[] };
+type NotifyKindCfg = { enabled: boolean; time: string; days: number[]; count?: number };
 type NotifyCfg = { brief: NotifyKindCfg; news: NotifyKindCfg };
+type PreviewItem = { title: string; link: string; published: string; summary: string };
+type PreviewState = {
+  kind: "rss" | "facebook";
+  url: string;
+  label: string;
+  source: string;
+  items: PreviewItem[];
+};
 
-// Thai weekday chips in display order → JS day numbers (0=Sun … 6=Sat)
 const DAY_CHIPS: { label: string; d: number }[] = [
   { label: "จ", d: 1 }, { label: "อ", d: 2 }, { label: "พ", d: 3 },
   { label: "พฤ", d: 4 }, { label: "ศ", d: 5 }, { label: "ส", d: 6 }, { label: "อา", d: 0 },
 ];
 
 function NotifyCard({
-  icon, color, title, hint, cfg, disabled, onChange,
+  icon, color, title, hint, cfg, disabled, onChange, showCount,
 }: {
   icon: React.ReactNode; color: string; title: string; hint: string;
-  cfg: NotifyKindCfg; disabled?: boolean;
+  cfg: NotifyKindCfg; disabled?: boolean; showCount?: boolean;
   onChange: (patch: Partial<NotifyKindCfg>) => void;
 }) {
   const toggleDay = (d: number) => {
@@ -70,6 +77,24 @@ function NotifyCard({
         </select>
         <span className="text-[11px] text-slate-500">น. (24 ชม.)</span>
       </div>
+
+      {showCount && (
+        <div className="flex items-center gap-2">
+          <Newspaper className="w-4 h-4 text-slate-400" />
+          <span className="text-xs text-slate-300">จำนวนข่าวต่อวัน</span>
+          <select
+            value={String(cfg.count ?? 3)}
+            disabled={disabled || !cfg.enabled}
+            onChange={(e) => onChange({ count: Number(e.target.value) })}
+            className={selCls}
+            aria-label="จำนวนข่าวต่อวัน"
+          >
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>{n} ข่าว</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-1.5">
         {DAY_CHIPS.map(({ label, d }) => {
@@ -118,8 +143,12 @@ function ConsentsContent() {
   const [confirmUnlinkYt, setConfirmUnlinkYt] = useState(false);
   const [newUrl, setNewUrl] = useState("");
   const [newLabel, setNewLabel] = useState("");
+  const [fbUrl, setFbUrl] = useState("");
+  const [fbLabel, setFbLabel] = useState("");
   const [feedMsg, setFeedMsg] = useState("");
+  const [fbMsg, setFbMsg] = useState("");
   const [notify, setNotify] = useState<NotifyCfg | null>(null);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
 
   const ytSubtitle = (() => {
     if (yt.linked) {
@@ -128,6 +157,9 @@ function ConsentsContent() {
     }
     return "กดเชื่อม → เลือกบัญชี Google → อนุญาตสิทธิ์ YouTube";
   })();
+
+  const rssFeeds = feeds.filter((f) => f.kind === "rss");
+  const fbFeeds = feeds.filter((f) => f.kind === "facebook");
 
   const refresh = useCallback(async () => {
     try {
@@ -139,7 +171,7 @@ function ConsentsContent() {
       if (ys && !ys.error) {
         setYt({ linked: !!ys.linked, email: ys.email || null, name: ys.name || null, channel: ys.channel || null });
       }
-      if (Array.isArray(fs)) setFeeds(fs.filter((f: Feed) => f.kind === "rss"));
+      if (Array.isArray(fs)) setFeeds(fs.filter((f: Feed) => f.kind === "rss" || f.kind === "facebook"));
       if (nt && !nt.error && nt.brief && nt.news) setNotify(nt as NotifyCfg);
     } catch (e) {
       setMsg("โหลดไม่สำเร็จ: " + (e as Error).message);
@@ -155,7 +187,7 @@ function ConsentsContent() {
       connected: "✅ เชื่อม YouTube สำเร็จแล้ว",
       error: "⚠️ เชื่อม YouTube ไม่สำเร็จ ลองอีกครั้ง",
       no_refresh: "⚠️ Google ไม่ส่ง refresh token — ลองยกเลิกสิทธิ์แอปในบัญชี Google แล้วเชื่อมใหม่",
-      no_yt_scope: "⚠️ ยังไม่ได้อนุญาตสิทธิ์ดู YouTube — ตอนกดเชื่อม กรุณาติ๊ก “ดูบัญชี YouTube ของคุณ” ด้วย แล้วเชื่อมใหม่ (ถ้ายังไม่ขึ้นให้เลือก ต้องเพิ่ม scope youtube.readonly ใน Google Cloud Console ก่อน)",
+      no_yt_scope: "⚠️ ยังไม่ได้อนุญาตสิทธิ์ดู YouTube — ตอนกดเชื่อม กรุณาติ๊ก “ดูบัญชี YouTube ของคุณ” ด้วย แล้วเชื่อมใหม่",
       need_google_oauth: "⚠️ ยังไม่ได้ตั้งค่า Google OAuth บนเซิร์ฟเวอร์",
       need_login: "⚠️ กรุณาเข้าสู่ระบบ Microsoft 365 ก่อน",
     };
@@ -179,36 +211,90 @@ function ConsentsContent() {
     setBusy(false);
   };
 
-  const addFeed = async () => {
-    const ref = newUrl.trim();
-    setFeedMsg("");
-    if (!/^https?:\/\//i.test(ref)) {
-      setFeedMsg("ใส่ลิงก์ RSS ที่ขึ้นต้นด้วย http:// หรือ https:// ครับ");
+  const startPreview = async (kind: "rss" | "facebook") => {
+    const url = (kind === "rss" ? newUrl : fbUrl).trim();
+    const label = (kind === "rss" ? newLabel : fbLabel).trim();
+    const setErr = kind === "rss" ? setFeedMsg : setFbMsg;
+    setErr("");
+    if (kind === "rss" && !/^https?:\/\//i.test(url)) {
+      setErr("ใส่ลิงก์ RSS ที่ขึ้นต้นด้วย http:// หรือ https:// ครับ");
       return;
     }
+    if (kind === "facebook" && !url) {
+      setErr("ใส่ลิงก์เพจ Facebook หรือรหัสเพจครับ");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/feeds/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, kind }),
+      });
+      const data = await res.json();
+      if (!data?.ok) {
+        setErr(data?.error || "ดูรายการล่วงหน้าไม่ได้");
+      } else {
+        setPreview({
+          kind,
+          url,
+          label: label || data.source || "",
+          source: data.source || url,
+          items: data.items || [],
+        });
+      }
+    } catch (e) {
+      setErr("ดูรายการล่วงหน้าไม่ได้: " + (e as Error).message);
+    }
+    setBusy(false);
+  };
+
+  const confirmAddFeed = async () => {
+    if (!preview) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/feeds?upn=${encodeURIComponent(upn)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "rss", ref, label: newLabel.trim() }),
+        body: JSON.stringify({
+          kind: preview.kind,
+          ref: preview.url,
+          label: preview.label,
+          notify: true,
+          items: preview.items,
+        }),
       });
       const data = await res.json();
       if (data?.error) {
-        setFeedMsg("เพิ่มไม่สำเร็จ: " + data.error);
+        if (preview.kind === "rss") setFeedMsg("เพิ่มไม่สำเร็จ: " + data.error);
+        else setFbMsg("เพิ่มไม่สำเร็จ: " + data.error);
       } else {
-        // ต้องอนุญาตแหล่ง RSS ให้ระบบดึงมาสรุป (เปิดให้อัตโนมัติเมื่อเพิ่มลิงก์แรก)
+        const cap = preview.kind === "facebook" ? "src_facebook" : "src_rss";
         await fetch(`/api/consents?upn=${encodeURIComponent(upn)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ capability: "src_rss", granted: true }),
+          body: JSON.stringify({ capability: cap, granted: true }),
         });
-        setNewUrl("");
-        setNewLabel("");
+        if (preview.kind === "rss") {
+          setNewUrl("");
+          setNewLabel("");
+          setFeedMsg(data.lineNotified
+            ? "✅ เพิ่มแล้ว และส่งรายการไปที่ LINE แล้ว"
+            : "✅ เพิ่มแล้ว (ยังไม่ได้ผูก LINE — แจ้งในแชทไม่ได้)");
+        } else {
+          setFbUrl("");
+          setFbLabel("");
+          setFbMsg(data.lineNotified
+            ? "✅ เพิ่มเพจแล้ว และส่งรายการไปที่ LINE แล้ว"
+            : "✅ เพิ่มเพจแล้ว (ยังไม่ได้ผูก LINE — แจ้งในแชทไม่ได้)");
+        }
+        setPreview(null);
         await refresh();
       }
     } catch (e) {
-      setFeedMsg("เพิ่มไม่สำเร็จ: " + (e as Error).message);
+      const err = "เพิ่มไม่สำเร็จ: " + (e as Error).message;
+      if (preview.kind === "rss") setFeedMsg(err);
+      else setFbMsg(err);
     }
     setBusy(false);
   };
@@ -286,22 +372,64 @@ function ConsentsContent() {
             </div>
           )}
 
-          <Row icon={<Facebook className="w-5 h-5 text-slate-950" />} color="bg-blue-500"
-               title="Facebook" subtitle="ยังดึงเพจที่ติดตามอัตโนมัติไม่ได้ (ข้อจำกัด Facebook API)">
-            <span className="text-xs text-slate-600">ไม่พร้อมใช้</span>
-          </Row>
+          {/* Facebook pages */}
+          <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+              <Facebook className="w-4 h-4 text-blue-400" /> Facebook — เพจที่ติดตาม
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Meta ไม่เปิด API ให้ดึง “เพจที่กดติดตาม” อัตโนมัติ — เพิ่มลิงก์เพจที่อยากได้ทีละเพจ ระบบจะดึงโพสต์ล่าสุดมาสรุปให้
+            </p>
 
-          {/* custom RSS links — add as many as you like */}
+            {fbFeeds.length === 0 ? (
+              <p className="text-xs text-slate-500">ยังไม่มีเพจที่ติดตาม</p>
+            ) : (
+              <ul className="space-y-2">
+                {fbFeeds.map((f) => (
+                  <li key={f.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-slate-200 truncate">{f.label || f.ref}</div>
+                      {f.label && <div className="text-[11px] text-slate-500 truncate">{f.ref}</div>}
+                    </div>
+                    <button onClick={() => removeFeed(f.id)} disabled={busy}
+                      className="shrink-0 p-2 rounded-lg text-rose-300 hover:bg-slate-800 border border-slate-700" aria-label="ลบเพจ">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="space-y-2">
+              <input value={fbUrl} onChange={(e) => setFbUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") startPreview("facebook"); }}
+                placeholder="ลิงก์เพจ เช่น https://www.facebook.com/YourPage"
+                className="w-full text-xs px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-sky-500" />
+              <div className="flex gap-2">
+                <input value={fbLabel} onChange={(e) => setFbLabel(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") startPreview("facebook"); }}
+                  placeholder="ชื่อย่อ (ไม่ใส่ก็ได้)"
+                  className="flex-1 text-xs px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-sky-500" />
+                <button onClick={() => startPreview("facebook")} disabled={busy || !fbUrl.trim()}
+                  className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50">
+                  <Plus className="w-4 h-4" /> ดูรายการ
+                </button>
+              </div>
+              {fbMsg && <p className="text-[11px] text-rose-400">{fbMsg}</p>}
+            </div>
+          </div>
+
+          {/* custom RSS links */}
           <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
               <Rss className="w-4 h-4 text-amber-400" /> ลิงก์ข่าว/บล็อก (RSS) ที่ติดตาม
             </div>
 
-            {feeds.length === 0 ? (
+            {rssFeeds.length === 0 ? (
               <p className="text-xs text-slate-500">ยังไม่มีลิงก์ที่ติดตาม — เพิ่มลิงก์ RSS ด้านล่างได้เลย</p>
             ) : (
               <ul className="space-y-2">
-                {feeds.map((f) => (
+                {rssFeeds.map((f) => (
                   <li key={f.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-medium text-slate-200 truncate">{f.label || f.ref}</div>
@@ -318,32 +446,60 @@ function ConsentsContent() {
 
             <div className="space-y-2">
               <input value={newUrl} onChange={(e) => setNewUrl(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") addFeed(); }}
+                onKeyDown={(e) => { if (e.key === "Enter") startPreview("rss"); }}
                 placeholder="วางลิงก์ RSS เช่น https://www.blognone.com/atom.xml"
                 className="w-full text-xs px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-sky-500" />
               <div className="flex gap-2">
                 <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") addFeed(); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") startPreview("rss"); }}
                   placeholder="ชื่อย่อ (ไม่ใส่ก็ได้)"
                   className="flex-1 text-xs px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-sky-500" />
-                <button onClick={addFeed} disabled={busy || !newUrl.trim()}
+                <button onClick={() => startPreview("rss")} disabled={busy || !newUrl.trim()}
                   className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 disabled:opacity-50">
-                  <Plus className="w-4 h-4" /> เพิ่ม
+                  <Plus className="w-4 h-4" /> ดูรายการ
                 </button>
               </div>
               {feedMsg && <p className="text-[11px] text-rose-400">{feedMsg}</p>}
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                ใส่ลิงก์ฟีด RSS/Atom ของเว็บข่าวหรือบล็อกที่อยากติดตาม เพิ่มได้ไม่จำกัด · ระบบจะดึงมาสรุปรวมกับ YouTube ให้
+                กด “ดูรายการ” ก่อน — ระบบจะแสดงข่าวล่าสุดให้ตรวจ แล้วค่อยยืนยันติดตาม (แจ้งเข้า LINE ด้วยถ้าผูกไว้แล้ว)
               </p>
             </div>
           </div>
+
+          {/* preview confirm modal */}
+          {preview && (
+            <div className="p-4 rounded-xl bg-sky-500/10 border border-sky-500/30 text-xs text-sky-50/90 leading-relaxed space-y-3">
+              <div className="font-semibold text-sky-300 flex items-center gap-1.5">
+                {preview.kind === "facebook" ? <Facebook className="w-4 h-4" /> : <Rss className="w-4 h-4" />}
+                รายการล่าสุดจาก “{preview.source}” — ตรวจก่อนยืนยันติดตาม
+              </div>
+              <ol className="list-decimal list-inside space-y-1.5">
+                {preview.items.map((it, i) => (
+                  <li key={i} className="text-slate-200">
+                    <span className="font-medium">{it.title || "(ไม่มีหัวข้อ)"}</span>
+                    {it.summary && <div className="text-[11px] text-slate-400 ml-4 mt-0.5 line-clamp-2">{it.summary}</div>}
+                  </li>
+                ))}
+              </ol>
+              <p className="text-[11px] text-slate-400">ยืนยันแล้วระบบจะบันทึกแหล่งนี้ และส่งรายการนี้ไปทาง LINE (ถ้าผูกบัญชีไว้)</p>
+              <div className="flex gap-2">
+                <button onClick={confirmAddFeed} disabled={busy}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 font-semibold px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950">
+                  ยืนยันติดตาม
+                </button>
+                <button onClick={() => setPreview(null)} disabled={busy}
+                  className="flex-1 font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700">
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
-        {/* ---- proactive notification schedule ---- */}
         <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
           <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2"><CalendarClock className="w-4 h-4" /> เวลาที่ AI ส่งให้อัตโนมัติ (ทาง LINE)</h2>
           <p className="text-[11px] text-slate-500 leading-relaxed -mt-1">
-            ตั้งเวลาและวันที่อยากให้ผู้ช่วยส่ง “สรุปตารางเช้า” และ “สรุปข่าว” เข้ามาใน LINE เอง · ปิด/เปิดแยกกันได้ · บันทึกทันที
+            ตั้งเวลาและวันที่อยากให้ผู้ช่วยส่ง “สรุปตารางเช้า” และ “สรุปข่าว” เข้ามาใน LINE เอง · นัดใหม่จะแจ้งทันทีเมื่อระบบตรวจพบ · ปิด/เปิดแยกกันได้
           </p>
 
           {notify ? (
@@ -351,19 +507,19 @@ function ConsentsContent() {
               <NotifyCard
                 icon={<CalendarClock className="w-5 h-5 text-slate-950" />} color="bg-amber-400"
                 title="สรุปตารางเช้า (Morning Brief)"
-                hint="นัดหมาย/งานของวันนี้"
+                hint="นัดหมาย/งานของวันนี้ · นัดใหม่แจ้ง LINE แยกต่างหากอัตโนมัติ"
                 cfg={notify.brief} disabled={busy}
                 onChange={(patch) => saveNotify("brief", patch)}
               />
               <NotifyCard
                 icon={<Newspaper className="w-5 h-5 text-slate-950" />} color="bg-sky-400"
                 title="สรุปข่าวที่ติดตาม (News Digest)"
-                hint="ข่าว RSS + คลิป YouTube ที่ติดตาม"
-                cfg={notify.news} disabled={busy}
+                hint="ข่าว RSS + Facebook + คลิป YouTube ที่ติดตาม"
+                cfg={notify.news} disabled={busy} showCount
                 onChange={(patch) => saveNotify("news", patch)}
               />
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                ค่าเริ่มต้น: ตาราง จ–ศ 07:00 · ข่าว จ–อา 07:01 (ระบบส่งให้ภายใน ~15 นาทีของเวลาที่ตั้ง)
+                ค่าเริ่มต้น: ตาราง จ–ศ 07:00 · ข่าว จ–อา 07:01 · {notify.news.count ?? 3} ข่าว/วัน · นัดใหม่ตรวจทุก ~15 นาที
               </p>
             </>
           ) : (

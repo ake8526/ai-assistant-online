@@ -4,7 +4,9 @@
 import { createHash } from "crypto";
 import { admin } from "@/lib/supabaseServer";
 import { fetchFeed, fetchArticle, type FeedEntry } from "@/lib/rss";
+import { recentPosts as facebookPosts } from "@/lib/facebook";
 import { chat } from "@/lib/llm";
+import { getNewsCount } from "@/lib/notify";
 import * as youtube from "@/lib/youtube";
 
 export interface Story {
@@ -60,7 +62,9 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   const items: (FeedEntry & { kind: string; feedLabel: string })[] = [];
   const skipped: string[] = [];
 
-  // 2a) manually-added feeds (RSS etc.)
+  const newsCount = await getNewsCount(upn);
+
+  // 2a) manually-added feeds (RSS + Facebook pages)
   for (const f of feeds) {
     if (!granted.has(CAP_BY_KIND[f.kind])) {
       skipped.push(`${f.label || f.kind} (ไม่ได้อนุญาตแหล่งชนิด ${f.kind})`);
@@ -69,7 +73,15 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     if (f.kind === "rss") {
       const entries = await fetchFeed(f.ref);
       entries.forEach((e) => items.push({ ...e, kind: f.kind, feedLabel: f.label || e.source }));
-    } else {
+    } else if (f.kind === "facebook") {
+      try {
+        const entries = await facebookPosts(f.ref, 8);
+        if (!entries.length) skipped.push(`${f.label || "Facebook"} (ดึงโพสต์ไม่ได้ — ตรวจ App / สิทธิ์เพจ)`);
+        entries.forEach((e) => items.push({ ...e, kind: f.kind, feedLabel: f.label || e.source }));
+      } catch (e) {
+        skipped.push(`${f.label || "Facebook"} (${String(e).slice(0, 60)})`);
+      }
+    } else if (f.kind !== "youtube") {
       skipped.push(`${f.label || f.kind} (${f.kind} ยังไม่รองรับบน Vercel)`);
     }
   }
@@ -96,14 +108,16 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   items.sort((a, b) => (b.published || "").localeCompare(a.published || ""));
   const pool = items.slice(0, 25);
 
-  // 3) stage 1 — pick 3 highlights + up to 2 from the newest-followed feed
+  // 3) stage 1 — pick N highlights (user setting, default 3); prefer newest-followed feed a bit
+  const highlightN = Math.max(1, Math.min(newsCount, 10));
+  const bonusNew = Math.min(2, Math.max(0, highlightN - 1));
   const listing = pool
     .map((it, i) => `${i}. [${it.feedLabel}]${it.feedLabel === newestLabel ? " [ใหม่]" : ""} ${it.title}`)
     .join("\n");
   let picks: number[] = [];
   try {
     const raw = await chat(
-      'เลือกข่าวเด่นที่สุดจากรายการ (มี index) ตอบ JSON เท่านั้น {"highlights":[index 3 อัน],"new":[index จากแหล่ง [ใหม่] ไม่เกิน 2]}',
+      `เลือกข่าวเด่นที่สุดจากรายการ (มี index) ตอบ JSON เท่านั้น {"highlights":[index ${highlightN} อัน],"new":[index จากแหล่ง [ใหม่] ไม่เกิน ${bonusNew}]}`,
       listing,
       { json: true, temperature: 0 }
     );
@@ -114,8 +128,8 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   } catch {
     picks = [];
   }
-  if (picks.length === 0) picks = pool.slice(0, 3).map((_, i) => i);
-  picks = Array.from(new Set(picks)).slice(0, 5);
+  if (picks.length === 0) picks = pool.slice(0, highlightN).map((_, i) => i);
+  picks = Array.from(new Set(picks)).slice(0, highlightN);
 
   // 4) fetch article text + stage 2 write 4-point summaries
   const chosen = picks.map((i) => pool[i]);

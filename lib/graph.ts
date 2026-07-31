@@ -90,7 +90,7 @@ export async function getEventsRange(userUpn: string, startIso: string, endIso: 
     {
       startDateTime: startIso,
       endDateTime: endIso,
-      $select: "subject,start,end,location,attendees,onlineMeeting,bodyPreview,organizer,sensitivity,showAs",
+      $select: "id,subject,start,end,location,attendees,onlineMeeting,bodyPreview,organizer,sensitivity,showAs",
       $orderby: "start/dateTime",
       $top: "100",
     },
