@@ -505,6 +505,67 @@ function navUrl(locationText?: string | null, lat?: string | null, lng?: string 
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// find-a-common-time with per-name disambiguation (works statelessly over LINE:
+// the pending attendee list is encoded into the quick-reply postback)
+// ---------------------------------------------------------------------------
+type MtAttendee = { name?: string; mail?: string };
+
+function encodeMtData(attendees: MtAttendee[], duration: number): string {
+  const at = attendees.map((a) => (a.mail ? `m:${a.mail}` : `n:${a.name || ""}`)).join("|");
+  return new URLSearchParams({ a: "findmt", d: String(duration), at }).toString();
+}
+
+export function decodeMtAttendees(data: URLSearchParams): { attendees: MtAttendee[]; duration: number } {
+  const attendees = (data.get("at") || "")
+    .split("|")
+    .filter(Boolean)
+    .map((tok) => (tok.startsWith("m:") ? { mail: tok.slice(2) } : tok.startsWith("n:") ? { name: tok.slice(2) } : { name: tok }));
+  return { attendees, duration: Number(data.get("d") || 30) };
+}
+
+export async function runFindMeeting(userUpn: string, attendees: MtAttendee[], duration: number): Promise<CommandResult> {
+  // Resolve each name; stop and ask when a name matches more than one person.
+  for (let i = 0; i < attendees.length; i++) {
+    const a = attendees[i];
+    if (a.mail || !a.name) continue;
+    const cands = await searchUsers(a.name);
+    if (cands.length === 1) {
+      a.mail = cands[0].mail;
+      a.name = cands[0].displayName || a.name;
+    } else if (cands.length > 1) {
+      const choices = cands.slice(0, 10).map((c) => {
+        const next = attendees.map((x, j) => (j === i ? { mail: c.mail, name: c.displayName } : x));
+        return { mail: c.mail, displayName: c.displayName || c.mail, data: encodeMtData(next, duration) };
+      });
+      return { intent: "choose_mt_person", reply: `เจอหลายคนที่ตรงกับ “${a.name}” เลือกคนที่ต้องการดูตารางครับ 👇`, choices };
+    }
+    // cands.length === 0 → leave unresolved (reported below)
+  }
+
+  const resolved = attendees.filter((a) => a.mail).map((a) => a.mail as string);
+  const unresolved = attendees.filter((a) => !a.mail && a.name).map((a) => a.name as string);
+  if (!resolved.length) {
+    return { intent: "find_meeting_time", reply: "หาคนที่จะดูตารางไม่เจอครับ ลองระบุชื่อ/อีเมลที่ชัดเจนอีกครั้งได้ไหม" };
+  }
+
+  const result = await findCommonSlots(userUpn, resolved, duration);
+  const note = unresolved.length ? `\n(หาอีเมลไม่เจอ: ${unresolved.join(", ")})` : "";
+  if (!result.slots.length) return { intent: "find_meeting_time", reply: formatBusy(result.busy) + note };
+
+  if (AUTO_BOOK) {
+    const s = result.slots[0];
+    await createEvent(userUpn, "ประชุม", s.start, s.end, resolved);
+    return { intent: "find_meeting_time", reply: `จองให้เลยตามที่ตั้งค่าไว้ ✅\nประชุม — ${s.label}` };
+  }
+  return {
+    intent: "choose_slot",
+    reply: `เจอเวลาที่ทุกคนว่างตรงกันครับ เลือกเพื่อจองได้เลย 👇${note}`,
+    slots: result.slots,
+    meeting: { attendees: resolved, duration, subject: "ประชุม" },
+  };
+}
+
 export async function handleCommand(
   userUpn: string,
   text: string,
@@ -548,6 +609,10 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
       if (!id) return { intent: "error", reply: "ไม่พบนัดที่จะยกเลิกครับ" };
       await deleteEvent(userUpn, id);
       return { intent: "cancelled", reply: "✅ ยกเลิกนัดแล้วครับ" };
+    }
+    if (a === "findmt") {
+      const { attendees, duration } = decodeMtAttendees(data);
+      return await runFindMeeting(userUpn, attendees, duration);
     }
   } catch (e) {
     return { intent: "error", reply: `⚠️ ทำรายการไม่สำเร็จ: ${String(e).slice(0, 150)}` };
@@ -887,32 +952,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   if (intent === "find_meeting_time") {
     const attendeesRaw = (params.attendees as string[]) || [];
     const duration = Number(params.duration_min || 30);
-    const subject = String(params.note || params.subject || "ประชุม");
-
-    const resolved: string[] = [];
-    const unresolved: string[] = [];
-    for (const a of attendeesRaw) {
-      const em = await resolveUser(a);
-      if (em) resolved.push(em);
-      else unresolved.push(a);
-    }
-    if (!resolved.length) return { intent, reply: "ยังไม่ทราบว่าจะนัดกับใคร ลองระบุอีเมลผู้เข้าร่วมได้ไหมครับ" };
-
-    const result = await findCommonSlots(userUpn, resolved, duration);
-    if (!result.slots.length) return { intent, reply: formatBusy(result.busy) };
-
-    if (AUTO_BOOK) {
-      const s = result.slots[0];
-      await createEvent(userUpn, subject, s.start, s.end, resolved);
-      return { intent, reply: `จองให้เลยตามที่ตั้งค่าไว้ ✅\n${subject} — ${s.label}` };
-    }
-    const note = unresolved.length ? `\n(หาอีเมลไม่เจอ: ${unresolved.join(", ")})` : "";
-    return {
-      intent: "choose_slot",
-      reply: `เจอเวลาที่ทุกคนว่างตรงกันครับ เลือกเพื่อจองได้เลย 👇${note}`,
-      slots: result.slots,
-      meeting: { attendees: resolved, duration, subject },
-    };
+    return runFindMeeting(userUpn, attendeesRaw.map((name) => ({ name: String(name) })), duration);
   }
 
   return { intent: "unknown", reply: "ยังไม่เข้าใจคำสั่งนี้ ลองพิมพ์ใหม่อีกครั้งได้ไหมครับ" };

@@ -21,7 +21,7 @@ type LineEvent = {
   postback?: { data?: string };
 };
 
-type Choice = { mail?: string; displayName?: string; period?: string; event_id?: string; label?: string };
+type Choice = { mail?: string; displayName?: string; period?: string; event_id?: string; label?: string; data?: string };
 type Slot = { start: string; end: string; label?: string };
 
 function truncate(s: string, n: number): string {
@@ -49,6 +49,13 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
       const p = new URLSearchParams({ a: "avail", m: c.mail, n: c.displayName || c.mail, p: c.period || "week" });
       add(n, p.toString(), `เลือก ${n}) ${c.displayName || c.mail}`);
     }
+  } else if (res.intent === "choose_mt_person" && Array.isArray(res.choices)) {
+    let n = 0;
+    for (const c of res.choices as Choice[]) {
+      if (!c.data) continue;
+      n++;
+      add(n, c.data, `เลือก ${n}) ${c.displayName || c.mail}`);
+    }
   } else if (Array.isArray(res.slots) && res.slots.length && (res.intent === "availability" || res.intent === "choose_slot")) {
     const meeting = (res.meeting as { attendees?: string[]; subject?: string }) || {};
     const attendees = meeting.attendees || (res.person?.mail ? [res.person.mail] : []);
@@ -73,7 +80,7 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
 // List the full options in the message body so nothing is hidden.
 function detailText(res: CommandResult): string {
   let lines: string[] = [];
-  if (res.intent === "choose_person" && Array.isArray(res.choices)) {
+  if ((res.intent === "choose_person" || res.intent === "choose_mt_person") && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).filter((c) => c.mail).map((c, i) => `${i + 1}) ${c.displayName || c.mail} — ${c.mail}`);
   } else if (Array.isArray(res.slots) && res.slots.length && (res.intent === "availability" || res.intent === "choose_slot")) {
     lines = (res.slots as Slot[]).map((s, i) => `${i + 1}) ${s.label || `${s.start}-${s.end}`}`);
