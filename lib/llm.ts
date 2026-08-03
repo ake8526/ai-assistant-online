@@ -8,6 +8,22 @@ const LANGUAGE_RULE =
 
 type Provider = "qwen" | "groq";
 
+/** Skip a provider briefly after 429 so the next LINE message hits a healthy one first. */
+const rateLimitedUntil = new Map<Provider, number>();
+
+function markRateLimited(provider: Provider, ms = 60_000) {
+  rateLimitedUntil.set(provider, Date.now() + ms);
+}
+
+function isRateLimited(provider: Provider): boolean {
+  const until = rateLimitedUntil.get(provider) || 0;
+  if (Date.now() >= until) {
+    rateLimitedUntil.delete(provider);
+    return false;
+  }
+  return true;
+}
+
 function providerChain(fast = false): Provider[] {
   const raw = (process.env.LLM_PROVIDER || "qwen,groq").toLowerCase();
   const wanted = raw.split(",").map((s) => s.trim()).filter(Boolean) as Provider[];
@@ -18,7 +34,10 @@ function providerChain(fast = false): Provider[] {
   // groq: it classifies in ~0.5s vs ~5s for qwen. Quality-sensitive generation
   // keeps the configured order.
   if (fast && chain.includes("groq")) chain = ["groq", ...chain.filter((p) => p !== "groq")];
-  return chain;
+  // Soft-rotate away from recently rate-limited providers
+  const healthy = chain.filter((p) => !isRateLimited(p));
+  const limited = chain.filter((p) => isRateLimited(p));
+  return healthy.length ? [...healthy, ...limited] : chain;
 }
 
 function settings(provider: Provider): { baseUrl: string; key: string; model: string } | null {
@@ -38,6 +57,17 @@ function settings(provider: Provider): { baseUrl: string; key: string; model: st
     key,
     model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
   };
+}
+
+class ProviderHttpError extends Error {
+  constructor(
+    public provider: Provider,
+    public status: number,
+    detail: string
+  ) {
+    super(`${provider} ${status}: ${detail.slice(0, 120)}`);
+    this.name = "ProviderHttpError";
+  }
 }
 
 async function callProvider(
@@ -72,9 +102,25 @@ async function callProvider(
   } finally {
     clearTimeout(timer);
   }
-  if (!res.ok) throw new Error(`${provider} ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) {
+    const body = (await res.text()).slice(0, 240);
+    if (res.status === 429) markRateLimited(provider);
+    throw new ProviderHttpError(provider, res.status, body);
+  }
   const data = await res.json();
   return (data.choices?.[0]?.message?.content ?? "").trim();
+}
+
+/** User-facing Thai message — never leak provider JSON / org ids. */
+export function llmUserErrorMessage(err: unknown): string {
+  const s = String(err || "");
+  if (/429|rate limit|All LLM providers failed/i.test(s)) {
+    return "ระบบตอบคำถามหนาแน่นชั่วคราว ลองใหม่อีกสักครู่ครับ";
+  }
+  if (/No LLM provider configured/i.test(s)) {
+    return "ระบบ AI ยังไม่พร้อม ติดต่อแอดมินได้ครับ";
+  }
+  return "เกิดข้อผิดพลาดชั่วคราว ลองใหม่อีกครั้งครับ";
 }
 
 export async function chat(
@@ -96,9 +142,13 @@ export async function chat(
       if (!opts?.json) trace("compose", `เขียนคำตอบ (${provider})`);
       return out;
     } catch (e) {
-      errors.push(`${provider}: ${String(e).slice(0, 180)}`);
+      const short =
+        e instanceof ProviderHttpError
+          ? `${e.provider} ${e.status}`
+          : String(e).slice(0, 120);
+      errors.push(short);
       if (i + 1 < chain.length) {
-        console.warn(`[llm] ${provider} failed; trying ${chain[i + 1]} next`);
+        console.warn(`[llm] ${provider} failed; trying ${chain[i + 1]} next — ${short}`);
       }
     }
   }

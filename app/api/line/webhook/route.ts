@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { handleCommand, handleSelection, type CommandContext, type CommandResult } from "@/lib/commands";
 import { getUpnByLineId, replyLine, replyLineMessages, showLineLoading, pushLineToId } from "@/lib/line";
+import { llmUserErrorMessage } from "@/lib/llm";
 import {
   handleNewsOnboardingPostback,
   handleNewsOnboardingText,
@@ -852,11 +853,13 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     }
     await saveCtx(upn, ctx, res, text);
   } catch (e) {
+    console.error("[line] handleMessage", String(e).slice(0, 300));
+    const msg = `ขออภัยครับ ${llmUserErrorMessage(e)}`;
     try {
-      await replyLine(ev.replyToken, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
+      await replyLine(ev.replyToken, msg);
     } catch {
       try {
-        await pushLineToId(userId, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
+        await pushLineToId(userId, msg);
       } catch { /* give up */ }
     }
   }
@@ -918,11 +921,13 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     // Remember who this selection was about so text follow-ups continue on them.
     await saveCtx(upn, await loadCtx(upn), res);
   } catch (e) {
+    console.error("[line] handlePostback", String(e).slice(0, 300));
+    const msg = `ขออภัยครับ ${llmUserErrorMessage(e)}`;
     try {
-      await replyLine(ev.replyToken, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
+      await replyLine(ev.replyToken, msg);
     } catch {
       try {
-        await pushLineToId(userId, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
+        await pushLineToId(userId, msg);
       } catch { /* give up */ }
     }
   }

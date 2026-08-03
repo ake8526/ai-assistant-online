@@ -27,7 +27,7 @@ import {
   stripHonorificPublic,
 } from "@/lib/graph";
 import { getUserGraphToken } from "@/lib/graphAuth";
-import { chat } from "@/lib/llm";
+import { chat, llmUserErrorMessage } from "@/lib/llm";
 import { listRecentOnline } from "@/lib/meetings";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
@@ -494,7 +494,17 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   if (/^(นัด|ประชุม|ตาราง)(วัน)?พรุ่งนี้$/i.test(t) || /^พรุ่งนี้มี(นัด|ประชุม)/i.test(t)) {
     return { intent: "list_meetings", params: { period: "tomorrow" } };
   }
-  if (/^(นัด|ประชุม|ตาราง)(วัน)?วันนี้$/i.test(t) || /^วันนี้มี(นัด|ประชุม)/i.test(t)) {
+  if (
+    /^(นัด|ประชุม|ตาราง)(วัน)?วันนี้$/i.test(t) ||
+    /^วันนี้มี(นัด|ประชุม)/i.test(t) ||
+    /^(ดู)?(ประชุม|นัด)เช้า(นี้)?$/i.test(t) ||
+    /^ดูประชุมเช้านี้$/i.test(t) ||
+    /^เช้านี้มี(นัด|ประชุม)/i.test(t)
+  ) {
+    // “ดูประชุมเช้านี้” → list morning meetings without LLM (avoids Groq 429 on intent)
+    if (/เช้า/.test(t)) {
+      return { intent: "list_meetings", params: { period: "today", before: "12:00" } };
+    }
     return { intent: "list_meetings", params: { period: "today" } };
   }
 
@@ -1492,7 +1502,8 @@ export async function handleCommand(
   try {
     return await handle(userUpn, text, context, lite);
   } catch (e) {
-    return { intent: "error", reply: `⚠️ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}` };
+    console.error("[handleCommand]", String(e).slice(0, 300));
+    return { intent: "error", reply: `⚠️ ${llmUserErrorMessage(e)}` };
   }
 }
 
