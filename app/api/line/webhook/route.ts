@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { handleCommand, handleSelection, type CommandContext, type CommandResult } from "@/lib/commands";
-import { getUpnByLineId, replyLine, replyLineMessages } from "@/lib/line";
+import { getUpnByLineId, replyLine, replyLineMessages, showLineLoading, pushLineToId } from "@/lib/line";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
@@ -379,15 +379,29 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     return;
   }
   try {
+    // Let the user see the bot is working (reply tokens die ~30s if we stay silent).
+    void showLineLoading(userId, 60);
     // A pending booking draft awaiting subject/attendee input takes priority.
     if (await handleDraftInput(upn, text, ev.replyToken)) return;
     // Otherwise run the assistant (lite mode: no slow per-meeting enrichment)
     const ctx = await loadCtx(upn);
     const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
-    await sendResult(ev.replyToken, res);
+    try {
+      await sendResult(ev.replyToken, res);
+    } catch (replyErr) {
+      // Token expired / already used — still deliver via push so the user isn't left hanging.
+      console.warn("[line] reply failed, pushing:", String(replyErr).slice(0, 120));
+      await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
+    }
     await saveCtx(upn, ctx, res);
   } catch (e) {
-    await replyLine(ev.replyToken, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
+    try {
+      await replyLine(ev.replyToken, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
+    } catch {
+      try {
+        await pushLineToId(userId, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
+      } catch { /* give up */ }
+    }
   }
 }
 

@@ -5,6 +5,7 @@ import { admin } from "@/lib/supabaseServer";
 const LINE_TEXT_LIMIT = 4900; // LINE hard limit is 5000 chars/message; keep headroom
 const PUSH_URL = "https://api.line.me/v2/bot/message/push";
 const REPLY_URL = "https://api.line.me/v2/bot/message/reply";
+const LOADING_URL = "https://api.line.me/v2/bot/chat/loading/start";
 
 function authHeaders(): Record<string, string> {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
@@ -21,6 +22,16 @@ function chunk(text: string, size = LINE_TEXT_LIMIT): string[] {
 async function linePost(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, { method: "POST", headers: authHeaders(), body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`LINE ${r.status}: ${(await r.text()).slice(0, 300)}`);
+}
+
+/** Show “กำลังพิมพ์…” / loading bubble so the user knows the bot is working (5–60s). */
+export async function showLineLoading(lineUserId: string, seconds = 60): Promise<void> {
+  const sec = Math.min(60, Math.max(5, Math.round(seconds)));
+  try {
+    await linePost(LOADING_URL, { chatId: lineUserId, loadingSeconds: sec });
+  } catch {
+    /* optional UX — ignore if channel plan / API unavailable */
+  }
 }
 
 /** Low-level push to a raw LINE userId. */

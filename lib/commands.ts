@@ -114,8 +114,8 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 
 ความหมายของแต่ละ intent:
 - get_brief = สรุปเตรียมตัว/แนะนำสำหรับนัดวันนี้ (ไม่ใช่การสรุปไฟล์)
-- get_news = สรุป "ข่าว/ฟีดที่ติดตาม" (RSS + Facebook + คลิป YouTube ที่ subscribe) — เช่น "มีข่าวอะไรบ้าง", "สรุปข่าววันนี้", "ข่าวที่ติดตาม", "มีคลิปใหม่อะไรบ้าง"
-- list_feeds = ดูรายการแหล่งข่าวที่ติดตาม (Facebook/RSS ที่เพิ่มไว้) — เช่น "ดูแหล่งข่าว", "รายการฟีด", "ติดตามอะไรบ้าง", "แหล่งข่าวมีอะไรบ้าง"
+- get_news = สรุปเนื้อหาข่าว/โพสต์จากแหล่งที่ติดตามแล้ว — เช่น "มีข่าวอะไรบ้าง", "สรุปข่าววันนี้", "มีคลิปใหม่อะไรบ้าง" (ห้ามใช้เมื่อผู้ใช้ถามแค่ว่าติดตามแหล่งไหน)
+- list_feeds = ดูรายการแหล่งข่าวที่ติดตาม (Facebook/RSS) — เช่น "ดูแหล่งข่าว", "รายการฟีด", "ติดตามอะไรบ้าง", "ตอนนี้ติดตามข่าวอะไรบ้าง", "ติดตามเพจอะไรบ้าง" (ไม่ใช่การสรุปข่าว)
 - add_feed = เพิ่มแหล่งข่าว Facebook หรือ RSS — เช่น "เพิ่มแหล่งข่าว https://...", "ติดตามเพจ https://facebook.com/...", "เพิ่ม RSS https://... ชื่อ Extreme"
 - remove_feed = ลบแหล่งข่าว — เช่น "ลบแหล่งข่าว", "เลิกติดตามเพจ", "ลบฟีด 1", "ลบแหล่งข่าวหมายเลข 2"
 - edit_feed = แก้ชื่อหรือลิงก์แหล่งข่าว — เช่น "แก้ชื่อแหล่งข่าว 1 เป็น Extreme IT", "เปลี่ยนลิงก์แหล่ง 2 เป็น https://..."
@@ -157,6 +157,9 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ตัวอย่าง:
 "ดูแหล่งข่าว" -> {"intent":"list_feeds","params":{}}
 "รายการฟีดที่ติดตาม" -> {"intent":"list_feeds","params":{}}
+"ตอนนี้ติดตามข่าวอะไรบ้าง" -> {"intent":"list_feeds","params":{}}
+"ติดตามอะไรบ้าง" -> {"intent":"list_feeds","params":{}}
+"มีข่าวอะไรบ้าง" -> {"intent":"get_news","params":{}}
 "เพิ่มแหล่งข่าว https://www.extreme.co.th/feed" -> {"intent":"add_feed","params":{"url":"https://www.extreme.co.th/feed","kind":"rss"}}
 "ติดตามเพจ https://www.facebook.com/ExtremeIT ชื่อ Extreme" -> {"intent":"add_feed","params":{"url":"https://www.facebook.com/ExtremeIT","kind":"facebook","label":"Extreme"}}
 "เพิ่ม RSS https://example.com/rss.xml ชื่อข่าวไอที" -> {"intent":"add_feed","params":{"url":"https://example.com/rss.xml","kind":"rss","label":"ข่าวไอที"}}
@@ -275,6 +278,54 @@ function personFromText(text: string): string {
 // ---------------------------------------------------------------------------
 // Intent parsing
 // ---------------------------------------------------------------------------
+
+/** Instant intents for feed management — no LLM (avoids LINE silence / timeouts). */
+function quickFeedIntent(text: string): { intent: string; params: Record<string, unknown> } | null {
+  const t = text.trim().replace(/\s+/g, " ");
+  if (!t) return null;
+
+  // Summarize stories (slow path) — keep explicit
+  if (/^(มี)?ข่าวอะไรบ้าง|สรุปข่าว(วันนี้|ล่าสุด)?|มีคลิปใหม่อะไรบ้าง/i.test(t)) {
+    return { intent: "get_news", params: {} };
+  }
+
+  // List followed sources — "ตอนนี้ติดตามข่าวอะไรบ้าง" must NOT go to get_news
+  if (
+    /ดูแหล่งข่าว|รายการ(ฟีด|แหล่งข่าว)|แหล่งข่าวที่ติดตาม|ฟีดที่ติดตาม|ติดตามอะไรบ้าง|ติดตามข่าวอะไร|ตอนนี้ติดตาม|ติดตามเพจอะไร|แหล่งข่าวมีอะไร|ติดตาม(ข่าว|เพจ|ฟีด).{0,12}อะไร/i.test(
+      t
+    )
+  ) {
+    return { intent: "list_feeds", params: {} };
+  }
+
+  // Delete
+  if (/^(ลบ|เลิกติดตาม)(แหล่งข่าว|ฟีด|เพจ)?$/i.test(t) || /^ลบแหล่งข่าว$/i.test(t)) {
+    return { intent: "remove_feed", params: {} };
+  }
+  const rm = t.match(/^(?:ลบ|เลิกติดตาม)\s*(?:แหล่งข่าว|ฟีด|เพจ)?\s*(?:หมายเลข|ที่|#)?\s*(\d+)\s*$/i);
+  if (rm) return { intent: "remove_feed", params: { feed_index: Number(rm[1]) } };
+
+  // Edit label: "แก้ชื่อแหล่งข่าว 1 เป็น Extreme"
+  const ed = t.match(
+    /^(?:แก้|แก้ไข|เปลี่ยน)\s*(?:ชื่อ)?\s*(?:แหล่งข่าว|ฟีด|เพจ)?\s*(?:หมายเลข|ที่|#)?\s*(\d+)\s*(?:เป็น|=)\s*(.+)$/i
+  );
+  if (ed) return { intent: "edit_feed", params: { feed_index: Number(ed[1]), label: ed[2].trim() } };
+
+  // Add: URL in message
+  const urlMatch = t.match(/https?:\/\/[^\s]+/i);
+  if (urlMatch && /(เพิ่ม|ติดตาม|สมัครติดตาม)/i.test(t)) {
+    const url = urlMatch[0].replace(/[)\].,]+$/, "");
+    const kind = /เพจ|facebook|fb\.com/i.test(t) ? "facebook" : undefined;
+    const labelM = t.match(/(?:ชื่อ|ชื่อย่อ)\s*([^\s].{0,40})$/i) || t.match(/\sชื่อ\s+(.+)$/i);
+    return {
+      intent: "add_feed",
+      params: { url, ...(kind ? { kind } : {}), ...(labelM ? { label: labelM[1].trim() } : {}) },
+    };
+  }
+
+  return null;
+}
+
 function historyLines(context?: CommandContext): string[] {
   const lines: string[] = [];
   for (const turn of context?.history || []) {
@@ -288,6 +339,10 @@ function historyLines(context?: CommandContext): string[] {
 async function parseIntent(text: string, context?: CommandContext): Promise<{ intent: string; params: Record<string, unknown> }> {
   const textClean = text.trim();
   const textLower = textClean.toLowerCase();
+
+  // Fast deterministic shortcuts — skip LLM so LINE replies before the reply-token expires.
+  const quick = quickFeedIntent(textClean);
+  if (quick) return quick;
 
   // Fast deterministic rule after a file search
   if (context?.last_intent === "file_results") {
