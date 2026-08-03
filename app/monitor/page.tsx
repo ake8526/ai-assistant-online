@@ -197,7 +197,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     function drawWorker(i: number, now: number) {
       const [sx, sy] = SEAT[i]; const a = AGENTS[i], st = statusRef.current[i]; const on = st !== "idle", work = st === "work";
       const bob = work ? Math.round(Math.sin(now / 160) * 1) : 0; const y = sy + bob;
-      const shirt = on ? a.shirt : "#4a4a4a", hair = on ? a.hair : "#3a3a3a";
+      const shirt = a.shirt, hair = a.hair;
       R(sx - 8, y - 2, 16, 6, "#5a3f26"); R(sx - 8, y - 2, 16, 2, "#6e4d30");
       R(sx - 7, y - 8, 14, 8, shirt);
       const tw = work ? (Math.floor(now / 140) % 2) : 0;
