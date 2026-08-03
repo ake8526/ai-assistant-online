@@ -188,33 +188,40 @@ function daysPrompt(selected: number[], kind: "news" | "brief" = "news"): object
   const isBrief = kind === "brief";
   const dayAction = isBrief ? "briefdays" : "newsdays";
   const doneAction = isBrief ? "briefdaysdone" : "newsdaysdone";
-  const sel = selected.length
-    ? selected
-        .slice()
-        .sort((a, b) => a - b)
-        .map((d) => DAY_LABELS[d])
-        .join(" ")
-    : "(ยังไม่เลือก)";
-  const remaining = [1, 2, 3, 4, 5, 6, 0].filter((d) => !selected.includes(d));
+  const selText = selected.length ? formatDays(selected) : "(ยังไม่เลือก)";
   const actions: { label: string; data: string; displayText?: string }[] = [];
+
   if (selected.length) {
+    const pack = formatDays(selected);
     actions.push({
-      label: `✅ เสร็จ (${selected.length} วัน)`,
+      label: pack === "จ–ศ" || pack === "ทุกวัน" ? `✅ เสร็จ · ${pack}` : `✅ เสร็จ (${selected.length} วัน)`,
       data: `a=${doneAction}`,
-      displayText: isBrief ? "ตั้งวันบรีฟเสร็จแล้ว" : "ตั้งวันส่งข่าวเสร็จแล้ว",
+      displayText:
+        pack === "จ–ศ"
+          ? isBrief
+            ? "ตั้งบรีฟเป็น จ–ศ"
+            : "ตั้งส่งข่าวเป็น จ–ศ"
+          : isBrief
+            ? "ตั้งวันบรีฟเสร็จแล้ว"
+            : "ตั้งวันส่งข่าวเสร็จแล้ว",
     });
   }
+
   actions.push(
     { label: "จ–ศ", data: `a=${dayAction}&p=weekday`, displayText: "ส่งจันทร์–ศุกร์" },
     { label: "ทุกวัน", data: `a=${dayAction}&p=everyday`, displayText: "ส่งทุกวัน" }
   );
-  for (const d of remaining) {
+
+  // Show every day so user can toggle off selected ones (✓ = selected)
+  for (const d of [1, 2, 3, 4, 5, 6, 0]) {
+    const on = selected.includes(d);
     actions.push({
-      label: DAY_LABELS[d],
+      label: on ? `✓${DAY_LABELS[d]}` : DAY_LABELS[d],
       data: `a=${dayAction}&d=${d}`,
-      displayText: `เพิ่มวัน${DAY_LABELS[d]}`,
+      displayText: on ? `เอาวัน${DAY_LABELS[d]}ออก` : `เพิ่มวัน${DAY_LABELS[d]}`,
     });
   }
+
   if (!selected.length) {
     actions.push({
       label: "✅ เสร็จ",
@@ -222,15 +229,18 @@ function daysPrompt(selected: number[], kind: "news" | "brief" = "news"): object
       displayText: isBrief ? "ตั้งวันบรีฟเสร็จแล้ว" : "ตั้งวันส่งข่าวเสร็จแล้ว",
     });
   }
+
   return {
     type: "text",
     text: isBrief
       ? "② สรุปตารางเช้า ส่งวันไหนบ้างครับ?\n" +
-        "กดปุ่มวันทีละวันได้หลายอัน หรือเลือกชุดสำเร็จรูป\n\n" +
-        `เลือกแล้ว: ${sel}`
+        "กดวันทีละวันได้หลายอัน · กดวันที่มี ✓ อีกครั้งเพื่อเอาออก\n" +
+        "หรือเลือกชุดสำเร็จรูป จ–ศ / ทุกวัน\n\n" +
+        `เลือกแล้ว: ${selText}`
       : "③ ส่งวันไหนบ้างครับ?\n" +
-        "กดปุ่มวันทีละวันได้หลายอัน หรือเลือกชุดสำเร็จรูป\n\n" +
-        `เลือกแล้ว: ${sel}`,
+        "กดวันทีละวันได้หลายอัน · กดวันที่มี ✓ อีกครั้งเพื่อเอาออก\n" +
+        "หรือเลือกชุดสำเร็จรูป จ–ศ / ทุกวัน\n\n" +
+        `เลือกแล้ว: ${selText}`,
     quickReply: qr(actions),
   };
 }
@@ -247,6 +257,14 @@ function formatDays(days: number[]): string {
   return sorted.map((d) => DAY_LABELS[d]).join(" ");
 }
 
+/** Normalize day sets that match presets (e.g. จ–ศ → [1..5]). */
+function normalizeDays(days: number[]): number[] {
+  const sorted = Array.from(new Set(days.filter((d) => d >= 0 && d <= 6))).sort((a, b) => a - b);
+  if (sorted.join(",") === "1,2,3,4,5") return [1, 2, 3, 4, 5];
+  if (sorted.length === 7) return [0, 1, 2, 3, 4, 5, 6];
+  return sorted;
+}
+
 async function finishNewsNotify(
   upn: string,
   draft: {
@@ -261,7 +279,7 @@ async function finishNewsNotify(
 ): Promise<void> {
   const count = draft.count ?? 3;
   const time = draft.time || "07:00";
-  const days = draft.days?.length ? draft.days : [1, 2, 3, 4, 5];
+  const days = normalizeDays(draft.days?.length ? draft.days : [1, 2, 3, 4, 5]);
   await setNewsTopics(upn, draft.topics);
   await setNewsInterested(upn, true);
   await saveNotifyKind(upn, "news", { enabled: true, count, time, days });
@@ -303,13 +321,13 @@ async function finishBriefNotify(
   replyToken: string
 ): Promise<void> {
   const briefTime = draft.briefTime || "07:00";
-  const briefDays = draft.briefDays?.length ? draft.briefDays : [1, 2, 3, 4, 5];
+  const briefDays = normalizeDays(draft.briefDays?.length ? draft.briefDays : [1, 2, 3, 4, 5]);
   await saveNotifyKind(upn, "brief", { enabled: true, time: briefTime, days: briefDays });
   await setNewsOnboardingDone(upn, true);
   await clearNewsDraft(upn);
 
   const newsTime = draft.time || "07:00";
-  const newsDays = draft.days?.length ? draft.days : [1, 2, 3, 4, 5];
+  const newsDays = normalizeDays(draft.days?.length ? draft.days : [1, 2, 3, 4, 5]);
   const summary =
     "✅ ตั้งค่าสรุปตารางเช้าเรียบร้อยครับ\n\n" +
     `เวลาส่ง: ${briefTime} น.\n` +
