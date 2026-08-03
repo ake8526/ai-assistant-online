@@ -928,8 +928,9 @@ function eventTouchesPerson(ev: GraphEvent, hint: string, mails: string[]): bool
   return false;
 }
 
-function cancelEventLabel(ev: GraphEvent): string {
+function cancelEventLabel(ev: GraphEvent, now: Date = nowWall()): string {
   const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+  const ed = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
   const when = sd ? fmtDateTime(sd) : "?";
   const subj = ev.subject || "(ไม่มีหัวข้อ)";
   const others = (ev.attendees || [])
@@ -939,7 +940,27 @@ function cancelEventLabel(ev: GraphEvent): string {
     .filter((s, i, arr) => arr.findIndex((x) => x.toLowerCase() === s.toLowerCase()) === i)
     .slice(0, 3);
   const who = others.length ? ` · ${others.join(", ")}` : "";
-  return `${when} — ${subj}${who}`;
+  const live = sd && ed && now >= sd && now < ed ? "🔴 กำลังประชุม — " : "";
+  return `${live}${when} — ${subj}${who}`;
+}
+
+function sortCancelEvents(events: GraphEvent[], now: Date = nowWall()): GraphEvent[] {
+  const rank = (ev: GraphEvent) => {
+    const s = ev.start?.dateTime ? parseWall(ev.start.dateTime)?.getTime() : 0;
+    const e = ev.end?.dateTime ? parseWall(ev.end.dateTime)?.getTime() : 0;
+    const t = now.getTime();
+    if (s && e && t >= s && t < e) return 0;
+    if (s && s >= t) return 1;
+    return 2;
+  };
+  return [...events].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    const sa = a.start?.dateTime ? parseWall(a.start.dateTime)?.getTime() || 0 : 0;
+    const sb = b.start?.dateTime ? parseWall(b.start.dateTime)?.getTime() || 0 : 0;
+    return sa - sb;
+  });
 }
 
 type MtWindow = { start: Date; end: Date; label: string };
@@ -1824,6 +1845,12 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     if (denied) return denied;
     const { start, end } = periodRange("upcoming");
     let events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
+    // Still cancellable until end time (in-progress included)
+    const now = nowWall();
+    events = events.filter((ev) => {
+      const ed = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
+      return !ed || ed > now;
+    });
     if (!events.length) return { intent, reply: "ไม่มีนัดที่จะยกเลิกในช่วง 2 สัปดาห์ข้างหน้าครับ" };
 
     const personHint = String(params.person || "").trim();
@@ -1831,7 +1858,10 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       const mails = await resolveCancelPersonMails(personHint, userUpn);
       const filtered = events.filter((ev) => eventTouchesPerson(ev, personHint, mails));
       if (!filtered.length) {
-        const choices = events.map((ev) => ({ event_id: ev.id!, label: cancelEventLabel(ev) }));
+        const choices = sortCancelEvents(events, now).map((ev) => ({
+          event_id: ev.id!,
+          label: cancelEventLabel(ev, now),
+        }));
         return {
           intent: "choose_cancel",
           reply: `ไม่พบนัดที่เกี่ยวกับ “${personHint}” ครับ — เลือกรายการทั้งหมดได้ด้านล่าง 👇`,
@@ -1841,10 +1871,18 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       events = filtered;
     }
 
-    const choices = events.map((ev) => ({ event_id: ev.id!, label: cancelEventLabel(ev) }));
-    const reply = personHint
+    events = sortCancelEvents(events, now);
+    const choices = events.map((ev) => ({ event_id: ev.id!, label: cancelEventLabel(ev, now) }));
+    const liveCount = choices.filter((c) => c.label.startsWith("🔴")).length;
+    let reply = personHint
       ? `เจอนัดที่เกี่ยวกับ “${personHint}” ${choices.length} รายการ — เลือกที่ยกเลิกครับ 👇`
       : "เลือกนัดที่ต้องการยกเลิกครับ 👇";
+    if (liveCount) {
+      reply =
+        `นัดที่ยังไม่หมดเวลา/กำลังประชุม ยกเลิกได้ครับ\n` +
+        (personHint ? `กรอง “${personHint}” แล้ว ` : "") +
+        `เลือกด้านล่าง 👇`;
+    }
     return { intent: "choose_cancel", reply, choices };
   }
 

@@ -126,10 +126,22 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
     let n = 0;
     for (const c of res.choices as Choice[]) {
-      if (!c.event_id) continue;
+      if (!c.event_id || items.length >= 12) continue;
       n++;
       const p = new URLSearchParams({ a: "cancel", id: c.event_id });
-      add(n, p.toString(), `ยกเลิก ${n}) ${c.label || ""}`);
+      const data = p.toString();
+      if (data.length > 300) continue;
+      const timeBit = (c.label || "").match(/(\d{1,2}:\d{2})/)?.[1] || String(n);
+      const live = (c.label || "").includes("กำลังประชุม");
+      items.push({
+        type: "action",
+        action: {
+          type: "postback",
+          label: truncate(live ? `🔴${timeBit}` : `❌${timeBit}`, 20),
+          data,
+          displayText: truncate(`ยกเลิก ${n}) ${c.label || ""}`, 60),
+        },
+      });
     }
   } else if (res.intent === "choose_remove_feed" && Array.isArray(res.choices)) {
     let n = 0;
