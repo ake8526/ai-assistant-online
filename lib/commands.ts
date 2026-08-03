@@ -20,6 +20,7 @@ import {
   deleteEvent,
   findDuplicateNicknames,
   getEventsRange,
+  nowLocal,
   resolveUser,
   resolveUserInfo,
   searchFiles,
@@ -429,6 +430,28 @@ function peopleFromText(text: string): string[] {
 // Intent parsing
 // ---------------------------------------------------------------------------
 
+function hasMorningMeetingsHint(text: string): boolean {
+  // Explicit \u escapes so bundlers / encoding cannot corrupt Thai literals.
+  // เช้านี้ / ดูประชุมเช้า / นัดเช้า / ประชุมเช้า / ตารางเช้า
+  return (
+    text.includes("\u0E40\u0E0A\u0E49\u0E32\u0E19\u0E35\u0E49") ||
+    text.includes("\u0E14\u0E39\u0E1B\u0E23\u0E30\u0E0A\u0E38\u0E21\u0E40\u0E0A\u0E49\u0E32") ||
+    text.includes("\u0E19\u0E31\u0E14\u0E40\u0E0A\u0E49\u0E32") ||
+    text.includes("\u0E1B\u0E23\u0E30\u0E0A\u0E38\u0E21\u0E40\u0E0A\u0E49\u0E32") ||
+    text.includes("\u0E15\u0E32\u0E23\u0E32\u0E07\u0E40\u0E0A\u0E49\u0E32")
+  );
+}
+
+function hasTomorrowHint(text: string): boolean {
+  // พรุ่งนี้
+  return text.includes("\u0E1E\u0E23\u0E38\u0E48\u0E07\u0E19\u0E35\u0E49");
+}
+
+function hasMorningWord(text: string): boolean {
+  // เช้า
+  return text.includes("\u0E40\u0E0A\u0E49\u0E32");
+}
+
 /** Instant intents for feed management — no LLM (avoids LINE silence / timeouts). */
 function quickFeedIntent(text: string): { intent: string; params: Record<string, unknown> } | null {
   const t = text.trim().replace(/\s+/g, " ");
@@ -506,14 +529,20 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   if (
     /^(นัด|ประชุม|ตาราง)(วัน)?วันนี้$/i.test(t) ||
     /^วันนี้มี(นัด|ประชุม)/i.test(t) ||
-    /เช้านี้|ดูประชุมเช้า|นัดเช้า|ประชุมเช้า|ตารางเช้า/i.test(t)
+    hasMorningMeetingsHint(t)
   ) {
     // “ดูประชุมเช้านี้” → list morning meetings without LLM (avoids Groq 429 on intent)
-    if (/เช้า/.test(t) && !/พรุ่งนี้/.test(t)) {
-      return { intent: "list_meetings", params: { period: "today", after: "00:00", before: "12:00" } };
+    if (hasMorningWord(t) && !hasTomorrowHint(t)) {
+      return {
+        intent: "list_meetings",
+        params: { period: "today", after: "00:00", before: "12:00", _morning: true },
+      };
     }
-    if (/เช้า/.test(t) && /พรุ่งนี้/.test(t)) {
-      return { intent: "list_meetings", params: { period: "tomorrow", after: "00:00", before: "12:00" } };
+    if (hasMorningWord(t) && hasTomorrowHint(t)) {
+      return {
+        intent: "list_meetings",
+        params: { period: "tomorrow", after: "00:00", before: "12:00", _morning: true },
+      };
     }
     return { intent: "list_meetings", params: { period: "today" } };
   }
@@ -2045,30 +2074,41 @@ async function handleParsed(
 
     const tNorm = (text || "").normalize("NFC").replace(/\s+/g, " ").trim();
 
-    // Dedicated path: “ดูประชุมเช้านี้” — fetch TODAY only, ignore last_period / week / last_person.
-    // (Previously period=week still leaked into the reply label + tomorrow’s morning meetings.)
+    // Dedicated path: morning list — TODAY only.
+    // Prefer ASCII flag `_morning` from quick intent (survives any Thai-regex bundling issues).
+    const flaggedMorning = params._morning === true || params._morning === "true";
     const wantMorningToday =
-      !/พรุ่งนี้/.test(tNorm) &&
-      (/เช้านี้|ดูประชุมเช้า|นัดเช้า|ประชุมเช้า|ตารางเช้า/.test(tNorm) ||
-        (String(params.period || "") === "today" && /เช้า/.test(tNorm)));
+      (flaggedMorning && !hasTomorrowHint(tNorm)) ||
+      (!hasTomorrowHint(tNorm) &&
+        (hasMorningMeetingsHint(tNorm) ||
+          (String(params.period || "") === "today" &&
+            hasMorningWord(tNorm) &&
+            (params.before != null || params.after != null))));
 
     if (wantMorningToday) {
-      const todayR = periodRange("today");
+      const todayYmd = nowLocal().date; // Asia/Bangkok YYYY-MM-DD — no wall-clock Date math
       const after = parseHHMM(params.after) ?? 0;
       const before = parseHHMM(params.before) ?? 12 * 60;
-      const todayKey = fmtDate(todayR.start);
-      let events = await getEventsRange(userUpn, wallIso(todayR.start), wallIso(todayR.end));
+      let events = await getEventsRange(userUpn, `${todayYmd}T00:00:00`, `${todayYmd}T23:59:59`);
       events = events.filter((ev) => {
-        const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+        const raw = (ev.start?.dateTime || "").replace(" ", "T");
+        const ymd = raw.slice(0, 10);
+        if (ymd !== todayYmd) return false;
         const m = eventStartMinutes(ev);
-        if (!sd || m === null) return false;
-        return fmtDate(sd) === todayKey && m >= after && m < before;
+        if (m === null) return false;
+        return m >= after && m < before;
       });
-      const label = windowLabel(todayR.label, after, before);
+      const label = windowLabel("วันนี้", after, before);
       const period = "today";
+      trace("fetch", `morning-today ${todayYmd} n=${events.length}`);
       if (!events.length) {
         return withCalendarNext(
-          { intent, reply: `ช่วง${label}ยังไม่มีนัดประชุมในปฏิทินครับ 👍`, data: [], period },
+          {
+            intent,
+            reply: `ช่วง${label}ยังไม่มีนัดประชุมในปฏิทินครับ 👍`,
+            data: [],
+            period,
+          },
           "meetings"
         );
       }
