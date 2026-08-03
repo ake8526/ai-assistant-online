@@ -111,6 +111,17 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
       add(c.index, p.toString(), `เตรียม ${c.index}) ${c.label || ""}`);
     }
   }
+
+  // Follow-up suggestions (message taps) when no selection buttons above
+  if (!items.length && Array.isArray(res.suggestions) && res.suggestions.length) {
+    for (const s of res.suggestions.slice(0, 12)) {
+      if (!s?.label || !s?.text) continue;
+      items.push({
+        type: "action",
+        action: { type: "message", label: truncate(s.label, 20), text: s.text.slice(0, 300) },
+      });
+    }
+  }
   return items.length ? { items } : null;
 }
 

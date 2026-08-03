@@ -100,6 +100,8 @@ export type CommandResult = {
   person?: { mail: string; displayName?: string };
   map_url?: string | null;
   map_where?: string;
+  /** LINE quick-reply follow-ups (message actions). */
+  suggestions?: { label: string; text: string }[];
 };
 
 /** Interactive calendar must use the user's M365 token (Outlook-like rights). */
@@ -255,10 +257,34 @@ const NAME_SUFFIX = [
 const SELF_WORDS = new Set(["", "ฉัน", "ผม", "ดิฉัน", "ตัวเอง", "เรา", "ของฉัน", "ของผม"]);
 const SELF_HINT = ["ของฉัน", "ของผม", "ตัวเอง", "ตัวฉัน", "ผมเอง", "ฉันเอง", "ตารางฉัน", "ตารางผม", "ฉันว่าง", "ผมว่าง", "ของตัวเอง"];
 
-function hasDayHint(text: string): boolean {
-  return /วันนี้|พรุ่งนี้|มะรืน|สัปดาห์นี้|อาทิตย์นี้|เดือนนี้|วัน(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)|วันที่\s*\d|\d{1,2}\/\d{1,2}/.test(
-    text || ""
-  );
+function calendarSuggestions(kind: "meetings" | "free", period?: string): { label: string; text: string }[] {
+  const day =
+    period === "tomorrow" ? "พรุ่งนี้" : period === "today" ? "วันนี้" : period === "week" ? "สัปดาห์นี้" : "";
+  const freeText = day ? `ขอตารางว่าง${day}` : "ขอตารางว่าง";
+  const meetText = day ? `นัด${day}` : "นัดวันนี้";
+  if (kind === "free") {
+    return [
+      { label: "📅 นัดประชุม", text: "นัดประชุม" },
+      { label: "🗓 ดูนัด", text: meetText },
+      { label: "👥 หาเวลาตรงกัน", text: "หาเวลาว่างกับ" },
+      { label: "💬 ช่วยเรื่องอื่น", text: "ช่วยเรื่องอื่น" },
+    ];
+  }
+  return [
+    { label: "⬜ ขอตารางว่าง", text: freeText },
+    { label: "📅 นัดประชุม", text: "นัดประชุม" },
+    { label: "👥 หาเวลาตรงกัน", text: "หาเวลาว่างกับ" },
+    { label: "💬 ช่วยเรื่องอื่น", text: "ช่วยเรื่องอื่น" },
+  ];
+}
+
+function withAskNext(reply: string): string {
+  return reply.trimEnd() + "\n\nต้องการทำอะไรต่อครับ? กดปุ่มด้านล่างได้เลย 👇";
+}
+
+function withCalendarNext(res: CommandResult, kind: "meetings" | "free"): CommandResult {
+  const suggestions = calendarSuggestions(kind, res.period);
+  return { ...res, reply: withAskNext(res.reply), suggestions };
 }
 
 /** Reuse last calendar day when user asks a follow-up without naming a day. */
@@ -329,6 +355,22 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   // Bare free-time ask — period filled later from last_period / LLM defaults
   if (/^(ขอ)?(ดู)?ตารางว่าง(หน่อย)?$|^(ผม|ฉัน|ตัวเอง)?ว่าง(กี่โมง|ช่วงไหน|ไหม|มั้ย)?$/i.test(t)) {
     return { intent: "my_availability", params: {} };
+  }
+
+  if (/^ช่วย(เหลือ)?เรื่องอื่น$/i.test(t)) {
+    return { intent: "help_menu", params: {} };
+  }
+
+  // "ดูตารางพี่นนท์" / "ตารางว่างของเบส" — force person availability (not own meetings)
+  if (/^(ดู|ขอดู|เช็ค|เช็ก)?ตาราง/.test(t)) {
+    const who = personFromText(t);
+    if (who) {
+      const period = /พรุ่งนี้/.test(t) ? "tomorrow" : /วันนี้/.test(t) ? "today" : undefined;
+      return {
+        intent: "my_availability",
+        params: period ? { person: who, period } : { person: who },
+      };
+    }
   }
 
   if (/^(นัด|ประชุม|ตาราง)(วัน)?พรุ่งนี้$/i.test(t) || /^พรุ่งนี้มี(นัด|ประชุม)/i.test(t)) {
@@ -1011,6 +1053,25 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
 
   const { intent, params } = await parseIntent(text, context);
 
+  if (intent === "help_menu") {
+    return {
+      intent: "help_menu",
+      reply:
+        "ได้เลยครับ พิมพ์สิ่งที่ต้องการมาได้เลย เช่น\n\n" +
+        "• ตารางวันนี้ / นัดพรุ่งนี้\n" +
+        "• ขอตารางว่าง\n" +
+        "• ดูตารางพี่… / หาเวลาว่างกับ…\n" +
+        "• สรุปประชุม / ตั้งงานเตือน\n" +
+        "• ตั้งค่าข่าว",
+      suggestions: [
+        { label: "📅 ตารางวันนี้", text: "ตารางวันนี้" },
+        { label: "🗓 นัดพรุ่งนี้", text: "นัดพรุ่งนี้" },
+        { label: "⬜ ขอตารางว่าง", text: "ขอตารางว่าง" },
+        { label: "📰 ตั้งค่าข่าว", text: "ตั้งค่าข่าว" },
+      ],
+    };
+  }
+
   if (intent === "summarize_file") {
     const files = context?.files || [];
     let target: (typeof files)[number] | null = null;
@@ -1251,7 +1312,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     const { name: person, info: personInfo } = await continuedPerson(text, context);
     if (person) {
       const busy = await personBusyResponse(userUpn, person, day, period, after, before, at, personInfo);
-      return { ...busy, period: day ? undefined : period };
+      return withCalendarNext({ ...busy, period: day ? undefined : period }, "meetings");
     }
 
     let { start, end, label } = day || periodRange(period);
@@ -1274,10 +1335,13 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       });
       const atLabel = `${label} ตอน ${fmtHHMM(at)}`;
       if (!overlapping.length) {
-        return { intent, reply: `✅ ${label} ตอน ${fmtHHMM(at)} ว่างครับ — ไม่มีนัด`, data: [], period };
+        return withCalendarNext(
+          { intent, reply: `✅ ${label} ตอน ${fmtHHMM(at)} ว่างครับ — ไม่มีนัด`, data: [], period },
+          "meetings"
+        );
       }
       const reply = lite ? formatEventsSimple(overlapping, atLabel) : await buildForEvents(userUpn, overlapping, atLabel);
-      return { intent, reply, data: overlapping, period };
+      return withCalendarNext({ intent, reply, data: overlapping, period }, "meetings");
     }
 
     if (after !== null || before !== null) {
@@ -1290,20 +1354,18 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     }
 
     if (!events.length) {
-      return {
-        intent,
-        reply:
-          `ช่วง${label}ยังไม่มีนัดประชุมในปฏิทินครับ 👍\n\n` +
-          "ระหว่างนี้ผมช่วยอะไรได้บ้าง เช่น:\n" +
-          "  • ดูงานที่ต้องติดตาม — พิมพ์ “งานค้างมีอะไรบ้าง”\n" +
-          "  • นัดประชุมใหม่ — พิมพ์ “นัดประชุมกับ...”\n" +
-          "  • เพิ่มงานเตือนความจำ — พิมพ์ “เพิ่มงาน: ...”",
-        data: [],
-        period,
-      };
+      return withCalendarNext(
+        {
+          intent,
+          reply: `ช่วง${label}ยังไม่มีนัดประชุมในปฏิทินครับ 👍`,
+          data: [],
+          period,
+        },
+        "meetings"
+      );
     }
     const reply = lite ? formatEventsSimple(events, label) : await buildForEvents(userUpn, events, label);
-    return { intent, reply, data: events, period };
+    return withCalendarNext({ intent, reply, data: events, period }, "meetings");
   }
 
   if (intent === "my_availability") {
@@ -1318,7 +1380,9 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       : undefined;
 
     const lunch = wantsLunchIncluded(text);
-    const det = mentionsSelf(text) ? "" : personFromText(text);
+    const det = mentionsSelf(text)
+      ? ""
+      : String(params.person || "").trim() || personFromText(text);
     if (det) {
       const cands = await searchUsers(det);
       if (cands.length > 1) {
@@ -1331,27 +1395,34 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       }
       if (cands.length === 1) {
         const res = await availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || det, range, lunch);
-        return { ...res, period };
+        return withCalendarNext({ ...res, period }, "free");
       }
-      // name didn't resolve → fall through to the ongoing subject
+      return withCalendarNext(
+        {
+          intent,
+          reply: `ไม่พบคนชื่อ “${det}” ในไดเรกทอรีครับ ลองพิมพ์ชื่อเต็มหรืออีเมลดูนะครับ`,
+          period,
+        },
+        "free"
+      );
     }
-    if (!mentionsSelf(text)) {
+    if (!mentionsSelf(text) && !/^(ขอ)?(ดู)?ตารางว่าง/.test(text.trim())) {
       const lastMail = context?.last_person_mail;
       const lastName = context?.last_person;
       if (lastMail) {
         const res = await availabilityResponse(userUpn, lastMail, lastName || lastMail, range, lunch);
-        return { ...res, period };
+        return withCalendarNext({ ...res, period }, "free");
       }
       if (lastName) {
         const cands = await searchUsers(lastName);
         if (cands.length === 1) {
           const res = await availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || lastName, range, lunch);
-          return { ...res, period };
+          return withCalendarNext({ ...res, period }, "free");
         }
       }
     }
     const ranges = await freeRanges(userUpn, range.start, range.end, userUpn, lunch);
-    return { intent, reply: formatFree(ranges, range.label), period };
+    return withCalendarNext({ intent, reply: formatFree(ranges, range.label), period }, "free");
   }
 
   if (intent === "set_work_location" || intent === "set_home_location") {
