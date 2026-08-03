@@ -80,6 +80,10 @@ const CSS = `
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Online (Vercel build) → NODE_ENV=production → M365 login required.
+// Local `next dev` → development → open, no login (watch the room while working).
+const DEV = process.env.NODE_ENV !== "production";
+
 // ----- canvas art (ported, trimmed) -----
 type Dash = { x: number; y: number; tx: number | null; ty: number | null; face: string; moving: boolean; phase: number; carry: boolean; onArrive: (() => void) | null };
 
@@ -341,15 +345,18 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
   // ---- poller: fetch new events, enqueue ----
   useEffect(() => {
-    if (!account) return;
+    // Prod needs a signed-in account; local dev polls open (no token).
+    if (!DEV && !account) return;
     let alive = true;
     const poll = async () => {
       if (!alive) return;
       try {
         const token = await getToken();
-        if (token) {
+        if (token || DEV) {
+          const headers: Record<string, string> = {};
+          if (token) headers.Authorization = `Bearer ${token}`;
           const r = await fetch(`/api/monitor/events?since=${cursorRef.current}`, {
-            headers: { Authorization: `Bearer ${token}` },
+            headers,
             cache: "no-store",
           });
           if (r.ok) {
@@ -427,6 +434,8 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
 function Gate() {
   const { account, login, ready, getToken } = useM365Auth();
+  // Local dev: skip login entirely so the room is watchable while working.
+  if (DEV) return <MonitorRoom getToken={getToken} account={account ?? "dev"} />;
   if (!ready) {
     return <div className="mon"><style dangerouslySetInnerHTML={{ __html: CSS }} /><div className="center pix" style={{ fontSize: 12 }}>กำลังโหลด…</div></div>;
   }
