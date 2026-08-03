@@ -862,6 +862,19 @@ function navUrl(locationText?: string | null, lat?: string | null, lng?: string 
 // the pending attendee list is encoded into the quick-reply postback)
 // ---------------------------------------------------------------------------
 type MtAttendee = { name?: string; mail?: string };
+
+/** Map free-text person token → attendee. Full email, or UPN-like local part (buratsakon.si) + org domain. */
+function attendeeFromToken(raw: string, userUpn: string): MtAttendee {
+  const s = String(raw || "").trim();
+  if (!s) return { name: s };
+  if (s.includes("@")) return { mail: s.toLowerCase(), name: s };
+  // Corporate UPN local part: first.last / first.middle.last (from quick-reply “นัดburatsakon.si”)
+  if (/^[a-z0-9][a-z0-9._-]{1,80}$/i.test(s) && s.includes(".")) {
+    const domain = userUpn.includes("@") ? userUpn.split("@")[1]!.toLowerCase() : "";
+    if (domain) return { mail: `${s.toLowerCase()}@${domain}`, name: s };
+  }
+  return { name: s };
+}
 type MtWindow = { start: Date; end: Date; label: string };
 
 /** Extract a day hint from free text even if the LLM missed weekday/date params. */
@@ -1801,7 +1814,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       : timeBandFromText(text);
 
     const attendees: MtAttendee[] = attendeesRaw.length
-      ? attendeesRaw.map((name) => ({ name: String(name) }))
+      ? attendeesRaw.map((token) => attendeeFromToken(String(token), userUpn))
       : (context?.last_meeting?.attendees || []).map((mail) => ({ mail }));
 
     if (!attendees.length) {

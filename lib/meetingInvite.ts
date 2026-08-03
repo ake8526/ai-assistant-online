@@ -455,9 +455,14 @@ function declineChoiceQuickReply(rec: MeetingInviteRecord): object {
   };
 }
 
+function hostRescheduleMessage(attendeeHint?: string): string {
+  const who = (attendeeHint || "").trim().toLowerCase();
+  if (!who) return "นัดประชุม ";
+  // Prefer full email so Graph/resolve finds the person (local part alone often fails)
+  return who.includes("@") ? `นัด ${who}` : `นัด ${who} `;
+}
+
 function hostNextStepQuickReply(attendeeHint?: string): object {
-  const who = (attendeeHint || "").toLowerCase();
-  const short = who.includes("@") ? who.split("@")[0] : who;
   return {
     items: [
       {
@@ -465,7 +470,7 @@ function hostNextStepQuickReply(attendeeHint?: string): object {
         action: {
           type: "message",
           label: "📅 หาเวลาใหม่",
-          text: short ? `นัด${short} ` : "นัดประชุม ",
+          text: hostRescheduleMessage(attendeeHint),
         },
       },
       {
@@ -651,7 +656,7 @@ export async function respondMeetingInvite(
                   action: {
                     type: "message",
                     label: "📅 หาเวลาใหม่",
-                    text: `นัด${who.includes("@") ? who.split("@")[0] : who} `,
+                    text: hostRescheduleMessage(who),
                   },
                 },
                 {
