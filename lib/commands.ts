@@ -2041,7 +2041,9 @@ async function handleParsed(
     if (denied) return denied;
     // Hard override: “เช้านี้/ดูประชุมเช้า” must never inherit last_period=week
     let period = resolvePeriodParam(text, params, context, "upcoming");
-    if (/เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้|ดูประชุมเช้า|นัดเช้า|ประชุมเช้า/.test(text)) {
+    const bandHint = /เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้|ดูประชุมเช้า|นัดเช้า|ประชุมเช้า/.test(text);
+    const morningSelf = bandHint && !/พรุ่งนี้/.test(text);
+    if (bandHint) {
       period = /พรุ่งนี้/.test(text) ? "tomorrow" : "today";
       if (!params.before && /เช้า/.test(text)) {
         params.after = params.after || "00:00";
@@ -2053,10 +2055,19 @@ async function handleParsed(
     const before = parseHHMM(params.before);
     const at = parseHHMM(params.at);
 
-    const { name: person, info: personInfo } = await continuedPerson(text, context);
-    if (person) {
-      const busy = await personBusyResponse(userUpn, person, day, period, after, before, at, personInfo);
-      return withCalendarNext({ ...busy, period: day ? undefined : period }, "meetings");
+    // Self agenda (“ดูประชุมเช้านี้”) — never continue last_person as the subject
+    const selfAgenda =
+      morningSelf ||
+      (/^(ดู)?(ประชุม|นัด)|ตารางวันนี้|มีนัดอะไร|มีประชุมอะไร|เช้านี้|บ่ายนี้/.test(text) &&
+        !params.person &&
+        !/(?:ของ|กับ)\s*\S/.test(text));
+
+    if (!selfAgenda) {
+      const { name: person, info: personInfo } = await continuedPerson(text, context);
+      if (person) {
+        const busy = await personBusyResponse(userUpn, person, day, period, after, before, at, personInfo);
+        return withCalendarNext({ ...busy, period: day ? undefined : period }, "meetings");
+      }
     }
 
     let { start, end, label } = day || periodRange(period);
@@ -2103,6 +2114,17 @@ async function handleParsed(
         return (after === null || m >= after) && (before === null || m < before);
       });
       label = windowLabel(label, after, before);
+    }
+
+    // Absolute clamp: morning query must only show today's events + today's label
+    if (morningSelf) {
+      const todayR = periodRange("today");
+      events = events.filter((ev) => {
+        const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+        return !!sd && sd.getTime() >= todayR.start.getTime() && sd.getTime() <= todayR.end.getTime();
+      });
+      label = windowLabel(todayR.label, after, before);
+      period = "today";
     }
 
     if (!events.length) {

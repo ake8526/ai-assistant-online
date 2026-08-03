@@ -19,3 +19,8 @@ export async function runWithUserGraphToken<T>(
   if (!userToken) return fn();
   return als.run({ userToken }, fn);
 }
+
+/** Force app-only Graph calls (ignore any delegated token in the parent ALS). */
+export async function runAsAppOnly<T>(fn: () => Promise<T>): Promise<T> {
+  return als.run({}, fn);
+}
