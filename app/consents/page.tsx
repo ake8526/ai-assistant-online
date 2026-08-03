@@ -375,7 +375,9 @@ function ConsentsContent() {
 
         <header className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 text-center">
           <h1 className="text-xl font-bold">📰 ติดตามข่าว / ฟีด</h1>
-          <p className="text-xs text-slate-400 mt-1">เลือกแหล่งข่าวให้ผู้ช่วยไปดึงมาสรุปให้ · ถามในแชทได้ว่า “มีข่าวอะไรบ้าง”</p>
+          <p className="text-xs text-slate-400 mt-1">
+            เลือกแหล่งข่าวให้ผู้ช่วยไปดึงมาสรุป · จัดการจาก LINE ได้เลย เช่น “ดูแหล่งข่าว” “เพิ่มแหล่งข่าว https://...” “ลบแหล่งข่าว” “มีข่าวอะไรบ้าง”
+          </p>
           {upn ? (
             <p className="text-[11px] text-emerald-400/80 mt-2">บัญชี: {upn}</p>
           ) : (

@@ -33,6 +33,17 @@ import {
   updateTaskStatus,
 } from "@/lib/store";
 import {
+  listManagedFeeds,
+  previewFeed,
+  upsertFeed,
+  updateFeed,
+  deleteFeed,
+  formatFeedList,
+  resolveFeedByIndexOrId,
+  detectFeedKind,
+  getFeed,
+} from "@/lib/feeds";
+import {
   addMinutes,
   fmtDate,
   fmtDateTime,
@@ -97,13 +108,17 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
 
 {
-  "intent": "<หนึ่งใน: get_brief | get_news | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | unknown>",
+  "intent": "<หนึ่งใน: get_brief | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | unknown>",
   "params": { ... }
 }
 
 ความหมายของแต่ละ intent:
 - get_brief = สรุปเตรียมตัว/แนะนำสำหรับนัดวันนี้ (ไม่ใช่การสรุปไฟล์)
-- get_news = สรุป "ข่าว/ฟีดที่ติดตาม" (RSS + คลิป YouTube ที่ subscribe) — เช่น "มีข่าวอะไรบ้าง", "สรุปข่าววันนี้", "ข่าวที่ติดตาม", "มีคลิปใหม่อะไรบ้าง"
+- get_news = สรุป "ข่าว/ฟีดที่ติดตาม" (RSS + Facebook + คลิป YouTube ที่ subscribe) — เช่น "มีข่าวอะไรบ้าง", "สรุปข่าววันนี้", "ข่าวที่ติดตาม", "มีคลิปใหม่อะไรบ้าง"
+- list_feeds = ดูรายการแหล่งข่าวที่ติดตาม (Facebook/RSS ที่เพิ่มไว้) — เช่น "ดูแหล่งข่าว", "รายการฟีด", "ติดตามอะไรบ้าง", "แหล่งข่าวมีอะไรบ้าง"
+- add_feed = เพิ่มแหล่งข่าว Facebook หรือ RSS — เช่น "เพิ่มแหล่งข่าว https://...", "ติดตามเพจ https://facebook.com/...", "เพิ่ม RSS https://... ชื่อ Extreme"
+- remove_feed = ลบแหล่งข่าว — เช่น "ลบแหล่งข่าว", "เลิกติดตามเพจ", "ลบฟีด 1", "ลบแหล่งข่าวหมายเลข 2"
+- edit_feed = แก้ชื่อหรือลิงก์แหล่งข่าว — เช่น "แก้ชื่อแหล่งข่าว 1 เป็น Extreme IT", "เปลี่ยนลิงก์แหล่ง 2 เป็น https://..."
 - list_meetings = ดู "รายการประชุม/นัด" ในปฏิทิน (วันนี้/พรุ่งนี้/สัปดาห์นี้/เดือนนี้)
 - my_availability = ดู "เวลาว่างของตัวเอง" ในปฏิทิน (ช่วงไหนว่าง/ตารางว่าง)
 - list_tasks = ดูงานที่ต้องติดตาม (ไม่ใช่ประชุม)
@@ -134,9 +149,22 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - add_task: { "title": "...", "responsible": "...", "due": "YYYY-MM-DD HH:MM หรือ null" }
 - complete_task: { "task_id": <number> }
 - find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "weekday": "mon|tue|… (ถ้าพูดชื่อวัน เช่น วันจันทร์นี้)", "date": "YYYY-MM-DD หรือ 31 (ถ้าเจาะจงวันที่)", "period": "today|tomorrow|week (ถ้าไม่ได้เจาะจงวัน)", "after": "HH:MM (เช้า/บ่าย/เย็น หรือหลัง…)", "before": "HH:MM", "note": "..." }
-- get_brief / get_news / list_tasks / summarize_meetings: {}
+- get_brief / get_news / list_tasks / summarize_meetings / list_feeds: {}
+- add_feed: { "url": "ลิงก์เพจหรือ RSS", "kind": "rss|facebook (ถ้าชัดเจน)", "label": "ชื่อย่อ (ถ้ามี)" }
+- remove_feed: { "feed_index": 1, "feed_id": null }  (ถ้ายังไม่ระบุหมายเลข ปล่อยว่าง — ระบบจะให้เลือก)
+- edit_feed: { "feed_index": 1, "label": "ชื่อใหม่", "url": "ลิงก์ใหม่ถ้าเปลี่ยน" }
 
 ตัวอย่าง:
+"ดูแหล่งข่าว" -> {"intent":"list_feeds","params":{}}
+"รายการฟีดที่ติดตาม" -> {"intent":"list_feeds","params":{}}
+"เพิ่มแหล่งข่าว https://www.extreme.co.th/feed" -> {"intent":"add_feed","params":{"url":"https://www.extreme.co.th/feed","kind":"rss"}}
+"ติดตามเพจ https://www.facebook.com/ExtremeIT ชื่อ Extreme" -> {"intent":"add_feed","params":{"url":"https://www.facebook.com/ExtremeIT","kind":"facebook","label":"Extreme"}}
+"เพิ่ม RSS https://example.com/rss.xml ชื่อข่าวไอที" -> {"intent":"add_feed","params":{"url":"https://example.com/rss.xml","kind":"rss","label":"ข่าวไอที"}}
+"ลบแหล่งข่าว" -> {"intent":"remove_feed","params":{}}
+"ลบฟีด 1" -> {"intent":"remove_feed","params":{"feed_index":1}}
+"เลิกติดตามแหล่งข่าวหมายเลข 2" -> {"intent":"remove_feed","params":{"feed_index":2}}
+"แก้ชื่อแหล่งข่าว 1 เป็น Extreme IT" -> {"intent":"edit_feed","params":{"feed_index":1,"label":"Extreme IT"}}
+"เปลี่ยนลิงก์แหล่ง 2 เป็น https://example.com/feed" -> {"intent":"edit_feed","params":{"feed_index":2,"url":"https://example.com/feed"}}
 "เดือนนี้มีประชุมอะไรบ้าง" -> {"intent":"list_meetings","params":{"period":"month"}}
 "วันนี้มีนัดอะไร" -> {"intent":"list_meetings","params":{"period":"today"}}
 "ประชุมสัปดาห์นี้" -> {"intent":"list_meetings","params":{"period":"week"}}
@@ -829,6 +857,15 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
           : null;
       return await runFindMeeting(userUpn, attendees, duration, window, band, includeLunch);
     }
+    if (a === "rmfeed") {
+      const id = Number(data.get("id") || "");
+      if (!id) return { intent: "error", reply: "ไม่พบแหล่งข่าวที่จะลบครับ" };
+      const row = await getFeed(userUpn, id);
+      if (!row) return { intent: "error", reply: "ไม่พบแหล่งข่าวนั้นครับ" };
+      await deleteFeed(userUpn, id);
+      const name = (row.label || "").trim() || row.ref;
+      return { intent: "feed_removed", reply: `✅ ลบแหล่งข่าวแล้ว: ${name}` };
+    }
   } catch (e) {
     return { intent: "error", reply: `⚠️ ทำรายการไม่สำเร็จ: ${String(e).slice(0, 150)}` };
   }
@@ -920,12 +957,142 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         intent,
         reply:
           (note || "ยังไม่มีข่าวให้สรุปครับ") +
-          "\n\nเชื่อม YouTube หรือเพิ่มแหล่งข่าวได้ที่หน้า “ติดตามข่าว / ฟีด” แล้วลองพิมพ์ “มีข่าวอะไรบ้าง” อีกครั้งครับ" +
+          "\n\nเพิ่มแหล่งได้ในแชท เช่น “เพิ่มแหล่งข่าว https://...” หรือ “ดูแหล่งข่าว” แล้วลองพิมพ์ “มีข่าวอะไรบ้าง” อีกครั้งครับ" +
           extra,
       };
     }
     const extra = skipped.length ? `\n\n(ข้ามบางแหล่ง: ${skipped.join(", ")})` : "";
     return { intent, reply: formatStoriesText(stories) + extra, data: stories };
+  }
+
+  if (intent === "list_feeds") {
+    const feeds = await listManagedFeeds(userUpn);
+    if (!feeds.length) {
+      return {
+        intent,
+        reply:
+          "ยังไม่มีแหล่งข่าวที่ติดตามครับ\n\n" +
+          "เพิ่มได้เลย เช่น:\n" +
+          "• เพิ่มแหล่งข่าว https://example.com/rss.xml\n" +
+          "• ติดตามเพจ https://www.facebook.com/...\n" +
+          "• ดูแหล่งข่าว / ลบแหล่งข่าว / แก้ชื่อแหล่งข่าว 1 เป็น ...",
+      };
+    }
+    return {
+      intent,
+      reply:
+        `แหล่งข่าวที่ติดตาม (${feeds.length}):\n\n` +
+        formatFeedList(feeds) +
+        "\n\nพิมพ์ “ลบแหล่งข่าว” หรือ “แก้ชื่อแหล่งข่าว 1 เป็น …” ได้ครับ",
+      data: feeds,
+    };
+  }
+
+  if (intent === "add_feed") {
+    const url = String(params.url || params.ref || "").trim();
+    if (!url) {
+      return {
+        intent,
+        reply:
+          "ส่งลิงก์มาด้วยครับ เช่น\n" +
+          "• เพิ่มแหล่งข่าว https://example.com/feed\n" +
+          "• ติดตามเพจ https://www.facebook.com/PageName ชื่อ เพจของฉัน",
+      };
+    }
+    const kindHint = String(params.kind || "").toLowerCase();
+    const label = String(params.label || params.name || "").trim();
+    const preview = await previewFeed(url, kindHint);
+    if (!preview.ok) return { intent, reply: `❌ เพิ่มไม่ได้: ${preview.error}` };
+    const kind = preview.kind || detectFeedKind(url, kindHint);
+    const saved = await upsertFeed(userUpn, kind, url, label || preview.source || "");
+    const samples = preview.items
+      .slice(0, 3)
+      .map((it, i) => `${i + 1}) ${String(it.title || "").slice(0, 100)}`)
+      .join("\n");
+    return {
+      intent,
+      reply:
+        `✅ เริ่มติดตามแล้ว\n` +
+        `แหล่ง: ${saved.label || preview.source}\n` +
+        `ประเภท: ${kind === "facebook" ? "Facebook" : "RSS"}\n` +
+        `ลิงก์: ${saved.ref}` +
+        (samples ? `\n\nตัวอย่างรายการล่าสุด:\n${samples}` : "") +
+        `\n\nถาม “มีข่าวอะไรบ้าง” หรือ “ดูแหล่งข่าว” ได้ครับ`,
+      data: saved,
+    };
+  }
+
+  if (intent === "remove_feed") {
+    const feeds = await listManagedFeeds(userUpn);
+    if (!feeds.length) return { intent, reply: "ยังไม่มีแหล่งข่าวให้ลบครับ" };
+    const target = resolveFeedByIndexOrId(feeds, params);
+    if (target) {
+      await deleteFeed(userUpn, target.id);
+      const name = (target.label || "").trim() || target.ref;
+      return { intent, reply: `✅ ลบแหล่งข่าวแล้ว: ${name}` };
+    }
+    const choices = feeds.map((f) => ({
+      feed_id: String(f.id),
+      label: `[${f.kind === "facebook" ? "FB" : "RSS"}] ${(f.label || "").trim() || f.ref}`,
+    }));
+    return {
+      intent: "choose_remove_feed",
+      reply: "เลือกแหล่งข่าวที่ต้องการลบครับ 👇",
+      choices,
+    };
+  }
+
+  if (intent === "edit_feed") {
+    const feeds = await listManagedFeeds(userUpn);
+    if (!feeds.length) return { intent, reply: "ยังไม่มีแหล่งข่าวให้แก้ไขครับ" };
+    const target = resolveFeedByIndexOrId(feeds, params);
+    const newLabel = String(params.label || params.name || "").trim();
+    const newUrl = String(params.url || params.ref || "").trim();
+    if (!target) {
+      return {
+        intent,
+        reply:
+          "บอกหมายเลขแหล่งข่าวด้วยครับ เช่น\n" +
+          "• แก้ชื่อแหล่งข่าว 1 เป็น Extreme IT\n" +
+          "• เปลี่ยนลิงก์แหล่ง 2 เป็น https://...\n\n" +
+          formatFeedList(feeds),
+        data: feeds,
+      };
+    }
+    if (!newLabel && !newUrl) {
+      return {
+        intent,
+        reply:
+          `แหล่งที่ ${feeds.indexOf(target) + 1}: ${(target.label || "").trim() || target.ref}\n` +
+          "บอกชื่อใหม่หรือลิงก์ใหม่ เช่น “แก้ชื่อแหล่งข่าว " +
+          `${feeds.indexOf(target) + 1} เป็น ชื่อใหม่”`,
+      };
+    }
+    if (newUrl) {
+      const kind = detectFeedKind(newUrl, target.kind);
+      const preview = await previewFeed(newUrl, kind);
+      if (!preview.ok) return { intent, reply: `❌ ลิงก์ใหม่ใช้ไม่ได้: ${preview.error}` };
+      // Changing URL may conflict with unique (owner, kind, ref) — delete+readd if needed
+      if (newUrl !== target.ref || kind !== target.kind) {
+        await deleteFeed(userUpn, target.id);
+        const saved = await upsertFeed(userUpn, kind, newUrl, newLabel || target.label || preview.source || "");
+        return {
+          intent,
+          reply: `✅ อัปเดตแหล่งข่าวแล้ว\nชื่อ: ${saved.label || "(ไม่มีชื่อ)"}\nลิงก์: ${saved.ref}`,
+          data: saved,
+        };
+      }
+    }
+    const updated = await updateFeed(userUpn, target.id, {
+      label: newLabel || undefined,
+      ref: newUrl || undefined,
+    });
+    if (!updated) return { intent, reply: "อัปเดตไม่สำเร็จครับ" };
+    return {
+      intent,
+      reply: `✅ แก้ไขแล้ว\nชื่อ: ${updated.label || "(ไม่มีชื่อ)"}\nลิงก์: ${updated.ref}`,
+      data: updated,
+    };
   }
 
   if (intent === "list_meetings") {
@@ -1216,5 +1383,15 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     return runFindMeeting(userUpn, attendees, duration, window, band, wantsLunchIncluded(text));
   }
 
-  return { intent: "unknown", reply: "ยังไม่เข้าใจคำสั่งนี้ ลองพิมพ์ใหม่อีกครั้งได้ไหมครับ" };
+  return {
+    intent: "unknown",
+    reply:
+      "ยังไม่เข้าใจคำสั่งนี้ ลองพิมพ์ใหม่อีกครั้งได้ไหมครับ\n\n" +
+      "เกี่ยวกับแหล่งข่าว:\n" +
+      "• ดูแหล่งข่าว\n" +
+      "• เพิ่มแหล่งข่าว https://...\n" +
+      "• ลบแหล่งข่าว\n" +
+      "• แก้ชื่อแหล่งข่าว 1 เป็น ...\n" +
+      "• มีข่าวอะไรบ้าง",
+  };
 }

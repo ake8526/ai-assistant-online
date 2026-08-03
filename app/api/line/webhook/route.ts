@@ -24,7 +24,17 @@ type LineEvent = {
   postback?: { data?: string };
 };
 
-type Choice = { mail?: string; displayName?: string; period?: string; date?: string; event_id?: string; label?: string; data?: string; lunch?: boolean };
+type Choice = {
+  mail?: string;
+  displayName?: string;
+  period?: string;
+  date?: string;
+  event_id?: string;
+  feed_id?: string;
+  label?: string;
+  data?: string;
+  lunch?: boolean;
+};
 type Slot = { start: string; end: string; label?: string };
 
 function truncate(s: string, n: number): string {
@@ -77,6 +87,14 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
       const p = new URLSearchParams({ a: "cancel", id: c.event_id });
       add(n, p.toString(), `ยกเลิก ${n}) ${c.label || ""}`);
     }
+  } else if (res.intent === "choose_remove_feed" && Array.isArray(res.choices)) {
+    let n = 0;
+    for (const c of res.choices as Choice[]) {
+      if (!c.feed_id) continue;
+      n++;
+      const p = new URLSearchParams({ a: "rmfeed", id: c.feed_id });
+      add(n, p.toString(), `ลบ ${n}) ${c.label || ""}`);
+    }
   }
   return items.length ? { items } : null;
 }
@@ -100,6 +118,8 @@ function detailText(res: CommandResult): string {
     return "\n\n" + parts.join("\n");
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).filter((c) => c.event_id).map((c, i) => `${i + 1}) ${c.label || ""}`);
+  } else if (res.intent === "choose_remove_feed" && Array.isArray(res.choices)) {
+    lines = (res.choices as Choice[]).filter((c) => c.feed_id).map((c, i) => `${i + 1}) ${c.label || ""}`);
   }
   return lines.length ? "\n\n" + lines.join("\n") : "";
 }
