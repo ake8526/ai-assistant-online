@@ -31,7 +31,7 @@ import {
   textWithDraftEscape,
 } from "@/lib/slashCommands";
 import { assertConfigured } from "@/lib/supabaseServer";
-import { runWithTrace, trace } from "@/lib/trace";
+import { runWithTrace, trace, setTraceUser } from "@/lib/trace";
 
 export const maxDuration = 60;
 
@@ -662,6 +662,8 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
     return;
   }
+  setTraceUser(upn);
+  trace("receive", "ข้อความเข้าจาก LINE");
   try {
     void showLineLoading(userId, 60);
 
@@ -798,19 +800,15 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       }
     }
     const ctx = await loadCtx(upn);
-    const res = await runWithTrace({ upn, channel: "line" }, async () => {
-      trace("receive", "ข้อความเข้าจาก LINE");
-      const { result } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
-      try {
-        await sendResult(ev.replyToken!, result);
-        trace("reply", `ตอบกลับ (${result.intent})`);
-      } catch (replyErr) {
-        console.warn("[line] reply failed, pushing:", String(replyErr).slice(0, 120));
-        await pushLineToId(userId, (result.reply || "รับทราบครับ") + detailText(result));
-        trace("reply", `push fallback (${result.intent})`, "error");
-      }
-      return result;
-    });
+    const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
+    try {
+      await sendResult(ev.replyToken, res);
+      trace("reply", `ตอบกลับ (${res.intent})`);
+    } catch (replyErr) {
+      console.warn("[line] reply failed, pushing:", String(replyErr).slice(0, 120));
+      await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
+      trace("reply", `push fallback (${res.intent})`, "error");
+    }
     if (res.intent === "clear_memory") {
       try {
         await deleteSetting(upn, CTX_KEY);
@@ -841,9 +839,11 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
     return;
   }
+  setTraceUser(upn);
   try {
     const data = new URLSearchParams(ev.postback?.data || "");
     const act = data.get("a") || "";
+    trace("receive", `กดปุ่ม: ${act || "?"}`);
     // Attendee RSVP on LINE after being invited
     if (MEETING_RSVP_ACTIONS.has(act)) {
       const oid = decodeURIComponent(data.get("oid") || "");
@@ -875,6 +875,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     if (act === "prep") void showLineLoading(userId, 60);
     const { result: res } = await withDelegatedGraph(upn, () => handleSelection(upn, data));
     await sendResult(ev.replyToken, res);
+    trace("reply", `ตอบกลับ (${res.intent})`);
     // Remember who this selection was about so text follow-ups continue on them.
     await saveCtx(upn, await loadCtx(upn), res);
   } catch (e) {
@@ -895,9 +896,9 @@ export async function POST(req: Request) {
     for (const ev of events) {
       try {
         if (ev.type === "message" && ev.message?.type === "text") {
-          await handleTextMessage(ev);
+          await runWithTrace({ channel: "line" }, () => handleTextMessage(ev));
         } else if (ev.type === "postback") {
-          await handlePostback(ev);
+          await runWithTrace({ channel: "line" }, () => handlePostback(ev));
         } else if (ev.type === "follow" && ev.replyToken) {
           await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
         }
