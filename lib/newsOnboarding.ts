@@ -10,6 +10,7 @@ import {
   setNewsInterested,
   setNewsOnboardingDone,
   setNewsTopics,
+  type NewsOnboardingDraft,
 } from "@/lib/newsPrefs";
 import { listManagedFeeds } from "@/lib/feeds";
 import { getLineId, pushLineMessages, replyLine, replyLineMessages } from "@/lib/line";
@@ -155,25 +156,38 @@ function countPrompt(): object {
   };
 }
 
-function timePrompt(): object {
+function timePrompt(kind: "news" | "brief" = "news"): object {
+  const isBrief = kind === "brief";
+  const action = isBrief ? "brieftime" : "newstime";
+  const times = ["06:00", "07:00", "08:00", "09:00", "12:00", "18:00"];
+  const actions = times.map((t) => ({
+    label: t,
+    data: `a=${action}&t=${t}`,
+    displayText: isBrief ? `บรีฟเช้าตอน ${t}` : `ส่งข่าวตอน ${t}`,
+  }));
+  if (isBrief) {
+    actions.push({
+      label: "ค่าเริ่มต้น จ–ศ 07:00",
+      data: "a=briefskip",
+      displayText: "ใช้ค่าเริ่มต้นบรีฟเช้า",
+    });
+  }
   return {
     type: "text",
-    text:
-      "② ส่งสรุปข่าวเข้า LINE กี่โมงครับ?\n(เวลาไทย 24 ชม.)",
-    quickReply: qr([
-      { label: "06:00", data: "a=newstime&t=06:00", displayText: "ส่งตอน 06:00" },
-      { label: "07:00", data: "a=newstime&t=07:00", displayText: "ส่งตอน 07:00" },
-      { label: "08:00", data: "a=newstime&t=08:00", displayText: "ส่งตอน 08:00" },
-      { label: "09:00", data: "a=newstime&t=09:00", displayText: "ส่งตอน 09:00" },
-      { label: "12:00", data: "a=newstime&t=12:00", displayText: "ส่งตอน 12:00" },
-      { label: "18:00", data: "a=newstime&t=18:00", displayText: "ส่งตอน 18:00" },
-    ]),
+    text: isBrief
+      ? "ต่อไปตั้งสรุปตารางเช้า (Morning Brief) ครับ 📅\n\n" +
+        "① ส่งสรุปนัดวันนี้เข้า LINE กี่โมง?\n(เวลาไทย 24 ชม. · ระบบส่งข่าวก่อน แล้วตามด้วยบรีฟ)"
+      : "② ส่งสรุปข่าวเข้า LINE กี่โมงครับ?\n(เวลาไทย 24 ชม.)",
+    quickReply: qr(actions),
   };
 }
 
 const DAY_LABELS = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 
-function daysPrompt(selected: number[]): object {
+function daysPrompt(selected: number[], kind: "news" | "brief" = "news"): object {
+  const isBrief = kind === "brief";
+  const dayAction = isBrief ? "briefdays" : "newsdays";
+  const doneAction = isBrief ? "briefdaysdone" : "newsdaysdone";
   const sel = selected.length
     ? selected
         .slice()
@@ -186,30 +200,37 @@ function daysPrompt(selected: number[]): object {
   if (selected.length) {
     actions.push({
       label: `✅ เสร็จ (${selected.length} วัน)`,
-      data: "a=newsdaysdone",
-      displayText: "ตั้งวันส่งเสร็จแล้ว",
+      data: `a=${doneAction}`,
+      displayText: isBrief ? "ตั้งวันบรีฟเสร็จแล้ว" : "ตั้งวันส่งข่าวเสร็จแล้ว",
     });
   }
   actions.push(
-    { label: "จ–ศ", data: "a=newsdays&p=weekday", displayText: "ส่งจันทร์–ศุกร์" },
-    { label: "ทุกวัน", data: "a=newsdays&p=everyday", displayText: "ส่งทุกวัน" }
+    { label: "จ–ศ", data: `a=${dayAction}&p=weekday`, displayText: "ส่งจันทร์–ศุกร์" },
+    { label: "ทุกวัน", data: `a=${dayAction}&p=everyday`, displayText: "ส่งทุกวัน" }
   );
   for (const d of remaining) {
     actions.push({
       label: DAY_LABELS[d],
-      data: `a=newsdays&d=${d}`,
+      data: `a=${dayAction}&d=${d}`,
       displayText: `เพิ่มวัน${DAY_LABELS[d]}`,
     });
   }
   if (!selected.length) {
-    actions.push({ label: "✅ เสร็จ", data: "a=newsdaysdone", displayText: "ตั้งวันส่งเสร็จแล้ว" });
+    actions.push({
+      label: "✅ เสร็จ",
+      data: `a=${doneAction}`,
+      displayText: isBrief ? "ตั้งวันบรีฟเสร็จแล้ว" : "ตั้งวันส่งข่าวเสร็จแล้ว",
+    });
   }
   return {
     type: "text",
-    text:
-      "③ ส่งวันไหนบ้างครับ?\n" +
-      "กดปุ่มวันทีละวันได้หลายอัน หรือเลือกชุดสำเร็จรูป\n\n" +
-      `เลือกแล้ว: ${sel}`,
+    text: isBrief
+      ? "② สรุปตารางเช้า ส่งวันไหนบ้างครับ?\n" +
+        "กดปุ่มวันทีละวันได้หลายอัน หรือเลือกชุดสำเร็จรูป\n\n" +
+        `เลือกแล้ว: ${sel}`
+      : "③ ส่งวันไหนบ้างครับ?\n" +
+        "กดปุ่มวันทีละวันได้หลายอัน หรือเลือกชุดสำเร็จรูป\n\n" +
+        `เลือกแล้ว: ${sel}`,
     quickReply: qr(actions),
   };
 }
@@ -228,9 +249,15 @@ function formatDays(days: number[]): string {
 
 async function finishNewsNotify(
   upn: string,
-  draft: { topics: string[]; count?: number; time?: string; days?: number[] },
-  replyToken: string,
-  prefsOnboarded: boolean
+  draft: {
+    topics: string[];
+    count?: number;
+    time?: string;
+    days?: number[];
+    briefTime?: string;
+    briefDays?: number[];
+  },
+  replyToken: string
 ): Promise<void> {
   const count = draft.count ?? 3;
   const time = draft.time || "07:00";
@@ -239,25 +266,64 @@ async function finishNewsNotify(
   await setNewsInterested(upn, true);
   await saveNotifyKind(upn, "news", { enabled: true, count, time, days });
   await setNewsOnboardingDone(upn, true);
-  await clearNewsDraft(upn);
+
+  const next: NewsOnboardingDraft = {
+    step: "brief_time",
+    topics: draft.topics,
+    count,
+    time,
+    days,
+    briefTime: draft.briefTime,
+    briefDays: draft.briefDays,
+    ts: Date.now(),
+  };
+  await saveNewsDraft(upn, next);
 
   const summary =
-    "✅ ตั้งค่าการแจ้งเตือนข่าวเรียบร้อยครับ\n\n" +
+    "✅ ตั้งค่าสรุปข่าวเรียบร้อยครับ\n\n" +
     `หัวข้อ: ${draft.topics.join(", ") || "-"}\n` +
     `จำนวน: ${countLabel(count)}\n` +
     `เวลาส่ง: ${time} น.\n` +
     `วันที่ส่ง: ${formatDays(days)}\n\n` +
-    "ระบบจะส่งสรุปเข้า LINE ตามเวลานี้ครับ\n" +
-    "เปลี่ยนทีหลังพิมพ์ “ตั้งค่าข่าว” ได้เลย";
+    "ต่อไปตั้งสรุปตารางเช้า (Morning Brief) ครับ 👇";
 
-  if (prefsOnboarded) {
-    await replyLineMessages(replyToken, [
-      { type: "text", text: summary },
-      manageMenuMessage(await buildFollowListText(upn)),
-    ]);
-  } else {
-    await replyLine(replyToken, summary + `\n\nหน้าตั้งค่าเพิ่มเติม: ${SETTINGS_URL}`);
-  }
+  await replyLineMessages(replyToken, [{ type: "text", text: summary }, timePrompt("brief")]);
+}
+
+async function finishBriefNotify(
+  upn: string,
+  draft: {
+    topics: string[];
+    count?: number;
+    time?: string;
+    days?: number[];
+    briefTime?: string;
+    briefDays?: number[];
+  },
+  replyToken: string
+): Promise<void> {
+  const briefTime = draft.briefTime || "07:00";
+  const briefDays = draft.briefDays?.length ? draft.briefDays : [1, 2, 3, 4, 5];
+  await saveNotifyKind(upn, "brief", { enabled: true, time: briefTime, days: briefDays });
+  await setNewsOnboardingDone(upn, true);
+  await clearNewsDraft(upn);
+
+  const newsTime = draft.time || "07:00";
+  const newsDays = draft.days?.length ? draft.days : [1, 2, 3, 4, 5];
+  const summary =
+    "✅ ตั้งค่าสรุปตารางเช้าเรียบร้อยครับ\n\n" +
+    `เวลาส่ง: ${briefTime} น.\n` +
+    `วันที่ส่ง: ${formatDays(briefDays)}\n\n` +
+    "สรุปภาพรวมการแจ้งเตือนอัตโนมัติ:\n" +
+    `• ข่าว: ${newsTime} น. · ${formatDays(newsDays)}\n` +
+    `• บรีฟเช้า: ${briefTime} น. · ${formatDays(briefDays)}\n\n` +
+    "ตอนเช้าจะส่งสรุปข่าวก่อน แล้วตามด้วยสรุปตารางครับ\n" +
+    `หน้าตั้งค่าเพิ่มเติม: ${SETTINGS_URL}`;
+
+  await replyLineMessages(replyToken, [
+    { type: "text", text: summary },
+    manageMenuMessage(await buildFollowListText(upn)),
+  ]);
 }
 
 async function buildFollowListText(upn: string): Promise<string> {
@@ -329,7 +395,8 @@ function manageMenuMessage(listText: string): object {
       { label: "🗑 ลบหัวข้อ", data: "a=newsdel", displayText: "ลบหัวข้อข่าว" },
       { label: "✏️ กำหนดเอง", data: "a=newscustom", displayText: "พิมพ์หัวข้อเอง" },
       { label: "🔢 จำนวนข่าว/วัน", data: "a=newseditcount", displayText: "เปลี่ยนจำนวนข่าวต่อวัน" },
-      { label: "⏰ เวลาแจ้งเตือน", data: "a=newsschedule", displayText: "ตั้งเวลาแจ้งเตือนข่าว" },
+      { label: "⏰ เวลาแจ้งเตือนข่าว", data: "a=newsschedule", displayText: "ตั้งเวลาแจ้งเตือนข่าว" },
+      { label: "📅 เวลาบรีฟเช้า", data: "a=briefschedule", displayText: "ตั้งเวลาสรุปตารางเช้า" },
       { label: "🌐 หน้าตั้งค่า", uri: SETTINGS_URL },
     ]),
   };
@@ -366,7 +433,7 @@ export async function openNewsSettings(upn: string, via: "push" | "reply", reply
   await send(via, upn, [manageMenuMessage(listText)], replyToken);
 }
 
-/** Push notify schedule wizard (count → time → days) for preview / re-edit. */
+/** Push notify schedule wizard (count → time → days → brief) for preview / re-edit. */
 export async function previewNewsNotifySetup(upn: string): Promise<void> {
   const prefs = await getNewsPrefs(upn);
   await saveNewsDraft(upn, {
@@ -379,10 +446,35 @@ export async function previewNewsNotifySetup(upn: string): Promise<void> {
     {
       type: "text",
       text:
-        "ตัวอย่างตั้งเวลาแจ้งเตือนข่าวครับ ⏰\n" +
-        "หลังเลือกหัวข้อเสร็จ ระบบจะถาม 3 ข้อนี้ต่อ — ลองกดปุ่มด้านล่างได้เลย",
+        "ตัวอย่างตั้งเวลาแจ้งเตือนครับ ⏰\n" +
+        "หลังเลือกหัวข้อเสร็จ จะถาม ① จำนวนข่าว ② เวลา/วันส่งข่าว แล้วต่อด้วย ③ เวลา/วันสรุปตารางเช้า — ลองกดได้เลย",
     },
     countPrompt(),
+  ]);
+}
+
+/** Push Morning Brief schedule wizard only. */
+export async function previewBriefNotifySetup(upn: string): Promise<void> {
+  const prefs = await getNewsPrefs(upn);
+  const notify = await getNotifyConfig(upn).catch(() => null);
+  await saveNewsDraft(upn, {
+    step: "brief_time",
+    topics: prefs.topics,
+    count: prefs.count,
+    time: notify?.news.time,
+    days: notify?.news.days,
+    briefTime: notify?.brief.time,
+    briefDays: notify?.brief.days,
+    ts: Date.now(),
+  });
+  await send("push", upn, [
+    {
+      type: "text",
+      text:
+        "ตัวอย่างตั้งสรุปตารางเช้า (Morning Brief) ครับ 📅\n" +
+        "หลังตั้งข่าวเสร็จ ระบบจะถามต่อแบบนี้ — ลองกดปุ่มด้านล่างได้เลย",
+    },
+    timePrompt("brief"),
   ]);
 }
 
@@ -404,7 +496,11 @@ export async function startNewsOnboarding(upn: string, via: "push" | "reply", re
   } else if (existing?.step === "time") {
     msg = timePrompt();
   } else if (existing?.step === "days") {
-    msg = daysPrompt(existing.days || []);
+    msg = daysPrompt(existing.days || [], "news");
+  } else if (existing?.step === "brief_time") {
+    msg = timePrompt("brief");
+  } else if (existing?.step === "brief_days") {
+    msg = daysPrompt(existing.briefDays || [], "brief");
   } else if (existing?.step === "delete" || existing?.step === "manage") {
     await openNewsSettings(upn, via, replyToken);
     return;
@@ -451,6 +547,11 @@ const NEWS_ACTIONS = new Set([
   "newstime",
   "newsdays",
   "newsdaysdone",
+  "brieftime",
+  "briefdays",
+  "briefdaysdone",
+  "briefskip",
+  "briefschedule",
   "newsadd",
   "newsdel",
   "newsdeli",
@@ -520,11 +621,33 @@ export async function handleNewsOnboardingPostback(
     return true;
   }
 
+  if (a === "briefschedule") {
+    const notify = await getNotifyConfig(upn).catch(() => null);
+    await saveNewsDraft(upn, {
+      step: "brief_time",
+      topics: prefs.topics,
+      count: prefs.count,
+      time: notify?.news.time,
+      days: notify?.news.days,
+      briefTime: notify?.brief.time,
+      briefDays: notify?.brief.days,
+      ts: Date.now(),
+    });
+    await replyLineMessages(replyToken, [timePrompt("brief")]);
+    return true;
+  }
+
   if (!draft && (a === "newsyes" || a === "newsno")) {
     draft = { step: "ask", topics: [], ts: Date.now() };
   }
   if (!draft && ["newstopic", "newscustom", "newstopicsdone", "newscount"].includes(a)) {
     draft = { step: "topics", topics: [...prefs.topics], ts: Date.now() };
+  }
+  if (
+    !draft &&
+    ["brieftime", "briefdays", "briefdaysdone", "briefskip"].includes(a)
+  ) {
+    draft = { step: "brief_time", topics: [...prefs.topics], ts: Date.now() };
   }
   if (!draft) {
     await openNewsSettings(upn, "reply", replyToken);
@@ -534,13 +657,19 @@ export async function handleNewsOnboardingPostback(
   if (a === "newsno") {
     await setNewsInterested(upn, false);
     await setNewsTopics(upn, []);
-    await setNewsOnboardingDone(upn, true);
-    await clearNewsDraft(upn);
     await saveNotifyKind(upn, "news", { enabled: false });
-    await replyLine(
-      replyToken,
-      "รับทราบครับ จะยังไม่ส่งสรุปข่าวให้อัตโนมัติ\nถ้าเปลี่ยนใจ พิมพ์ “ตั้งค่าข่าว” ได้ตลอดครับ"
-    );
+    await setNewsOnboardingDone(upn, true);
+    await saveNewsDraft(upn, { step: "brief_time", topics: [], ts: Date.now() });
+    await replyLineMessages(replyToken, [
+      {
+        type: "text",
+        text:
+          "รับทราบครับ จะยังไม่ส่งสรุปข่าวให้อัตโนมัติ\n" +
+          "ถ้าเปลี่ยนใจ พิมพ์ “ตั้งค่าข่าว” ได้ตลอดครับ\n\n" +
+          "ต่อไปตั้งสรุปตารางเช้า (Morning Brief) ครับ 👇",
+      },
+      timePrompt("brief"),
+    ]);
     return true;
   }
 
@@ -607,7 +736,7 @@ export async function handleNewsOnboardingPostback(
     draft.step = "days";
     draft.days = draft.days || [];
     await saveNewsDraft(upn, draft);
-    await replyLineMessages(replyToken, [daysPrompt(draft.days)]);
+    await replyLineMessages(replyToken, [daysPrompt(draft.days, "news")]);
     return true;
   }
 
@@ -615,12 +744,12 @@ export async function handleNewsOnboardingPostback(
     const preset = data.get("p") || "";
     if (preset === "weekday") {
       draft.days = [1, 2, 3, 4, 5];
-      await finishNewsNotify(upn, draft, replyToken, prefs.onboardingDone);
+      await finishNewsNotify(upn, draft, replyToken);
       return true;
     }
     if (preset === "everyday") {
       draft.days = [0, 1, 2, 3, 4, 5, 6];
-      await finishNewsNotify(upn, draft, replyToken, prefs.onboardingDone);
+      await finishNewsNotify(upn, draft, replyToken);
       return true;
     }
     const d = Number(data.get("d"));
@@ -632,7 +761,7 @@ export async function handleNewsOnboardingPostback(
     }
     draft.step = "days";
     await saveNewsDraft(upn, draft);
-    await replyLineMessages(replyToken, [daysPrompt(draft.days || [])]);
+    await replyLineMessages(replyToken, [daysPrompt(draft.days || [], "news")]);
     return true;
   }
 
@@ -642,12 +771,69 @@ export async function handleNewsOnboardingPostback(
         {
           type: "text",
           text: "เลือกอย่างน้อย 1 วันก่อนนะครับ หรือกด “จ–ศ” / “ทุกวัน”",
-          quickReply: (daysPrompt([]) as { quickReply: object }).quickReply,
+          quickReply: (daysPrompt([], "news") as { quickReply: object }).quickReply,
         },
       ]);
       return true;
     }
-    await finishNewsNotify(upn, draft, replyToken, prefs.onboardingDone);
+    await finishNewsNotify(upn, draft, replyToken);
+    return true;
+  }
+
+  if (a === "briefskip") {
+    draft.briefTime = "07:00";
+    draft.briefDays = [1, 2, 3, 4, 5];
+    await finishBriefNotify(upn, draft, replyToken);
+    return true;
+  }
+
+  if (a === "brieftime") {
+    const t = data.get("t") || "07:00";
+    draft.briefTime = /^\d{1,2}:\d{2}$/.test(t) ? t.padStart(5, "0") : "07:00";
+    draft.step = "brief_days";
+    draft.briefDays = draft.briefDays || [];
+    await saveNewsDraft(upn, draft);
+    await replyLineMessages(replyToken, [daysPrompt(draft.briefDays, "brief")]);
+    return true;
+  }
+
+  if (a === "briefdays") {
+    const preset = data.get("p") || "";
+    if (preset === "weekday") {
+      draft.briefDays = [1, 2, 3, 4, 5];
+      await finishBriefNotify(upn, draft, replyToken);
+      return true;
+    }
+    if (preset === "everyday") {
+      draft.briefDays = [0, 1, 2, 3, 4, 5, 6];
+      await finishBriefNotify(upn, draft, replyToken);
+      return true;
+    }
+    const d = Number(data.get("d"));
+    if (Number.isInteger(d) && d >= 0 && d <= 6) {
+      const cur = new Set(draft.briefDays || []);
+      if (cur.has(d)) cur.delete(d);
+      else cur.add(d);
+      draft.briefDays = Array.from(cur).sort((a, b) => a - b);
+    }
+    draft.step = "brief_days";
+    await saveNewsDraft(upn, draft);
+    await replyLineMessages(replyToken, [daysPrompt(draft.briefDays || [], "brief")]);
+    return true;
+  }
+
+  if (a === "briefdaysdone") {
+    if (!draft.briefDays?.length) {
+      await replyLineMessages(replyToken, [
+        {
+          type: "text",
+          text: "เลือกอย่างน้อย 1 วันก่อนนะครับ หรือกด “จ–ศ” / “ทุกวัน”",
+          quickReply: (daysPrompt([], "brief") as { quickReply: object }).quickReply,
+        },
+      ]);
+      return true;
+    }
+    await finishBriefNotify(upn, draft, replyToken);
     return true;
   }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AuthError, checkCronSecret, requireUser } from "@/lib/auth";
-import { previewNewsNotifySetup, startNewsOnboarding } from "@/lib/newsOnboarding";
+import { previewBriefNotifySetup, previewNewsNotifySetup, startNewsOnboarding } from "@/lib/newsOnboarding";
 import { getNewsPrefs, resetNewsOnboarding } from "@/lib/newsPrefs";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 /**
  * POST — start / reset news onboarding.
  * Cron: ?key=CRON_SECRET&upn=...&reset=1  (simulate new user)
- * Cron: ?key=CRON_SECRET&upn=...&preview=notify  (push schedule wizard)
+ * Cron: ?key=CRON_SECRET&upn=...&preview=notify|brief
  * User: Bearer → start for self
  */
 export async function POST(req: Request) {
@@ -30,6 +30,10 @@ export async function POST(req: Request) {
         await previewNewsNotifySetup(upn);
         return NextResponse.json({ ok: true, upn, mode: "preview_notify" });
       }
+      if (preview === "brief") {
+        await previewBriefNotifySetup(upn);
+        return NextResponse.json({ ok: true, upn, mode: "preview_brief" });
+      }
       if (reset) await resetNewsOnboarding(upn);
       await startNewsOnboarding(upn, "push");
       const prefs = await getNewsPrefs(upn);
@@ -40,6 +44,10 @@ export async function POST(req: Request) {
     if (preview === "notify") {
       await previewNewsNotifySetup(upn);
       return NextResponse.json({ ok: true, upn, mode: "preview_notify" });
+    }
+    if (preview === "brief") {
+      await previewBriefNotifySetup(upn);
+      return NextResponse.json({ ok: true, upn, mode: "preview_brief" });
     }
     if (reset) await resetNewsOnboarding(upn);
     await startNewsOnboarding(upn, "push");

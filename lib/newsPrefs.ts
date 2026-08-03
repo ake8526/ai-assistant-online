@@ -30,11 +30,22 @@ export type NewsPrefs = {
 };
 
 export type NewsOnboardingDraft = {
-  step: "ask" | "topics" | "count" | "time" | "days" | "manage" | "delete";
+  step:
+    | "ask"
+    | "topics"
+    | "count"
+    | "time"
+    | "days"
+    | "brief_time"
+    | "brief_days"
+    | "manage"
+    | "delete";
   topics: string[];
   count?: number;
   time?: string;
   days?: number[];
+  briefTime?: string;
+  briefDays?: number[];
   ts: number;
 };
 
