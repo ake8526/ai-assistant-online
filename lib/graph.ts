@@ -456,41 +456,6 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   return results.slice(0, top);
 }
 
-/** Prefer Thai office nick: parentheses → Thai token → short first token. */
-function nicknameKeyFromDisplay(displayName: string, givenName?: string): string | null {
-  const dn = (displayName || "").trim();
-  if (!dn) return null;
-
-  // 1) Nickname in parentheses — e.g. "Natthaphon Tangrom (แม็ค)" or "Tawan (เบส)"
-  const paren = dn.match(/[（(]\s*([^）)]+?)\s*[）)]/);
-  if (paren) {
-    const inner = paren[1].trim();
-    if (inner.length >= 1 && inner.length <= 16 && !inner.includes("@") && !isServiceNick(inner)) {
-      return inner;
-    }
-  }
-
-  // 2) First Thai-script token in the display name
-  const tokens = dn.split(/[\s\-_/|·]+/).filter(Boolean);
-  const thaiTok = tokens.find((t) => isThaiNickname(t) && t.length <= 16 && !isServiceNick(t));
-  if (thaiTok) return thaiTok;
-
-  // 3) givenName if short (often the nick)
-  const gn = (givenName || "").trim();
-  if (gn && gn.length >= 1 && gn.length <= 10 && !/[.@\s]/.test(gn) && !isServiceNick(gn)) {
-    return gn;
-  }
-
-  // 4) Short first token (romanized Thai nick like Bas / Bank) — skip long formal names
-  const first = tokens[0] || "";
-  if (!first || first.includes("@") || isServiceNick(first)) return null;
-  if (/^(mr|mrs|ms|dr|คุณ|นาย|นาง|นางสาว)$/i.test(first)) return null;
-  // Formal English given names are usually longer; Thai nick romanizations are short
-  if (/^[A-Za-z]+$/.test(first) && (first.length < 2 || first.length > 8)) return null;
-  if (first.length > 16) return null;
-  return first;
-}
-
 function isServiceNick(s: string): boolean {
   return /^(acc|admin|collector|ktis|room|noreply|no-reply|service|system|test|tmp|temp)(_|$)/i.test(
     s.trim()
@@ -503,6 +468,7 @@ const ROMAN_NICK_TO_THAI: Record<string, string> = {
   best: "เบส",
   base: "เบส",
   bes: "เบส",
+  bass: "เบส",
   bang: "แบง",
   bank: "แบงค์",
   non: "นนท์",
@@ -516,55 +482,196 @@ const ROMAN_NICK_TO_THAI: Record<string, string> = {
   max: "แม็ค",
   kao: "เก้า",
   nine: "เก้า",
+  ball: "บอล",
+  bol: "บอล",
+  es: "เอส",
+  ess: "เอส",
 };
 
 function nickNorm(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, "");
 }
 
+/** Thai-script present. */
+export function isThaiNickname(s: string): boolean {
+  return /[\u0E00-\u0E7F]/.test(s || "");
+}
+
+/** True office nick: short Thai (≤5) or known romanization — not formal given names. */
+function isLikelyOfficeNick(s: string): boolean {
+  const t = s.trim();
+  if (!t || t.includes("@") || isServiceNick(t)) return false;
+  if (/^(mr|mrs|ms|dr|คุณ|นาย|นาง|นางสาว|กัปตัน|ดร\.?)$/i.test(t)) return false;
+  if (isThaiNickname(t)) {
+    // เบส/บอล/แม็ค ≈ 2–5 ตัว; ณัฐพงศ์/กฤษฎา = ชื่อจริงยาว
+    return t.length >= 1 && t.length <= 5;
+  }
+  return !!ROMAN_NICK_TO_THAI[nickNorm(t)];
+}
+
+/** Prefer Thai office nick: short paren / short Thai token / Bas — never full legal names. */
+function nicknameKeyFromDisplay(displayName: string, givenName?: string): string | null {
+  const dn = (displayName || "").trim();
+  if (!dn) return null;
+
+  // 1) Parentheses — only short nick, e.g. (แม็ค) or (เบส). Skip (ณัฐพงศ์ เทียมเกียรติวิไล)
+  const paren = dn.match(/[（(]\s*([^）)]+?)\s*[）)]/);
+  if (paren) {
+    const inner = paren[1].trim();
+    const parts = inner.split(/[\s\-_/|·]+/).filter(Boolean);
+    const candidates = parts.filter((p) => !/^(กัปตัน|ดร\.?|คุณ|นาย|นาง|นางสาว|mr|mrs|ms|dr)$/i.test(p));
+    for (const c of candidates) {
+      if (isLikelyOfficeNick(c)) return c;
+    }
+  }
+
+  // 2) Short Thai token anywhere (nick often before/after English name)
+  const tokens = dn
+    .replace(/[（(][^）)]*[）)]/g, " ")
+    .split(/[\s\-_/|·]+/)
+    .filter(Boolean);
+  const thaiNick = tokens.find((t) => isThaiNickname(t) && isLikelyOfficeNick(t));
+  if (thaiNick) return thaiNick;
+
+  // 3) Known romanized nick only (Bas / Best / Mack) — not arbitrary English first names
+  const romanNick = tokens.find((t) => !!ROMAN_NICK_TO_THAI[nickNorm(t)]);
+  if (romanNick) return romanNick;
+
+  // 4) givenName if short nick-like
+  const gn = (givenName || "").trim();
+  if (gn && isLikelyOfficeNick(gn)) return gn;
+
+  return null;
+}
+
 function canonicalizeNick(raw: string): { key: string; label: string; thaiish: boolean } {
   const trimmed = raw.trim();
   const n = nickNorm(trimmed);
-  if (isThaiNickname(trimmed)) return { key: n, label: trimmed, thaiish: true };
+  if (isThaiNickname(trimmed) && isLikelyOfficeNick(trimmed)) {
+    return { key: n, label: trimmed, thaiish: true };
+  }
   const mapped = ROMAN_NICK_TO_THAI[n];
   if (mapped) return { key: nickNorm(mapped), label: mapped, thaiish: true };
   return { key: n, label: trimmed, thaiish: false };
 }
 
-/** Thai-script nickname OR known romanized Thai nick (Bas→เบส). */
-export function isThaiNickname(s: string): boolean {
-  return /[\u0E00-\u0E7F]/.test(s || "");
-}
-
 export function isThaiishNickname(s: string): boolean {
-  if (isThaiNickname(s)) return true;
+  if (isThaiNickname(s) && isLikelyOfficeNick(s)) return true;
   return !!ROMAN_NICK_TO_THAI[nickNorm(s)];
 }
 
-/** Label for LINE: keep Thai text, else show Thai nick + original name. */
+/** Label for LINE: keep readable name; always keep the person. */
 export function thaiDisplayLabel(displayName: string, fallbackNick?: string): string | null {
   const raw = (displayName || "").trim();
   const nick = (fallbackNick || "").trim();
   if (!raw && !nick) return null;
   if (raw && isThaiNickname(raw)) {
-    const parts = raw.split(/[\s\-_/|·]+/).filter((p) => isThaiNickname(p) || /^[0-9๐-๙]+$/.test(p));
+    const cleaned = raw
+      .replace(/[（(][^）)]*[）)]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const parts = cleaned.split(/[\s\-_/|·]+/).filter((p) => isThaiNickname(p) || /^[0-9๐-๙]+$/.test(p));
     const joined = parts.join(" ").trim();
     if (joined) return joined;
-    return raw.replace(/[A-Za-z@._]+/g, " ").replace(/\s+/g, " ").trim() || raw;
   }
-  // English display name but Thai/romanized nick group — still show the person
-  if (nick && (isThaiNickname(nick) || isThaiishNickname(nick))) {
+  if (nick) {
     const canon = canonicalizeNick(nick).label;
-    if (raw && raw.toLowerCase() !== nick.toLowerCase()) return `${canon} · ${raw}`;
+    if (raw) {
+      const short = raw.replace(/\s+/g, " ").trim().slice(0, 60);
+      if (short && short.toLowerCase() !== nick.toLowerCase()) return `${canon} · ${short}`;
+    }
     return canon;
   }
-  return null;
+  return raw || null;
+}
+
+function softEnLocal(mailOrLocal: string): string {
+  return (mailOrLocal.split("@")[0] || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .replace(/th/g, "t")
+    .replace(/(.)\1+/g, "$1");
+}
+
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const m = a.length;
+  const n = b.length;
+  const prev = new Array<number>(n + 1);
+  const cur = new Array<number>(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= n; j++) prev[j] = cur[j];
+  }
+  return prev[n];
+}
+
+/** Same person with 2 accounts (typo English / title in paren). */
+function samePerson(a: UserInfo, b: UserInfo): boolean {
+  if (a.mail.toLowerCase() === b.mail.toLowerCase()) return true;
+
+  const thaiOf = (u: UserInfo) => {
+    const dn = (u.displayName || "").trim();
+    const paren = dn.match(/[（(]\s*([^）)]+?)\s*[）)]/);
+    let thai = "";
+    if (paren) {
+      thai = paren[1]
+        .replace(/กัปตัน|ดร\.?|คุณ|นาย|นางสาว|นาง/gi, " ")
+        .replace(/\s+/g, "")
+        .trim();
+    }
+    if (!thai || thai.length < 6) {
+      thai = dn
+        .replace(/[A-Za-z0-9._@\-]+/g, " ")
+        .replace(/กัปตัน|ดร\.?|คุณ|นาย|นางสาว|นาง/gi, " ")
+        .replace(/\s+/g, "")
+        .trim();
+    }
+    return thai.length >= 6 ? thai : "";
+  };
+
+  const ta = thaiOf(a);
+  const tb = thaiOf(b);
+  if (ta && tb && (ta === tb || ta.includes(tb) || tb.includes(ta))) return true;
+
+  const ea = softEnLocal(a.mail || a.displayName || "");
+  const eb = softEnLocal(b.mail || b.displayName || "");
+  if (ea && eb && ea.length >= 6 && eb.length >= 6) {
+    if (ea === eb) return true;
+    if (Math.abs(ea.length - eb.length) <= 2 && editDistance(ea, eb) <= 2) return true;
+  }
+
+  // Compare soft locals from English display-name prefix too
+  const enPrefix = (dn: string) => softEnLocal((dn.match(/^[A-Za-z][A-Za-z0-9._\-]*/) || [""])[0]);
+  const pa = enPrefix(a.displayName || "");
+  const pb = enPrefix(b.displayName || "");
+  if (pa && pb && pa.length >= 6 && pb.length >= 6) {
+    if (pa === pb) return true;
+    if (Math.abs(pa.length - pb.length) <= 2 && editDistance(pa, pb) <= 2) return true;
+  }
+  return false;
+}
+
+function dedupePeople(people: UserInfo[]): UserInfo[] {
+  const out: UserInfo[] = [];
+  for (const p of people) {
+    if (out.some((x) => samePerson(x, p))) continue;
+    out.push(p);
+  }
+  return out;
 }
 
 type DupNickGroup = { nick: string; people: UserInfo[] };
 
 let dupNickCache: { ver: number; at: number; scanned: number; groups: DupNickGroup[] } | null = null;
-const DUP_NICK_CACHE_VER = 3;
+const DUP_NICK_CACHE_VER = 4;
 
 /** Scan directory displayNames for shared nicknames (app-only User.Read.All). */
 export async function findDuplicateNicknames(opts?: {
@@ -646,7 +753,7 @@ export async function findDuplicateNicknames(opts?: {
   const thaiGroups: DupNickGroup[] = [];
   for (const g of groups) {
     const people: UserInfo[] = [];
-    for (const p of g.people) {
+    for (const p of dedupePeople(g.people)) {
       const label = thaiDisplayLabel(p.displayName || "", g.nick);
       if (label) people.push({ mail: p.mail, displayName: label });
     }

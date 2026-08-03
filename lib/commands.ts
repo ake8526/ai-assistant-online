@@ -1631,23 +1631,16 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     if (!res.groups.length) {
       return {
         intent: "find_duplicate_nicknames",
-        reply:
-          `สแกนผู้ใช้ในไดเรกทอรี ${res.scanned} คนแล้ว ไม่พบชื่อเล่นไทยที่ซ้ำกันครับ\n` +
-          `(นับทั้งตัวไทย และทับศัพท์ เช่น Bas/Best = เบส — ไม่นับ Acc/Admin/บัญชีระบบ)`,
+        reply: `สแกนผู้ใช้ในไดเรกทอรี ${res.scanned} คนแล้ว ไม่พบชื่อเล่นไทยที่ซ้ำกันครับ`,
       };
     }
-    const lines = [
-      `พบชื่อเล่นไทยซ้ำ ${res.groups.length} กลุ่ม จากผู้ใช้ที่สแกน ${res.scanned} คนครับ`,
-      `(นับตัวไทย + ทับศัพท์ เช่น Bas/Best → เบส · รายการทั้งหมด)`,
-      "",
-    ];
+    const lines = [`พบชื่อเล่นไทยซ้ำ ${res.groups.length} กลุ่ม จากผู้ใช้ที่สแกน ${res.scanned} คนครับ`, ""];
     res.groups.forEach((g, i) => {
       lines.push(`${i + 1}) “${g.nick}” — ${g.people.length} คน`);
       g.people.forEach((p) => {
         lines.push(`   • ${(p.displayName || g.nick).trim()}`);
       });
     });
-    lines.push("", "หมายเหตุ: จากชื่อที่แสดงใน M365 (วงเล็บ/คำแรก) · Bas/Best นับเป็น เบส");
     trace("compose", "สรุปรายชื่อเล่นซ้ำ (ไทยทั้งหมด)");
     return { intent: "find_duplicate_nicknames", reply: lines.join("\n") };
   }
