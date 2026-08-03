@@ -13,7 +13,7 @@ import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
-import { notifyMeetingInviteOnLine, respondMeetingInvite, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp } from "@/lib/meetingInvite";
+import { respondMeetingInvite, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -342,13 +342,13 @@ function confirmCardMessage(d: Draft, prefix = ""): object {
     `📌 หัวข้อ: ${d.subject}\n` +
     (d.detail ? `📝 รายละเอียด: ${d.detail}\n` : "") +
     `👤 ผู้เข้าร่วม: ${d.attendees.length ? d.attendees.join(", ") : "(ยังไม่มี)"}\n\n` +
-    `ยืนยันเพื่อส่งนัด หรือแก้ไขก่อนได้ครับ 👇`;
+    `ยืนยันเพื่อส่งคำขอนัด (รออีกฝั่งยืนยันก่อนเข้า Outlook) หรือแก้ไขก่อนได้ครับ 👇`;
   return {
     type: "text",
     text,
     quickReply: {
       items: [
-        { type: "action", action: { type: "postback", label: "✅ ยืนยันส่งนัด", data: "a=confirmbook", displayText: "ยืนยันส่งนัด" } },
+        { type: "action", action: { type: "postback", label: "✅ ยืนยันส่งคำขอ", data: "a=confirmbook", displayText: "ยืนยันส่งคำขอนัด" } },
         { type: "action", action: { type: "postback", label: "✏️ หัวข้อ", data: "a=setsubj", displayText: "ตั้งหัวข้อประชุม" } },
         { type: "action", action: { type: "postback", label: "📝 รายละเอียด", data: "a=setdetail", displayText: "ใส่รายละเอียด" } },
         { type: "action", action: { type: "postback", label: "➕ เพิ่มคน", data: "a=addppl", displayText: "เพิ่มคนเข้าประชุม" } },
@@ -508,43 +508,39 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       return;
     }
     try {
-      const { result: ev, asUser } = await withDelegatedGraph(upn, () =>
-        createEvent(upn, draft.subject, wallIso(s), wallIso(e), draft.attendees, true, draft.detail || undefined)
-      );
-      if (!asUser) {
+      let asUserOk = true;
+      const result = await bookMeetingWithLineHold({
+        organizerUpn: upn,
+        subject: draft.subject,
+        startIso: wallIso(s),
+        endIso: wallIso(e),
+        attendees: draft.attendees,
+        detail: draft.detail || undefined,
+        create: async () => {
+          const { result: ev, asUser } = await withDelegatedGraph(upn, () =>
+            createEvent(upn, draft.subject, wallIso(s), wallIso(e), draft.attendees, true, draft.detail || undefined)
+          );
+          asUserOk = asUser;
+          return ev;
+        },
+      });
+      if (result.mode === "booked" && !asUserOk) {
         await replyLine(replyToken, calendarConsentNeededMessage());
         return;
       }
       await clearDraft(upn);
 
-      let lineNote = "";
-      try {
-        const ping = await notifyMeetingInviteOnLine({
-          organizerUpn: upn,
-          subject: draft.subject,
-          startIso: wallIso(s),
-          endIso: wallIso(e),
-          attendees: draft.attendees,
-          eventId: ev?.id,
-          detail: draft.detail || undefined,
-        });
-        if (ping.notified > 0) {
-          lineNote =
-            `\n\n📲 ส่ง LINE ขอให้ยืนยันนัดแล้ว ${ping.notified} คน` +
-            ` (เฉพาะคนที่เพิ่มเพื่อนบอทแล้ว)`;
-        } else {
-          lineNote = "\n\n📲 ยังไม่มีผู้เข้าร่วมที่ผูก LINE ไว้ — ส่งคำเชิญทาง Outlook ตามปกติแล้วครับ";
-        }
-      } catch (e) {
-        console.warn("[confirmbook] line notify", String(e).slice(0, 120));
-      }
+      const headline =
+        result.mode === "proposed"
+          ? `⏳ ส่งคำขอนัดแล้ว — รออีกฝั่งยืนยัน\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}`
+          : `✅ ส่งนัดประชุมแล้ว!\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}`;
 
       await replyLine(
         replyToken,
-        `✅ ส่งนัดประชุมแล้ว!\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}` +
+        headline +
           (draft.detail ? `\n📝 ${draft.detail}` : "") +
           `\n👤 ${draft.attendees.join(", ")}` +
-          lineNote
+          result.note
       );
     } catch (err) {
       await replyLine(replyToken, `⚠️ ส่งนัดไม่สำเร็จ: ${String(err).slice(0, 150)}`);

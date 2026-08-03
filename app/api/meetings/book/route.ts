@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { AuthError, requireUser } from "@/lib/auth";
 import { createEvent } from "@/lib/graph";
-import { notifyMeetingInviteOnLine } from "@/lib/meetingInvite";
+import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { addMinutes, parseWall, wallIso } from "@/lib/time";
 
@@ -20,30 +20,29 @@ export async function POST(req: Request) {
     const attendees = (body.attendees as string[]) || [];
     try {
       const live = typeof body.graphToken === "string" ? body.graphToken : "";
-      const { result: ev } = await withDelegatedGraph(
-        upn,
-        () => createEvent(upn, subject, wallIso(start), wallIso(end), attendees),
-        live
-      );
-      let line_notified = 0;
-      try {
-        const ping = await notifyMeetingInviteOnLine({
-          organizerUpn: upn,
-          subject,
-          startIso: wallIso(start),
-          endIso: wallIso(end),
-          attendees,
-          eventId: ev?.id,
-        });
-        line_notified = ping.notified;
-      } catch {
-        /* best-effort */
-      }
+      const held = await bookMeetingWithLineHold({
+        organizerUpn: upn,
+        subject,
+        startIso: wallIso(start),
+        endIso: wallIso(end),
+        attendees,
+        create: async () => {
+          const { result: ev } = await withDelegatedGraph(
+            upn,
+            () => createEvent(upn, subject, wallIso(start), wallIso(end), attendees),
+            live
+          );
+          return ev;
+        },
+      });
       return NextResponse.json({
         ok: true,
-        join_url: ev.onlineMeeting?.joinUrl,
-        web_link: ev.webLink,
-        line_notified,
+        mode: held.mode,
+        join_url: undefined,
+        web_link: undefined,
+        line_notified: held.notified,
+        held: held.mode === "proposed",
+        note: held.note,
       });
     } catch (e) {
       return NextResponse.json({ ok: false, error: String(e).slice(0, 200) });

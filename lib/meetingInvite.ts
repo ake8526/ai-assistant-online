@@ -19,6 +19,10 @@ export type MeetingInviteRecord = {
   eventId?: string;
   detail?: string;
   attendees: string[];
+  /** LINE-linked attendees we are waiting on (subset of attendees). */
+  awaitLine?: string[];
+  /** pending = waiting confirm before Outlook; booked = created; cancelled = declined */
+  status?: "pending" | "booked" | "cancelled";
   responses: Record<string, "accept" | "decline">;
   ts: number;
 };
@@ -272,15 +276,21 @@ export async function readInvite(ownerUpn: string, id: string): Promise<MeetingI
 
 function inviteMessage(rec: MeetingInviteRecord): object {
   const who = rec.organizerName || rec.organizerUpn;
-  const text =
-    "📅 คุณถูกเชิญเข้าประชุม\n\n" +
-    `📌 ${rec.subject}\n` +
-    `🕐 ${whenLabel(rec.start, rec.end)}\n` +
-    `👤 จัดโดย: ${who}` +
-    (rec.detail ? `\n📝 ${rec.detail}` : "") +
-    "\n\nกรุณายืนยันการเข้าร่วมนัดนี้ครับ\n(กดปุ่ม หรือพิมพ์ “ไม่สะดวก” / “ยกเลิก” ได้ครับ) 👇";
+  const pending = !rec.eventId && rec.status !== "booked";
+  const text = pending
+    ? "📅 มีคำขอนัดประชุมถึงคุณ\n\n" +
+      `📌 ${rec.subject}\n` +
+      `🕐 ${whenLabel(rec.start, rec.end)}\n` +
+      `👤 จาก: ${who}` +
+      (rec.detail ? `\n📝 ${rec.detail}` : "") +
+      "\n\nยังไม่ได้สร้างใน Outlook — กรุณายืนยันก่อนครับ\n(กดปุ่ม หรือพิมพ์ “ไม่สะดวก” / “เปลี่ยนเวลาเป็น…”) 👇"
+    : "📅 คุณถูกเชิญเข้าประชุม\n\n" +
+      `📌 ${rec.subject}\n` +
+      `🕐 ${whenLabel(rec.start, rec.end)}\n` +
+      `👤 จัดโดย: ${who}` +
+      (rec.detail ? `\n📝 ${rec.detail}` : "") +
+      "\n\nกรุณายืนยันการเข้าร่วมนัดนี้ครับ\n(กดปุ่ม หรือพิมพ์ “ไม่สะดวก” / “ยกเลิก” ได้ครับ) 👇";
 
-  // postback data must stay under ~300 chars — keep id short
   const accept = `a=mtaccept&oid=${encodeURIComponent(rec.organizerUpn)}&id=${rec.id}`;
   const decline = `a=mtdecline&oid=${encodeURIComponent(rec.organizerUpn)}&id=${rec.id}`;
 
@@ -291,7 +301,12 @@ function inviteMessage(rec: MeetingInviteRecord): object {
       items: [
         {
           type: "action",
-          action: { type: "postback", label: "✅ ยืนยันเข้าร่วม", data: accept, displayText: "ยืนยันเข้าร่วมนัด" },
+          action: {
+            type: "postback",
+            label: pending ? "✅ ยืนยันนัดนี้" : "✅ ยืนยันเข้าร่วม",
+            data: accept,
+            displayText: pending ? "ยืนยันนัดนี้" : "ยืนยันเข้าร่วมนัด",
+          },
         },
         {
           type: "action",
@@ -323,8 +338,8 @@ function rsvpFollowUpQuickReply(rec: MeetingInviteRecord, accepted: boolean): ob
 }
 
 /**
- * Push LINE confirmations to attendees who already added/linked the bot.
- * Returns how many were notified (for organizer feedback).
+ * Push a meeting proposal to LINE-linked attendees WITHOUT creating Outlook yet.
+ * Host creates the calendar event only after they accept.
  */
 export async function notifyMeetingInviteOnLine(opts: {
   organizerUpn: string;
@@ -335,10 +350,13 @@ export async function notifyMeetingInviteOnLine(opts: {
   attendees: string[];
   eventId?: string;
   detail?: string;
-}): Promise<{ notified: number; names: string[] }> {
+  /** When true (default), do not require an existing Outlook event — wait for accept first. */
+  holdUntilAccept?: boolean;
+}): Promise<{ notified: number; names: string[]; held: boolean }> {
   const linked = await findLinkedLineAttendees(opts.attendees, opts.organizerUpn);
-  if (!linked.length) return { notified: 0, names: [] };
+  if (!linked.length) return { notified: 0, names: [], held: false };
 
+  const hold = opts.holdUntilAccept !== false && !opts.eventId;
   const id = shortId();
   const rec: MeetingInviteRecord = {
     id,
@@ -350,13 +368,13 @@ export async function notifyMeetingInviteOnLine(opts: {
     eventId: opts.eventId,
     detail: opts.detail,
     attendees: opts.attendees.map((a) => a.toLowerCase()),
+    awaitLine: linked.map((p) => p.upn),
+    status: hold ? "pending" : opts.eventId ? "booked" : "pending",
     responses: {},
     ts: Date.now(),
   };
   await saveInvite(rec.organizerUpn, rec);
 
-  // Also stash under each recipient so postback can find it if oid is mangled —
-  // primary lookup uses organizer upn from postback.
   const msg = inviteMessage(rec);
   const names: string[] = [];
   for (const person of linked) {
@@ -368,7 +386,66 @@ export async function notifyMeetingInviteOnLine(opts: {
       console.warn("[mt-invite] push failed", person.upn, String(e).slice(0, 120));
     }
   }
-  return { notified: names.length, names };
+  return { notified: names.length, names, held: hold && names.length > 0 };
+}
+
+export type BookWithHoldResult = {
+  mode: "proposed" | "booked";
+  notified: number;
+  names: string[];
+  eventId?: string;
+  note: string;
+};
+
+/**
+ * Prefer LINE confirm-first when attendees are linked; otherwise create Outlook immediately.
+ * `create` runs only when we are not holding for LINE confirm.
+ */
+export async function bookMeetingWithLineHold(opts: {
+  organizerUpn: string;
+  subject: string;
+  startIso: string;
+  endIso: string;
+  attendees: string[];
+  detail?: string;
+  create: () => Promise<{ id?: string } | null | undefined>;
+}): Promise<BookWithHoldResult> {
+  const linked = await findLinkedLineAttendees(opts.attendees, opts.organizerUpn);
+  if (linked.length > 0) {
+    const ping = await notifyMeetingInviteOnLine({
+      organizerUpn: opts.organizerUpn,
+      subject: opts.subject,
+      startIso: opts.startIso,
+      endIso: opts.endIso,
+      attendees: opts.attendees,
+      detail: opts.detail,
+      holdUntilAccept: true,
+    });
+    return {
+      mode: "proposed",
+      notified: ping.notified,
+      names: ping.names,
+      note:
+        `\n\n⏳ ยังไม่สร้างใน Outlook — ส่งคำขอทาง LINE แล้ว ${ping.notified} คน\n` +
+        `จะสร้างนัดให้อัตโนมัติเมื่ออีกฝั่งกดยืนยันครับ`,
+    };
+  }
+
+  const ev = await opts.create();
+  return {
+    mode: "booked",
+    notified: 0,
+    names: [],
+    eventId: ev?.id,
+    note: opts.attendees.length
+      ? "\n\n📲 ผู้เข้าร่วมยังไม่ได้ผูก LINE — ส่งคำเชิญทาง Outlook แล้วครับ"
+      : "",
+  };
+}
+
+function linkedAwaitList(rec: MeetingInviteRecord): string[] {
+  if (rec.awaitLine?.length) return rec.awaitLine.map((a) => a.toLowerCase());
+  return (rec.attendees || []).map((a) => a.toLowerCase());
 }
 
 export async function respondMeetingInvite(
@@ -379,21 +456,137 @@ export async function respondMeetingInvite(
 ): Promise<{ ok: boolean; reply: string; quickReply?: object }> {
   const rec = await readInvite(organizerUpn.toLowerCase(), inviteId);
   if (!rec) {
-    return { ok: false, reply: "ไม่พบนัดนี้แล้วครับ (อาจหมดอายุหรือถูกยกเลิก) — ดูในปฏิทิน Outlook ได้ตามปกติ" };
+    return { ok: false, reply: "ไม่พบนัดนี้แล้วครับ (อาจหมดอายุหรือถูกยกเลิก)" };
+  }
+  if (rec.status === "cancelled") {
+    return { ok: false, reply: "คำขอนัดนี้ถูกยกเลิกไปแล้วครับ" };
   }
 
   const who = responderUpn.toLowerCase();
   rec.responses[who] = accept ? "accept" : "decline";
   await saveInvite(rec.organizerUpn, rec);
-  // Keep pending so they can still change mind via text / button
   await setPendingRsvp(who, rec).catch(() => undefined);
 
   const when = whenLabel(rec.start, rec.end);
+  const holding = !rec.eventId && rec.status !== "booked";
+  const awaiting = linkedAwaitList(rec);
+
+  // Decline while holding → cancel proposal, never create Outlook
+  if (!accept && holding) {
+    rec.status = "cancelled";
+    await saveInvite(rec.organizerUpn, rec);
+    try {
+      const orgLine = await getLineId(rec.organizerUpn);
+      if (orgLine) {
+        await pushLineMessages(orgLine, [
+          {
+            type: "text",
+            text:
+              `📬 คำขอนัดถูกปฏิเสธ\n` +
+              `📌 ${rec.subject}\n` +
+              `🕐 ${when}\n` +
+              `👤 ${who} ไม่สะดวก\n\n` +
+              `ยังไม่ได้สร้างนัดใน Outlook ครับ`,
+          },
+        ]);
+      }
+    } catch {
+      /* best-effort */
+    }
+    return {
+      ok: true,
+      reply: `รับทราบครับ บันทึกว่าไม่สะดวก\n📌 ${rec.subject}\n🕐 ${when}\n\nจะแจ้งเจ้าของนัดแล้ว (ยังไม่สร้างใน Outlook)`,
+      quickReply: rsvpFollowUpQuickReply(rec, false),
+    };
+  }
+
+  // Accept while holding → create Outlook only when everyone we're waiting on has accepted
+  if (accept && holding) {
+    const allAccepted = awaiting.every((u) => rec.responses[u] === "accept");
+    if (!allAccepted) {
+      const pending = awaiting.filter((u) => rec.responses[u] !== "accept");
+      try {
+        const orgLine = await getLineId(rec.organizerUpn);
+        if (orgLine) {
+          await pushLineMessages(orgLine, [
+            {
+              type: "text",
+              text:
+                `📬 อัปเดตคำขอนัด\n` +
+                `📌 ${rec.subject}\n` +
+                `🕐 ${when}\n` +
+                `👤 ${who} ยืนยันแล้ว ✅\n` +
+                `⏳ รออีก ${pending.length} คนก่อนสร้างใน Outlook`,
+            },
+          ]);
+        }
+      } catch {
+        /* ignore */
+      }
+      return {
+        ok: true,
+        reply:
+          `✅ บันทึกการยืนยันแล้วครับ\n📌 ${rec.subject}\n🕐 ${when}\n\n` +
+          `รอผู้เข้าร่วมคนอื่นยืนยันครบก่อน จึงจะสร้างนัดใน Outlook`,
+        quickReply: rsvpFollowUpQuickReply(rec, true),
+      };
+    }
+
+    // Everyone accepted → create Outlook event as the organizer
+    let createdId: string | undefined;
+    let createErr: string | undefined;
+    try {
+      const { withDelegatedGraph } = await import("@/lib/msGraphOAuth");
+      const { createEvent } = await import("@/lib/graph");
+      const { result: ev, asUser } = await withDelegatedGraph(rec.organizerUpn, () =>
+        createEvent(rec.organizerUpn, rec.subject, rec.start, rec.end, rec.attendees, true, rec.detail)
+      );
+      if (!asUser) {
+        createErr = "เจ้าของนัดยังไม่ได้ให้สิทธิ์ปฏิทิน";
+      } else {
+        createdId = ev?.id;
+      }
+    } catch (e) {
+      createErr = String(e).slice(0, 120);
+      console.warn("[mt-invite] create on accept", createErr);
+    }
+
+    if (createdId) {
+      rec.eventId = createdId;
+      rec.status = "booked";
+      await saveInvite(rec.organizerUpn, rec);
+    }
+
+    try {
+      const orgLine = await getLineId(rec.organizerUpn);
+      if (orgLine) {
+        await pushLineMessages(orgLine, [
+          {
+            type: "text",
+            text: createdId
+              ? `📬 อีกฝั่งยืนยันแล้ว — สร้างนัดใน Outlook แล้ว ✅\n📌 ${rec.subject}\n🕐 ${when}\n👤 ${who}`
+              : `📬 อีกฝั่งยืนยันแล้ว แต่สร้างนัดใน Outlook ไม่สำเร็จ\n📌 ${rec.subject}\n🕐 ${when}\n⚠️ ${createErr || "unknown"}\nกรุณาสร้างนัดเองใน Outlook ครับ`,
+          },
+        ]);
+      }
+    } catch {
+      /* ignore */
+    }
+
+    return {
+      ok: true,
+      reply: createdId
+        ? `✅ ยืนยันแล้วครับ — สร้างนัดใน Outlook ให้แล้ว\n📌 ${rec.subject}\n🕐 ${when}\n\nถ้าไม่สะดวกทีหลัง พิมพ์ “ยกเลิก” ได้ครับ`
+        : `✅ ยืนยันแล้วครับ\n📌 ${rec.subject}\n🕐 ${when}\n\nแต่ยังสร้างใน Outlook ไม่ได้ ระบบแจ้งเจ้าของนัดแล้วครับ`,
+      quickReply: rsvpFollowUpQuickReply(rec, true),
+    };
+  }
+
+  // Already booked (legacy path) — just record RSVP
   const reply = accept
     ? `✅ ยืนยันเข้าร่วมแล้วครับ\n📌 ${rec.subject}\n🕐 ${when}\n\nนัดนี้อยู่ในปฏิทิน Outlook ของคุณด้วยครับ\nถ้าไม่สะดวกทีหลัง พิมพ์ “ยกเลิก” หรือกดปุ่มด้านล่างได้ครับ`
     : `รับทราบครับ บันทึกว่าไม่สะดวกเข้าร่วม\n📌 ${rec.subject}\n🕐 ${when}\n\nถ้าเปลี่ยนใจ พิมพ์ “ยืนยันเข้าร่วม” หรือกดปุ่มได้ครับ`;
 
-  // Notify organizer on LINE if linked
   try {
     const orgLine = await getLineId(rec.organizerUpn);
     if (orgLine) {
@@ -401,11 +594,7 @@ export async function respondMeetingInvite(
       await pushLineMessages(orgLine, [
         {
           type: "text",
-          text:
-            `📬 อัปเดตการยืนยันนัด\n` +
-            `📌 ${rec.subject}\n` +
-            `🕐 ${when}\n` +
-            `👤 ${who} ${status}`,
+          text: `📬 อัปเดตการยืนยันนัด\n📌 ${rec.subject}\n🕐 ${when}\n👤 ${who} ${status}`,
         },
       ]);
     }
