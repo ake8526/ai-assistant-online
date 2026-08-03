@@ -52,9 +52,10 @@ const CSS = `
 .mon .panel{border:2px solid var(--hair);background:var(--panel);margin-bottom:12px}
 .mon .ph{font-family:'Press Start 2P';font-size:9px;color:var(--dim);padding:9px 11px;border-bottom:2px solid var(--hair);background:var(--panel2);display:flex;justify-content:space-between}
 .mon .ph .live{color:var(--red)}
-.mon .room-stage{position:relative;background:#1a120a;padding:10px;display:flex;justify-content:center}
-.mon #room{width:100%;max-width:760px;display:block;image-rendering:pixelated;border:2px solid #3a2a1a;background:#2e2116}
-.mon .bdg{position:absolute;transform:translate(-50%,-100%);text-align:center;pointer-events:none;background:rgba(10,7,4,.92);border:2px solid var(--hair);padding:2px 4px 1px;white-space:nowrap;line-height:1;transition:left .05s linear,top .05s linear}
+.mon .room-stage{background:#1a120a;padding:10px;display:flex;justify-content:center}
+.mon .room-frame{position:relative;width:100%;max-width:760px}
+.mon #room{width:100%;display:block;image-rendering:pixelated;border:2px solid #3a2a1a;background:#2e2116}
+.mon .bdg{position:absolute;transform:translate(-50%,-100%);text-align:center;pointer-events:none;background:rgba(10,7,4,.92);border:2px solid var(--hair);padding:2px 4px 1px;white-space:nowrap;line-height:1;transition:left .05s linear,top .05s linear;z-index:2}
 .mon .bdg .nm{font-family:'Press Start 2P';font-size:6px;color:var(--ink);display:block;margin-bottom:2px}
 .mon .bdg .stt{font-family:'Press Start 2P';font-size:6px}
 .mon .bdg .dot{display:inline-block;width:4px;height:4px;margin-right:3px;vertical-align:middle;background:var(--dim)}
@@ -151,10 +152,10 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     const SPINES = ["#c0392b", "#e67e22", "#f1c40f", "#27ae60", "#2980b9", "#8e44ad", "#d35400", "#16a085", "#c0392b", "#2c3e50"];
     const R = (x: number, y: number, w: number, h: number, c: string) => { X.fillStyle = c; X.fillRect(Math.round(x), Math.round(y), Math.max(1, w | 0), Math.max(1, h | 0)); };
 
-    // Pin each desk badge on top of that desk's monitor (screen top ≈ dy-9);
-    // the badge is translate(-50%,-100%) so it rests just above the screen.
+    // Pin each desk badge on the monitor (screen top ≈ dy-7).
+    // Percentages are relative to .room-frame (same box as the canvas).
     badgesRef.current.forEach((b, i) => {
-      if (i < 4) { b.style.left = (DESK[i][0] / 320 * 100) + "%"; b.style.top = ((DESK[i][1] - 8) / 240 * 100) + "%"; }
+      if (i < 4) { b.style.left = (DESK[i][0] / 320 * 100) + "%"; b.style.top = ((DESK[i][1] - 7) / 240 * 100) + "%"; }
     });
 
     function drawFloor() {
@@ -266,10 +267,20 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const courierReply = useCallback(async (intent: string) => {
     setAgent(4, "work");
     setCap(`<b>DASH</b> (REPLY) — เดินเอาคำตอบไปส่งกลับผู้ใช้`);
-    await walkPath([[250, 150], [250, 178]]);
+    // Pick up from the last desk that finished (e.g. RUNNER bottom-left when
+    // only receive+fetch ran; SCRIBE bottom-right on a full pipeline).
+    let last = 3;
+    for (let i = 3; i >= 0; i--) {
+      if (statusRef.current[i] === "done" || statusRef.current[i] === "work") { last = i; break; }
+    }
+    const left = last % 2 === 0;
+    const ax = left ? 70 : 250;
+    const ay = last < 2 ? 130 : 178;
+    // Blue (aisle) → green (last working PC) → pick up → orange (mailbox).
+    await walkPath([[ax, 150], [ax, ay]]);
     dashRef.current.carry = true;
     await sleep(250);
-    await walkPath([[250, 206], [160, 206], [160, 198]]);
+    await walkPath([[ax, 206], [160, 206], [160, 198]]);
     dashRef.current.carry = false;
     mailFlashRef.current = 60;
     log(`  ส่งคำตอบกลับแล้ว ✓ (${intent})`, "g");
@@ -403,17 +414,19 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
         <div className="panel">
           <div className="ph"><span>THE OFFICE</span><span className="live">● LIVE</span></div>
           <div className="room-stage" ref={stageRef}>
-            <canvas id="room" ref={canvasRef} width={320} height={240} />
-            {AGENTS.map((a, i) => (
-              <div
-                key={a.id}
-                className="bdg idle"
-                ref={(el) => { if (el) badgesRef.current[i] = el; }}
-              >
-                <span className="nm">{a.name}</span>
-                <span className="stt"><span className="dot" /><span className="w">IDLE</span></span>
-              </div>
-            ))}
+            <div className="room-frame">
+              <canvas id="room" ref={canvasRef} width={320} height={240} />
+              {AGENTS.map((a, i) => (
+                <div
+                  key={a.id}
+                  className="bdg idle"
+                  ref={(el) => { if (el) badgesRef.current[i] = el; }}
+                >
+                  <span className="nm">{a.name}</span>
+                  <span className="stt"><span className="dot" /><span className="w">IDLE</span></span>
+                </div>
+              ))}
+            </div>
           </div>
           <div className="caption" ref={capRef}>รอคำขอเข้ามา… (คุยกับผู้ช่วยผ่าน LINE แล้วดูที่นี่)</div>
         </div>
