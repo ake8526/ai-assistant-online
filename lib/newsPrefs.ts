@@ -32,6 +32,7 @@ export type NewsPrefs = {
 export type NewsOnboardingDraft = {
   step:
     | "ask"
+    | "ask_summary"
     | "topics"
     | "count"
     | "time"

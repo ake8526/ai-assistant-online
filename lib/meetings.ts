@@ -14,6 +14,7 @@ import { chat } from "@/lib/llm";
 import { sendLine } from "@/lib/line";
 import { ActionItem, ingestActionItems } from "@/lib/followup";
 import { markMeetingSummarized, wasMeetingSummarized } from "@/lib/store";
+import { isMeetingSummaryEnabled } from "@/lib/meetingSummaryPrefs";
 import { addMinutes, fmtDateTime, nowWall, parseWall, wallIso } from "@/lib/time";
 
 const TRANSCRIPT_LOOKBACK_HOURS = Number(process.env.TRANSCRIPT_LOOKBACK_HOURS || 24);
@@ -211,7 +212,9 @@ export async function summarizeRecent(
     out.summaries.push(message);
     if (opts.deliver) {
       try {
-        await sendLine(userUpn, `📋 สรุปประชุม: ${subject}`, message);
+        if (await isMeetingSummaryEnabled(userUpn)) {
+          await sendLine(userUpn, `📋 สรุปประชุม: ${subject}`, message);
+        }
       } catch (e) {
         console.log(`summary delivery failed for ${userUpn}: ${e}`);
       }

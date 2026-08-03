@@ -14,10 +14,27 @@ import {
 } from "@/lib/newsPrefs";
 import { listManagedFeeds } from "@/lib/feeds";
 import { getLineId, pushLineMessages, replyLine, replyLineMessages } from "@/lib/line";
+import { setMeetingSummaryEnabled } from "@/lib/meetingSummaryPrefs";
 import { admin } from "@/lib/supabaseServer";
 
 const APP_BASE = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/$/, "");
 const SETTINGS_URL = `${APP_BASE}/consents`;
+
+/** Linked ≥ 1 hour ago → returning user (skip full news wizard; ask meeting summary only). */
+async function isReturningLinkedUser(upn: string): Promise<boolean> {
+  try {
+    const { data } = await admin
+      .from("line_links")
+      .select("linked_at")
+      .eq("upn", upn.toLowerCase())
+      .maybeSingle();
+    const linkedAt = data?.linked_at ? new Date(String(data.linked_at)).getTime() : 0;
+    if (!linkedAt) return false;
+    return Date.now() - linkedAt > 60 * 60 * 1000;
+  } catch {
+    return false;
+  }
+}
 
 async function getYouTubeFollowStatus(upn: string): Promise<{
   linked: boolean;
@@ -121,6 +138,41 @@ export function askInterestedMessage(): object {
       { label: "❌ ไม่เอาตอนนี้", data: "a=newsno", displayText: "ไม่ติดตามข่าวตอนนี้" },
     ]),
   };
+}
+
+/** Short ask for users who already linked LINE before (no news/brief wizard). */
+export function askMeetingSummaryMessage(): object {
+  return {
+    type: "text",
+    text:
+      "สวัสดีอีกครั้งครับ 👋\n\n" +
+      "ต้องการให้ส่งสรุปประชุมเข้า LINE อัตโนมัติหลังประชุมจบไหมครับ?\n" +
+      "(ถ้าไม่ต้องการ กดไม่ได้เลย — จะไม่ถามอย่างอื่นต่อ)",
+    quickReply: qr([
+      { label: "✅ ต้องการ", data: "a=sumyes", displayText: "ต้องการสรุปประชุม" },
+      { label: "❌ ไม่เอา", data: "a=sumno", displayText: "ไม่เอาสรุปประชุม" },
+    ]),
+  };
+}
+
+async function finishOnboardingQuiet(
+  upn: string,
+  replyToken: string,
+  text: string
+): Promise<void> {
+  await setNewsOnboardingDone(upn, true);
+  await clearNewsDraft(upn);
+  await replyLineMessages(replyToken, [
+    {
+      type: "text",
+      text,
+      quickReply: qr([
+        { label: "ตารางวันนี้", message: "ตารางวันนี้" },
+        { label: "ตั้งค่าข่าว", message: "ตั้งค่าข่าว" },
+        { label: "/", message: "/" },
+      ]),
+    },
+  ]);
 }
 
 function topicsPrompt(selected: string[]): object {
@@ -644,6 +696,19 @@ export async function startNewsOnboarding(upn: string, via: "push" | "reply", re
     return;
   }
 
+  // Returning linked users: only ask about meeting summaries (no news/brief wizard)
+  if (await isReturningLinkedUser(upn)) {
+    const existing = await loadNewsDraft(upn);
+    if (existing?.step === "ask_summary") {
+      await send(via, upn, [askMeetingSummaryMessage()], replyToken);
+      return;
+    }
+    await saveNewsDraft(upn, { step: "ask_summary", topics: [], ts: Date.now() });
+    await setNewsOnboardingDone(upn, false);
+    await send(via, upn, [askMeetingSummaryMessage()], replyToken);
+    return;
+  }
+
   const existing = await loadNewsDraft(upn);
   let msg: object;
   if (existing?.step === "topics") {
@@ -658,6 +723,8 @@ export async function startNewsOnboarding(upn: string, via: "push" | "reply", re
     msg = timePrompt("brief");
   } else if (existing?.step === "brief_days") {
     msg = daysPrompt(existing.briefDays || [], "brief");
+  } else if (existing?.step === "ask_summary") {
+    msg = askMeetingSummaryMessage();
   } else if (existing?.step === "delete" || existing?.step === "manage") {
     await openNewsSettings(upn, via, replyToken);
     return;
@@ -677,10 +744,33 @@ export async function handleNewsOnboardingText(
   const draft = await loadNewsDraft(upn);
   if (!draft) return false;
 
+  const t = text.trim();
+  if (draft.step === "ask_summary") {
+    if (/ไม่|ไม่เอา|ไม่ต้องการ|ไม่ส่ง/.test(t)) {
+      await setMeetingSummaryEnabled(upn, false);
+      await setNewsInterested(upn, false);
+      await finishOnboardingQuiet(
+        upn,
+        replyToken,
+        "รับทราบครับ จะไม่ส่งสรุปประชุมอัตโนมัติเข้า LINE\nพร้อมใช้งานแล้ว — พิมพ์คำสั่งหรือกด / ได้เลยครับ"
+      );
+      return true;
+    }
+    if (/ใช่|ต้องการ|เอา|ตกลง|ok/i.test(t)) {
+      await setMeetingSummaryEnabled(upn, true);
+      await finishOnboardingQuiet(
+        upn,
+        replyToken,
+        "รับทราบครับ จะส่งสรุปประชุมเข้า LINE ให้อัตโนมัติหลังประชุมจบ\nพร้อมใช้งานแล้ว — พิมพ์คำสั่งหรือกด / ได้เลยครับ"
+      );
+      return true;
+    }
+  }
+
   if (draft.step === "topics" || draft.step === "manage") {
     // Only treat as custom topic when mid topics-pick, or manage after "กำหนดเอง"
     if (draft.step === "manage") return false;
-    const custom = text.trim().replace(/^(สนใจ|เพิ่ม)\s*/i, "").slice(0, 60);
+    const custom = t.replace(/^(สนใจ|เพิ่ม)\s*/i, "").slice(0, 60);
     if (!custom) {
       await replyLine(replyToken, "พิมพ์หัวข้อที่อยากติดตามมาได้เลยครับ เช่น “เซมิคอนดักเตอร์”");
       return true;
@@ -697,6 +787,8 @@ export async function handleNewsOnboardingText(
 const NEWS_ACTIONS = new Set([
   "newsyes",
   "newsno",
+  "sumyes",
+  "sumno",
   "newstopic",
   "newscustom",
   "newstopicsdone",
@@ -801,8 +893,8 @@ export async function handleNewsOnboardingPostback(
     return true;
   }
 
-  if (!draft && (a === "newsyes" || a === "newsno")) {
-    draft = { step: "ask", topics: [], ts: Date.now() };
+  if (!draft && (a === "newsyes" || a === "newsno" || a === "sumyes" || a === "sumno")) {
+    draft = { step: a.startsWith("sum") ? "ask_summary" : "ask", topics: [], ts: Date.now() };
   }
   if (!draft && ["newstopic", "newscustom", "newstopicsdone", "newscount"].includes(a)) {
     draft = { step: "topics", topics: [...prefs.topics], ts: Date.now() };
@@ -822,18 +914,38 @@ export async function handleNewsOnboardingPostback(
     await setNewsInterested(upn, false);
     await setNewsTopics(upn, []);
     await saveNotifyKind(upn, "news", { enabled: false });
-    await setNewsOnboardingDone(upn, true);
-    await saveNewsDraft(upn, { step: "brief_time", topics: [], ts: Date.now() });
-    await replyLineMessages(replyToken, [
-      {
-        type: "text",
-        text:
-          "รับทราบครับ จะยังไม่ส่งสรุปข่าวให้อัตโนมัติ\n" +
-          "ถ้าเปลี่ยนใจ พิมพ์ “ตั้งค่าข่าว” ได้ตลอดครับ\n\n" +
-          "ต่อไปตั้งสรุปตารางเช้า (Morning Brief) ครับ 👇",
-      },
-      timePrompt("brief"),
-    ]);
+    await saveNotifyKind(upn, "brief", { enabled: false }).catch(() => undefined);
+    await finishOnboardingQuiet(
+      upn,
+      replyToken,
+      "รับทราบครับ จะยังไม่ส่งสรุปข่าวให้อัตโนมัติ\n" +
+        "ถ้าเปลี่ยนใจ พิมพ์ “ตั้งค่าข่าว” ได้ตลอดครับ\n\n" +
+        "พร้อมใช้งานแล้ว — พิมพ์คำสั่งหรือกด / ได้เลยครับ"
+    );
+    return true;
+  }
+
+  if (a === "sumno") {
+    await setMeetingSummaryEnabled(upn, false);
+    await setNewsInterested(upn, false);
+    await saveNotifyKind(upn, "news", { enabled: false }).catch(() => undefined);
+    await finishOnboardingQuiet(
+      upn,
+      replyToken,
+      "รับทราบครับ จะไม่ส่งสรุปประชุมอัตโนมัติเข้า LINE\n" +
+        "พร้อมใช้งานแล้ว — พิมพ์คำสั่งหรือกด / ได้เลยครับ"
+    );
+    return true;
+  }
+
+  if (a === "sumyes") {
+    await setMeetingSummaryEnabled(upn, true);
+    await finishOnboardingQuiet(
+      upn,
+      replyToken,
+      "รับทราบครับ จะส่งสรุปประชุมเข้า LINE ให้อัตโนมัติหลังประชุมจบ\n" +
+        "พร้อมใช้งานแล้ว — พิมพ์คำสั่งหรือกด / ได้เลยครับ"
+    );
     return true;
   }
 
