@@ -147,7 +147,8 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     X.imageSmoothingEnabled = false;
     const W = cv.width, H = cv.height;
     const DESK = [[70, 92], [250, 92], [70, 168], [250, 168]];
-    const SEAT = [[70, 116], [250, 116], [70, 192], [250, 192]];
+    // Seats sit clearly below the desk so brand shirt colors stay visible even when IDLE.
+    const SEAT = [[70, 126], [250, 126], [70, 202], [250, 202]];
     const MAILBOX = [160, 214];
     const SPINES = ["#c0392b", "#e67e22", "#f1c40f", "#27ae60", "#2980b9", "#8e44ad", "#d35400", "#16a085", "#c0392b", "#2c3e50"];
     const R = (x: number, y: number, w: number, h: number, c: string) => { X.fillStyle = c; X.fillRect(Math.round(x), Math.round(y), Math.max(1, w | 0), Math.max(1, h | 0)); };
@@ -195,17 +196,19 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       drawWorker(i, now);
     }
     function drawWorker(i: number, now: number) {
-      const [sx, sy] = SEAT[i]; const a = AGENTS[i], st = statusRef.current[i]; const on = st !== "idle", work = st === "work";
+      const [sx, sy] = SEAT[i]; const a = AGENTS[i], st = statusRef.current[i]; const work = st === "work";
       const bob = work ? Math.round(Math.sin(now / 160) * 1) : 0; const y = sy + bob;
+      // Always show brand shirt colors (even when IDLE) — larger torso so they read clearly.
       const shirt = a.shirt, hair = a.hair;
-      R(sx - 8, y - 2, 16, 6, "#5a3f26"); R(sx - 8, y - 2, 16, 2, "#6e4d30");
-      R(sx - 7, y - 8, 14, 8, shirt);
+      R(sx - 8, y - 1, 16, 5, "#3a2a1a"); R(sx - 8, y - 1, 16, 2, "#4e3a28");
+      R(sx - 8, y - 10, 16, 10, shirt);
+      R(sx - 8, y - 10, 16, 2, shirt);
       const tw = work ? (Math.floor(now / 140) % 2) : 0;
-      R(sx - 9, y - 10 + tw, 3, 7, shirt); R(sx + 6, y - 10 + (1 - tw), 3, 7, shirt);
-      R(sx - 9, y - 11 + tw, 3, 2, "#f0c090"); R(sx + 6, y - 11 + (1 - tw), 3, 2, "#f0c090");
-      R(sx - 6, y - 18, 12, 11, hair);
-      if (work) { const p = Math.floor(now / 200) % 2; R(sx - 1, y - 24, 2, 2, p ? "#f0b429" : "#5a4410"); }
-      if (st === "done") { X.strokeStyle = "#39d353"; X.lineWidth = 2; X.beginPath(); X.moveTo(sx - 3, y - 23); X.lineTo(sx - 1, y - 21); X.lineTo(sx + 3, y - 26); X.stroke(); X.lineWidth = 1; }
+      R(sx - 10, y - 11 + tw, 4, 8, shirt); R(sx + 6, y - 11 + (1 - tw), 4, 8, shirt);
+      R(sx - 10, y - 12 + tw, 4, 2, "#f0c090"); R(sx + 6, y - 12 + (1 - tw), 4, 2, "#f0c090");
+      R(sx - 6, y - 19, 12, 11, hair);
+      if (work) { const p = Math.floor(now / 200) % 2; R(sx - 1, y - 25, 2, 2, p ? "#f0b429" : "#5a4410"); }
+      if (st === "done") { X.strokeStyle = "#39d353"; X.lineWidth = 2; X.beginPath(); X.moveTo(sx - 3, y - 24); X.lineTo(sx - 1, y - 22); X.lineTo(sx + 3, y - 27); X.stroke(); X.lineWidth = 1; }
     }
     function drawDash(now: number) {
       const dash = dashRef.current; const st = statusRef.current[4];
