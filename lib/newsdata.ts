@@ -44,15 +44,22 @@ export async function fetchNewsByTopic(topicQuery: string, limit = 5): Promise<F
   const rows = Array.isArray(data.results) ? data.results : [];
   return rows
     .filter((a) => String(a.title || "").trim() && String(a.link || "").trim())
-    .map((a) => ({
-      title: String(a.title || "").trim(),
-      link: String(a.link || "").trim(),
-      published: String(a.pubDate || ""),
-      summary: String(a.description || a.content || "")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 800),
-      source: `หัวข้อ · ${String(a.source_name || a.source_id || topicQuery).slice(0, 40)}`,
-    }));
+    .map((a) => {
+      const scrub = (s: string) =>
+        s
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      const desc = scrub(String(a.description || ""));
+      const content = scrub(String(a.content || ""));
+      // Prefer the longer snippet so the digest LLM has real substance
+      const summary = (content.length >= desc.length ? content : desc || content).slice(0, 2000);
+      return {
+        title: String(a.title || "").trim(),
+        link: String(a.link || "").trim(),
+        published: String(a.pubDate || ""),
+        summary,
+        source: `หัวข้อ · ${String(a.source_name || a.source_id || topicQuery).slice(0, 40)}`,
+      };
+    });
 }

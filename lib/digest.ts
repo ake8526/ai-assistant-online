@@ -58,22 +58,47 @@ function storyBullets(s: Story): string[] {
   return [s.whatHappened, s.cause, s.progress, s.conclusion].filter((b) => (b || "").trim());
 }
 
-/** Render stories as a natural bullet digest (for LINE push and chat). */
+/** Drop meta lines that admit there is no content (common LLM failure mode). */
+function isHollowBullet(b: string): boolean {
+  const t = b.trim();
+  if (t.length < 8) return true;
+  return /ไม่มี(รายละเอียด|ข้อมูล|เนื้อหา)|ไม่ระบุ|ไม่ได้ระบุ|ไม่ได้อธิบาย|ไม่ทราบรายละเอียด|เนื้อหาไม่พอ|เนื้อหาสั้น|No further|ไม่พบข้อมูลเพิ่ม/i.test(
+    t
+  );
+}
+
+/** Merge RSS/NewsData snippet + scraped article; keep the most useful text. */
+function bestArticleBody(title: string, summary: string, scraped: string): string {
+  const t = (title || "").trim();
+  const sum = (summary || "").trim();
+  const art = (scraped || "").trim();
+  // Scraped pages often return cookie/nav junk — prefer API summary when it's richer relative to noise
+  const artUseful =
+    art.length >= 180 &&
+    art.length > sum.length * 0.6 &&
+    !/^(cookie|accept|subscribe|sign in|เข้าสู่ระบบ)/i.test(art.slice(0, 80));
+  if (sum && artUseful) {
+    // Put summary first (cleaner), then extra article text
+    const extra = art.includes(sum.slice(0, 40)) ? art : `${sum}\n\n${art}`;
+    return extra.slice(0, 5500);
+  }
+  if (sum.length >= 40) return sum.slice(0, 5500);
+  if (artUseful) return art.slice(0, 5500);
+  return (sum || art || t).slice(0, 5500);
+}
+
+/** Render stories as a natural briefing (for LINE push and chat). */
 export function formatStoriesText(stories: Story[]): string {
-  const lines = ["📰 สรุปข่าวที่คุณติดตามวันนี้", "อ่านจบในแชทได้เลย — ไม่ต้องเปิดลิงก์ก็รู้เรื่อง", ""];
+  const lines = ["📰 สรุปข่าวที่คุณติดตามวันนี้", ""];
   stories.forEach((s, i) => {
-    const bullets = storyBullets(s).slice(0, 4);
-    const gist = bullets[0] || s.title;
+    const bullets = storyBullets(s).map((b) => b.trim()).filter((b) => b && !isHollowBullet(b)).slice(0, 4);
+    const blurb = bullets[0] || s.title;
     const rest = bullets.slice(1);
-    lines.push(`${i + 1}) ${s.source}`);
-    lines.push(`   📌 ${gist}`);
-    for (const b of rest) {
-      lines.push(`   • ${b}`);
-    }
-    if (s.title && s.title !== gist && !gist.includes(s.title.slice(0, 20))) {
-      lines.push(`   (หัวข้อเดิม: ${s.title.slice(0, 80)})`);
-    }
-    if (s.rawLink) lines.push(`   🔗 อ่านเต็ม: ${s.rawLink}`);
+    const topic = (s.source || "").replace(/^หัวข้อ\s*·\s*/u, "").trim() || s.source;
+    lines.push(`${i + 1}) ${topic}`);
+    lines.push(blurb);
+    for (const b of rest) lines.push(`• ${b}`);
+    if (s.rawLink) lines.push(`🔗 ${s.rawLink}`);
     lines.push("");
   });
   return lines.join("\n").trim();
@@ -310,38 +335,49 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     picks = chosenIdx.slice(0, highlightN);
   }
 
-  // 4) fetch article text + stage 2 — natural bullet summaries (batch for quality)
+  // 4) fetch article text + stage 2 — natural briefing (not title-only / not "no details")
   const chosen = picks.map((i) => pool[i]);
   const withText = await Promise.all(
-    chosen.map(async (it) => ({ ...it, full: (await fetchArticle(it.link)) || it.summary }))
+    chosen.map(async (it) => {
+      const scraped = await fetchArticle(it.link);
+      const full = bestArticleBody(it.title, it.summary || "", scraped);
+      return { ...it, full };
+    })
   );
-  const summaries: Record<string, { bullets?: string[]; points?: string[] }> = {};
-  const BATCH = 5;
+  const summaries: Record<string, { blurb?: string; bullets?: string[]; points?: string[] }> = {};
+  const BATCH = 3;
   for (let offset = 0; offset < withText.length; offset += BATCH) {
     const batch = withText.slice(offset, offset + BATCH);
     const writerInput = batch
       .map((it, j) => {
         const globalIdx = offset + j;
-        const body = (it.full || it.summary || it.title || "").slice(0, 4000);
-        return `#${globalIdx}\nหัวข้อ: ${it.title}\nแหล่ง: ${it.feedLabel}\nเนื้อหา: ${body}`;
+        const body = (it.full || it.summary || it.title || "").slice(0, 4500);
+        const thin = body.trim().length < 80 || body.trim() === (it.title || "").trim();
+        return (
+          `#${globalIdx}\nหัวข้อ: ${it.title}\nแหล่ง: ${it.feedLabel}\n` +
+          (thin ? "หมายเหตุ: เนื้อหาสั้นมาก — สรุปจากที่มีอย่างตรงไปตรงมา 1–2 ประโยค\n" : "") +
+          `เนื้อหา: ${body}`
+        );
       })
       .join("\n\n");
     try {
       const raw = await chat(
-        "คุณเป็นบรรณาธิการสรุปข่าวให้ผู้บริหารอ่านบน LINE มือถือ — สรุปให้เข้าใจเนื้อหาโดยไม่ต้องเปิดลิงก์\n" +
-          "ตอบ JSON เท่านั้น โดยใช้เลข index ตาม # ที่ให้มา:\n" +
-          '{"0":{"bullets":["...","...","..."]}, "1":{...}}\n' +
-          "กติกาสำคัญ:\n" +
-          "- แต่ละข่าวมี 3–4 bullets เป็นภาษาไทย อ่านง่าย\n" +
-          "- bullet แรกต้องตอบว่า “เรื่องนี้พูดถึงอะไร” ใน 1 ประโยคชัดเจน (ใคร/ทำอะไร/ผลลัพธ์หรือประเด็นหลัก)\n" +
-          "- bullet ถัดไป = รายละเอียดสำคัญ / ตัวเลข / ผลกระทบ / สิ่งที่ควรรู้ต่อ\n" +
-          "- ห้ามแค่ถอดหัวข้อข่าวมาวาง ห้ามคลุมเครือแบบ “มีความคืบหน้า” โดยไม่อธิบายว่าอะไร\n" +
-          "- ห้ามใช้ป้าย เกิดอะไรขึ้น/สาเหตุ/สรุป\n" +
-          "- สรุปจากเนื้อหาที่ให้เท่านั้น ห้ามแต่ง — ถ้าเนื้อหาน้อย ให้สรุปเท่าที่มีอย่างตรงไปตรงมา",
+        "คุณเป็นผู้ช่วยสรุปข่าวให้หัวหน้าอ่านบน LINE — น้ำเสียงธรรมชาติ กระชับ มีสาระ\n" +
+          "ตอบ JSON เท่านั้น โดยใช้เลขตาม # ที่ให้มา:\n" +
+          '{"0":{"blurb":"ประโยคสรุป 1-2 ประโยค","bullets":["รายละเอียดเสริม"]},"1":{...}}\n' +
+          "กติกา:\n" +
+          "- blurb = เรียบเรียงเป็นประโยคเล่าเรื่อง (ใคร/อะไร/ทำไมสำคัญ) อ่านรู้เรื่องทันที ห้ามวางหัวข้อข่าวดิบๆ\n" +
+          "- bullets = 0–2 ข้อ เฉพาะข้อเท็จจริงเสริมที่มีในเนื้อหา (ตัวเลข ชื่อคน ผลที่ตามมา) — ไม่มีก็ใส่ []\n" +
+          "- ห้ามเขียนว่า “ไม่มีรายละเอียด…” “ไม่ระบุ…” “เนื้อหาไม่ได้บอก…” เด็ดขาด\n" +
+          "- ข้อมูลน้อย → blurb สั้นๆ จากที่มี แล้วจบ อย่าเติมประโยคว่างเปล่า\n" +
+          "- ห้ามแต่งตัวเลข/เหตุการณ์ที่ไม่มีในเนื้อหา",
         writerInput,
-        { json: true, temperature: 0.3 }
+        { json: true, temperature: 0.35 }
       );
-      const parsed = JSON.parse(raw) as Record<string, { bullets?: string[]; points?: string[] }>;
+      const parsed = JSON.parse(raw) as Record<
+        string,
+        { blurb?: string; bullets?: string[]; points?: string[] }
+      >;
       Object.assign(summaries, parsed);
     } catch {
       /* keep whatever we have; fallbacks below */
@@ -353,12 +389,15 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   for (let i = 0; i < withText.length; i++) {
     const it = withText[i];
     const s = summaries[String(i)] || {};
-    const bullets = (s.bullets || s.points || [])
+    const blurb = String(s.blurb || "").trim();
+    const extra = (s.bullets || s.points || [])
       .map((b) => String(b || "").trim())
-      .filter(Boolean)
-      .slice(0, 5);
-    const fallback = (it.summary || it.title || "").trim().slice(0, 220);
-    const finalBullets = bullets.length ? bullets : fallback ? [fallback] : [];
+      .filter((b) => b && !isHollowBullet(b));
+    let finalBullets = [blurb, ...extra].filter((b) => b && !isHollowBullet(b)).slice(0, 4);
+    if (!finalBullets.length) {
+      const snip = (it.summary || it.full || "").replace(/\s+/g, " ").trim().slice(0, 220);
+      finalBullets = snip && snip !== it.title ? [snip] : [(it.title || "").trim()].filter(Boolean);
+    }
     stories.push({
       id: createHash("sha1").update(it.link).digest("hex").slice(0, 8),
       title: it.title,

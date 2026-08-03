@@ -25,7 +25,7 @@ export async function fetchFeed(url: string): Promise<FeedEntry[]> {
         .replace(/<[^>]+>/g, " ")
         .replace(/\s+/g, " ")
         .trim()
-        .slice(0, 800),
+        .slice(0, 2000),
       source,
     }));
   } catch {
