@@ -287,6 +287,12 @@ function withCalendarNext(res: CommandResult, kind: "meetings" | "free"): Comman
   return { ...res, reply: withAskNext(res.reply), suggestions };
 }
 
+function hasDayHint(text: string): boolean {
+  return /วันนี้|พรุ่งนี้|มะรืน|สัปดาห์นี้|อาทิตย์นี้|เดือนนี้|วัน(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)|วันที่\s*\d|\d{1,2}\/\d{1,2}/.test(
+    text || ""
+  );
+}
+
 /** Reuse last calendar day when user asks a follow-up without naming a day. */
 function resolvePeriodParam(
   text: string,
