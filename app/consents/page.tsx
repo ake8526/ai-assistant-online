@@ -562,18 +562,11 @@ function ConsentsContent() {
         <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
           <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2"><CalendarClock className="w-4 h-4" /> เวลาที่ AI ส่งให้อัตโนมัติ (ทาง LINE)</h2>
           <p className="text-[11px] text-slate-500 leading-relaxed -mt-1">
-            ตั้งเวลาและวันที่อยากให้ผู้ช่วยส่ง “สรุปตารางเช้า” และ “สรุปข่าว” เข้ามาใน LINE เอง · นัดใหม่จะแจ้งทันทีเมื่อระบบตรวจพบ · ปิด/เปิดแยกกันได้
+            ตั้งเวลาส่งเข้า LINE · ตอนเช้าจะส่ง<b>สรุปข่าวก่อน</b> แล้วตามด้วยสรุปตาราง · นัดใหม่แจ้งทันทีเมื่อตรวจพบ · ปิด/เปิดแยกกันได้
           </p>
 
           {notify ? (
             <>
-              <NotifyCard
-                icon={<CalendarClock className="w-5 h-5 text-slate-950" />} color="bg-amber-400"
-                title="สรุปตารางเช้า (Morning Brief)"
-                hint="นัดหมาย/งานของวันนี้ · นัดใหม่แจ้ง LINE แยกต่างหากอัตโนมัติ"
-                cfg={notify.brief} disabled={busy}
-                onChange={(patch) => saveNotify("brief", patch)}
-              />
               <NotifyCard
                 icon={<Newspaper className="w-5 h-5 text-slate-950" />} color="bg-sky-400"
                 title="สรุปข่าวที่ติดตาม (News Digest)"
@@ -581,8 +574,15 @@ function ConsentsContent() {
                 cfg={notify.news} disabled={busy} showCount
                 onChange={(patch) => saveNotify("news", patch)}
               />
+              <NotifyCard
+                icon={<CalendarClock className="w-5 h-5 text-slate-950" />} color="bg-amber-400"
+                title="สรุปตารางเช้า (Morning Brief)"
+                hint="นัดหมาย/งานของวันนี้ · นัดใหม่แจ้ง LINE แยกต่างหากอัตโนมัติ"
+                cfg={notify.brief} disabled={busy}
+                onChange={(patch) => saveNotify("brief", patch)}
+              />
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                ค่าเริ่มต้น: ตาราง + ข่าว จ–ศ 07:00 (ส่งต่อกันทันที) ·{" "}
+                ค่าเริ่มต้น: ข่าวแล้วตามด้วยตาราง จ–ศ 07:00 ·{" "}
                 {(notify.news.count ?? 3) === 0
                   ? "ทั้งหมดที่อัปเดตวันนี้"
                   : `${notify.news.count ?? 3} ข่าว/วัน`}{" "}

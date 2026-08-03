@@ -25,8 +25,8 @@ async function pushNewsIfDue(upn: string, force: boolean): Promise<string> {
 
 // POST/GET — build + deliver the morning brief.
 // Cron mode (?key=CRON_SECRET): run for every linked user, push to LINE.
-//   Also pushes the news digest in the SAME request when due, so brief + news
-//   arrive back-to-back (instead of waiting for a later cron).
+//   Pushes news digest first (when due), then morning brief — so chat order is
+//   ข่าว → ตาราง.
 // User mode (Bearer token): build the caller's brief and return the text.
 export async function POST(req: Request) {
   return run(req);
@@ -45,6 +45,12 @@ async function run(req: Request) {
       const results: Record<string, { brief: string; news: string }> = {};
       for (const upn of await linkedUsers()) {
         const row = { brief: "skip", news: "skip" };
+        // News first, then morning brief — so LINE shows ข่าว then ตาราง
+        try {
+          row.news = await pushNewsIfDue(upn, force);
+        } catch (e) {
+          row.news = `ERROR: ${String(e).slice(0, 150)}`;
+        }
         try {
           if (!force && !(await isDueNow(upn, "brief"))) {
             row.brief = "skip (not due)";
@@ -55,12 +61,6 @@ async function run(req: Request) {
           }
         } catch (e) {
           row.brief = `ERROR: ${String(e).slice(0, 150)}`;
-        }
-        try {
-          // Always try news in the same pass so it lands right after the brief.
-          row.news = await pushNewsIfDue(upn, force);
-        } catch (e) {
-          row.news = `ERROR: ${String(e).slice(0, 150)}`;
         }
         results[upn] = row;
       }
