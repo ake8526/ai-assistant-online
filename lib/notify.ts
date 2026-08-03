@@ -97,14 +97,17 @@ function bkkNow(): { min: number; day: number; date: string } {
   };
 }
 
-/** Is it time to send `kind` to this user right now, and not already sent today? */
+/** Is it time to send `kind` to this user right now, and not already sent today?
+ *  Due when Bangkok wall-clock is at or past the user's set time (HH:MM).
+ *  Cron should poll often (≈ every 5 min) so delivery stays close to that time. */
 export async function isDueNow(upn: string, kind: NotifyKind): Promise<boolean> {
   const cfg = (await getNotifyConfig(upn))[kind];
   if (!cfg.enabled || !cfg.days.length) return false;
   const { min, day, date } = bkkNow();
   if (!cfg.days.includes(day)) return false;
   const [hh, mm] = cfg.time.split(":").map((x) => parseInt(x, 10));
-  if (min < (hh || 0) * 60 + (mm || 0)) return false; // not yet time today
+  const dueMin = (hh || 0) * 60 + (mm || 0);
+  if (min < dueMin) return false; // not yet time today
   const last = await getSetting(upn, `${kind}_last_sent`);
   return last !== date; // once per day
 }

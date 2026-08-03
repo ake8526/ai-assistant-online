@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AuthError, checkCronSecret, requireUser } from "@/lib/auth";
-import { buildForToday, runForUser } from "@/lib/brief";
+import { buildForToday } from "@/lib/brief";
 import { buildDigest, formatStoriesText } from "@/lib/digest";
 import { sendLine } from "@/lib/line";
 import { isDueNow, markSent } from "@/lib/notify";
@@ -13,21 +13,68 @@ async function linkedUsers(): Promise<string[]> {
   return (data || []).map((r) => r.upn);
 }
 
-/** Push the news digest for one user if their schedule is due (or force). */
-async function pushNewsIfDue(upn: string, force: boolean): Promise<string> {
-  if (!force && !(await isDueNow(upn, "news"))) return "skip (not due)";
-  const { stories, note } = await buildDigest(upn);
-  if (!stories?.length) return note || "no stories";
-  await sendLine(upn, "", formatStoriesText(stories));
-  await markSent(upn, "news");
-  return `delivered ${stories.length} stories`;
+/**
+ * Build news + brief in parallel (so we don't stack delays), then push
+ * news first and brief right after — as close as possible to the scheduled time.
+ */
+async function deliverMorningForUser(
+  upn: string,
+  force: boolean
+): Promise<{ brief: string; news: string }> {
+  const newsDue = force || (await isDueNow(upn, "news"));
+  const briefDue = force || (await isDueNow(upn, "brief"));
+  const row = {
+    brief: briefDue ? "pending" : "skip (not due)",
+    news: newsDue ? "pending" : "skip (not due)",
+  };
+  if (!newsDue && !briefDue) return row;
+
+  // Parallel build — wall clock ≈ max(news, brief), not sum
+  const [newsResult, briefResult] = await Promise.all([
+    newsDue
+      ? buildDigest(upn)
+          .then((d) => ({ ok: true as const, d }))
+          .catch((e) => ({ ok: false as const, err: String(e).slice(0, 150) }))
+      : Promise.resolve(null),
+    briefDue
+      ? buildForToday(upn)
+          .then((text) => ({ ok: true as const, text }))
+          .catch((e) => ({ ok: false as const, err: String(e).slice(0, 150) }))
+      : Promise.resolve(null),
+  ]);
+
+  // Send news first, then brief — back-to-back once both are ready
+  if (newsResult) {
+    if (!newsResult.ok) {
+      row.news = `ERROR: ${newsResult.err}`;
+    } else if (!newsResult.d.stories?.length) {
+      row.news = newsResult.d.note || "no stories";
+      // Still mark sent so we don't keep retrying empty digests all day
+      await markSent(upn, "news");
+    } else {
+      await sendLine(upn, "", formatStoriesText(newsResult.d.stories));
+      await markSent(upn, "news");
+      row.news = `delivered ${newsResult.d.stories.length} stories`;
+    }
+  }
+
+  if (briefResult) {
+    if (!briefResult.ok) {
+      row.brief = `ERROR: ${briefResult.err}`;
+    } else {
+      await sendLine(upn, "🌅 Morning Brief วันนี้", briefResult.text);
+      await markSent(upn, "brief");
+      row.brief = "delivered";
+    }
+  }
+
+  return row;
 }
 
-// POST/GET — build + deliver the morning brief.
-// Cron mode (?key=CRON_SECRET): run for every linked user, push to LINE.
-//   Pushes news digest first (when due), then morning brief — so chat order is
-//   ข่าว → ตาราง.
-// User mode (Bearer token): build the caller's brief and return the text.
+// POST/GET — build + deliver morning news + brief.
+// Cron mode (?key=CRON_SECRET): for every linked user due now — parallel build,
+// then push ข่าว → ตาราง back-to-back near the user's set time.
+// User mode (Bearer token): build the caller's brief text only.
 export async function POST(req: Request) {
   return run(req);
 }
@@ -40,29 +87,17 @@ async function run(req: Request) {
   try {
     assertConfigured();
     if (checkCronSecret(req)) {
-      // `force=1` bypasses the per-user schedule (manual/test run for everyone).
       const force = new URL(req.url).searchParams.get("force") === "1";
       const results: Record<string, { brief: string; news: string }> = {};
       for (const upn of await linkedUsers()) {
-        const row = { brief: "skip", news: "skip" };
-        // News first, then morning brief — so LINE shows ข่าว then ตาราง
         try {
-          row.news = await pushNewsIfDue(upn, force);
+          results[upn] = await deliverMorningForUser(upn, force);
         } catch (e) {
-          row.news = `ERROR: ${String(e).slice(0, 150)}`;
+          results[upn] = {
+            brief: `ERROR: ${String(e).slice(0, 150)}`,
+            news: `ERROR: ${String(e).slice(0, 150)}`,
+          };
         }
-        try {
-          if (!force && !(await isDueNow(upn, "brief"))) {
-            row.brief = "skip (not due)";
-          } else {
-            await runForUser(upn);
-            await markSent(upn, "brief");
-            row.brief = "delivered";
-          }
-        } catch (e) {
-          row.brief = `ERROR: ${String(e).slice(0, 150)}`;
-        }
-        results[upn] = row;
       }
       return NextResponse.json({ ok: true, results });
     }
