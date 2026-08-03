@@ -6,7 +6,7 @@ import { Send, LogIn, Loader2, MapPin, FileText, Folder, Settings as SettingsIco
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 
 type Slot = { start: string; end: string; label: string };
-type Choice = { mail?: string; displayName?: string; period?: string; event_id?: string; label?: string };
+type Choice = { mail?: string; displayName?: string; period?: string; event_id?: string; label?: string; index?: number };
 type FileHit = { id?: string; name?: string; url?: string; is_folder?: boolean };
 
 type ApiResult = {
@@ -212,6 +212,15 @@ function ChatContent() {
         } else {
           addMsg({ role: "bot", text: `⚠️ ${res.reason || res.error || "สรุปไม่สำเร็จ"}` });
         }
+      } else if (intent === "choose_prep" && (c.index || c.event_id)) {
+        const n = c.index || 0;
+        addMsg({ role: "me", text: `เตรียมนัด ${n || ""} ${c.label || ""}`.trim() });
+        addMsg({ role: "bot", text: "🔎 กำลังอ่านรายละเอียดนัด/ไฟล์แนบแล้วแนะนำให้ครับ…" });
+        const res = await api("/api/command", {
+          text: n ? `เตรียมนัด ${n}` : `เตรียมนัด ${c.label}`,
+          context: { last_intent: "choose_prep" },
+        });
+        applyResult(res);
       }
     } catch (e) {
       addMsg({ role: "bot", text: `⚠️ ${(e as Error).message}` });
