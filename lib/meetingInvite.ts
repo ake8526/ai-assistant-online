@@ -7,6 +7,7 @@ import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { fmtDateTime, fmtTime, parseWall } from "@/lib/time";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PENDING_RSVP_KEY = "_mt_rsvp_pending";
 
 export type MeetingInviteRecord = {
   id: string;
@@ -19,6 +20,15 @@ export type MeetingInviteRecord = {
   detail?: string;
   attendees: string[];
   responses: Record<string, "accept" | "decline">;
+  ts: number;
+};
+
+type PendingRsvp = {
+  organizerUpn: string;
+  inviteId: string;
+  subject: string;
+  start: string;
+  end: string;
   ts: number;
 };
 
@@ -35,6 +45,102 @@ function whenLabel(startIso: string, endIso: string): string {
   const e = parseWall(endIso);
   if (s && e) return `${fmtDateTime(s)}-${fmtTime(e)}`;
   return `${startIso} – ${endIso}`;
+}
+
+async function setPendingRsvp(attendeeUpn: string, rec: MeetingInviteRecord): Promise<void> {
+  const pending: PendingRsvp = {
+    organizerUpn: rec.organizerUpn,
+    inviteId: rec.id,
+    subject: rec.subject,
+    start: rec.start,
+    end: rec.end,
+    ts: Date.now(),
+  };
+  await setSetting(attendeeUpn.toLowerCase(), PENDING_RSVP_KEY, JSON.stringify(pending));
+}
+
+export async function getPendingRsvp(attendeeUpn: string): Promise<PendingRsvp | null> {
+  const who = attendeeUpn.toLowerCase();
+  try {
+    const raw = await getSetting(who, PENDING_RSVP_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as PendingRsvp;
+      if (p?.inviteId && p?.organizerUpn && p.ts && Date.now() - p.ts <= INVITE_TTL_MS) {
+        return p;
+      }
+      await deleteSetting(who, PENDING_RSVP_KEY).catch(() => undefined);
+    }
+  } catch {
+    /* fall through */
+  }
+  // Fallback: scan recent invites that include this attendee (covers accepts before pending pointer existed)
+  try {
+    const { data } = await admin.from("settings").select("owner_upn, key, value").like("key", "_mt_invite_%");
+    let best: PendingRsvp | null = null;
+    for (const row of data || []) {
+      try {
+        const rec = JSON.parse(row.value) as MeetingInviteRecord;
+        if (!rec?.id || !rec.ts || Date.now() - rec.ts > INVITE_TTL_MS) continue;
+        const inList = (rec.attendees || []).some((a) => a.toLowerCase() === who);
+        if (!inList) continue;
+        if (!best || rec.ts > best.ts) {
+          best = {
+            organizerUpn: rec.organizerUpn,
+            inviteId: rec.id,
+            subject: rec.subject,
+            start: rec.start,
+            end: rec.end,
+            ts: rec.ts,
+          };
+        }
+      } catch {
+        /* skip */
+      }
+    }
+    if (best) {
+      await setSetting(who, PENDING_RSVP_KEY, JSON.stringify(best)).catch(() => undefined);
+      return best;
+    }
+  } catch (e) {
+    console.warn("[mt-invite] scan pending", String(e).slice(0, 120));
+  }
+  return null;
+}
+
+/** Free-text RSVP while a LINE invite is pending (works even before news onboarding). */
+export function classifyMeetingRsvpText(text: string): "accept" | "decline" | null {
+  const t = (text || "").trim();
+  if (!t) return null;
+  if (
+    /^(ยืนยัน(เข้าร่วม(นัด)?)?|เข้าร่วม(นัด)?|ไปได้|รับนัด|ตกลง|ok)$/i.test(t) ||
+    /^ยืนยันเข้าร่วม/.test(t)
+  ) {
+    return "accept";
+  }
+  if (
+    /ไม่สะดวก|ไปไม่ได้|ขอถอน|ติดธุระ|ขอโทษ.*(ไม่|ยกเลิก)|decline/i.test(t) ||
+    /ยกเลิก(นัด|การเข้าร่วม|ให้)?/.test(t) ||
+    /^\/?ยกเลิก$/.test(t)
+  ) {
+    return "decline";
+  }
+  return null;
+}
+
+export async function tryHandleMeetingRsvpText(
+  responderUpn: string,
+  text: string
+): Promise<{ ok: boolean; reply: string; quickReply?: object } | null> {
+  const kind = classifyMeetingRsvpText(text);
+  if (!kind) return null;
+  const pending = await getPendingRsvp(responderUpn);
+  if (!pending) return null;
+  return respondMeetingInvite(responderUpn, pending.organizerUpn, pending.inviteId, kind === "accept");
+}
+
+/** True when text looks like RSVP (used to keep news onboarding from stealing it). */
+export function isMeetingRsvpText(text: string): boolean {
+  return classifyMeetingRsvpText(text) != null;
 }
 
 /** Look up LINE user ids for M365 emails that already linked the bot. */
@@ -80,7 +186,7 @@ function inviteMessage(rec: MeetingInviteRecord): object {
     `🕐 ${whenLabel(rec.start, rec.end)}\n` +
     `👤 จัดโดย: ${who}` +
     (rec.detail ? `\n📝 ${rec.detail}` : "") +
-    "\n\nกรุณายืนยันการเข้าร่วมนัดนี้ครับ 👇";
+    "\n\nกรุณายืนยันการเข้าร่วมนัดนี้ครับ\n(กดปุ่ม หรือพิมพ์ “ไม่สะดวก” / “ยกเลิก” ได้ครับ) 👇";
 
   // postback data must stay under ~300 chars — keep id short
   const accept = `a=mtaccept&oid=${encodeURIComponent(rec.organizerUpn)}&id=${rec.id}`;
@@ -101,6 +207,26 @@ function inviteMessage(rec: MeetingInviteRecord): object {
         },
       ],
     },
+  };
+}
+
+function rsvpFollowUpQuickReply(rec: MeetingInviteRecord, accepted: boolean): object {
+  const accept = `a=mtaccept&oid=${encodeURIComponent(rec.organizerUpn)}&id=${rec.id}`;
+  const decline = `a=mtdecline&oid=${encodeURIComponent(rec.organizerUpn)}&id=${rec.id}`;
+  return {
+    items: accepted
+      ? [
+          {
+            type: "action",
+            action: { type: "postback", label: "❌ ยกเลิกการเข้าร่วม", data: decline, displayText: "ไม่สะดวกเข้าร่วม" },
+          },
+        ]
+      : [
+          {
+            type: "action",
+            action: { type: "postback", label: "✅ ยืนยันเข้าร่วม", data: accept, displayText: "ยืนยันเข้าร่วมนัด" },
+          },
+        ],
   };
 }
 
@@ -143,6 +269,7 @@ export async function notifyMeetingInviteOnLine(opts: {
   const names: string[] = [];
   for (const person of linked) {
     try {
+      await setPendingRsvp(person.upn, rec);
       await pushLineMessages(person.lineUserId, [msg]);
       names.push(person.upn);
     } catch (e) {
@@ -157,7 +284,7 @@ export async function respondMeetingInvite(
   organizerUpn: string,
   inviteId: string,
   accept: boolean
-): Promise<{ ok: boolean; reply: string }> {
+): Promise<{ ok: boolean; reply: string; quickReply?: object }> {
   const rec = await readInvite(organizerUpn.toLowerCase(), inviteId);
   if (!rec) {
     return { ok: false, reply: "ไม่พบนัดนี้แล้วครับ (อาจหมดอายุหรือถูกยกเลิก) — ดูในปฏิทิน Outlook ได้ตามปกติ" };
@@ -166,11 +293,13 @@ export async function respondMeetingInvite(
   const who = responderUpn.toLowerCase();
   rec.responses[who] = accept ? "accept" : "decline";
   await saveInvite(rec.organizerUpn, rec);
+  // Keep pending so they can still change mind via text / button
+  await setPendingRsvp(who, rec).catch(() => undefined);
 
   const when = whenLabel(rec.start, rec.end);
   const reply = accept
-    ? `✅ ยืนยันเข้าร่วมแล้วครับ\n📌 ${rec.subject}\n🕐 ${when}\n\nนัดนี้อยู่ในปฏิทิน Outlook ของคุณด้วยครับ`
-    : `รับทราบครับ บันทึกว่าไม่สะดวกเข้าร่วม\n📌 ${rec.subject}\n🕐 ${when}`;
+    ? `✅ ยืนยันเข้าร่วมแล้วครับ\n📌 ${rec.subject}\n🕐 ${when}\n\nนัดนี้อยู่ในปฏิทิน Outlook ของคุณด้วยครับ\nถ้าไม่สะดวกทีหลัง พิมพ์ “ยกเลิก” หรือกดปุ่มด้านล่างได้ครับ`
+    : `รับทราบครับ บันทึกว่าไม่สะดวกเข้าร่วม\n📌 ${rec.subject}\n🕐 ${when}\n\nถ้าเปลี่ยนใจ พิมพ์ “ยืนยันเข้าร่วม” หรือกดปุ่มได้ครับ`;
 
   // Notify organizer on LINE if linked
   try {
@@ -192,5 +321,5 @@ export async function respondMeetingInvite(
     /* best-effort */
   }
 
-  return { ok: true, reply };
+  return { ok: true, reply, quickReply: rsvpFollowUpQuickReply(rec, accept) };
 }

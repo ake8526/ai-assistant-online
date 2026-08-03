@@ -13,7 +13,7 @@ import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
-import { notifyMeetingInviteOnLine, respondMeetingInvite } from "@/lib/meetingInvite";
+import { notifyMeetingInviteOnLine, respondMeetingInvite, tryHandleMeetingRsvpText, isMeetingRsvpText, getPendingRsvp } from "@/lib/meetingInvite";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -624,6 +624,32 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
   try {
     void showLineLoading(userId, 60);
 
+    // Meeting RSVP by text (ยืนยัน / ไม่สะดวก / ยกเลิก) — before news onboarding
+    {
+      const rsvp = await tryHandleMeetingRsvpText(upn, text);
+      if (rsvp) {
+        await replyLineMessages(ev.replyToken, [
+          {
+            type: "text",
+            text: rsvp.reply,
+            ...(rsvp.quickReply ? { quickReply: rsvp.quickReply } : {}),
+          },
+        ]);
+        return;
+      }
+      // Attendee typed cancel/decline but invite pointer missing — don't dump into news welcome
+      if (isMeetingRsvpText(text)) {
+        const prefs = await getNewsPrefs(upn);
+        if (!prefs.onboardingDone) {
+          await replyLine(
+            ev.replyToken,
+            "รับทราบครับ แต่ยังผูกกับนัดล่าสุดไม่เจอในระบบ\nให้กดปุ่ม ❌ ไม่สะดวก จากข้อความเชิญนัด หรือให้เจ้าของนัดส่งคำเชิญใหม่ได้ครับ"
+          );
+          return;
+        }
+      }
+    }
+
     // Slash commands always win over booking drafts / onboarding text input
     if (isSlashMenu(text)) {
       await replyLineMessages(ev.replyToken, [slashMenuMessage()]);
@@ -659,6 +685,18 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         return;
       }
       if (cmd.cmd === "ยกเลิก") {
+        const pending = await getPendingRsvp(upn);
+        if (pending) {
+          const rsvp = await respondMeetingInvite(upn, pending.organizerUpn, pending.inviteId, false);
+          await replyLineMessages(ev.replyToken, [
+            {
+              type: "text",
+              text: rsvp.reply,
+              ...(rsvp.quickReply ? { quickReply: rsvp.quickReply } : {}),
+            },
+          ]);
+          return;
+        }
         await clearDraft(upn);
         await replyLine(ev.replyToken, "ยกเลิกงานที่ค้างไว้แล้วครับ — พิมพ์คำสั่งใหม่หรือพิมพ์ / เพื่อเลือกคำสั่ง");
         return;
@@ -746,7 +784,13 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       const oid = decodeURIComponent(data.get("oid") || "");
       const id = data.get("id") || "";
       const result = await respondMeetingInvite(upn, oid, id, act === "mtaccept");
-      await replyLine(ev.replyToken, result.reply);
+      await replyLineMessages(ev.replyToken, [
+        {
+          type: "text",
+          text: result.reply,
+          ...(result.quickReply ? { quickReply: result.quickReply } : {}),
+        },
+      ]);
       return;
     }
     // Booking confirmation flow (tap slot → draft → confirm) is handled here.
