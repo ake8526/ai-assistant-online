@@ -2014,7 +2014,15 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   if (intent === "list_meetings") {
     const denied = needCalendarConsent();
     if (denied) return denied;
-    const period = resolvePeriodParam(text, params, context, "upcoming");
+    // Hard override: “เช้านี้/ดูประชุมเช้า” must never inherit last_period=week
+    let period = resolvePeriodParam(text, params, context, "upcoming");
+    if (/เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้|ดูประชุมเช้า|นัดเช้า|ประชุมเช้า/.test(text)) {
+      period = /พรุ่งนี้/.test(text) ? "tomorrow" : "today";
+      if (!params.before && /เช้า/.test(text)) {
+        params.after = params.after || "00:00";
+        params.before = params.before || "12:00";
+      }
+    }
     const day = params.date ? resolveDay(String(params.date)) : params.weekday ? resolveWeekday(String(params.weekday)) : null;
     const after = parseHHMM(params.after);
     const before = parseHHMM(params.before);
