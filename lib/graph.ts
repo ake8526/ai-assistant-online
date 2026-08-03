@@ -997,32 +997,179 @@ export async function sendEmail(userUpn: string, subject: string, bodyText: stri
 }
 
 // ---------------------------------------------------------------------------
-// OneDrive search (direct Graph search endpoint only)
+// OneDrive search + resolve by path / SharePoint URL
 // ---------------------------------------------------------------------------
+export type DriveFileHit = {
+  id?: string;
+  name?: string;
+  webUrl?: string;
+  lastModifiedDateTime?: string;
+  size?: number;
+  folder?: unknown;
+  file?: unknown;
+};
+
+function driveBase(userUpn: string): string {
+  // Prefer /me when we have a delegated token (matches the signed-in OneDrive).
+  return getUserGraphToken()
+    ? "/me/drive"
+    : `/users/${encodeURIComponent(userUpn)}/drive`;
+}
+
+/** Encode a sharing/open URL for GET /shares/{shareId}/driveItem */
+export function encodeSharingUrl(url: string): string {
+  const b64 = Buffer.from(url, "utf8").toString("base64");
+  return "u!" + b64.replace(/=+$/g, "").replace(/\//g, "_").replace(/\+/g, "-");
+}
+
+/** Resolve a OneDrive/SharePoint browser URL to a drive item. */
+export async function resolveDriveItemFromUrl(
+  userUpn: string,
+  rawUrl: string
+): Promise<DriveFileHit | null> {
+  const url = rawUrl.trim();
+  if (!/^https?:\/\//i.test(url)) return null;
+  try {
+    const shareId = encodeSharingUrl(url);
+    const data = await graphGet(`/shares/${encodeURIComponent(shareId)}/driveItem`, {
+      $select: "id,name,webUrl,lastModifiedDateTime,size,file,folder",
+    });
+    if (data?.id) return data as DriveFileHit;
+  } catch {
+    /* try path parse below */
+  }
+
+  // Parse .../Documents/<path> or id= query from OneDrive web UI
+  try {
+    const u = new URL(url);
+    const idParam = u.searchParams.get("id");
+    if (idParam) {
+      const full = decodeURIComponent(idParam);
+      // /personal/user/Documents/Documents/App/... → relative under drive root
+      const m = full.match(/\/Documents\/(.+)$/i);
+      if (m) {
+        const rel = m[1].replace(/^Documents\//i, ""); // unwrap nested Documents if present
+        const byPath = await getDriveItemByPath(userUpn, rel);
+        if (byPath) return byPath;
+        const byPath2 = await getDriveItemByPath(userUpn, m[1]);
+        if (byPath2) return byPath2;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+export async function getDriveItemByPath(
+  userUpn: string,
+  relativePath: string
+): Promise<DriveFileHit | null> {
+  const cleaned = relativePath.replace(/^\/+/, "").trim();
+  if (!cleaned) return null;
+  // Graph path segment encoding: encode each segment but keep slashes
+  const encoded = cleaned
+    .split("/")
+    .map((s) => encodeURIComponent(s))
+    .join("/");
+  try {
+    const data = await graphGet(`${driveBase(userUpn)}/root:/${encoded}`, {
+      $select: "id,name,webUrl,lastModifiedDateTime,size,file,folder",
+    });
+    return (data as DriveFileHit) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function searchDriveOnce(userUpn: string, query: string, top: number): Promise<DriveFileHit[]> {
+  const q = query.replace(/'/g, "''");
+  // Keep Thai/ASCII in the OData string; let URL() encode once (avoid double-encode).
+  const path = `${driveBase(userUpn)}/root/search(q='${q}')`;
+  try {
+    const data = await graphGet(path, {
+      $select: "id,name,webUrl,lastModifiedDateTime,size,file,folder",
+      $top: String(top),
+    });
+    return (data.value as DriveFileHit[]) || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Find files by name / SharePoint URL / known OneDrive paths.
+ * Thai full names often miss in Graph search — we fall back to path + token search.
+ */
 export async function searchFiles(
   userUpn: string,
   query: string,
   top = 25
-): Promise<
-  {
-    id?: string;
-    name?: string;
-    webUrl?: string;
-    lastModifiedDateTime?: string;
-    size?: number;
-    folder?: unknown;
-    file?: unknown;
-  }[]
-> {
-  if (!query.trim()) return [];
-  const q = encodeURIComponent(query.replace(/'/g, "''"));
-  try {
-    const data = await graphGet(`/users/${encodeURIComponent(userUpn)}/drive/root/search(q='${q}')`, {
-      $select: "id,name,webUrl,lastModifiedDateTime,size,file,folder",
-      $top: String(top),
-    });
-    return data.value || [];
-  } catch {
-    return [];
+): Promise<DriveFileHit[]> {
+  const raw = (query || "").trim();
+  if (!raw) return [];
+
+  // Direct SharePoint/OneDrive URL
+  if (/sharepoint\.com|onedrive\.live\.com|1drv\.ms/i.test(raw) || /^https?:\/\//i.test(raw)) {
+    const hit = await resolveDriveItemFromUrl(userUpn, raw);
+    if (hit) return [hit];
   }
+
+  const found = new Map<string, DriveFileHit>();
+  const add = (items: DriveFileHit[]) => {
+    for (const it of items) {
+      const key = it.id || it.webUrl || it.name || "";
+      if (key) found.set(key, it);
+    }
+  };
+
+  add(await searchDriveOnce(userUpn, raw, top));
+
+  const stem = raw.replace(/\.[a-z0-9]{1,8}$/i, "");
+  if (stem && stem !== raw) add(await searchDriveOnce(userUpn, stem, top));
+
+  // ASCII-ish tokens help Graph search when Thai full-name misses
+  const tokens = stem
+    .split(/[\s_\-–—·.]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2 && /[A-Za-z0-9]/.test(t));
+  for (const t of tokens.slice(0, 4)) {
+    add(await searchDriveOnce(userUpn, t, top));
+  }
+  // Also try distinctive Thai tokens (≥3 chars)
+  const thaiToks = stem
+    .split(/[\s_\-–—·.]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3 && /[\u0E00-\u0E7F]/.test(t));
+  for (const t of thaiToks.slice(0, 3)) {
+    add(await searchDriveOnce(userUpn, t, top));
+  }
+
+  // Common personal OneDrive layouts (this project's file lives here)
+  if (stem.length >= 3) {
+    const nameWithExt = /\.[a-z0-9]{1,8}$/i.test(raw) ? raw : `${stem}.html`;
+    const pathTries = [
+      `Documents/App/AI Assistant/${nameWithExt}`,
+      `Documents/Documents/App/AI Assistant/${nameWithExt}`,
+      `App/AI Assistant/${nameWithExt}`,
+      `Documents/${nameWithExt}`,
+    ];
+    for (const p of pathTries) {
+      const hit = await getDriveItemByPath(userUpn, p);
+      if (hit) add([hit]);
+    }
+  }
+
+  // Prefer name matches to the original query
+  const all = [...found.values()];
+  const qLow = raw.toLowerCase();
+  const stemLow = stem.toLowerCase();
+  all.sort((a, b) => {
+    const an = (a.name || "").toLowerCase();
+    const bn = (b.name || "").toLowerCase();
+    const score = (n: string) =>
+      n === qLow ? 0 : n === stemLow ? 1 : n.endsWith(qLow) ? 2 : n.includes(stemLow) ? 3 : 9;
+    return score(an) - score(bn);
+  });
+  return all.slice(0, top);
 }

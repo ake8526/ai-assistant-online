@@ -163,7 +163,7 @@ export function quickLinkMeetingIntent(
       .replace(/^(?:กับ|ไฟล์)\s+/i, "")
       .replace(/[“”"']/g, "")
       .trim();
-    if (meetingIndex && fileQuery && fileQuery.length >= 2 && !/^https?:\/\//i.test(fileQuery)) {
+    if (meetingIndex && fileQuery && fileQuery.length >= 2) {
       return {
         intent: "link_meeting_file",
         params: { meeting_index: meetingIndex, file_query: fileQuery },
@@ -218,46 +218,26 @@ export async function handleLinkMeetingFile(
   let file = pickFile(context?.files, fileIndex);
   let searchedFiles: LinkCmdResult["files"];
 
-  // Named file in the same message → search OneDrive immediately (no prior “หาไฟล์” needed)
+  // Named file / SharePoint URL in the same message → resolve immediately
   if ((!file || file.is_folder) && fileQuery) {
-    const queries = [
-      fileQuery,
-      fileQuery.replace(/\.[a-z0-9]{1,8}$/i, ""),
-      ...fileQuery
-        .replace(/\.[a-z0-9]{1,8}$/i, "")
-        .split(/[\s_\-·]+/)
-        .filter((w) => w.length >= 3)
-        .slice(0, 4),
-    ].filter((q, i, arr) => q && arr.indexOf(q) === i);
-
-    let best: { id?: string; name?: string; url?: string; is_folder?: boolean } | null = null;
-    let allHits: { id?: string; name?: string; webUrl?: string; folder?: unknown }[] = [];
-    for (const q of queries) {
-      const hits = await searchFiles(upn, q, 15);
-      allHits = allHits.concat(hits);
-      best = pickBestSearchHit(hits, fileQuery) || best;
-      if (best && (best.name || "").toLowerCase().includes(fileQuery.replace(/\.[a-z0-9]{1,8}$/i, "").toLowerCase().slice(0, 12))) {
-        break;
-      }
-    }
-
+    const hits = await searchFiles(upn, fileQuery, 20);
+    const best = pickBestSearchHit(hits, fileQuery);
     if (!best) {
+      const stem = fileQuery.replace(/\.[a-z0-9]{1,8}$/i, "");
       return {
         intent: "link_meeting_file",
         reply:
-          `หาไฟล์ “${fileQuery}” ใน OneDrive ไม่เจอครับ\n` +
-          `ระบบค้นได้เฉพาะไฟล์ที่อยู่ใน OneDrive/SharePoint ของบัญชีนี้ — ถ้าไฟล์อยู่แค่ในเครื่อง (เช่น Documents บน PC) ต้องอัปโหลดขึ้น OneDrive ก่อน แล้วค่อยผูก\n\n` +
-          `หรือพิมพ์ “หาไฟล์ …” เพื่อเลือกจากรายการ`,
+          `หาไฟล์ “${fileQuery}” ใน OneDrive ยังไม่เจอครับ\n` +
+          `ลองส่งลิงก์จาก OneDrive มาเลย (Share → Copy link) หรือพิมพ์ “หาไฟล์ ${stem}”`,
         suggestions: [
-          { label: "หาไฟล์", text: `หาไฟล์ ${queries[1] || fileQuery}`.slice(0, 40) },
+          { label: `หาไฟล์ ${stem}`.slice(0, 20), text: `หาไฟล์ ${stem}` },
           { label: "ตารางวันนี้", text: "ตารางวันนี้" },
         ],
       };
     }
     file = best;
-    searchedFiles = allHits
+    searchedFiles = hits
       .filter((h) => !h.folder)
-      .filter((h, i, arr) => arr.findIndex((x) => (x.id || x.webUrl) === (h.id || h.webUrl)) === i)
       .slice(0, 5)
       .map((h) => ({ id: h.id, name: h.name, url: h.webUrl, is_folder: false }));
   }
