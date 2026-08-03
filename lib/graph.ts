@@ -257,7 +257,18 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   if (q.includes("@")) return [{ mail: q, displayName: q }];
   const raw = q;
   q = stripHonorific(q);
-  const variants = Array.from(new Set([q, raw, stripHonorific(raw)].map((s) => s.trim()).filter(Boolean)));
+  const nickExpand = (s: string): string[] => {
+    const out = [s];
+    const low = s.toLowerCase();
+    // Common Thai nick spellings
+    if (s === "แบง" || low === "bang") out.push("แบงค์", "Bank");
+    if (s === "แบงค์" || low === "bank") out.push("แบง", "Bank");
+    if (s === "เบส" || low === "base" || low === "bes") out.push("Base", "Best");
+    return out;
+  };
+  const variants = Array.from(
+    new Set([q, raw, stripHonorific(raw), ...nickExpand(q), ...nickExpand(raw)].map((s) => s.trim()).filter(Boolean))
+  );
 
   const merge = (
     results: UserInfo[],

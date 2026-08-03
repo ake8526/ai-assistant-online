@@ -378,11 +378,11 @@ function peopleFromText(text: string): string[] {
 
   const parts = body
     .split(/\s*(?:กับ|และ|,|\/|&)\s*/)
-    .map((s) => stripHonorificPublic(s).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
+    .map((s) => s.replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
     .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง|ตาราง|ว่าง|ตรงกัน)$/i.test(s));
 
   if (parts.length >= 2) return parts;
-  if (parts.length === 1) return parts;
+  if (parts.length === 1) return [stripHonorificPublic(parts[0]!) || parts[0]!];
   const one = personFromText(text);
   return one ? [one] : [];
 }
@@ -395,6 +395,21 @@ function peopleFromText(text: string): string[] {
 function quickFeedIntent(text: string): { intent: string; params: Record<string, unknown> } | null {
   const t = text.trim().replace(/\s+/g, " ");
   if (!t) return null;
+
+  // Multi-person first (before single-person “ดูตาราง…”) — “ดูตารางเบสกับพี่แบง”
+  {
+    const people = peopleFromText(t);
+    if (
+      people.length >= 2 &&
+      /(ตาราง|ว่าง|นัด|หาเวลา|ตรงกัน)/.test(t)
+    ) {
+      const period = /พรุ่งนี้/.test(t) ? "tomorrow" : /วันนี้/.test(t) ? "today" : undefined;
+      return {
+        intent: "find_meeting_time",
+        params: period ? { attendees: people, period } : { attendees: people },
+      };
+    }
+  }
 
   // Summarize stories (slow path) — keep explicit
   if (/^(มี)?ข่าวอะไรบ้าง|สรุปข่าว(วันนี้|ล่าสุด)?|มีคลิปใหม่อะไรบ้าง/i.test(t)) {
@@ -418,18 +433,11 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     return { intent: "clear_memory", params: {} };
   }
 
-  // "ดูตารางพี่นนท์" → one person; "ดูตารางเบสกับพี่แบง" → find common free time
-  if (/^(ดู|ขอดู|เช็ค|เช็ก)?ตาราง/.test(t) || /ว่างตรงกัน/.test(t)) {
+  // "ดูตารางพี่นนท์" → one person (multi-person already handled above)
+  if (/^(ดู|ขอดู|เช็ค|เช็ก)?ตาราง/.test(t)) {
     const people = peopleFromText(t);
-    if (people.length >= 2) {
-      const period = /พรุ่งนี้/.test(t) ? "tomorrow" : /วันนี้/.test(t) ? "today" : undefined;
-      return {
-        intent: "find_meeting_time",
-        params: period ? { attendees: people, period } : { attendees: people },
-      };
-    }
     const who = people[0] || personFromText(t);
-    if (who && /^(ดู|ขอดู|เช็ค|เช็ก)?ตาราง/.test(t)) {
+    if (who) {
       const period = /พรุ่งนี้/.test(t) ? "tomorrow" : /วันนี้/.test(t) ? "today" : undefined;
       return {
         intent: "my_availability",
@@ -1714,6 +1722,33 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   if (intent === "my_availability") {
     const denied = needCalendarConsent();
     if (denied) return denied;
+
+    // Safety net: LLM/quick path still glued “เบสกับพี่แบง” into one person
+    {
+      const glued = String(params.person || "").trim();
+      const multi =
+        peopleFromText(text).length >= 2
+          ? peopleFromText(text)
+          : glued && /(?:กับ|และ|,)/.test(glued)
+            ? glued
+                .split(/\s*(?:กับ|และ|,)\s*/)
+                .map((s) => stripHonorificPublic(s).trim())
+                .filter(Boolean)
+            : [];
+      if (multi.length >= 2) {
+        return runFindMeeting(
+          userUpn,
+          multi.map((name) => ({ name })),
+          Number(params.duration_min || 30),
+          resolveFindWindow(params, text),
+          timeBandFromText(text),
+          wantsLunchIncluded(text),
+          "ประชุม",
+          null
+        );
+      }
+    }
+
     const period = resolvePeriodParam(text, params, context, "week");
     const dayRange = params.weekday ? resolveWeekday(String(params.weekday)) : params.date ? resolveDay(String(params.date)) : null;
     const range = dayRange || periodRange(period);
