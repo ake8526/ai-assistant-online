@@ -125,13 +125,17 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     }
   }
 
-  // 2b) YouTube — auto-pull subscriptions (capped later so it won't drown topic news)
+  // 2b) YouTube — pull uploads; hard-cap to 2 newest in digest (never flood)
+  const YT_HARD_CAP = 2;
   if (granted.has("src_youtube") && youtube.isConfigured()) {
     const { data: tok } = await admin.from("oauth_tokens").select("refresh_token").eq("owner_upn", upn).eq("provider", "google").single();
     if (tok?.refresh_token) {
       try {
         const vids = await youtube.recentUploads(tok.refresh_token);
-        vids.forEach((v) => items.push({ ...v, kind: "youtube", feedLabel: v.source }));
+        vids
+          .sort((a, b) => (b.published || "").localeCompare(a.published || ""))
+          .slice(0, YT_HARD_CAP)
+          .forEach((v) => items.push({ ...v, kind: "youtube", feedLabel: v.source }));
       } catch (e) {
         skipped.push(`YouTube (ดึงไม่สำเร็จ: ${String(e).slice(0, 60)})`);
       }
@@ -150,7 +154,8 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
         if (isNewsDataConfigured()) {
           for (const topic of prefs.topics.slice(0, 6)) {
             try {
-              const entries = await fetchNewsByTopic(topicQuery(topic), 4);
+              const entries = await fetchNewsByTopic(topicQuery(topic), 5);
+              if (!entries.length) skipped.push(`หัวข้อ “${topic}” (ไม่มีข่าวจาก NewsData)`);
               entries.forEach((e) =>
                 items.push({
                   ...e,
@@ -165,7 +170,7 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
             }
           }
         } else {
-          skipped.push("หัวข้อข่าว (ยังไม่ได้ตั้ง NEWSDATA_API_KEY)");
+          skipped.push("หัวข้อข่าว (ยังไม่ได้ตั้ง NEWSDATA_API_KEY บนเซิร์ฟเวอร์)");
         }
       } catch (e) {
         skipped.push(`หัวข้อข่าว (${String(e).slice(0, 60)})`);
@@ -188,8 +193,8 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   const topicItems = items.filter((it) => it.fromTopic);
   const feedItems = items.filter((it) => !it.fromTopic && it.kind !== "youtube");
   const ytItems = items.filter((it) => it.kind === "youtube");
-  const hasNonYt = topicItems.length + feedItems.length > 0;
-  const ytCap = hasNonYt ? 2 : Math.min(5, highlightN);
+  // Always max 2 YouTube clips in a digest (even in "all" mode)
+  const ytCap = YT_HARD_CAP;
 
   const dedupeKey = (it: DigestItem) => (it.link || it.title || "").toLowerCase();
   const takeUnique = (src: DigestItem[], n: number, seen: Set<string>): DigestItem[] => {
@@ -207,33 +212,48 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   const seen = new Set<string>();
   let pool: DigestItem[] = [];
   if (wantAll) {
-    // Prefer today's topic + feed news; always keep recent topics even if "today" filter is strict
+    // "ทั้งหมด" = topic/feed news + at most 2 YouTube (never 20 YouTube)
     const todayTopic = topicItems.filter((it) => isPublishedTodayBkk(it.published || ""));
     const todayFeed = feedItems.filter((it) => isPublishedTodayBkk(it.published || ""));
-    const todayYt = ytItems.filter((it) => isPublishedTodayBkk(it.published || ""));
-    const topicPool = todayTopic.length ? todayTopic : topicItems.slice(0, 12);
+    const topicPool = todayTopic.length ? todayTopic : topicItems.slice(0, 16);
     const feedPool = todayFeed.length ? todayFeed : feedItems.slice(0, 8);
     pool = [
-      ...takeUnique(topicPool, 12, seen),
+      ...takeUnique(topicPool, 16, seen),
       ...takeUnique(feedPool, 8, seen),
-      ...takeUnique(todayYt.length ? todayYt : ytItems, ytCap, seen),
+      ...takeUnique(ytItems, ytCap, seen),
     ].slice(0, NEWS_COUNT_ALL_CAP);
   } else {
-    // Fixed count: reserve most slots for topics, then feeds, then ≤2 YouTube
-    const topicQuota = Math.min(topicItems.length, Math.max(1, highlightN - (hasNonYt ? Math.min(ytCap, 1) : 0)));
+    const topicQuota = Math.min(topicItems.length, Math.max(topicItems.length ? 1 : 0, highlightN - ytCap));
     const afterTopic = Math.max(0, highlightN - topicQuota);
     const feedQuota = Math.min(feedItems.length, afterTopic);
     const ytQuota = Math.min(ytCap, Math.max(0, highlightN - topicQuota - feedQuota));
     pool = [
-      ...takeUnique(topicItems, topicQuota || Math.min(topicItems.length, highlightN), seen),
+      ...takeUnique(topicItems, Math.max(topicQuota, Math.min(topicItems.length, highlightN)), seen),
       ...takeUnique(feedItems, feedQuota, seen),
       ...takeUnique(ytItems, ytQuota, seen),
     ];
-    // If still short (e.g. topics failed), fill from remaining non-YT then YT
+    // Fill shortfall from non-YouTube first; YouTube only up to ytCap
     if (pool.length < highlightN) {
-      pool.push(...takeUnique([...topicItems, ...feedItems, ...ytItems], highlightN - pool.length, seen));
+      pool.push(...takeUnique([...topicItems, ...feedItems], highlightN - pool.length, seen));
+    }
+    if (pool.length < highlightN) {
+      const ytAlready = pool.filter((p) => p.kind === "youtube").length;
+      if (ytAlready < ytCap) {
+        pool.push(...takeUnique(ytItems, Math.min(ytCap - ytAlready, highlightN - pool.length), seen));
+      }
     }
     pool = pool.slice(0, highlightN);
+  }
+
+  // Final safety net
+  {
+    let yt = 0;
+    pool = pool.filter((it) => {
+      if (it.kind !== "youtube") return true;
+      if (yt >= ytCap) return false;
+      yt++;
+      return true;
+    });
   }
 
   if (!pool.length) {
