@@ -71,13 +71,19 @@ async function getYouTubeFollowStatus(upn: string): Promise<{
   return { linked, email, channel, granted };
 }
 
-function qr(items: { label: string; data?: string; uri?: string; displayText?: string }[]) {
+function qr(items: { label: string; data?: string; uri?: string; message?: string; displayText?: string }[]) {
   return {
     items: items.slice(0, 13).map((it) => {
       if (it.uri) {
         return {
           type: "action",
           action: { type: "uri", label: it.label.slice(0, 20), uri: it.uri },
+        };
+      }
+      if (it.message) {
+        return {
+          type: "action",
+          action: { type: "message", label: it.label.slice(0, 20), text: it.message.slice(0, 300) },
         };
       }
       return {
@@ -349,22 +355,119 @@ async function finishBriefNotify(
   await setNewsOnboardingDone(upn, true);
   await clearNewsDraft(upn);
 
-  const newsTime = draft.time || "07:00";
-  const newsDays = normalizeDays(draft.days?.length ? draft.days : [1, 2, 3, 4, 5]);
-  const summary =
-    "✅ ตั้งค่าสรุปตารางเช้าเรียบร้อยครับ\n\n" +
-    `เวลาส่ง: ${briefTime} น.\n` +
-    `วันที่ส่ง: ${formatDays(briefDays)}\n\n` +
-    "สรุปภาพรวมการแจ้งเตือนอัตโนมัติ:\n" +
-    `• ข่าว: ${newsTime} น. · ${formatDays(newsDays)}\n` +
-    `• บรีฟเช้า: ${briefTime} น. · ${formatDays(briefDays)}\n\n` +
-    "ตอนเช้าจะส่งสรุปข่าวก่อน แล้วตามด้วยสรุปตารางครับ\n" +
-    `หน้าตั้งค่าเพิ่มเติม: ${SETTINGS_URL}`;
+  await replyLineMessages(replyToken, [await onboardingDoneMessage(upn, draft)]);
+}
 
-  await replyLineMessages(replyToken, [
-    { type: "text", text: summary },
-    manageMenuMessage(await buildFollowListText(upn)),
+/** Full summary after finishing notify setup + ask edit follows vs other help. */
+async function onboardingDoneMessage(
+  upn: string,
+  draft?: {
+    topics?: string[];
+    count?: number;
+    time?: string;
+    days?: number[];
+    briefTime?: string;
+    briefDays?: number[];
+  }
+): Promise<object> {
+  const prefs = await getNewsPrefs(upn);
+  const [feeds, yt, notify] = await Promise.all([
+    listManagedFeeds(upn).catch(() => []),
+    getYouTubeFollowStatus(upn).catch(() => ({
+      linked: false,
+      email: null,
+      channel: null,
+      granted: false,
+    })),
+    getNotifyConfig(upn).catch(() => null),
   ]);
+
+  const newsOn = prefs.interested && notify?.news.enabled !== false;
+  const topics = (draft?.topics?.length ? draft.topics : prefs.topics) || [];
+  const count = draft?.count ?? prefs.count;
+  const newsTime = draft?.time || notify?.news.time || "07:00";
+  const newsDays = normalizeDays(draft?.days?.length ? draft.days : notify?.news.days || [1, 2, 3, 4, 5]);
+  const briefTime = draft?.briefTime || notify?.brief.time || "07:00";
+  const briefDays = normalizeDays(
+    draft?.briefDays?.length ? draft.briefDays : notify?.brief.days || [1, 2, 3, 4, 5]
+  );
+  const briefOn = notify?.brief.enabled !== false;
+
+  const lines: string[] = ["✅ ตั้งค่าเรียบร้อยแล้วครับ", "", "📋 สรุปที่ตั้งไว้ทั้งหมด", ""];
+
+  lines.push("📰 สรุปข่าวที่ติดตาม");
+  if (!newsOn) {
+    lines.push("  • สถานะ: ปิด");
+  } else {
+    lines.push("  • สถานะ: เปิด");
+    lines.push(`  • จำนวน: ${countLabel(count)}`);
+    lines.push(`  • เวลาส่ง: ${newsTime} น. · ${formatDays(newsDays)}`);
+    if (topics.length) {
+      lines.push("  • หัวข้อ:");
+      topics.forEach((t, i) => lines.push(`      ${i + 1}. ${t}`));
+    } else {
+      lines.push("  • หัวข้อ: (ยังไม่มี)");
+    }
+  }
+  lines.push("");
+
+  lines.push("📅 สรุปตารางเช้า (Morning Brief)");
+  lines.push(briefOn ? "  • สถานะ: เปิด" : "  • สถานะ: ปิด");
+  if (briefOn) {
+    lines.push(`  • เวลาส่ง: ${briefTime} น. · ${formatDays(briefDays)}`);
+  }
+  lines.push("");
+
+  lines.push("แหล่งติดตาม");
+  if (yt.linked) {
+    const who = [yt.channel ? `ช่อง: ${yt.channel}` : null, yt.email].filter(Boolean).join(" · ");
+    lines.push(`  • YouTube: ✅ เชื่อมแล้ว${who ? ` (${who})` : ""}`);
+  } else {
+    lines.push("  • YouTube: ยังไม่ได้เชื่อม");
+  }
+  if (feeds.length) {
+    lines.push("  • RSS / Facebook:");
+    feeds.forEach((f, i) => {
+      const kind = f.kind === "facebook" ? "FB" : "RSS";
+      lines.push(`      ${i + 1}. [${kind}] ${(f.label || "").trim() || f.ref}`);
+    });
+  } else {
+    lines.push("  • RSS / Facebook: (ยังไม่มี)");
+  }
+
+  lines.push("");
+  lines.push("ต้องการแก้ไขรายการที่ติดตาม หรือให้ช่วยเหลือเรื่องอื่นต่อไหมครับ?");
+
+  return {
+    type: "text",
+    text: lines.join("\n"),
+    quickReply: qr([
+      { label: "✏️ แก้รายการติดตาม", data: "a=newsmenu", displayText: "แก้ไขรายการที่ติดตาม" },
+      { label: "⏰ แก้เวลาแจ้งเตือน", data: "a=newsschedule", displayText: "แก้เวลาแจ้งเตือน" },
+      { label: "📅 แก้เวลาบรีฟเช้า", data: "a=briefschedule", displayText: "แก้เวลาสรุปตารางเช้า" },
+      { label: "💬 ช่วยเรื่องอื่น", data: "a=newsotherhelp", displayText: "ช่วยเหลือเรื่องอื่น" },
+      { label: "🌐 หน้าตั้งค่า", uri: SETTINGS_URL },
+    ]),
+  };
+}
+
+function otherHelpMessage(): object {
+  return {
+    type: "text",
+    text:
+      "ได้เลยครับ พิมพ์สิ่งที่ต้องการมาได้เลย เช่น\n\n" +
+      "• ตารางวันนี้ / นัดพรุ่งนี้\n" +
+      "• หาเวลาว่างกับคุณ…\n" +
+      "• สรุปประชุม / ตั้งงานเตือน\n" +
+      "• เตรียมตัวนัดประชุม\n\n" +
+      "หรือถ้าอยากกลับไปแก้ข่าว/แจ้งเตือน พิมพ์ “ตั้งค่าข่าว” ได้ครับ",
+    quickReply: qr([
+      { label: "📅 ตารางวันนี้", message: "ตารางวันนี้" },
+      { label: "🗓 นัดพรุ่งนี้", message: "นัดพรุ่งนี้" },
+      { label: "📰 ตั้งค่าข่าว", message: "ตั้งค่าข่าว" },
+      { label: "🌐 หน้าตั้งค่า", uri: SETTINGS_URL },
+    ]),
+  };
 }
 
 async function buildFollowListText(upn: string): Promise<string> {
@@ -423,7 +526,7 @@ async function buildFollowListText(upn: string): Promise<string> {
   }
 
   lines.push("");
-  lines.push("ต้องการทำอะไรต่อครับ?");
+  lines.push("ต้องการแก้ไขรายการที่ติดตาม หรือให้ช่วยเหลือเรื่องอื่นต่อไหมครับ?");
   return lines.join("\n");
 }
 
@@ -434,10 +537,9 @@ function manageMenuMessage(listText: string): object {
     quickReply: qr([
       { label: "➕ เพิ่มหัวข้อ", data: "a=newsadd", displayText: "เพิ่มหัวข้อข่าว" },
       { label: "🗑 ลบหัวข้อ", data: "a=newsdel", displayText: "ลบหัวข้อข่าว" },
-      { label: "✏️ กำหนดเอง", data: "a=newscustom", displayText: "พิมพ์หัวข้อเอง" },
-      { label: "🔢 จำนวนข่าว/วัน", data: "a=newseditcount", displayText: "เปลี่ยนจำนวนข่าวต่อวัน" },
-      { label: "⏰ เวลาแจ้งเตือนข่าว", data: "a=newsschedule", displayText: "ตั้งเวลาแจ้งเตือนข่าว" },
-      { label: "📅 เวลาบรีฟเช้า", data: "a=briefschedule", displayText: "ตั้งเวลาสรุปตารางเช้า" },
+      { label: "⏰ แก้เวลาแจ้งเตือน", data: "a=newsschedule", displayText: "แก้เวลาแจ้งเตือนข่าว" },
+      { label: "📅 แก้เวลาบรีฟเช้า", data: "a=briefschedule", displayText: "แก้เวลาสรุปตารางเช้า" },
+      { label: "💬 ช่วยเรื่องอื่น", data: "a=newsotherhelp", displayText: "ช่วยเหลือเรื่องอื่น" },
       { label: "🌐 หน้าตั้งค่า", uri: SETTINGS_URL },
     ]),
   };
@@ -598,6 +700,7 @@ const NEWS_ACTIONS = new Set([
   "newsdeli",
   "newseditcount",
   "newsschedule",
+  "newsotherhelp",
   "newsmenu",
 ]);
 
@@ -614,6 +717,12 @@ export async function handleNewsOnboardingPostback(
 
   if (a === "newsmenu") {
     await openNewsSettings(upn, "reply", replyToken);
+    return true;
+  }
+
+  if (a === "newsotherhelp") {
+    await clearNewsDraft(upn);
+    await replyLineMessages(replyToken, [otherHelpMessage()]);
     return true;
   }
 
