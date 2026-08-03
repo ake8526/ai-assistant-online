@@ -4,10 +4,11 @@
 import { admin } from "@/lib/supabaseServer";
 import { getLineId, pushLineMessages } from "@/lib/line";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
-import { fmtDateTime, fmtTime, parseWall } from "@/lib/time";
+import { fmtDateTime, fmtTime, parseWall, parseHHMM, addMinutes, wallIso } from "@/lib/time";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PENDING_RSVP_KEY = "_mt_rsvp_pending";
+const HOST_EDIT_KEY = "_mt_host_edit";
 
 export type MeetingInviteRecord = {
   id: string;
@@ -24,6 +25,11 @@ export type MeetingInviteRecord = {
   /** pending = waiting confirm before Outlook; booked = created; cancelled = declined */
   status?: "pending" | "booked" | "cancelled";
   responses: Record<string, "accept" | "decline">;
+  /** Attendee-proposed new time (from “เปลี่ยนเวลาเป็น…”) */
+  proposedBy?: string;
+  proposedHint?: string;
+  proposedStart?: string;
+  proposedEnd?: string;
   ts: number;
 };
 
@@ -169,21 +175,66 @@ export function extractRescheduleHint(text: string): string {
   return t.slice(0, 80);
 }
 
+/** Map a time hint onto the original meeting's calendar day, keeping duration. */
+export function windowFromRescheduleHint(
+  startIso: string,
+  endIso: string,
+  hint: string
+): { start: string; end: string } | null {
+  const start = parseWall(startIso);
+  const end = parseWall(endIso);
+  if (!start || !end) return null;
+  const dur = Math.max(5, Math.round((end.getTime() - start.getTime()) / 60_000));
+  let mins = parseHHMM(hint);
+  if (mins == null) {
+    const m = hint.match(/(\d{1,2})\s*[:.]\s*(\d{2})/);
+    if (m) {
+      const h = Number(m[1]);
+      const mi = Number(m[2]);
+      if (h < 24 && mi < 60) mins = h * 60 + mi;
+    }
+  }
+  if (mins == null) {
+    const normalized = extractRescheduleHint(hint);
+    mins = parseHHMM(normalized);
+  }
+  if (mins == null) return null;
+  const ns = new Date(start);
+  ns.setUTCHours(Math.floor(mins / 60), mins % 60, 0, 0);
+  const ne = addMinutes(ns, dur);
+  return { start: wallIso(ns), end: wallIso(ne) };
+}
+
 export async function tryHandleMeetingRescheduleText(
   responderUpn: string,
   text: string
 ): Promise<{ ok: boolean; reply: string } | null> {
   if (!isMeetingRescheduleText(text)) return null;
   const pending = await getPendingRsvp(responderUpn);
-  if (!pending) return null; // let normal chat handle (e.g. host changing their own plan)
+  if (!pending) return null;
 
   const who = responderUpn.toLowerCase();
   const when = whenLabel(pending.start, pending.end);
   const hint = extractRescheduleHint(text);
+  const win = windowFromRescheduleHint(pending.start, pending.end, hint);
+
+  const rec = await readInvite(pending.organizerUpn, pending.inviteId);
+  if (rec) {
+    rec.proposedBy = who;
+    rec.proposedHint = hint;
+    if (win) {
+      rec.proposedStart = win.start;
+      rec.proposedEnd = win.end;
+    }
+    await saveInvite(rec.organizerUpn, rec);
+  }
+
   const orgLine = await getLineId(pending.organizerUpn);
+  const proposedLabel = win ? whenLabel(win.start, win.end) : hint;
 
   if (orgLine) {
     try {
+      const oid = encodeURIComponent(pending.organizerUpn);
       await pushLineMessages(orgLine, [
         {
           type: "text",
@@ -191,10 +242,40 @@ export async function tryHandleMeetingRescheduleText(
             `📬 คำขอเปลี่ยนเวลานัด\n` +
             `📌 ${pending.subject}\n` +
             `🕐 เดิม: ${when}\n` +
-            `🙋 ${who} ขอเปลี่ยนเป็นประมาณ ${hint}\n` +
-            `💬 ข้อความเดิม: “${text.trim().slice(0, 120)}”\n\n` +
-            `ต้องการปรับเวลาใหม่ หรือรับทราบไปก่อนครับ?`,
-          quickReply: hostNextStepQuickReply(who),
+            `🙋 ${who} ขอเป็นประมาณ ${proposedLabel}\n` +
+            `💬 “${text.trim().slice(0, 120)}”\n\n` +
+            `จะเอาตามที่ขอ เปลี่ยนเอง หรือยกเลิกนัดครับ?`,
+          quickReply: {
+            items: [
+              {
+                type: "action",
+                action: {
+                  type: "postback",
+                  label: "✅ เอาตามที่ขอ",
+                  data: `a=mthostok&oid=${oid}&id=${pending.inviteId}`,
+                  displayText: "เอาตามที่อีกฝั่งขอ",
+                },
+              },
+              {
+                type: "action",
+                action: {
+                  type: "postback",
+                  label: "🕐 เปลี่ยนเอง",
+                  data: `a=mthostedit&oid=${oid}&id=${pending.inviteId}`,
+                  displayText: "เปลี่ยนเวลาเอง",
+                },
+              },
+              {
+                type: "action",
+                action: {
+                  type: "postback",
+                  label: "❌ ยกเลิกนัด",
+                  data: `a=mthostcancel&oid=${oid}&id=${pending.inviteId}`,
+                  displayText: "ยกเลิกนัดนี้",
+                },
+              },
+            ],
+          },
         },
       ]);
     } catch (e) {
@@ -219,8 +300,8 @@ export async function tryHandleMeetingRescheduleText(
       `รับทราบครับ ส่งคำขอเปลี่ยนเวลาไปยังเจ้าของนัดแล้ว ✅\n` +
       `📌 ${pending.subject}\n` +
       `🕐 เดิม: ${when}\n` +
-      `➡️ ขอเป็นประมาณ ${hint}\n\n` +
-      `รอเจ้าของนัดปรับเวลาให้นะครับ`,
+      `➡️ ขอเป็นประมาณ ${proposedLabel}\n\n` +
+      `รอเจ้าของนัดตอบนะครับ`,
   };
 }
 
@@ -722,5 +803,220 @@ export async function handleMeetingInviteChoice(
   return {
     ok: true,
     reply: `รับทราบครับ ยกเลิกคำขอนัดแล้ว\n📌 ${rec.subject}\n🕐 ${when}\n\nแจ้งเจ้าของนัดเรียบร้อยแล้วครับ`,
+  };
+}
+
+async function notifyAttendeeOfHostDecision(
+  rec: MeetingInviteRecord,
+  text: string
+): Promise<void> {
+  const targets = Array.from(
+    new Set([...(rec.awaitLine || []), ...(rec.attendees || []), rec.proposedBy || ""].map((x) => x.toLowerCase()).filter(Boolean))
+  ).filter((u) => u !== rec.organizerUpn);
+  for (const upn of targets) {
+    try {
+      const lineId = await getLineId(upn);
+      if (lineId) await pushLineMessages(lineId, [{ type: "text", text }]);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+async function createOrUpdateOutlook(
+  rec: MeetingInviteRecord,
+  startIso: string,
+  endIso: string
+): Promise<{ id?: string; error?: string }> {
+  try {
+    const { withDelegatedGraph } = await import("@/lib/msGraphOAuth");
+    const { createEvent, deleteEvent } = await import("@/lib/graph");
+    if (rec.eventId) {
+      try {
+        await withDelegatedGraph(rec.organizerUpn, () => deleteEvent(rec.organizerUpn, rec.eventId!));
+      } catch {
+        /* best-effort replace */
+      }
+    }
+    const { result: ev, asUser } = await withDelegatedGraph(rec.organizerUpn, () =>
+      createEvent(rec.organizerUpn, rec.subject, startIso, endIso, rec.attendees, true, rec.detail)
+    );
+    if (!asUser) return { error: "ยังไม่ได้ให้สิทธิ์ปฏิทิน" };
+    return { id: ev?.id };
+  } catch (e) {
+    return { error: String(e).slice(0, 120) };
+  }
+}
+
+/** Host replies to attendee reschedule request: accept / edit / cancel. */
+export async function handleHostRescheduleChoice(
+  hostUpn: string,
+  act: string,
+  organizerUpn: string,
+  inviteId: string
+): Promise<{ ok: boolean; reply: string; quickReply?: object } | null> {
+  if (!["mthostok", "mthostedit", "mthostcancel"].includes(act)) return null;
+
+  if (hostUpn.toLowerCase() !== organizerUpn.toLowerCase()) {
+    return { ok: false, reply: "เฉพาะเจ้าของนัดเท่านั้นที่ตอบคำขอนี้ได้ครับ" };
+  }
+
+  const rec = await readInvite(organizerUpn.toLowerCase(), inviteId);
+  if (!rec) {
+    return { ok: false, reply: "ไม่พบคำขอนัดนี้แล้วครับ" };
+  }
+
+  if (act === "mthostedit") {
+    await setSetting(
+      hostUpn.toLowerCase(),
+      HOST_EDIT_KEY,
+      JSON.stringify({ inviteId: rec.id, organizerUpn: rec.organizerUpn, ts: Date.now() })
+    );
+    return {
+      ok: true,
+      reply:
+        `ได้ครับ พิมพ์วันเวลาใหม่มาได้เลย เช่น\n` +
+        `• พรุ่งนี้ 16:00\n` +
+        `• 15:30\n` +
+        `• วันนี้ 17:00-17:30`,
+    };
+  }
+
+  if (act === "mthostcancel") {
+    rec.status = "cancelled";
+    await saveInvite(rec.organizerUpn, rec);
+    await deleteSetting(hostUpn.toLowerCase(), HOST_EDIT_KEY).catch(() => undefined);
+    if (rec.eventId) {
+      try {
+        const { withDelegatedGraph } = await import("@/lib/msGraphOAuth");
+        const { deleteEvent } = await import("@/lib/graph");
+        await withDelegatedGraph(rec.organizerUpn, () => deleteEvent(rec.organizerUpn, rec.eventId!));
+      } catch {
+        /* ignore */
+      }
+    }
+    const when = whenLabel(rec.start, rec.end);
+    await notifyAttendeeOfHostDecision(
+      rec,
+      `📬 เจ้าของนัดยกเลิกคำขอนัดแล้ว\n📌 ${rec.subject}\n🕐 ${when}`
+    );
+    return {
+      ok: true,
+      reply: `ยกเลิกนัดแล้วครับ\n📌 ${rec.subject}\n🕐 ${when}\n\nแจ้งอีกฝั่งเรียบร้อยแล้ว`,
+      quickReply: hostNextStepQuickReply(rec.proposedBy || rec.attendees[0]),
+    };
+  }
+
+  // mthostok — accept proposed time
+  const startIso = rec.proposedStart || "";
+  const endIso = rec.proposedEnd || "";
+  if (!startIso || !endIso) {
+    await setSetting(
+      hostUpn.toLowerCase(),
+      HOST_EDIT_KEY,
+      JSON.stringify({ inviteId: rec.id, organizerUpn: rec.organizerUpn, ts: Date.now() })
+    );
+    return {
+      ok: false,
+      reply:
+        `ยังอ่านเวลาที่อีกฝั่งขอไม่ชัดครับ (ได้แค่ “${rec.proposedHint || "?"}”)\n` +
+        `พิมพ์วันเวลาที่ต้องการจองมาได้เลย เช่น 15:00 หรือ พรุ่งนี้ 15:00`,
+    };
+  }
+
+  const created = await createOrUpdateOutlook(rec, startIso, endIso);
+  if (created.id) {
+    rec.start = startIso;
+    rec.end = endIso;
+    rec.eventId = created.id;
+    rec.status = "booked";
+    // Clear soft decline so attendees are treated as confirmed for this slot
+    if (rec.proposedBy) rec.responses[rec.proposedBy] = "accept";
+    await saveInvite(rec.organizerUpn, rec);
+  }
+
+  const when = whenLabel(startIso, endIso);
+  await notifyAttendeeOfHostDecision(
+    rec,
+    created.id
+      ? `📬 เจ้าของนัดตกลงตามเวลาที่คุณขอแล้ว ✅\n📌 ${rec.subject}\n🕐 ${when}\n\nสร้างใน Outlook แล้วครับ`
+      : `📬 เจ้าของนัดตกลงเวลา ${when} แต่สร้างใน Outlook ไม่สำเร็จ\n⚠️ ${created.error || ""}\nรอเจ้าของนัดสร้างให้อีกครั้งนะครับ`
+  );
+
+  return {
+    ok: !!created.id,
+    reply: created.id
+      ? `✅ เอาตามที่อีกฝั่งขอแล้ว — สร้างนัดใน Outlook แล้ว\n📌 ${rec.subject}\n🕐 ${when}`
+      : `⚠️ ตกลงเวลาแล้ว แต่สร้าง Outlook ไม่สำเร็จ: ${created.error || "unknown"}`,
+  };
+}
+
+/** Host typed a new time after tapping “เปลี่ยนเอง”. */
+export async function tryHandleHostEditText(
+  hostUpn: string,
+  text: string
+): Promise<{ ok: boolean; reply: string; quickReply?: object } | null> {
+  let raw: string | null = null;
+  try {
+    raw = await getSetting(hostUpn.toLowerCase(), HOST_EDIT_KEY);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  let draft: { inviteId: string; organizerUpn: string; ts: number };
+  try {
+    draft = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!draft?.inviteId || Date.now() - (draft.ts || 0) > INVITE_TTL_MS) {
+    await deleteSetting(hostUpn.toLowerCase(), HOST_EDIT_KEY).catch(() => undefined);
+    return null;
+  }
+
+  // Only treat as time if it looks like a time / reschedule phrase
+  if (!isMeetingRescheduleText(text) && !/\d/.test(text)) return null;
+
+  const rec = await readInvite(draft.organizerUpn, draft.inviteId);
+  if (!rec) {
+    await deleteSetting(hostUpn.toLowerCase(), HOST_EDIT_KEY).catch(() => undefined);
+    return { ok: false, reply: "ไม่พบคำขอนัดแล้วครับ" };
+  }
+
+  const hint = extractRescheduleHint(text);
+  const win = windowFromRescheduleHint(rec.start, rec.end, text.includes(":") || text.includes(".") ? text : hint);
+  if (!win) {
+    return {
+      ok: false,
+      reply: "ยังอ่านเวลาไม่ชัดครับ ลองพิมพ์แบบ 15:00 หรือ พรุ่งนี้ 15:00",
+    };
+  }
+
+  const created = await createOrUpdateOutlook(rec, win.start, win.end);
+  await deleteSetting(hostUpn.toLowerCase(), HOST_EDIT_KEY).catch(() => undefined);
+  if (created.id) {
+    rec.start = win.start;
+    rec.end = win.end;
+    rec.eventId = created.id;
+    rec.status = "booked";
+    rec.proposedHint = hint;
+    rec.proposedStart = win.start;
+    rec.proposedEnd = win.end;
+    await saveInvite(rec.organizerUpn, rec);
+  }
+
+  const when = whenLabel(win.start, win.end);
+  await notifyAttendeeOfHostDecision(
+    rec,
+    created.id
+      ? `📬 เจ้าของนัดกำหนดเวลาใหม่แล้ว ✅\n📌 ${rec.subject}\n🕐 ${when}`
+      : `📬 เจ้าของนัดเลือกเวลา ${when} แต่สร้าง Outlook ไม่สำเร็จ`
+  );
+
+  return {
+    ok: !!created.id,
+    reply: created.id
+      ? `✅ ตั้งเวลาใหม่และสร้างนัดแล้ว\n📌 ${rec.subject}\n🕐 ${when}\n\nแจ้งอีกฝั่งแล้วครับ`
+      : `⚠️ สร้างนัดไม่สำเร็จ: ${created.error || "unknown"}`,
   };
 }

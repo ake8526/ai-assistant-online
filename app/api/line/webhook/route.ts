@@ -13,7 +13,7 @@ import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
-import { respondMeetingInvite, handleMeetingInviteChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold } from "@/lib/meetingInvite";
+import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -359,7 +359,15 @@ function confirmCardMessage(d: Draft, prefix = ""): object {
 }
 
 const BOOKING_ACTIONS = new Set(["book", "bookcustom", "confirmbook", "setsubj", "setdetail", "addppl", "canceldraft"]);
-const MEETING_RSVP_ACTIONS = new Set(["mtaccept", "mtdecline", "mtcancel", "mtresched"]);
+const MEETING_RSVP_ACTIONS = new Set([
+  "mtaccept",
+  "mtdecline",
+  "mtcancel",
+  "mtresched",
+  "mthostok",
+  "mthostedit",
+  "mthostcancel",
+]);
 
 /** Parse free-text meeting window, e.g. "พรุ่งนี้ 10:00-11:00", "10.00-11.00", "10 โมง 30 นาที". */
 function parseCustomMeetingWindow(
@@ -622,6 +630,17 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
 
     // Meeting RSVP / reschedule by text — before news onboarding
     {
+      const hostEdit = await tryHandleHostEditText(upn, text);
+      if (hostEdit) {
+        await replyLineMessages(ev.replyToken, [
+          {
+            type: "text",
+            text: hostEdit.reply,
+            ...(hostEdit.quickReply ? { quickReply: hostEdit.quickReply } : {}),
+          },
+        ]);
+        return;
+      }
       const reschedule = await tryHandleMeetingRescheduleText(upn, text);
       if (reschedule) {
         await replyLine(ev.replyToken, reschedule.reply);
@@ -786,9 +805,11 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     if (MEETING_RSVP_ACTIONS.has(act)) {
       const oid = decodeURIComponent(data.get("oid") || "");
       const id = data.get("id") || "";
-      const choice = await handleMeetingInviteChoice(upn, act, oid, id);
+      const hostChoice = await handleHostRescheduleChoice(upn, act, oid, id);
+      const attendeeChoice = hostChoice ? null : await handleMeetingInviteChoice(upn, act, oid, id);
       const result =
-        choice ||
+        hostChoice ||
+        attendeeChoice ||
         (await respondMeetingInvite(upn, oid, id, act === "mtaccept"));
       await replyLineMessages(ev.replyToken, [
         {
