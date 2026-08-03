@@ -5,17 +5,13 @@ import Link from "next/link";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import {
   ArrowLeft, Youtube, Facebook, Rss, Plus, Trash2, Unlink, AlertTriangle,
-  CalendarClock, Newspaper, Clock, LogIn, Globe,
+  CalendarClock, Newspaper, Clock, LogIn,
 } from "lucide-react";
 
 type YtState = { linked: boolean; email: string | null; name: string | null; channel: string | null };
 type Feed = { id: number; kind: string; ref: string; label: string };
 type NotifyKindCfg = { enabled: boolean; time: string; days: number[]; count?: number };
 type NotifyCfg = { brief: NotifyKindCfg; news: NotifyKindCfg };
-type NewsDataCfg = {
-  configured: boolean;
-  enabled: boolean;
-};
 type PreviewItem = { title: string; link: string; published: string; summary: string };
 type PreviewState = {
   kind: "rss" | "facebook";
@@ -154,8 +150,6 @@ function ConsentsContent() {
   const [fbMsg, setFbMsg] = useState("");
   const [notify, setNotify] = useState<NotifyCfg | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
-  const [nd, setNd] = useState<NewsDataCfg | null>(null);
-  const [ndMsg, setNdMsg] = useState("");
 
   const ytSubtitle = (() => {
     if (yt.linked) {
@@ -191,23 +185,16 @@ function ConsentsContent() {
         setMsg("เซสชันหมดอายุหรือถูกบล็อกใน LINE — กดปุ่มยืนยันตัวตนอีกครั้ง แล้ว YouTube / ลิงก์ข่าว / เวลาส่ง จะโหลดขึ้นมา (ข้อมูลไม่ได้หาย)");
         return;
       }
-      const [ys, fs, nt, ndc] = await Promise.all([
+      const [ys, fs, nt] = await Promise.all([
         fetch("/api/oauth/google/status", { cache: "no-store", headers }).then((r) => r.json()),
         fetch("/api/feeds", { cache: "no-store", headers }).then((r) => r.json()),
         fetch("/api/notify", { cache: "no-store", headers }).then((r) => r.json()),
-        fetch("/api/newsdata", { cache: "no-store", headers }).then((r) => r.json()),
       ]);
       if (ys && !ys.error) {
         setYt({ linked: !!ys.linked, email: ys.email || null, name: ys.name || null, channel: ys.channel || null });
       }
       if (Array.isArray(fs)) setFeeds(fs.filter((f: Feed) => f.kind === "rss" || f.kind === "facebook"));
       if (nt && !nt.error && nt.brief && nt.news) setNotify(nt as NotifyCfg);
-      if (ndc && !ndc.error) {
-        setNd({
-          configured: !!ndc.configured,
-          enabled: !!ndc.enabled,
-        });
-      }
       setMsg("");
       setNeedReauth(false);
       setLoadFailed(false);
@@ -364,32 +351,6 @@ function ConsentsContent() {
     setBusy(false);
   };
 
-  const saveNewsData = async (patch: Partial<{ enabled: boolean }>) => {
-    setBusy(true);
-    setNdMsg("");
-    try {
-      const headers = await authHeaders();
-      if (!headers) throw new Error("กรุณาเข้าสู่ระบบก่อน");
-      const body: Record<string, unknown> = {};
-      if (typeof patch.enabled === "boolean") body.enabled = patch.enabled;
-      const res = await fetch("/api/newsdata", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data?.error) throw new Error(data.error);
-      setNd({
-        configured: !!data.configured,
-        enabled: !!data.enabled,
-      });
-      setNdMsg(data.enabled ? "✅ เปิด NewsData แล้ว" : "ปิด NewsData แล้ว");
-    } catch (e) {
-      setNdMsg("บันทึกไม่สำเร็จ: " + (e as Error).message);
-    }
-    setBusy(false);
-  };
-
   const saveNotify = async (kind: "brief" | "news", patch: Partial<NotifyKindCfg>) => {
     setNotify((prev) => (prev ? { ...prev, [kind]: { ...prev[kind], ...patch } } : prev));
     try {
@@ -471,37 +432,6 @@ function ConsentsContent() {
               </div>
             </div>
           )}
-
-          {/* NewsData.io — server env only; no user-facing key/filters */}
-          <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 shrink-0 rounded-lg bg-violet-500 flex items-center justify-center">
-                <Globe className="w-5 h-5 text-slate-950" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-slate-100">NewsData.io — ข่าวไทย</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  {nd?.configured
-                    ? nd.enabled
-                      ? "ดึงข่าวจาก NewsData อัตโนมัติ (ภาษา th) · เปิดใช้"
-                      : "พร้อมใช้งาน · ปิดอยู่ — กดสวิตช์เพื่อเปิด"
-                    : "รอตั้งค่าเซิร์ฟเวอร์ — ยังไม่ดึงข่าว NewsData"}
-                </div>
-              </div>
-              {nd && (
-                <button
-                  onClick={() => saveNewsData({ enabled: !nd.enabled })}
-                  disabled={busy || !nd.configured}
-                  role="switch"
-                  aria-checked={nd.enabled}
-                  className={`relative w-11 h-6 shrink-0 rounded-full transition disabled:opacity-40 ${nd.enabled ? "bg-emerald-500" : "bg-slate-600"}`}
-                >
-                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition ${nd.enabled ? "translate-x-5" : ""}`} />
-                </button>
-              )}
-            </div>
-            {ndMsg && <p className="text-[11px] text-violet-300">{ndMsg}</p>}
-          </div>
 
           {/* Facebook pages */}
           <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-3">
@@ -645,7 +575,7 @@ function ConsentsContent() {
               <NotifyCard
                 icon={<Newspaper className="w-5 h-5 text-slate-950" />} color="bg-sky-400"
                 title="สรุปข่าวที่ติดตาม (News Digest)"
-                hint="ข่าว RSS + Facebook + YouTube + NewsData ที่ติดตาม"
+                hint="ข่าวจาก Facebook / RSS / YouTube ที่ติดตาม + ข่าวไทยจาก NewsData"
                 cfg={notify.news} disabled={busy} showCount
                 onChange={(patch) => saveNotify("news", patch)}
               />
