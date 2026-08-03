@@ -617,6 +617,15 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       console.warn("[line] reply failed, pushing:", String(replyErr).slice(0, 120));
       await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
     }
+    if (res.intent === "clear_memory") {
+      try {
+        await deleteSetting(upn, CTX_KEY);
+      } catch { /* ignore */ }
+      try {
+        await clearDraft(upn);
+      } catch { /* ignore */ }
+      return;
+    }
     await saveCtx(upn, ctx, res, text);
   } catch (e) {
     try {

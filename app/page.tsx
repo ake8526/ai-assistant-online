@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Send, LogIn, Loader2, MapPin, FileText, Folder, Settings as SettingsIcon } from "lucide-react";
+import { Send, LogIn, Loader2, MapPin, FileText, Folder, Settings as SettingsIcon, Eraser } from "lucide-react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } from "@/lib/chatMemory";
 
@@ -37,6 +37,7 @@ const SUGGESTIONS = [
   "งานค้างมีอะไรบ้าง",
   "ช่วงไหนว่างบ้าง",
   "สรุปประชุมที่ผ่านมา",
+  "ล้างความจำ",
 ];
 
 function LoginGate() {
@@ -253,6 +254,21 @@ function ChatContent() {
     setBusy(false);
   };
 
+  const clearMemory = () => {
+    const ctx = ctxRef.current;
+    ctx.history = [];
+    ctx.summary = undefined;
+    ctx.last_intent = undefined;
+    ctx.last_person = undefined;
+    ctx.last_person_mail = undefined;
+    ctx.last_meeting = undefined;
+    ctx.meeting = undefined;
+    ctx.files = undefined;
+    ctx.selected = undefined;
+    ctx.last_activity_ts = Date.now();
+    setMsgs([{ role: "bot", text: "ล้างความจำการสนทนาแล้วครับ — เริ่มเรื่องใหม่ได้เลย 🧹" }]);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       <header className="p-4 border-b border-slate-800 flex items-center gap-3">
@@ -260,6 +276,15 @@ function ChatContent() {
           <div className="font-bold">AI Assistant</div>
           <div className="text-[11px] text-slate-500 truncate">{account?.username}</div>
         </div>
+        <button
+          type="button"
+          onClick={clearMemory}
+          disabled={busy}
+          title="ล้างความจำ AI"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 disabled:opacity-50"
+        >
+          <Eraser className="w-4 h-4" /> ล้างความจำ
+        </button>
         <Link
           href="/settings"
           className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200"

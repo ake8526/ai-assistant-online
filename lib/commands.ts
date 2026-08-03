@@ -371,6 +371,10 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     return { intent: "help_menu", params: {} };
   }
 
+  if (/^(ล้าง|ลบ|เคลียร์|clear)(ความจำ|แชท|บริบท|chat)?(ai|เอไอ)?$|^(เริ่มใหม่|เริ่มแชทใหม่|reset chat)$/i.test(t)) {
+    return { intent: "clear_memory", params: {} };
+  }
+
   // "ดูตารางพี่นนท์" / "ตารางว่างของเบส" — force person availability (not own meetings)
   if (/^(ดู|ขอดู|เช็ค|เช็ก)?ตาราง/.test(t)) {
     const who = personFromText(t);
@@ -1067,6 +1071,18 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
 
   const { intent, params } = await parseIntent(text, context);
 
+  if (intent === "clear_memory") {
+    return {
+      intent: "clear_memory",
+      reply: "ล้างความจำการสนทนาแล้วครับ — เริ่มเรื่องใหม่ได้เลย 🧹",
+      suggestions: [
+        { label: "📅 ตารางวันนี้", text: "ตารางวันนี้" },
+        { label: "🗓 นัดพรุ่งนี้", text: "นัดพรุ่งนี้" },
+        { label: "💬 ช่วยเรื่องอื่น", text: "ช่วยเรื่องอื่น" },
+      ],
+    };
+  }
+
   if (intent === "help_menu") {
     return {
       intent: "help_menu",
@@ -1076,11 +1092,13 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         "• ขอตารางว่าง\n" +
         "• ดูตารางพี่… / หาเวลาว่างกับ…\n" +
         "• สรุปประชุม / ตั้งงานเตือน\n" +
-        "• ตั้งค่าข่าว",
+        "• ตั้งค่าข่าว\n" +
+        "• ล้างความจำ",
       suggestions: [
         { label: "📅 ตารางวันนี้", text: "ตารางวันนี้" },
         { label: "🗓 นัดพรุ่งนี้", text: "นัดพรุ่งนี้" },
         { label: "⬜ ขอตารางว่าง", text: "ขอตารางว่าง" },
+        { label: "🧹 ล้างความจำ", text: "ล้างความจำ" },
         { label: "📰 ตั้งค่าข่าว", text: "ตั้งค่าข่าว" },
       ],
     };
