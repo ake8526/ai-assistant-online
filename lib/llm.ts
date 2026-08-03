@@ -86,7 +86,7 @@ async function callProvider(
   provider: Provider,
   system: string,
   user: string,
-  opts?: { json?: boolean; temperature?: number; timeoutMs?: number }
+  opts?: { json?: boolean; temperature?: number; timeoutMs?: number; fast?: boolean }
 ): Promise<string> {
   const cfg = settings(provider);
   if (!cfg) throw new Error(`${provider} not configured`);
