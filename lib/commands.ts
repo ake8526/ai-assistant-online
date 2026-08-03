@@ -1193,6 +1193,8 @@ export async function runFindMeeting(
       : band;
 
   const allStarts = !!(window || searchBand?.after != null || searchBand?.before != null || resolvedAt != null);
+  // After lunch / late day — still suggest rest of today (not only jump to tomorrow 09:00)
+  const nowMin = minutesOfDay(nowWall());
   const workEndHour =
     searchBand?.before != null
       ? Math.max(WORK_END_HOUR, Math.ceil(searchBand.before / 60))
@@ -1200,22 +1202,33 @@ export async function runFindMeeting(
         ? Math.max(WORK_END_HOUR, 20)
         : resolvedAt != null
           ? Math.max(WORK_END_HOUR, 20)
-          : undefined;
+          : nowMin >= 12 * 60
+            ? Math.max(WORK_END_HOUR, 20)
+            : undefined;
+  // Open search (no fixed day): walk the grid so we don't skip today's evening when filling top-5
+  const scanAll = allStarts || (!window && !searchBand?.after && !searchBand?.before && resolvedAt == null);
   const result = await findCommonSlots(
     userUpn,
     resolved,
     duration,
-    allStarts ? 48 : 5,
+    scanAll ? 48 : 5,
     window ? { start: window.start, end: window.end } : undefined,
     {
       afterMin: searchBand?.after ?? null,
       beforeMin: searchBand?.before ?? null,
       atMin: resolvedAt,
-      allStarts,
+      allStarts: scanAll,
       workEndHour,
       includeLunch,
     }
   );
+  // Prefer showing remaining-today slots first (then later days), capped for LINE buttons
+  if (result.slots.length > 5) {
+    const today = fmtDate(nowWall());
+    const todaySlots = result.slots.filter((s) => s.label.startsWith(today) || s.start.slice(0, 10) === wallIso(nowWall()).slice(0, 10));
+    const rest = result.slots.filter((s) => !todaySlots.includes(s));
+    result.slots = [...todaySlots, ...rest].slice(0, 8);
+  }
   const note = unresolved.length ? `\n(หาอีเมลไม่เจอ: ${unresolved.join(", ")})` : "";
   const who = resolved.join(", ");
   const dayNote = window ? ` (${window.label})` : "";
@@ -2002,7 +2015,12 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     const denied = needCalendarConsent();
     if (denied) return denied;
     const attendeesRaw = (params.attendees as string[]) || [];
-    const duration = Number(params.duration_min || context?.last_meeting?.duration || 30);
+    // Don't reuse last booking's 10 นาที for a fresh “ดูตาราง…” ask
+    const duration = Number(
+      params.duration_min ||
+        (!attendeesRaw.length ? context?.last_meeting?.duration : undefined) ||
+        30
+    );
     let window = resolveFindWindow(params, text);
     // Only reuse last meeting day for short time follow-ups (“แล้วบ่ายล่ะ”) — not for a new “ดูตาราง A กับ B”
     if (!window && isTimeFollowUp(text)) {
