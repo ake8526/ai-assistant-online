@@ -351,6 +351,42 @@ function personFromText(text: string): string {
   return SELF_WORDS.has(s) ? "" : s;
 }
 
+/** Split “เบสกับพี่แบง” / “เบส และ นนท์” into separate people. */
+function peopleFromText(text: string): string[] {
+  let body = (text || "").trim().replace(/\s+/g, " ");
+  let changed = true;
+  while (changed && body) {
+    changed = false;
+    for (const p of NAME_PREFIX) {
+      if (body.startsWith(p)) {
+        body = body.slice(p.length).trim();
+        changed = true;
+        break;
+      }
+    }
+    if (changed) continue;
+    for (const suf of NAME_SUFFIX) {
+      if (body.endsWith(suf)) {
+        body = body.slice(0, -suf.length).trim();
+        changed = true;
+        break;
+      }
+    }
+  }
+  body = body.replace(/\s+/g, " ").trim();
+  if (!body) return [];
+
+  const parts = body
+    .split(/\s*(?:กับ|และ|,|\/|&)\s*/)
+    .map((s) => stripHonorificPublic(s).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
+    .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง|ตาราง|ว่าง|ตรงกัน)$/i.test(s));
+
+  if (parts.length >= 2) return parts;
+  if (parts.length === 1) return parts;
+  const one = personFromText(text);
+  return one ? [one] : [];
+}
+
 // ---------------------------------------------------------------------------
 // Intent parsing
 // ---------------------------------------------------------------------------
@@ -382,10 +418,18 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     return { intent: "clear_memory", params: {} };
   }
 
-  // "ดูตารางพี่นนท์" / "ตารางว่างของเบส" — force person availability (not own meetings)
-  if (/^(ดู|ขอดู|เช็ค|เช็ก)?ตาราง/.test(t)) {
-    const who = personFromText(t);
-    if (who) {
+  // "ดูตารางพี่นนท์" → one person; "ดูตารางเบสกับพี่แบง" → find common free time
+  if (/^(ดู|ขอดู|เช็ค|เช็ก)?ตาราง/.test(t) || /ว่างตรงกัน/.test(t)) {
+    const people = peopleFromText(t);
+    if (people.length >= 2) {
+      const period = /พรุ่งนี้/.test(t) ? "tomorrow" : /วันนี้/.test(t) ? "today" : undefined;
+      return {
+        intent: "find_meeting_time",
+        params: period ? { attendees: people, period } : { attendees: people },
+      };
+    }
+    const who = people[0] || personFromText(t);
+    if (who && /^(ดู|ขอดู|เช็ค|เช็ก)?ตาราง/.test(t)) {
       const period = /พรุ่งนี้/.test(t) ? "tomorrow" : /วันนี้/.test(t) ? "today" : undefined;
       return {
         intent: "my_availability",
