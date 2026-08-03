@@ -92,7 +92,8 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   const newestLabel = feeds.length ? (feeds[feeds.length - 1].label || "") : "";
 
   // 2) gather items
-  const items: (FeedEntry & { kind: string; feedLabel: string })[] = [];
+  type DigestItem = FeedEntry & { kind: string; feedLabel: string; fromTopic?: boolean };
+  const items: DigestItem[] = [];
   const skipped: string[] = [];
 
   const newsCount = await getNewsCount(upn);
@@ -104,6 +105,11 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
       continue;
     }
     if (f.kind === "rss") {
+      // Facebook share URLs mis-saved as RSS won't parse — skip with a hint
+      if (/facebook\.com/i.test(f.ref || "")) {
+        skipped.push(`${f.label || "RSS"} (ลิงก์เป็น Facebook — เพิ่มเป็นแหล่ง Facebook หรือเปิดสิทธิ์ Facebook)`);
+        continue;
+      }
       const entries = await fetchFeed(f.ref);
       entries.forEach((e) => items.push({ ...e, kind: f.kind, feedLabel: f.label || e.source }));
     } else if (f.kind === "facebook") {
@@ -119,7 +125,7 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     }
   }
 
-  // 2b) YouTube — auto-pull the user's subscriptions (no manual entry) when connected
+  // 2b) YouTube — auto-pull subscriptions (capped later so it won't drown topic news)
   if (granted.has("src_youtube") && youtube.isConfigured()) {
     const { data: tok } = await admin.from("oauth_tokens").select("refresh_token").eq("owner_upn", upn).eq("provider", "google").single();
     if (tok?.refresh_token) {
@@ -149,7 +155,9 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
                 items.push({
                   ...e,
                   kind: "rss",
-                  feedLabel: e.source || `หัวข้อ · ${topic}`,
+                  feedLabel: `หัวข้อ · ${topic}`,
+                  fromTopic: true,
+                  summary: e.summary || e.title,
                 })
               );
             } catch (e) {
@@ -166,56 +174,120 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   }
 
   if (items.length === 0) {
-    return { stories: [], skipped, note: "ยังไม่มีเนื้อหา — เชื่อม YouTube หรือเพิ่มแหล่งข่าว" };
+    return { stories: [], skipped, note: "ยังไม่มีเนื้อหา — เชื่อม YouTube หรือเพิ่มแหล่งข่าว / เลือกหัวข้อ" };
   }
 
   items.sort((a, b) => (b.published || "").localeCompare(a.published || ""));
 
   const wantAll = isNewsCountAll(newsCount);
+  const highlightN = wantAll
+    ? NEWS_COUNT_ALL_CAP
+    : Math.max(1, Math.min(newsCount, 10));
 
-  // "ทั้งหมด" = every item published/updated today (Bangkok), not older backlog
-  let pool: typeof items;
-  let highlightN: number;
-  if (wantAll) {
-    const todayItems = items.filter((it) => isPublishedTodayBkk(it.published || ""));
-    if (todayItems.length === 0) {
-      return {
-        stories: [],
-        skipped,
-        note: "วันนี้ยังไม่มีข่าว/คลิปใหม่จากแหล่งที่คุณติดตาม",
-      };
+  // Balance: topics/feeds first; YouTube at most 1–2 when mixed with other news
+  const topicItems = items.filter((it) => it.fromTopic);
+  const feedItems = items.filter((it) => !it.fromTopic && it.kind !== "youtube");
+  const ytItems = items.filter((it) => it.kind === "youtube");
+  const hasNonYt = topicItems.length + feedItems.length > 0;
+  const ytCap = hasNonYt ? 2 : Math.min(5, highlightN);
+
+  const dedupeKey = (it: DigestItem) => (it.link || it.title || "").toLowerCase();
+  const takeUnique = (src: DigestItem[], n: number, seen: Set<string>): DigestItem[] => {
+    const out: DigestItem[] = [];
+    for (const it of src) {
+      if (out.length >= n) break;
+      const k = dedupeKey(it);
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      out.push(it);
     }
-    pool = todayItems.slice(0, NEWS_COUNT_ALL_CAP);
-    highlightN = pool.length; // take all of today's items (within cap)
+    return out;
+  };
+
+  const seen = new Set<string>();
+  let pool: DigestItem[] = [];
+  if (wantAll) {
+    // Prefer today's topic + feed news; always keep recent topics even if "today" filter is strict
+    const todayTopic = topicItems.filter((it) => isPublishedTodayBkk(it.published || ""));
+    const todayFeed = feedItems.filter((it) => isPublishedTodayBkk(it.published || ""));
+    const todayYt = ytItems.filter((it) => isPublishedTodayBkk(it.published || ""));
+    const topicPool = todayTopic.length ? todayTopic : topicItems.slice(0, 12);
+    const feedPool = todayFeed.length ? todayFeed : feedItems.slice(0, 8);
+    pool = [
+      ...takeUnique(topicPool, 12, seen),
+      ...takeUnique(feedPool, 8, seen),
+      ...takeUnique(todayYt.length ? todayYt : ytItems, ytCap, seen),
+    ].slice(0, NEWS_COUNT_ALL_CAP);
   } else {
-    pool = items.slice(0, 25);
-    highlightN = Math.max(1, Math.min(newsCount, 10));
+    // Fixed count: reserve most slots for topics, then feeds, then ≤2 YouTube
+    const topicQuota = Math.min(topicItems.length, Math.max(1, highlightN - (hasNonYt ? Math.min(ytCap, 1) : 0)));
+    const afterTopic = Math.max(0, highlightN - topicQuota);
+    const feedQuota = Math.min(feedItems.length, afterTopic);
+    const ytQuota = Math.min(ytCap, Math.max(0, highlightN - topicQuota - feedQuota));
+    pool = [
+      ...takeUnique(topicItems, topicQuota || Math.min(topicItems.length, highlightN), seen),
+      ...takeUnique(feedItems, feedQuota, seen),
+      ...takeUnique(ytItems, ytQuota, seen),
+    ];
+    // If still short (e.g. topics failed), fill from remaining non-YT then YT
+    if (pool.length < highlightN) {
+      pool.push(...takeUnique([...topicItems, ...feedItems, ...ytItems], highlightN - pool.length, seen));
+    }
+    pool = pool.slice(0, highlightN);
   }
 
-  // 3) stage 1 — pick N highlights (or all of today's pool); prefer newest-followed feed a bit
-  const bonusNew = wantAll ? 0 : Math.min(2, Math.max(0, highlightN - 1));
+  if (!pool.length) {
+    return {
+      stories: [],
+      skipped,
+      note: "วันนี้ยังไม่มีข่าว/คลิปใหม่จากแหล่งที่คุณติดตาม",
+    };
+  }
+
+  // 3) pick highlights within the balanced pool
   let picks: number[] = [];
-  if (wantAll) {
+  if (wantAll || pool.length <= highlightN) {
     picks = pool.map((_, i) => i);
   } else {
     const listing = pool
-      .map((it, i) => `${i}. [${it.feedLabel}]${it.feedLabel === newestLabel ? " [ใหม่]" : ""} ${it.title}`)
+      .map((it, i) => {
+        const tag = it.fromTopic ? " [หัวข้อ]" : it.kind === "youtube" ? " [YouTube]" : it.feedLabel === newestLabel ? " [ใหม่]" : "";
+        return `${i}.${tag} [${it.feedLabel}] ${it.title}`;
+      })
       .join("\n");
     try {
       const raw = await chat(
-        `เลือกข่าวเด่นที่สุดจากรายการ (มี index) ตอบ JSON เท่านั้น {"highlights":[index ${highlightN} อัน],"new":[index จากแหล่ง [ใหม่] ไม่เกิน ${bonusNew}]}`,
+        `เลือกข่าวเด่น ${Math.min(highlightN, pool.length)} อัน ตอบ JSON เท่านั้น {"highlights":[index...]}\n` +
+          `สำคัญ: ให้ความสำคัญกับรายการที่มีแท็ก [หัวข้อ] ก่อน — YouTube เลือกได้ไม่เกิน ${ytCap} อัน`,
         listing,
         { json: true, temperature: 0 }
       );
       const d = JSON.parse(raw);
-      picks = [...(d.highlights || []), ...(d.new || [])].filter(
+      picks = [...(d.highlights || [])].filter(
         (n: unknown) => typeof n === "number" && n >= 0 && n < pool.length
       );
     } catch {
       picks = [];
     }
-    if (picks.length === 0) picks = pool.slice(0, highlightN).map((_, i) => i);
-    picks = Array.from(new Set(picks)).slice(0, highlightN);
+    if (picks.length === 0) picks = pool.map((_, i) => i);
+    // Enforce YouTube cap after LLM pick
+    const chosenIdx: number[] = [];
+    let ytPicked = 0;
+    for (const i of picks) {
+      if (chosenIdx.length >= highlightN) break;
+      if (pool[i]?.kind === "youtube") {
+        if (ytPicked >= ytCap) continue;
+        ytPicked++;
+      }
+      chosenIdx.push(i);
+    }
+    for (let i = 0; i < pool.length && chosenIdx.length < highlightN; i++) {
+      if (chosenIdx.includes(i)) continue;
+      if (pool[i]?.kind === "youtube" && ytPicked >= ytCap) continue;
+      if (pool[i]?.kind === "youtube") ytPicked++;
+      chosenIdx.push(i);
+    }
+    picks = chosenIdx.slice(0, highlightN);
   }
 
   // 4) fetch article text + stage 2 — natural bullet summaries (batch for quality)
