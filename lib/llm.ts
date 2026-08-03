@@ -1,6 +1,7 @@
 // Pluggable LLM client with provider fallback.
 // LLM_PROVIDER supports a comma-separated chain, e.g. "qwen,groq"
 // (try first, fall back on failure). Always replies in Thai (primary) / English only.
+import { trace } from "@/lib/trace";
 
 const LANGUAGE_RULE =
   "\n\nกติกาภาษา: ตอบเป็นภาษาไทยเป็นหลักเสมอ ใช้อังกฤษเฉพาะศัพท์เทคนิค/ชื่อเฉพาะ ห้ามตอบภาษาอื่นเด็ดขาด";
@@ -88,7 +89,12 @@ export async function chat(
   for (let i = 0; i < chain.length; i++) {
     const provider = chain[i];
     try {
-      return await callProvider(provider, system, user, opts);
+      const out = await callProvider(provider, system, user, opts);
+      // Monitor: non-JSON calls are natural-language generation → "compose" stage.
+      // JSON calls (intent parsing / extraction) are traced explicitly at their
+      // call sites, so skip them here to avoid double-counting.
+      if (!opts?.json) trace("compose", `เขียนคำตอบ (${provider})`);
+      return out;
     } catch (e) {
       errors.push(`${provider}: ${String(e).slice(0, 180)}`);
       if (i + 1 < chain.length) {

@@ -18,6 +18,7 @@ import {
 } from "@/lib/graph";
 import { getUserGraphToken } from "@/lib/graphAuth";
 import { chat } from "@/lib/llm";
+import { trace } from "@/lib/trace";
 import { listRecentOnline } from "@/lib/meetings";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
@@ -519,7 +520,7 @@ function quickCancelIntent(text: string): { intent: string; params: Record<strin
   if (!t) return null;
   if (!/^(?:ยกเลิก|ลบ|เลิก)(?:นัด|ประชุม)/i.test(t)) return null;
   const m = t.match(/^(?:ยกเลิก|ลบ|เลิก)(?:นัด|ประชุม)?(?:กับ|ของ)?\s*(.*)$/i);
-  let rest = (m?.[1] || "").trim().replace(/\s*(หน่อย|ครับ|ค่ะ|คะ|นะ)$/u, "").trim();
+  const rest = (m?.[1] || "").trim().replace(/\s*(หน่อย|ครับ|ค่ะ|คะ|นะ)$/u, "").trim();
   if (!rest || /^(วันนี้|พรุ่งนี้|ทั้งหมด|นี้)$/i.test(rest)) {
     return { intent: "cancel_meeting", params: {} };
   }
@@ -1512,7 +1513,9 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     );
   }
 
+  trace("parse", "แยกเจตนา (intent)", "start");
   const { intent, params } = await parseIntent(text, context);
+  trace("parse", `intent=${intent}`);
 
   if (intent === "clear_memory") {
     return {

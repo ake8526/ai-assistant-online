@@ -31,6 +31,7 @@ import {
   textWithDraftEscape,
 } from "@/lib/slashCommands";
 import { assertConfigured } from "@/lib/supabaseServer";
+import { runWithTrace, trace } from "@/lib/trace";
 
 export const maxDuration = 60;
 
@@ -795,13 +796,19 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       }
     }
     const ctx = await loadCtx(upn);
-    const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
-    try {
-      await sendResult(ev.replyToken, res);
-    } catch (replyErr) {
-      console.warn("[line] reply failed, pushing:", String(replyErr).slice(0, 120));
-      await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
-    }
+    const res = await runWithTrace({ upn, channel: "line" }, async () => {
+      trace("receive", "ข้อความเข้าจาก LINE");
+      const { result } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
+      try {
+        await sendResult(ev.replyToken!, result);
+        trace("reply", `ตอบกลับ (${result.intent})`);
+      } catch (replyErr) {
+        console.warn("[line] reply failed, pushing:", String(replyErr).slice(0, 120));
+        await pushLineToId(userId, (result.reply || "รับทราบครับ") + detailText(result));
+        trace("reply", `push fallback (${result.intent})`, "error");
+      }
+      return result;
+    });
     if (res.intent === "clear_memory") {
       try {
         await deleteSetting(upn, CTX_KEY);
