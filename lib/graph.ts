@@ -4,6 +4,7 @@
 //   calls run as that user so calendar visibility matches Microsoft 365 /
 //   Outlook sharing & free-busy permissions.
 import { getUserGraphToken } from "@/lib/graphAuth";
+import { trace } from "@/lib/trace";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -57,6 +58,9 @@ async function graphFetch(
 ): Promise<Response> {
   const url = new URL(path.startsWith("http") ? path : GRAPH_BASE + path);
   for (const [k, v] of Object.entries(opts.params || {})) url.searchParams.set(k, v);
+  // Monitor: one "fetch" stage per M365 call. Redact the mailbox address from the
+  // path so no PII lands in the trace label — resource name only.
+  trace("fetch", `M365 ${opts.method || "GET"} ${url.pathname.replace(/\/users\/[^/]+/, "/users/…")}`);
   return fetch(url, {
     method: opts.method || "GET",
     headers: {
@@ -234,26 +238,54 @@ export type UserInfo = { mail: string; displayName?: string };
 
 const resolveCache = new Map<string, UserInfo | null>();
 
-/** Look up displayName for a known mail/UPN (Graph /users/{id}). */
+/** Look up displayName for a known mail/UPN via app-only Graph (directory read). */
 async function lookupUserByMail(mailOrUpn: string): Promise<UserInfo | null> {
-  const key = mailOrUpn.trim().toLowerCase();
+  const raw = mailOrUpn.trim();
+  const key = raw.toLowerCase();
   if (!key.includes("@")) return null;
-  if (resolveCache.has(key)) return resolveCache.get(key)!;
-  try {
-    const data = await graphGet(`/users/${encodeURIComponent(mailOrUpn.trim())}`, {
-      $select: "mail,userPrincipalName,displayName",
-    });
-    const mail = (data.mail || data.userPrincipalName || mailOrUpn).trim();
-    const displayName = (data.displayName || "").trim() || mail;
-    const info: UserInfo = { mail, displayName };
-    resolveCache.set(key, info);
-    resolveCache.set(mail.toLowerCase(), info);
-    return info;
-  } catch {
-    const fallback: UserInfo = { mail: mailOrUpn.trim(), displayName: mailOrUpn.trim() };
-    resolveCache.set(key, fallback);
-    return fallback;
+  const cached = resolveCache.get(key);
+  // Ignore prior failed lookups that stored email as the "name"
+  if (cached?.displayName && cached.displayName.toLowerCase() !== key && !cached.displayName.includes("@")) {
+    return cached;
   }
+  const finish = (info: UserInfo) => {
+    resolveCache.set(key, info);
+    resolveCache.set(info.mail.toLowerCase(), info);
+    return info;
+  };
+  try {
+    // App-only token: delegated User.Read cannot read other users' profiles
+    const token = await getToken();
+    const r = await fetch(
+      `${GRAPH_BASE}/users/${encodeURIComponent(raw)}?$select=mail,userPrincipalName,displayName`,
+      { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
+    );
+    if (r.ok) {
+      const data = await r.json();
+      const mail = (data.mail || data.userPrincipalName || raw).trim();
+      const displayName = (data.displayName || "").trim() || mail;
+      return finish({ mail, displayName });
+    }
+    // Fallback: filter by mail / UPN
+    const esc = raw.replace(/'/g, "''");
+    const r2 = await fetch(
+      `${GRAPH_BASE}/users?$filter=mail eq '${esc}' or userPrincipalName eq '${esc}'&$select=mail,userPrincipalName,displayName&$top=1`,
+      { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
+    );
+    if (r2.ok) {
+      const data = await r2.json();
+      const row = (data.value || [])[0];
+      if (row) {
+        const mail = (row.mail || row.userPrincipalName || raw).trim();
+        const displayName = (row.displayName || "").trim() || mail;
+        return finish({ mail, displayName });
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+  // Do not cache failures — retry next time
+  return { mail: raw, displayName: raw };
 }
 
 /** Resolve email/display name/Thai nickname to {mail, displayName}; prefers real mailboxes. */
@@ -276,7 +308,10 @@ export async function resolveUser(nameOrEmail: string): Promise<string | null> {
 /** Candidate users with a mailbox matching a name/nickname/email (for disambiguation). */
 export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserInfo[]> {
   let q = nameOrEmail.trim();
-  if (q.includes("@")) return [{ mail: q, displayName: q }];
+  if (q.includes("@")) {
+    const info = await lookupUserByMail(q);
+    return info ? [info] : [{ mail: q, displayName: q }];
+  }
   const raw = q;
   q = stripHonorific(q);
   const nickExpand = (s: string): string[] => {

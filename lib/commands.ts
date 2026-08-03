@@ -950,11 +950,11 @@ type MtAttendee = { name?: string; mail?: string };
 function attendeeFromToken(raw: string, userUpn: string): MtAttendee {
   const s = String(raw || "").trim();
   if (!s) return { name: s };
-  if (s.includes("@")) return { mail: s.toLowerCase(), name: s };
+  if (s.includes("@")) return { mail: s.toLowerCase() }; // name filled later via Graph
   // Corporate UPN local part: first.last / first.middle.last (from quick-reply “นัดburatsakon.si”)
   if (/^[a-z0-9][a-z0-9._-]{1,80}$/i.test(s) && s.includes(".")) {
     const domain = userUpn.includes("@") ? userUpn.split("@")[1]!.toLowerCase() : "";
-    if (domain) return { mail: `${s.toLowerCase()}@${domain}`, name: s };
+    if (domain) return { mail: `${s.toLowerCase()}@${domain}` };
   }
   return { name: s };
 }
@@ -1101,7 +1101,20 @@ function encodeMtData(
   atMin?: number | null,
   subject?: string
 ): string {
-  const at = attendees.map((a) => (a.mail ? `m:${a.mail}` : `n:${a.name || ""}`)).join("|");
+  const at = attendees
+    .map((a) => {
+      if (a.mail) {
+        const dn = (a.name || "").trim();
+        if (dn && !dn.includes("@") && dn.toLowerCase() !== a.mail.toLowerCase()) {
+          // Keep name in postback (URLSearchParams encodes UTF-8). Avoid ~ and | separators.
+          const safe = dn.slice(0, 48).replace(/[~|]/g, " ").trim();
+          return `m:${a.mail}~${safe}`;
+        }
+        return `m:${a.mail}`;
+      }
+      return `n:${a.name || ""}`;
+    })
+    .join("|");
   const q = new URLSearchParams({ a: "findmt", d: String(duration), at });
   if (window) {
     q.set("ws", wallIso(window.start));
@@ -1129,7 +1142,18 @@ export function decodeMtAttendees(data: URLSearchParams): {
   const attendees = (data.get("at") || "")
     .split("|")
     .filter(Boolean)
-    .map((tok) => (tok.startsWith("m:") ? { mail: tok.slice(2) } : tok.startsWith("n:") ? { name: tok.slice(2) } : { name: tok }));
+    .map((tok) => {
+      if (tok.startsWith("m:")) {
+        const rest = tok.slice(2);
+        const sep = rest.indexOf("~");
+        if (sep >= 0) {
+          return { mail: rest.slice(0, sep), name: rest.slice(sep + 1).trim() };
+        }
+        return { mail: rest };
+      }
+      if (tok.startsWith("n:")) return { name: tok.slice(2) };
+      return { name: tok };
+    });
   const ws = parseWall(data.get("ws") || "");
   const we = parseWall(data.get("we") || "");
   const window = ws && we ? { start: ws, end: we, label: data.get("wl") || fmtDate(ws) } : null;
@@ -1180,6 +1204,21 @@ export async function runFindMeeting(
       });
       const dayNote = window ? ` (${window.label})` : "";
       return { intent: "choose_mt_person", reply: `เจอหลายคนที่ตรงกับ “${a.name}” เลือกคนที่ต้องการดูตารางครับ${dayNote} 👇`, choices };
+    }
+  }
+
+  // Fill missing display names for attendees that already have mail (e.g. after LINE postback)
+  for (const a of attendees) {
+    if (!a.mail) continue;
+    const n = (a.name || "").trim();
+    if (n && !n.includes("@") && n.toLowerCase() !== a.mail.toLowerCase()) continue;
+    try {
+      const info = await resolveUserInfo(a.mail);
+      if (info?.displayName && !info.displayName.includes("@") && info.displayName.toLowerCase() !== a.mail.toLowerCase()) {
+        a.name = info.displayName;
+      }
+    } catch {
+      /* keep mail-only */
     }
   }
 
@@ -1349,7 +1388,9 @@ async function formatAttendeeLines(attendees: MtAttendee[]): Promise<string> {
     if (!name || name.toLowerCase() === mail || name.includes("@")) {
       try {
         const info = await resolveUserInfo(mail);
-        name = (info?.displayName || "").trim();
+        const dn = (info?.displayName || "").trim();
+        if (dn && dn.toLowerCase() !== mail && !dn.includes("@")) name = dn;
+        else name = "";
       } catch {
         name = "";
       }
