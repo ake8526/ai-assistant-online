@@ -1,6 +1,6 @@
 // Shared news-digest builder — used by the /api/digest route AND the chat/LINE
 // command handler ("มีข่าวอะไรบ้าง"). Pulls the user's granted feeds + YouTube
-// subscriptions, picks highlights, and writes 4-point Thai summaries.
+// subscriptions, picks highlights, and writes natural Thai bullet summaries.
 import { createHash } from "crypto";
 import { admin } from "@/lib/supabaseServer";
 import { fetchFeed, fetchArticle, type FeedEntry } from "@/lib/rss";
@@ -16,6 +16,9 @@ export interface Story {
   title: string;
   source: string;
   kind: "rss" | "youtube" | "facebook";
+  /** Natural bullet points (หัวข้อย่อย) — preferred display form. */
+  bullets: string[];
+  /** @deprecated kept for older clients; prefer bullets */
   whatHappened: string;
   cause: string;
   progress: string;
@@ -43,24 +46,27 @@ function isPublishedTodayBkk(published: string): boolean {
   if (!published?.trim()) return false;
   const today = bkkDateString(nowWall());
   const raw = published.trim();
-  // Fast path: leading YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}/.test(raw) && raw.slice(0, 10) === today) return true;
   const parsed = new Date(raw);
   if (isNaN(parsed.getTime())) return raw.slice(0, 10) === today;
-  // Convert instant → Bangkok wall components in UTC fields
   const bkk = new Date(parsed.getTime() + TZ_OFFSET_MIN * 60_000);
   return bkkDateString(bkk) === today;
 }
 
-/** Render stories as a plain-text digest (for LINE push and the chat reply). */
+function storyBullets(s: Story): string[] {
+  if (s.bullets?.length) return s.bullets.filter((b) => b.trim());
+  return [s.whatHappened, s.cause, s.progress, s.conclusion].filter((b) => (b || "").trim());
+}
+
+/** Render stories as a natural bullet digest (for LINE push and chat). */
 export function formatStoriesText(stories: Story[]): string {
   const lines = ["📰 สรุปข่าวที่คุณติดตามวันนี้", ""];
   stories.forEach((s, i) => {
-    lines.push(`${i + 1}) ${s.title} — ${s.source}`);
-    if (s.whatHappened) lines.push(`   • เกิดอะไรขึ้น: ${s.whatHappened}`);
-    if (s.cause) lines.push(`   • สาเหตุ: ${s.cause}`);
-    if (s.progress) lines.push(`   • เป็นยังไงต่อ: ${s.progress}`);
-    if (s.conclusion) lines.push(`   • สรุป: ${s.conclusion}`);
+    lines.push(`${i + 1}) ${s.title}`);
+    lines.push(`   ${s.source}`);
+    for (const b of storyBullets(s).slice(0, 5)) {
+      lines.push(`   • ${b}`);
+    }
     if (s.rawLink) lines.push(`   🔗 ${s.rawLink}`);
     lines.push("");
   });
@@ -175,7 +181,7 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     picks = Array.from(new Set(picks)).slice(0, highlightN);
   }
 
-  // 4) fetch article text + stage 2 write 4-point summaries
+  // 4) fetch article text + stage 2 — natural bullet summaries
   const chosen = picks.map((i) => pool[i]);
   const withText = await Promise.all(
     chosen.map(async (it) => ({ ...it, full: (await fetchArticle(it.link)) || it.summary }))
@@ -183,14 +189,18 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   const writerInput = withText
     .map((it, i) => `#${i}\nหัวข้อ: ${it.title}\nแหล่ง: ${it.feedLabel}\nเนื้อหา: ${it.full.slice(0, 4000)}`)
     .join("\n\n");
-  let summaries: Record<string, { whatHappened?: string; cause?: string; progress?: string; conclusion?: string }> = {};
+  let summaries: Record<string, { bullets?: string[]; points?: string[] }> = {};
   try {
     const raw = await chat(
-      'สรุปข่าวแต่ละชิ้นจากเนื้อหาที่ให้ (index #N) ตอบ JSON เท่านั้น: ' +
-        '{"0":{"whatHappened":"เกิดอะไรขึ้น 1-2 ประโยค","cause":"เรื่องเกิดจากอะไร 1-2 ประโยค","progress":"เป็นยังไงต่อ 1-2 ประโยค","conclusion":"จบยังไง/แนวโน้ม 1-2 ประโยค"}, ...} ' +
-        "สรุปจากเนื้อหาจริงเท่านั้น ห้ามแต่งเพิ่ม",
+      "สรุปข่าวแต่ละชิ้นเป็นภาษาไทยแบบเป็นธรรมชาติ อ่านง่าย ตอบ JSON เท่านั้น:\n" +
+        '{"0":{"bullets":["ประเด็นสำคัญ 1","ประเด็นสำคัญ 2","ประเด็นสำคัญ 3"]}, "1":{...}}\n' +
+        "กติกา:\n" +
+        "- แต่ละข่าวมี 2–4 หัวข้อย่อย (bullets) สั้น ๆ เป็นประโยคสมบูรณ์\n" +
+        "- ห้ามใช้ป้ายกำกับตายตัวอย่าง เกิดอะไรขึ้น/สาเหตุ/เป็นยังไงต่อ/สรุป\n" +
+        "- เขียนเหมือนเล่าให้เพื่อนฟัง เป็นหัวข้อ ๆ\n" +
+        "- สรุปจากเนื้อหาจริงเท่านั้น ห้ามแต่ง",
       writerInput,
-      { json: true, temperature: 0.3 }
+      { json: true, temperature: 0.35 }
     );
     summaries = JSON.parse(raw);
   } catch {
@@ -202,15 +212,22 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   for (let i = 0; i < withText.length; i++) {
     const it = withText[i];
     const s = summaries[String(i)] || {};
+    const bullets = (s.bullets || s.points || [])
+      .map((b) => String(b || "").trim())
+      .filter(Boolean)
+      .slice(0, 5);
+    const fallback = (it.summary || it.title || "").trim().slice(0, 220);
+    const finalBullets = bullets.length ? bullets : fallback ? [fallback] : [];
     stories.push({
       id: createHash("sha1").update(it.link).digest("hex").slice(0, 8),
       title: it.title,
       source: it.feedLabel,
       kind: it.kind as Story["kind"],
-      whatHappened: s.whatHappened || it.summary.slice(0, 200),
-      cause: s.cause || "",
-      progress: s.progress || "",
-      conclusion: s.conclusion || "",
+      bullets: finalBullets,
+      whatHappened: finalBullets[0] || "",
+      cause: finalBullets[1] || "",
+      progress: finalBullets[2] || "",
+      conclusion: finalBullets[3] || "",
       shortLink: it.link,
       rawLink: it.link,
       publishedAt: it.published || "",
