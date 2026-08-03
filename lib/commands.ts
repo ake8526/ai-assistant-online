@@ -506,13 +506,14 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   if (
     /^(นัด|ประชุม|ตาราง)(วัน)?วันนี้$/i.test(t) ||
     /^วันนี้มี(นัด|ประชุม)/i.test(t) ||
-    /^(ดู)?(ประชุม|นัด)เช้า(นี้)?$/i.test(t) ||
-    /^ดูประชุมเช้านี้$/i.test(t) ||
-    /^เช้านี้มี(นัด|ประชุม)/i.test(t)
+    /เช้านี้|ดูประชุมเช้า|นัดเช้า|ประชุมเช้า|ตารางเช้า/i.test(t)
   ) {
     // “ดูประชุมเช้านี้” → list morning meetings without LLM (avoids Groq 429 on intent)
-    if (/เช้า/.test(t)) {
+    if (/เช้า/.test(t) && !/พรุ่งนี้/.test(t)) {
       return { intent: "list_meetings", params: { period: "today", after: "00:00", before: "12:00" } };
+    }
+    if (/เช้า/.test(t) && /พรุ่งนี้/.test(t)) {
+      return { intent: "list_meetings", params: { period: "tomorrow", after: "00:00", before: "12:00" } };
     }
     return { intent: "list_meetings", params: { period: "today" } };
   }
@@ -1620,6 +1621,8 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
 }
 
 async function handle(userUpn: string, text: string, context?: CommandContext, lite = false): Promise<CommandResult> {
+  text = (text || "").normalize("NFC").replace(/\s+/g, " ").trim();
+
   // Instant calendar list shortcuts BEFORE follow-up heuristics / LLM
   // (prevents “ดูประชุมเช้านี้” being eaten by last_meeting time-band follow-up)
   {
@@ -2039,31 +2042,60 @@ async function handleParsed(
   if (intent === "list_meetings") {
     const denied = needCalendarConsent();
     if (denied) return denied;
-    // Hard override: “เช้านี้/ดูประชุมเช้า” must never inherit last_period=week
-    let period = resolvePeriodParam(text, params, context, "upcoming");
-    const bandHint = /เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้|ดูประชุมเช้า|นัดเช้า|ประชุมเช้า/.test(text);
-    const morningSelf = bandHint && !/พรุ่งนี้/.test(text);
-    if (bandHint) {
-      period = /พรุ่งนี้/.test(text) ? "tomorrow" : "today";
-      if (!params.before && /เช้า/.test(text)) {
-        params.after = params.after || "00:00";
-        params.before = params.before || "12:00";
+
+    const tNorm = (text || "").normalize("NFC").replace(/\s+/g, " ").trim();
+
+    // Dedicated path: “ดูประชุมเช้านี้” — fetch TODAY only, ignore last_period / week / last_person.
+    // (Previously period=week still leaked into the reply label + tomorrow’s morning meetings.)
+    const wantMorningToday =
+      !/พรุ่งนี้/.test(tNorm) &&
+      (/เช้านี้|ดูประชุมเช้า|นัดเช้า|ประชุมเช้า|ตารางเช้า/.test(tNorm) ||
+        (String(params.period || "") === "today" && /เช้า/.test(tNorm)));
+
+    if (wantMorningToday) {
+      const todayR = periodRange("today");
+      const after = parseHHMM(params.after) ?? 0;
+      const before = parseHHMM(params.before) ?? 12 * 60;
+      const todayKey = fmtDate(todayR.start);
+      let events = await getEventsRange(userUpn, wallIso(todayR.start), wallIso(todayR.end));
+      events = events.filter((ev) => {
+        const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+        const m = eventStartMinutes(ev);
+        if (!sd || m === null) return false;
+        return fmtDate(sd) === todayKey && m >= after && m < before;
+      });
+      const label = windowLabel(todayR.label, after, before);
+      const period = "today";
+      if (!events.length) {
+        return withCalendarNext(
+          { intent, reply: `ช่วง${label}ยังไม่มีนัดประชุมในปฏิทินครับ 👍`, data: [], period },
+          "meetings"
+        );
       }
+      await saveAgendaIds(userUpn, events);
+      const reply = lite ? formatEventsSimple(events, label) : await buildForEvents(userUpn, events, label);
+      return withCalendarNext({ intent, reply, data: events, period }, "meetings");
+    }
+
+    // Hard override: band-of-day queries must never inherit last_period=week
+    let period = resolvePeriodParam(tNorm, params, context, "upcoming");
+    const bandHint = /บ่ายนี้|เย็นนี้|ค่ำนี้/.test(tNorm);
+    if (bandHint) {
+      period = /พรุ่งนี้/.test(tNorm) ? "tomorrow" : "today";
     }
     const day = params.date ? resolveDay(String(params.date)) : params.weekday ? resolveWeekday(String(params.weekday)) : null;
     const after = parseHHMM(params.after);
     const before = parseHHMM(params.before);
     const at = parseHHMM(params.at);
 
-    // Self agenda (“ดูประชุมเช้านี้”) — never continue last_person as the subject
+    // Self agenda — never continue last_person as the subject
     const selfAgenda =
-      morningSelf ||
-      (/^(ดู)?(ประชุม|นัด)|ตารางวันนี้|มีนัดอะไร|มีประชุมอะไร|เช้านี้|บ่ายนี้/.test(text) &&
-        !params.person &&
-        !/(?:ของ|กับ)\s*\S/.test(text));
+      /^(ดู)?(ประชุม|นัด)|ตารางวันนี้|มีนัดอะไร|มีประชุมอะไร|เช้านี้|บ่ายนี้/.test(tNorm) &&
+      !params.person &&
+      !/(?:ของ|กับ)\s*\S/.test(tNorm);
 
     if (!selfAgenda) {
-      const { name: person, info: personInfo } = await continuedPerson(text, context);
+      const { name: person, info: personInfo } = await continuedPerson(tNorm, context);
       if (person) {
         const busy = await personBusyResponse(userUpn, person, day, period, after, before, at, personInfo);
         return withCalendarNext({ ...busy, period: day ? undefined : period }, "meetings");
@@ -2073,8 +2105,8 @@ async function handleParsed(
     let { start, end, label } = day || periodRange(period);
     let events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
 
-    // Don't widen to "upcoming" when user asked a specific day/window (เช้านี้ / ก่อนเที่ยง)
-    const pinnedWindow = after !== null || before !== null || /เช้า|บ่าย|เย็น|วันนี้|พรุ่งนี้/.test(text);
+    // Don't widen to "upcoming" when user asked a specific day/window
+    const pinnedWindow = after !== null || before !== null || /เช้า|บ่าย|เย็น|วันนี้|พรุ่งนี้/.test(tNorm);
     if (
       !events.length &&
       !day &&
@@ -2116,15 +2148,17 @@ async function handleParsed(
       label = windowLabel(label, after, before);
     }
 
-    // Absolute clamp: morning query must only show today's events + today's label
-    if (morningSelf) {
-      const todayR = periodRange("today");
+    // When period is today/tomorrow, drop any events that fell outside that calendar day
+    if (!day && (period === "today" || period === "tomorrow")) {
+      const dayR = periodRange(period);
+      const dayKey = fmtDate(dayR.start);
       events = events.filter((ev) => {
         const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
-        return !!sd && sd.getTime() >= todayR.start.getTime() && sd.getTime() <= todayR.end.getTime();
+        return !!sd && fmtDate(sd) === dayKey;
       });
-      label = windowLabel(todayR.label, after, before);
-      period = "today";
+      if (/7 วัน|สัปดาห์|2 สัปดาห์/.test(label)) {
+        label = windowLabel(dayR.label, after, before);
+      }
     }
 
     if (!events.length) {
@@ -2140,7 +2174,6 @@ async function handleParsed(
     }
     await saveAgendaIds(userUpn, events);
     const reply = lite ? formatEventsSimple(events, label) : await buildForEvents(userUpn, events, label);
-    // Persist the actual day we showed (today for เช้านี้) — never leave last_period as week
     return withCalendarNext({ intent, reply, data: events, period }, "meetings");
   }
 
