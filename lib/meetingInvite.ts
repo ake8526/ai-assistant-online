@@ -368,22 +368,24 @@ export async function readInvite(ownerUpn: string, id: string): Promise<MeetingI
 function inviteMessage(rec: MeetingInviteRecord): object {
   const who = rec.organizerName || rec.organizerUpn;
   const pending = !rec.eventId && rec.status !== "booked";
+  const oid = encodeURIComponent(rec.organizerUpn);
   const text = pending
     ? "📅 มีคำขอนัดประชุมถึงคุณ\n\n" +
       `📌 ${rec.subject}\n` +
       `🕐 ${whenLabel(rec.start, rec.end)}\n` +
       `👤 จาก: ${who}` +
       (rec.detail ? `\n📝 ${rec.detail}` : "") +
-      "\n\nยังไม่ได้สร้างใน Outlook — กรุณายืนยันก่อนครับ\n(กดปุ่ม หรือพิมพ์ “ไม่สะดวก” / “เปลี่ยนเวลาเป็น…”) 👇"
+      "\n\nยังไม่ได้สร้างใน Outlook — กรุณายืนยันก่อนครับ\n(กดปุ่มด้านล่างได้เลยครับ) 👇"
     : "📅 คุณถูกเชิญเข้าประชุม\n\n" +
       `📌 ${rec.subject}\n` +
       `🕐 ${whenLabel(rec.start, rec.end)}\n` +
       `👤 จัดโดย: ${who}` +
       (rec.detail ? `\n📝 ${rec.detail}` : "") +
-      "\n\nกรุณายืนยันการเข้าร่วมนัดนี้ครับ\n(กดปุ่ม หรือพิมพ์ “ไม่สะดวก” / “ยกเลิก” ได้ครับ) 👇";
+      "\n\nกรุณายืนยันการเข้าร่วมนัดนี้ครับ\n(กดปุ่มด้านล่างได้เลยครับ) 👇";
 
-  const accept = `a=mtaccept&oid=${encodeURIComponent(rec.organizerUpn)}&id=${rec.id}`;
-  const decline = `a=mtdecline&oid=${encodeURIComponent(rec.organizerUpn)}&id=${rec.id}`;
+  const accept = `a=mtaccept&oid=${oid}&id=${rec.id}`;
+  const decline = `a=mtdecline&oid=${oid}&id=${rec.id}`;
+  const resched = `a=mtresched&oid=${oid}&id=${rec.id}`;
 
   return {
     type: "text",
@@ -397,6 +399,15 @@ function inviteMessage(rec: MeetingInviteRecord): object {
             label: pending ? "✅ ยืนยันนัดนี้" : "✅ ยืนยันเข้าร่วม",
             data: accept,
             displayText: pending ? "ยืนยันนัดนี้" : "ยืนยันเข้าร่วมนัด",
+          },
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "🕐 เปลี่ยนเวลา",
+            data: resched,
+            displayText: "ขอเปลี่ยนวันเวลา",
           },
         },
         {
