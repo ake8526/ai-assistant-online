@@ -96,6 +96,8 @@ export type CommandContext = {
     subject?: string;
     window?: { start: string; end: string; label: string };
   };
+  /** Next index when paging duplicate-nickname groups (“มีอีกไหม”). */
+  nick_dup_offset?: number;
 };
 
 export type CommandResult = {
@@ -108,6 +110,8 @@ export type CommandResult = {
   choices?: unknown[];
   /** Day scope used for this reply — stored so follow-ups keep the same day. */
   period?: string;
+  /** Persist paging cursor for duplicate nicknames. */
+  nick_dup_offset?: number;
   meeting?: {
     attendees: string[];
     duration: number;
@@ -666,6 +670,15 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
   // Fast deterministic shortcuts — skip LLM so LINE replies before the reply-token expires.
   const quick = quickFeedIntent(textClean);
   if (quick) return quick;
+
+  // “มีอีกไหม” after nickname duplicate list — next page / confirm complete (no re-dump)
+  const moreNick =
+    /^(มีอีก|มีเพิ่ม|ดูต่อ|ต่อไป|หน้าต่อไป|หน้าถัดไป)(ไหม|มั้ย)?$|^มีอีกไหม$|^อีกไหม$|^อีกมั้ย$|^ครบยัง$|^มีหมดแล้วไหม$/i.test(
+      textClean.replace(/\s+/g, " ").trim()
+    );
+  if (context?.last_intent === "find_duplicate_nicknames" && moreNick) {
+    return { intent: "find_duplicate_nicknames", params: { more: true } };
+  }
 
   // Fast deterministic rule after a file search
   if (context?.last_intent === "file_results") {
@@ -1631,18 +1644,62 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     if (!res.groups.length) {
       return {
         intent: "find_duplicate_nicknames",
+        nick_dup_offset: 0,
         reply: `สแกนผู้ใช้ในไดเรกทอรี ${res.scanned} คนแล้ว ไม่พบชื่อเล่นไทยที่ซ้ำกันครับ`,
       };
     }
-    const lines = [`พบชื่อเล่นไทยซ้ำ ${res.groups.length} กลุ่ม จากผู้ใช้ที่สแกน ${res.scanned} คนครับ`, ""];
-    res.groups.forEach((g, i) => {
-      lines.push(`${i + 1}) “${g.nick}” — ${g.people.length} คน`);
+
+    const PAGE = 8;
+    const wantMore = !!params.more;
+
+    if (wantMore) {
+      const stored = context?.nick_dup_offset;
+      // No cursor = previous reply already listed everything (or stale ctx) → don't re-dump
+      if (typeof stored !== "number" || stored <= 0 || stored >= res.groups.length) {
+        return {
+          intent: "find_duplicate_nicknames",
+          nick_dup_offset: res.groups.length,
+          reply:
+            `ครบแล้วครับ ตามเกณฑ์ตอนนี้มีทั้งหมด ${res.groups.length} กลุ่ม ` +
+            `จากบัญชีที่สแกน ${res.scanned} คน — ไม่มีเพิ่มแล้ว`,
+        };
+      }
+    }
+
+    const offset = wantMore ? Math.max(0, Number(context?.nick_dup_offset) || 0) : 0;
+    const page = res.groups.slice(offset, offset + PAGE);
+    const from = offset + 1;
+    const to = offset + page.length;
+    const nextOffset = offset + page.length;
+    const hasMore = nextOffset < res.groups.length;
+
+    const lines: string[] = [];
+    if (!wantMore) {
+      lines.push(`พบชื่อเล่นไทยซ้ำ ${res.groups.length} กลุ่ม จากผู้ใช้ที่สแกน ${res.scanned} คนครับ`);
+    } else {
+      lines.push(`ต่อ — กลุ่มที่ ${from}–${to} จากทั้งหมด ${res.groups.length} กลุ่มครับ`);
+    }
+    if (res.groups.length > PAGE) {
+      lines.push(`(แสดง ${from}–${to}${hasMore ? " · พิมพ์ “มีอีกไหม” เพื่อดูต่อ" : " · ครบแล้ว"})`);
+    }
+    lines.push("");
+    page.forEach((g, i) => {
+      lines.push(`${offset + i + 1}) “${g.nick}” — ${g.people.length} คน`);
       g.people.forEach((p) => {
         lines.push(`   • ${(p.displayName || g.nick).trim()}`);
       });
     });
+    if (!hasMore && wantMore) {
+      lines.push("", `ครบ ${res.groups.length} กลุ่มแล้วครับ`);
+    }
+
     trace("compose", "สรุปรายชื่อเล่นซ้ำ (ไทยทั้งหมด)");
-    return { intent: "find_duplicate_nicknames", reply: lines.join("\n") };
+    return {
+      intent: "find_duplicate_nicknames",
+      nick_dup_offset: nextOffset,
+      reply: lines.join("\n"),
+      suggestions: hasMore ? [{ label: "มีอีกไหม", text: "มีอีกไหม" }] : undefined,
+    };
   }
 
   if (intent === "link_meeting_file") {

@@ -274,6 +274,7 @@ async function loadCtx(upn: string): Promise<CommandContext | undefined> {
       last_person_mail: c.last_person_mail,
       last_period: c.last_period,
       last_meeting: c.last_meeting,
+      nick_dup_offset: typeof c.nick_dup_offset === "number" ? c.nick_dup_offset : undefined,
       files: Array.isArray(c.files) ? c.files : undefined,
       history: pruned.history,
       summary: pruned.summary,
@@ -308,6 +309,11 @@ async function saveCtx(upn: string, prev: CommandContext | undefined, res: Comma
     summary: pruned.summary,
     ttl_ms: CHAT_MEMORY_TTL_MS,
   };
+  if (typeof res.nick_dup_offset === "number") {
+    next.nick_dup_offset = res.nick_dup_offset;
+  } else if (typeof prev?.nick_dup_offset === "number" && res.intent === "find_duplicate_nicknames") {
+    next.nick_dup_offset = prev.nick_dup_offset;
+  }
   if (res.person?.mail) {
     next.last_person = res.person.displayName || res.person.mail;
     next.last_person_mail = res.person.mail;
