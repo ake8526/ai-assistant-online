@@ -9,6 +9,7 @@ const GRAPH_SCOPE = [
   "profile",
   "offline_access",
   "User.Read",
+  "People.Read",
   "Calendars.Read",
   "Calendars.Read.Shared",
   "Calendars.ReadWrite",

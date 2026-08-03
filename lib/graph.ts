@@ -255,44 +255,124 @@ export async function resolveUser(nameOrEmail: string): Promise<string | null> {
 export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserInfo[]> {
   let q = nameOrEmail.trim();
   if (q.includes("@")) return [{ mail: q, displayName: q }];
+  const raw = q;
   q = stripHonorific(q);
-  const sel = "mail,userPrincipalName,displayName";
-  const attempts: { params: Record<string, string>; headers?: Record<string, string> }[] = [
-    {
-      params: { $search: `"displayName:${q}"`, $select: sel, $top: String(top) },
-      headers: { ConsistencyLevel: "eventual" },
-    },
-    {
-      params: {
-        $filter: `startswith(displayName,'${q.replace(/'/g, "''")}') or startswith(givenName,'${q.replace(/'/g, "''")}') or startswith(surname,'${q.replace(/'/g, "''")}')`,
-        $select: sel,
-        $top: String(top),
-      },
-    },
-  ];
-  for (const a of attempts) {
-    let items: { mail?: string; userPrincipalName?: string; displayName?: string }[] = [];
-    try {
-      items = (await graphGet("/users", a.params, a.headers)).value || [];
-    } catch {
-      items = [];
-    }
-    const results: UserInfo[] = [];
-    const seen = new Set<string>();
+  const variants = Array.from(new Set([q, raw, stripHonorific(raw)].map((s) => s.trim()).filter(Boolean)));
+
+  const merge = (
+    results: UserInfo[],
+    items: { mail?: string; userPrincipalName?: string; displayName?: string; scoredEmailAddresses?: { address?: string }[] }[]
+  ) => {
+    const seen = new Set(results.map((r) => r.mail.toLowerCase()));
     for (const it of items) {
-      if (it.mail && !seen.has(it.mail)) {
-        seen.add(it.mail);
-        results.push({ mail: it.mail, displayName: it.displayName });
+      const mail =
+        it.mail ||
+        it.userPrincipalName ||
+        it.scoredEmailAddresses?.find((e) => e.address)?.address ||
+        "";
+      if (!mail || seen.has(mail.toLowerCase())) continue;
+      seen.add(mail.toLowerCase());
+      results.push({ mail, displayName: it.displayName || mail });
+      if (results.length >= top) break;
+    }
+    return results;
+  };
+
+  let results: UserInfo[] = [];
+  const sel = "mail,userPrincipalName,displayName";
+
+  // 1) People the signed-in user already knows (best for Thai nicknames like “นนท์”)
+  if (getUserGraphToken()) {
+    for (const v of variants) {
+      try {
+        const data = await graphGet("/me/people", {
+          $search: v,
+          $top: String(top),
+          $select: "displayName,scoredEmailAddresses",
+        });
+        results = merge(results, data.value || []);
+        if (results.length) return results.slice(0, top);
+      } catch {
+        /* People.Read may be missing — fall through */
       }
     }
-    if (results.length) return results;
-    if (items.length) {
-      const it = items[0];
-      const mail = it.mail || it.userPrincipalName;
-      if (mail) return [{ mail, displayName: it.displayName }];
+  }
+
+  // 2) Directory search (broader $search, then startswith)
+  for (const v of variants) {
+    const esc = v.replace(/'/g, "''");
+    const attempts: { params: Record<string, string>; headers?: Record<string, string> }[] = [
+      {
+        params: { $search: `"displayName:${v}"`, $select: sel, $top: String(top) },
+        headers: { ConsistencyLevel: "eventual" },
+      },
+      {
+        params: { $search: `"${v}"`, $select: sel, $top: String(top) },
+        headers: { ConsistencyLevel: "eventual" },
+      },
+      {
+        params: {
+          $filter: `startswith(displayName,'${esc}') or startswith(givenName,'${esc}') or startswith(surname,'${esc}') or startswith(mail,'${esc}') or startswith(userPrincipalName,'${esc}')`,
+          $select: sel,
+          $top: String(top),
+        },
+      },
+    ];
+    for (const a of attempts) {
+      try {
+        const data = await graphGet("/users", a.params, a.headers);
+        results = merge(results, data.value || []);
+        if (results.length) return results.slice(0, top);
+      } catch {
+        /* try next */
+      }
     }
   }
-  return [];
+
+  // 3) Fuzzy match against recent calendar attendees (nicknames often appear only there)
+  if (getUserGraphToken() && q.length >= 2) {
+    try {
+      const now = new Date();
+      const past = new Date(now.getTime() - 45 * 24 * 3600_000);
+      const future = new Date(now.getTime() + 45 * 24 * 3600_000);
+      const data = await graphGet(
+        "/me/calendarView",
+        {
+          startDateTime: past.toISOString(),
+          endDateTime: future.toISOString(),
+          $select: "attendees,organizer",
+          $top: "50",
+        },
+        { Prefer: `outlook.timezone="${TIMEZONE}"` }
+      );
+      const qLow = q.toLowerCase();
+      const hits: UserInfo[] = [];
+      const seen = new Set<string>();
+      const consider = (name?: string, mail?: string) => {
+        if (!mail || seen.has(mail.toLowerCase())) return;
+        const n = (name || "").toLowerCase();
+        const nameRaw = name || "";
+        if (!n.includes(qLow) && !nameRaw.includes(q) && !qLow.split(/\s+/).some((t) => t.length >= 2 && n.includes(t))) {
+          return;
+        }
+        seen.add(mail.toLowerCase());
+        hits.push({ mail, displayName: name || mail });
+      };
+      for (const ev of (data.value || []) as GraphEvent[]) {
+        const org = ev.organizer?.emailAddress;
+        consider(org?.name, org?.address);
+        for (const a of ev.attendees || []) {
+          consider(a.emailAddress?.name, a.emailAddress?.address);
+        }
+        if (hits.length >= top) break;
+      }
+      if (hits.length) return hits.slice(0, top);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return results.slice(0, top);
 }
 
 export type Attendee = { name?: string; email?: string };

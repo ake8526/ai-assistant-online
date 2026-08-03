@@ -1406,7 +1406,9 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       return withCalendarNext(
         {
           intent,
-          reply: `ไม่พบคนชื่อ “${det}” ในไดเรกทอรีครับ ลองพิมพ์ชื่อเต็มหรืออีเมลดูนะครับ`,
+          reply:
+            `ยังหา “${det}” ไม่เจอในไดเรกทอรี/รายชื่อที่เคยคุยด้วยครับ\n` +
+            "ลองพิมพ์ชื่อเต็ม หรืออีเมล เช่น “ดูตารางชื่อ@ktisgroup.com” นะครับ",
           period,
         },
         "free"

@@ -25,6 +25,7 @@ export const loginRequest: PopupRequest = {
 export const graphCalendarRequest: PopupRequest = {
   scopes: [
     "User.Read",
+    "People.Read",
     "Calendars.Read",
     "Calendars.Read.Shared",
     "Calendars.ReadWrite",
