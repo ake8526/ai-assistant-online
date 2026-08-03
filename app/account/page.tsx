@@ -5,7 +5,7 @@ import Link from "next/link";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import {
   ArrowLeft, CheckCircle2, XCircle, LogIn, LogOut, Unlink, AlertTriangle,
-  Mail, MessageCircle, Link2,
+  Mail, MessageCircle, Link2, Calendar,
 } from "lucide-react";
 
 type LineState = { linked: boolean; display_name: string | null; upn: string | null };
@@ -38,32 +38,57 @@ function AccountContent() {
   const upn = account?.username || "";
 
   const [line, setLine] = useState<LineState | null>(null);
+  const [msCal, setMsCal] = useState<{ linked: boolean; note?: string } | null>(null);
   const [msg, setMsg] = useState("กำลังโหลด…");
+  const [msgOk, setMsgOk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
   const [confirmLogoutM365, setConfirmLogoutM365] = useState(false);
 
-  // 365 = ลงชื่อเข้า/ออกด้วย MSAL เท่านั้น (แยกจากการผูก LINE โดยสิ้นเชิง)
   const m365Connected = !!account;
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("ms");
+    if (!q) return;
+    const map: Record<string, { text: string; ok?: boolean }> = {
+      connected: { text: "อนุญาตปฏิทินตามสิทธิ์ Microsoft 365 แล้ว — ดูตารางเหมือนใน Outlook", ok: true },
+      denied: { text: "ยกเลิกการอนุญาตปฏิทิน" },
+      error: { text: "อนุญาตปฏิทินไม่สำเร็จ ลองใหม่อีกครั้ง" },
+      no_refresh: { text: "Microsoft ไม่ได้ให้ refresh token — ลองอนุญาตอีกครั้ง" },
+      need_login: { text: "กรุณาเข้าสู่ระบบ Microsoft 365 ก่อน" },
+      need_oauth: { text: "ยังไม่ได้ตั้งค่า OAuth ปฏิทินบนเซิร์ฟเวอร์" },
+    };
+    const m = map[q];
+    if (m) {
+      setMsg(m.text);
+      setMsgOk(!!m.ok);
+    }
+    window.history.replaceState({}, "", "/account");
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!account) {
       setLine(null);
+      setMsCal(null);
       setMsg("กรุณาเข้าสู่ระบบ Microsoft 365 เพื่อดูบัญชีของตัวเอง");
+      setMsgOk(false);
       return;
     }
     try {
       const token = await getToken();
       if (!token) throw new Error("ได้ token ไม่สำเร็จ");
-      const ls = await fetch("/api/line/status", {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${token}` },
-      }).then((r) => r.json());
+      const headers = { Authorization: `Bearer ${token}` };
+      const [ls, ms] = await Promise.all([
+        fetch("/api/line/status", { cache: "no-store", headers }).then((r) => r.json()),
+        fetch("/api/oauth/microsoft/status", { cache: "no-store", headers }).then((r) => r.json()),
+      ]);
       if (ls.error) throw new Error(ls.error);
       setLine({ linked: !!ls.linked, display_name: ls.display_name || null, upn: ls.upn || null });
-      setMsg("");
+      setMsCal({ linked: !!ms.linked, note: ms.note });
+      setMsg((prev) => (prev.includes("เหมือนใน Outlook") ? prev : ""));
     } catch (e) {
       setMsg("โหลดไม่สำเร็จ: " + (e as Error).message);
+      setMsgOk(false);
     }
   }, [account, getToken]);
 
@@ -71,6 +96,34 @@ function AccountContent() {
     if (!ready) return;
     refresh();
   }, [ready, refresh]);
+
+  const connectCalendar = async () => {
+    setBusy(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("เข้าสู่ระบบก่อน");
+      window.location.href = `/api/oauth/microsoft/start?token=${encodeURIComponent(token)}&back=/account`;
+    } catch (e) {
+      setMsg(String((e as Error).message));
+      setMsgOk(false);
+      setBusy(false);
+    }
+  };
+
+  const disconnectCalendar = async () => {
+    setBusy(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("เข้าสู่ระบบก่อน");
+      await fetch("/api/oauth/microsoft/status", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setMsgOk(false);
+      await refresh();
+    } catch { /* ignore */ }
+    setBusy(false);
+  };
 
   const unlinkLine = async () => {
     setBusy(true);
@@ -87,7 +140,6 @@ function AccountContent() {
     setBusy(false);
   };
 
-  // ลงชื่อออกจาก 365 เท่านั้น — ไม่ยุ่งกับการผูก LINE
   const logoutM365 = async () => {
     setBusy(true);
     try {
@@ -107,10 +159,11 @@ function AccountContent() {
         <header className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 text-center">
           <h1 className="text-xl font-bold">👤 บัญชีของฉัน</h1>
           <p className="text-xs text-slate-400 mt-1">ดูว่าเชื่อมบัญชีอะไรไว้ อนุญาตติดตามอะไรบ้าง และยกเลิกได้จากที่นี่</p>
-          {msg && <p className="text-xs text-rose-400 mt-2">{msg}</p>}
+          {msg && (
+            <p className={`text-xs mt-2 ${msgOk ? "text-emerald-400" : "text-rose-400"}`}>{msg}</p>
+          )}
         </header>
 
-        {/* ---- connected accounts ---- */}
         <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
           <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2"><Link2 className="w-4 h-4" /> บัญชีที่เชื่อมต่อ</h2>
 
@@ -150,6 +203,30 @@ function AccountContent() {
             </div>
           )}
 
+          <Row
+            icon={<Calendar className="w-5 h-5 text-slate-950" />}
+            color="bg-sky-400"
+            title="ปฏิทินตามสิทธิ์ 365"
+            subtitle={
+              msCal?.linked
+                ? "ดูตารางเหมือน Outlook (รวมปฏิทินที่แชร์ให้คุณ)"
+                : "จำเป็นสำหรับดูตารางคนอื่น / จองจาก LINE"
+            }
+          >
+            {msCal?.linked ? (
+              <button onClick={disconnectCalendar} disabled={busy || !m365Connected}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700">
+                <Unlink className="w-4 h-4" /> ยกเลิก
+              </button>
+            ) : (
+              <button onClick={connectCalendar} disabled={busy || !m365Connected}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40">
+                <Calendar className="w-4 h-4" /> อนุญาต
+              </button>
+            )}
+          </Row>
+          {msCal && <Badge ok={msCal.linked} on="สถานะ: ใช้สิทธิ์ของคุณแล้ว" off="สถานะ: ยังไม่อนุญาต" />}
+
           <Row icon={<MessageCircle className="w-5 h-5 text-slate-950" />} color="bg-emerald-400"
                title="LINE" subtitle={line?.linked ? (line.display_name || "เชื่อมกับ LINE นี้") : "ยังไม่ได้ผูกกับ LINE"}>
             {line?.linked ? (
@@ -187,7 +264,6 @@ function AccountContent() {
               </div>
             </div>
           )}
-
         </section>
 
         <p className="text-[11px] text-slate-500 text-center leading-relaxed">

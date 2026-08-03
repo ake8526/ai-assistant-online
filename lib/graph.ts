@@ -1,6 +1,9 @@
-// Microsoft Graph client — app-only (client credentials), ported from
-// morning_brief/graph_client.py. Requires env: TENANT_ID (or
-// NEXT_PUBLIC_AZURE_TENANT_ID), GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET.
+// Microsoft Graph client.
+// - Background/cron: app-only (client credentials) via GRAPH_CLIENT_* env.
+// - Interactive (chat/LINE): when a delegated user token is in graphAuth ALS,
+//   calls run as that user so calendar visibility matches Microsoft 365 /
+//   Outlook sharing & free-busy permissions.
+import { getUserGraphToken } from "@/lib/graphAuth";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -43,6 +46,11 @@ export async function getToken(): Promise<string> {
   return data.access_token;
 }
 
+async function authHeader(): Promise<string> {
+  const user = getUserGraphToken();
+  return `Bearer ${user || (await getToken())}`;
+}
+
 async function graphFetch(
   path: string,
   opts: { method?: string; params?: Record<string, string>; headers?: Record<string, string>; body?: unknown } = {}
@@ -52,7 +60,7 @@ async function graphFetch(
   return fetch(url, {
     method: opts.method || "GET",
     headers: {
-      Authorization: `Bearer ${await getToken()}`,
+      Authorization: await authHeader(),
       "Content-Type": "application/json",
       ...(opts.headers || {}),
     },
@@ -85,8 +93,12 @@ export type GraphEvent = {
 
 /** Calendar events between two ISO datetimes (calendarView expands recurrences). */
 export async function getEventsRange(userUpn: string, startIso: string, endIso: string): Promise<GraphEvent[]> {
+  // Always address the mailbox by UPN. With a delegated token this returns full
+  // events only for your own calendar or calendars shared with you (Calendars.Read.Shared);
+  // otherwise callers should fall back to getSchedule free/busy.
+  const path = `/users/${encodeURIComponent(userUpn)}/calendarView`;
   const data = await graphGet(
-    `/users/${encodeURIComponent(userUpn)}/calendarView`,
+    path,
     {
       startDateTime: startIso,
       endDateTime: endIso,
@@ -271,8 +283,14 @@ export async function getSchedule(
   startIso: string,
   endIso: string,
   interval = 30
-): Promise<{ scheduleId?: string; availabilityView?: string; scheduleItems?: unknown[] }[]> {
-  const r = await graphFetch(`/users/${encodeURIComponent(organizerUpn)}/calendar/getSchedule`, {
+): Promise<{ scheduleId?: string; availabilityView?: string; scheduleItems?: unknown[]; error?: { message?: string } }[]> {
+  // Delegated (/me): free/busy follows the signed-in user's Microsoft 365 rights
+  // (org free-busy + calendars shared with them). App-only: Application Access Policy.
+  const asUser = !!getUserGraphToken();
+  const path = asUser
+    ? `/me/calendar/getSchedule`
+    : `/users/${encodeURIComponent(organizerUpn)}/calendar/getSchedule`;
+  const r = await graphFetch(path, {
     method: "POST",
     body: {
       schedules,
@@ -295,7 +313,9 @@ export async function createEvent(
   online = true,
   description?: string
 ): Promise<GraphEvent & { id: string; webLink?: string }> {
-  const r = await graphFetch(`/users/${encodeURIComponent(organizerUpn)}/events`, {
+  const asUser = !!getUserGraphToken();
+  const path = asUser ? `/me/events` : `/users/${encodeURIComponent(organizerUpn)}/events`;
+  const r = await graphFetch(path, {
     method: "POST",
     body: {
       subject,
@@ -312,9 +332,11 @@ export async function createEvent(
 }
 
 export async function deleteEvent(userUpn: string, eventId: string): Promise<void> {
-  const r = await graphFetch(`/users/${encodeURIComponent(userUpn)}/events/${encodeURIComponent(eventId)}`, {
-    method: "DELETE",
-  });
+  const asUser = !!getUserGraphToken();
+  const path = asUser
+    ? `/me/events/${encodeURIComponent(eventId)}`
+    : `/users/${encodeURIComponent(userUpn)}/events/${encodeURIComponent(eventId)}`;
+  const r = await graphFetch(path, { method: "DELETE" });
   if (!r.ok) throw new Error(`Graph deleteEvent ${r.status}: ${(await r.text()).slice(0, 300)}`);
 }
 

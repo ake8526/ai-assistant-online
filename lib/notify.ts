@@ -8,9 +8,9 @@ import { nowWall } from "@/lib/time";
 export type NotifyKind = "brief" | "news";
 
 export const NOTIFY_DEFAULTS: Record<NotifyKind, { enabled: boolean; time: string; days: number[] }> = {
-  // days: 0=Sun … 6=Sat
+  // days: 0=Sun … 6=Sat — news right after brief so they don't land ~1h apart
   brief: { enabled: true, time: "07:00", days: [1, 2, 3, 4, 5] },        // จ–ศ
-  news: { enabled: true, time: "07:01", days: [0, 1, 2, 3, 4, 5, 6] },  // จ–อา
+  news: { enabled: true, time: "07:00", days: [1, 2, 3, 4, 5] },         // จ–ศ เวลาเดียวกับบรีฟ
 };
 
 export type KindConfig = { enabled: boolean; time: string; days: number[]; count?: number };

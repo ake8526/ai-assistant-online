@@ -551,7 +551,7 @@ function ConsentsContent() {
                 onChange={(patch) => saveNotify("news", patch)}
               />
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                ค่าเริ่มต้น: ตาราง จ–ศ 07:00 · ข่าว จ–อา 07:01 · {notify.news.count ?? 3} ข่าว/วัน · นัดใหม่ตรวจทุก ~15 นาที
+                ค่าเริ่มต้น: ตาราง + ข่าว จ–ศ 07:00 (ส่งต่อกันทันที) · {notify.news.count ?? 3} ข่าว/วัน · นัดใหม่ตรวจทุก ~15 นาที
               </p>
             </>
           ) : (

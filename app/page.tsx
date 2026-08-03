@@ -61,7 +61,7 @@ function LoginGate() {
 }
 
 function ChatContent() {
-  const { account, getToken } = useM365Auth();
+  const { account, getToken, getGraphToken } = useM365Auth();
   const [msgs, setMsgs] = useState<Msg[]>([
     { role: "bot", text: "สวัสดีครับ 👋 ผมคือผู้ช่วย AI ของคุณ\nถามเรื่องนัดประชุม งานค้าง เวลาว่าง หรือสั่งนัดประชุมได้เลยครับ" },
   ]);
@@ -73,7 +73,8 @@ function ChatContent() {
     last_person_mail?: string;
     files?: FileHit[];
     selected?: { start: string; person?: { mail?: string; displayName?: string } };
-    meeting?: { attendees: string[]; duration: number; subject: string };
+    meeting?: { attendees: string[]; duration: number; subject: string; window?: { start: string; end: string; label: string } };
+    last_meeting?: { attendees: string[]; duration: number; subject?: string; window?: { start: string; end: string; label: string } };
     history: { role: string; text: string }[];
   }>({ history: [] });
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -84,13 +85,15 @@ function ChatContent() {
 
   const addMsg = (m: Msg) => setMsgs((prev) => [...prev, m]);
 
-  const api = async (path: string, body: unknown): Promise<ApiResult> => {
+  const api = async (path: string, body: Record<string, unknown>): Promise<ApiResult> => {
     const token = await getToken();
     if (!token) throw new Error("กรุณาเข้าสู่ระบบ Microsoft 365 ก่อนครับ");
+    // Graph access token (optional) — calendar then follows your M365/Outlook rights.
+    const graphToken = (await getGraphToken()) || undefined;
     const r = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, graphToken }),
     });
     return r.json();
   };
@@ -103,7 +106,12 @@ function ChatContent() {
       ctx.last_person = res.person.displayName || res.person.mail;
     }
     if (res.files) ctx.files = res.files;
-    if (res.meeting) ctx.meeting = res.meeting as typeof ctx.meeting;
+    if (res.meeting) {
+      ctx.meeting = res.meeting as typeof ctx.meeting;
+      if ((res.meeting as { attendees?: string[] }).attendees?.length) {
+        ctx.last_meeting = res.meeting as typeof ctx.last_meeting;
+      }
+    }
     ctx.history.push({ role: "bot", text: res.reply || "" });
     ctx.history = ctx.history.slice(-8);
     addMsg({
@@ -133,6 +141,7 @@ function ChatContent() {
           last_intent: ctx.last_intent,
           last_person: ctx.last_person,
           last_person_mail: ctx.last_person_mail,
+          last_meeting: ctx.last_meeting,
           files: ctx.files,
           selected: ctx.selected,
         },

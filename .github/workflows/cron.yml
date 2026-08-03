@@ -18,13 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ vars.CRON_ENABLED != 'false' }}
     steps:
-      - name: Morning brief (endpoint checks each user's schedule)
+      - name: Morning brief + news (brief endpoint also pushes news when due)
         run: |
           curl -sS -m 280 -X POST \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            "$BASE/api/brief/run" | head -c 1000
+            "$BASE/api/brief/run" | head -c 1500
 
-      - name: News digest (endpoint checks each user's schedule)
+      - name: News digest backup (in case brief step timed out before news)
         run: |
           curl -sS -m 280 -X POST \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \

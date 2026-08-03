@@ -12,6 +12,21 @@ export const msalConfig: Configuration = {
   },
 };
 
+/** Identity scopes — ID token for our API (audience = app client id). */
 export const loginRequest: PopupRequest = {
   scopes: ["User.Read", "openid", "profile", "email"],
+};
+
+/**
+ * Graph calendar scopes — access token for Microsoft Graph.
+ * Free/busy and shared calendars then follow the signed-in user's M365 rights
+ * (same as Outlook), not app-only Application Access Policy.
+ */
+export const graphCalendarRequest: PopupRequest = {
+  scopes: [
+    "User.Read",
+    "Calendars.Read",
+    "Calendars.Read.Shared",
+    "Calendars.ReadWrite",
+  ],
 };

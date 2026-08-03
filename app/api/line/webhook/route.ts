@@ -4,6 +4,7 @@ import { handleCommand, handleSelection, type CommandContext, type CommandResult
 import { getUpnByLineId, replyLine, replyLineMessages } from "@/lib/line";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
+import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { parseWall, wallIso, fmtDateTime, fmtTime } from "@/lib/time";
 import { assertConfigured } from "@/lib/supabaseServer";
 
@@ -23,7 +24,7 @@ type LineEvent = {
   postback?: { data?: string };
 };
 
-type Choice = { mail?: string; displayName?: string; period?: string; date?: string; event_id?: string; label?: string; data?: string };
+type Choice = { mail?: string; displayName?: string; period?: string; date?: string; event_id?: string; label?: string; data?: string; lunch?: boolean };
 type Slot = { start: string; end: string; label?: string };
 
 function truncate(s: string, n: number): string {
@@ -50,6 +51,7 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
       n++;
       const p = new URLSearchParams({ a: "avail", m: c.mail, n: c.displayName || c.mail });
       if (c.date) p.set("d", c.date); else p.set("p", c.period || "week");
+      if (c.lunch) p.set("ln", "1");
       add(n, p.toString(), `เลือก ${n}) ${c.displayName || c.mail}`);
     }
   } else if (res.intent === "choose_mt_person" && Array.isArray(res.choices)) {
@@ -86,7 +88,16 @@ function detailText(res: CommandResult): string {
   if ((res.intent === "choose_person" || res.intent === "choose_mt_person") && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).filter((c) => c.mail).map((c, i) => `${i + 1}) ${c.displayName || c.mail} — ${c.mail}`);
   } else if (Array.isArray(res.slots) && res.slots.length && (res.intent === "availability" || res.intent === "choose_slot")) {
-    lines = (res.slots as Slot[]).map((s, i) => `${i + 1}) ${s.label || `${s.start}-${s.end}`}`);
+    const ranges = Array.isArray(res.ranges) ? (res.ranges as Slot[]) : [];
+    const parts: string[] = [];
+    if (ranges.length) {
+      parts.push("ช่วงว่างทั้งหมด:");
+      ranges.forEach((s, i) => parts.push(`${i + 1}) ${s.label || `${s.start}-${s.end}`}`));
+      parts.push("");
+    }
+    parts.push("เลือกเวลาเริ่ม:");
+    (res.slots as Slot[]).forEach((s, i) => parts.push(`${i + 1}) ${s.label || `${s.start}-${s.end}`}`));
+    return "\n\n" + parts.join("\n");
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).filter((c) => c.event_id).map((c, i) => `${i + 1}) ${c.label || ""}`);
   }
@@ -104,7 +115,12 @@ async function loadCtx(upn: string): Promise<CommandContext | undefined> {
     if (!raw) return undefined;
     const c = JSON.parse(raw);
     if (!c.ts || Date.now() - c.ts > CTX_TTL_MS) return undefined;
-    return { last_intent: c.last_intent, last_person: c.last_person, last_person_mail: c.last_person_mail };
+    return {
+      last_intent: c.last_intent,
+      last_person: c.last_person,
+      last_person_mail: c.last_person_mail,
+      last_meeting: c.last_meeting,
+    };
   } catch {
     return undefined;
   }
@@ -116,10 +132,14 @@ async function saveCtx(upn: string, prev: CommandContext | undefined, res: Comma
     last_intent: res.intent || prev?.last_intent,
     last_person: prev?.last_person,
     last_person_mail: prev?.last_person_mail,
+    last_meeting: prev?.last_meeting,
   };
   if (res.person?.mail) {
     next.last_person = res.person.displayName || res.person.mail;
     next.last_person_mail = res.person.mail;
+  }
+  if (res.meeting?.attendees?.length) {
+    next.last_meeting = res.meeting;
   }
   try {
     await setSetting(upn, CTX_KEY, JSON.stringify(next));
@@ -267,7 +287,13 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       return;
     }
     try {
-      await createEvent(upn, draft.subject, wallIso(s), wallIso(e), draft.attendees, true, draft.detail || undefined);
+      const { asUser } = await withDelegatedGraph(upn, () =>
+        createEvent(upn, draft.subject, wallIso(s), wallIso(e), draft.attendees, true, draft.detail || undefined)
+      );
+      if (!asUser) {
+        await replyLine(replyToken, calendarConsentNeededMessage());
+        return;
+      }
       await clearDraft(upn);
       await replyLine(
         replyToken,
@@ -337,7 +363,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     if (await handleDraftInput(upn, text, ev.replyToken)) return;
     // Otherwise run the assistant (lite mode: no slow per-meeting enrichment)
     const ctx = await loadCtx(upn);
-    const res = await handleCommand(upn, text, ctx, true);
+    const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
     await sendResult(ev.replyToken, res);
     await saveCtx(upn, ctx, res);
   } catch (e) {
@@ -362,7 +388,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       await handleBookingFlow(upn, act, data, ev.replyToken);
       return;
     }
-    const res = await handleSelection(upn, data);
+    const { result: res } = await withDelegatedGraph(upn, () => handleSelection(upn, data));
     await sendResult(ev.replyToken, res);
     // Remember who this selection was about so text follow-ups continue on them.
     await saveCtx(upn, await loadCtx(upn), res);

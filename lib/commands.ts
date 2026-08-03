@@ -16,9 +16,11 @@ import {
   searchUsers,
   stripHonorificPublic,
 } from "@/lib/graph";
+import { getUserGraphToken } from "@/lib/graphAuth";
 import { chat } from "@/lib/llm";
 import { listRecentOnline } from "@/lib/meetings";
-import { busyRanges, findCommonSlots, formatBusy, formatFree, freeRanges } from "@/lib/scheduling";
+import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
+import { busyRanges, findCommonSlots, formatBusy, formatFree, freeRanges, wantsLunchIncluded } from "@/lib/scheduling";
 import {
   addPlace,
   addTask,
@@ -47,6 +49,7 @@ import {
 } from "@/lib/time";
 
 const WORK_START_HOUR = Number(process.env.WORK_START_HOUR || 9);
+const WORK_END_HOUR = Number(process.env.WORK_END_HOUR || 17);
 const AUTO_BOOK = (process.env.AUTO_BOOK || "false").toLowerCase() === "true";
 
 export type CommandContext = {
@@ -56,6 +59,13 @@ export type CommandContext = {
   last_person_mail?: string;
   files?: { id?: string; name?: string; url?: string; is_folder?: boolean }[];
   selected?: { start: string; person?: { mail?: string; displayName?: string } };
+  /** Last multi-person schedule search — used for follow-ups like "ตอนเย็นว่างไหม". */
+  last_meeting?: {
+    attendees: string[];
+    duration: number;
+    subject?: string;
+    window?: { start: string; end: string; label: string };
+  };
 };
 
 export type CommandResult = {
@@ -64,12 +74,24 @@ export type CommandResult = {
   data?: unknown;
   files?: unknown[];
   slots?: unknown[];
+  ranges?: unknown[];
   choices?: unknown[];
-  meeting?: unknown;
+  meeting?: {
+    attendees: string[];
+    duration: number;
+    subject: string;
+    window?: { start: string; end: string; label: string };
+  };
   person?: { mail: string; displayName?: string };
   map_url?: string | null;
   map_where?: string;
 };
+
+/** Interactive calendar must use the user's M365 token (Outlook-like rights). */
+function needCalendarConsent(): CommandResult | null {
+  if (getUserGraphToken()) return null;
+  return { intent: "need_calendar_consent", reply: calendarConsentNeededMessage() };
+}
 
 const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (intent parser) ของผู้ช่วยงาน
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
@@ -92,7 +114,8 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 สำคัญ: หากบริบทก่อนหน้าเพิ่งมีการค้นหาไฟล์ (search_files หรือ file_results) แล้วผู้ใช้พิมพ์ว่า "อ่านและสรุป", "สรุปให้ฟัง", "อ่านไฟล์" ให้เลือก intent เป็น "summarize_file" เสมอ (ห้ามเลือก get_brief)!
 
 ความต่อเนื่องของบทสนทนา (สำคัญมาก — ห้ามเริ่มคิดใหม่เอง):
-ระบบจะแนบ [ประวัติการสนทนาก่อนหน้า] และ [บริบทล่าสุด] (มี last_person = คน/เรื่องที่กำลังคุยอยู่) มาให้ ให้ถือว่าบทสนทนาต่อเนื่องกันเสมอ:
+ระบบจะแนบ [ประวัติการสนทนาก่อนหน้า] และ [บริบทล่าสุด] (มี last_person / last_meeting) มาให้ ให้ถือว่าบทสนทนาต่อเนื่องกันเสมอ:
+- ถ้าเพิ่งหาเวลาว่างตรงกันหลายคน (last_meeting มี attendees) แล้วผู้ใช้พิมพ์เจาะจงช่วงเวลาโดยไม่เอ่ยชื่อใหม่ เช่น "ตอนเย็นว่างไหม", "แล้วบ่ายล่ะ", "เช้าว่างไหม" → ใช้ intent "find_meeting_time" และใส่ after/before ตามช่วง (เช้า≈09:00-12:00, บ่าย≈12:00-16:00, เย็น≈16:00-20:00) โดย attendees ปล่อยว่างได้ (ระบบจะใช้ last_meeting)
 - ถ้าผู้ใช้พิมพ์ต่อเนื่องโดย "ไม่ได้เอ่ยชื่อคนใหม่" (เช่น เจาะจงวัน/เวลาเพิ่ม เช่น "วันที่ 30 ตอน 9 โมง", "แล้วบ่ายล่ะ", "ช่วงเช้าว่างไหม") ให้เข้าใจว่ายังพูดถึงคน/เรื่องเดิมใน last_person — ต้องปล่อย params.person ให้ "ว่าง" ไว้ (ระบบจะเติม last_person ให้เอง)
 - ห้ามตีความคำบอกวัน/เวลา เช่น "ตอน", "โมง", "เช้า", "บ่าย", "เย็น", "ครึ่ง", "ทุ่ม" เป็นชื่อคนเด็ดขาด
 - ใส่ params.person เฉพาะเมื่อผู้ใช้เอ่ย "ชื่อคนใหม่จริง ๆ" เท่านั้น
@@ -110,7 +133,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - my_availability: { "period": "today|tomorrow|week", "weekday": "mon|tue|wed|thu|fri|sat|sun (ถ้าพูดชื่อวัน เช่น เสาร์นี้ว่างไหม)", "person": "ชื่อ/อีเมลคนที่อยากดูตาราง (ถ้าไม่ระบุ = ตัวเอง)" }
 - add_task: { "title": "...", "responsible": "...", "due": "YYYY-MM-DD HH:MM หรือ null" }
 - complete_task: { "task_id": <number> }
-- find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "note": "..." }
+- find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "weekday": "mon|tue|… (ถ้าพูดชื่อวัน เช่น วันจันทร์นี้)", "date": "YYYY-MM-DD หรือ 31 (ถ้าเจาะจงวันที่)", "period": "today|tomorrow|week (ถ้าไม่ได้เจาะจงวัน)", "after": "HH:MM (เช้า/บ่าย/เย็น หรือหลัง…)", "before": "HH:MM", "note": "..." }
 - get_brief / get_news / list_tasks / summarize_meetings: {}
 
 ตัวอย่าง:
@@ -138,17 +161,15 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "เบสว่างช่วงไหน" -> {"intent":"my_availability","params":{"person":"เบส","period":"week"}}
 "ดูตารางเบสกับพี่นนท์" -> {"intent":"find_meeting_time","params":{"attendees":["เบส","พี่นนท์"]}}
 "เบสกับนนท์ว่างตรงกันช่วงไหน" -> {"intent":"find_meeting_time","params":{"attendees":["เบส","นนท์"]}}
-"หาเวลาที่สมชาย สมหญิง ว่างตรงกัน" -> {"intent":"find_meeting_time","params":{"attendees":["สมชาย","สมหญิง"]}}
-(หมายเหตุสำคัญมาก: ถ้าถามดูตาราง/เวลาว่างของ "คนตั้งแต่ 2 คนขึ้นไปพร้อมกัน" (มีคำเชื่อม กับ/และ/, คั่นชื่อ) ให้ใช้ find_meeting_time เพื่อหาเวลาที่ทุกคนว่างตรงกัน — ห้ามใช้ my_availability หรือ list_meetings ที่รองรับทีละคน และห้าม fallback เป็นตารางของผู้ถามเอง)
-"งานค้างมีอะไรบ้าง" -> {"intent":"list_tasks","params":{}}
-"สรุปงานเช้านี้ให้หน่อย" -> {"intent":"get_brief","params":{}}
-"มีข่าวอะไรบ้าง" -> {"intent":"get_news","params":{}}
-"สรุปข่าววันนี้" -> {"intent":"get_news","params":{}}
-"มีคลิปใหม่อะไรบ้าง" -> {"intent":"get_news","params":{}}
-(หมายเหตุ: "ข่าว/ฟีด/คลิป/ช่องที่ติดตาม/subscribe" = get_news; ส่วน "สรุปงาน/เตรียมตัวนัดวันนี้" = get_brief — อย่าสับสน)
-"เพิ่มงาน: ส่งรายงานให้ฝ่ายบัญชี ภายในพรุ่งนี้ 5 โมงเย็น" -> {"intent":"add_task","params":{"title":"ส่งรายงานให้ฝ่ายบัญชี","due":"พรุ่งนี้ 17:00"}}
-"ปิดงานหมายเลข 3" -> {"intent":"complete_task","params":{"task_id":3}}
+"วันจันทร์นี้ พี่นนท์ พี่แบงค์ เบส มีเวลาไหนว่างตรงกัน" -> {"intent":"find_meeting_time","params":{"attendees":["พี่นนท์","พี่แบงค์","เบส"],"weekday":"mon"}}
+"หาเวลาที่สมชาย สมหญิง ว่างตรงกันวันศุกร์" -> {"intent":"find_meeting_time","params":{"attendees":["สมชาย","สมหญิง"],"weekday":"fri"}}
+"ตอนเย็นว่างไหม" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"16:00"}}
+"แล้วบ่ายล่ะ" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"12:00","before":"16:00"}}
+"ช่วงเช้าว่างไหม" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"09:00","before":"12:00"}}
 "นัดประชุมกับสมชายและสมหญิง 30 นาที" -> {"intent":"find_meeting_time","params":{"attendees":["สมชาย","สมหญิง"],"duration_min":30}}
+(หมายเหตุสำคัญมาก: ถ้าถามดูตาราง/เวลาว่างของ "คนตั้งแต่ 2 คนขึ้นไปพร้อมกัน" (มีคำเชื่อม กับ/และ/, คั่นชื่อ) ให้ใช้ find_meeting_time เพื่อหาเวลาที่ทุกคนว่างตรงกัน — ห้ามใช้ my_availability หรือ list_meetings ที่รองรับทีละคน และห้าม fallback เป็นตารางของผู้ถามเอง)
+(หมายเหตุ: ถ้าผู้ใช้ระบุวัน เช่น "วันจันทร์นี้/เสาร์หน้า/วันที่ 5" ต้องใส่ weekday หรือ date ด้วยเสมอ ห้ามปล่อยให้ค้นทั้งสัปดาห์)
+(หมายเหตุ: follow-up เรื่องเช้า/บ่าย/เย็น หลัง find_meeting_time ต้องคง intent เป็น find_meeting_time ห้ามสลับไป my_availability ของคนเดียว)
 "ยกเลิกนัด" -> {"intent":"cancel_meeting","params":{}}
 "เปิดแผนที่ไปที่ทำงาน" -> {"intent":"open_map","params":{}}
 "วางแผนเดินทางไปทำงานพรุ่งนี้" -> {"intent":"plan_commute","params":{"place":"work","period":"tomorrow"}}
@@ -262,6 +283,13 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
     const compact: Record<string, unknown> = {};
     if (context.last_intent) compact.last_intent = context.last_intent;
     if (context.last_person) compact.last_person = context.last_person;
+    if (context.last_meeting?.attendees?.length) {
+      compact.last_meeting = {
+        attendees: context.last_meeting.attendees,
+        duration: context.last_meeting.duration,
+        window: context.last_meeting.window?.label,
+      };
+    }
     if (context.files?.length) compact.files = context.files.slice(0, 3).map((f) => f.name).filter(Boolean);
     if (Object.keys(compact).length) parts.push(`[บริบทล่าสุด: ${JSON.stringify(compact)}]`);
   }
@@ -301,10 +329,13 @@ async function availabilityResponse(
   requesterUpn: string,
   email: string,
   displayName: string,
-  range: { start: Date; end: Date; label: string }
+  range: { start: Date; end: Date; label: string },
+  includeLunch = false
 ): Promise<CommandResult> {
+  const denied = needCalendarConsent();
+  if (denied) return denied;
   const { start, end, label } = range;
-  const ranges = await freeRanges(email, start, end, requesterUpn);
+  const ranges = await freeRanges(email, start, end, requesterUpn, includeLunch);
   const slots = ranges.map((r) => ({
     start: wallIso(r.start),
     end: wallIso(r.end),
@@ -338,6 +369,8 @@ async function personBusyResponse(
   at: number | null,
   preInfo?: UserInfo | null
 ): Promise<CommandResult> {
+  const denied = needCalendarConsent();
+  if (denied) return denied;
   let info = preInfo;
   if (!info?.mail) info = await resolveUserInfo(person);
   if (!info?.mail) {
@@ -463,6 +496,8 @@ async function bookFromContext(userUpn: string, text: string, sel: NonNullable<C
     return null;
   }
   if (!p.is_booking) return null;
+  const denied = needCalendarConsent();
+  if (denied) return denied;
 
   const duration = Number(p.duration_min || 30);
   const subject = p.subject || "ประชุม";
@@ -530,21 +565,129 @@ function navUrl(locationText?: string | null, lat?: string | null, lng?: string 
 // the pending attendee list is encoded into the quick-reply postback)
 // ---------------------------------------------------------------------------
 type MtAttendee = { name?: string; mail?: string };
+type MtWindow = { start: Date; end: Date; label: string };
 
-function encodeMtData(attendees: MtAttendee[], duration: number): string {
-  const at = attendees.map((a) => (a.mail ? `m:${a.mail}` : `n:${a.name || ""}`)).join("|");
-  return new URLSearchParams({ a: "findmt", d: String(duration), at }).toString();
+/** Extract a day hint from free text even if the LLM missed weekday/date params. */
+function dayHintFromText(text: string): MtWindow | null {
+  const m = text.match(/วัน?(จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(นี้|หน้า)?/);
+  if (m) return resolveWeekday(m[1] + (m[2] || ""));
+  const dm = text.match(/วันที่\s*(\d{1,2}(?:\/\d{1,2}(?:\/\d{2,4})?)?|\d{4}-\d{2}-\d{2})/);
+  if (dm) return resolveDay(dm[1]);
+  return null;
 }
 
-export function decodeMtAttendees(data: URLSearchParams): { attendees: MtAttendee[]; duration: number } {
+function resolveFindWindow(params: Record<string, unknown>, text: string): MtWindow | null {
+  if (params.weekday) return resolveWeekday(String(params.weekday));
+  if (params.date) return resolveDay(String(params.date));
+  if (params.period && ["today", "tomorrow"].includes(String(params.period))) {
+    return periodRange(String(params.period));
+  }
+  return dayHintFromText(text);
+}
+
+function timeBandFromText(text: string): { after: number | null; before: number | null; label: string } | null {
+  const t = text.trim();
+  if (/(ตอน)?เช้า|ช่วงเช้า/.test(t)) return { after: 9 * 60, before: 12 * 60, label: "ช่วงเช้า" };
+  if (/(ตอน)?สาย|ช่วงสาย/.test(t)) return { after: 9 * 60, before: 12 * 60, label: "ช่วงสาย" };
+  if (/(ตอน)?บ่าย|ช่วงบ่าย/.test(t)) return { after: 12 * 60, before: 16 * 60, label: "ช่วงบ่าย" };
+  if (/(ตอน)?เย็น|ช่วงเย็น|ค่ำ/.test(t)) return { after: 16 * 60, before: 20 * 60, label: "ช่วงเย็น" };
+  const afterM = t.match(/(?:หลัง|ตั้งแต่)\s*(\d{1,2})(?::(\d{2}))?\s*(โมง|ทุ่ม)?/);
+  const beforeM = t.match(/(?:ก่อน|ถึง)\s*(\d{1,2})(?::(\d{2}))?\s*(โมง|ทุ่ม)?/);
+  let after: number | null = null;
+  let before: number | null = null;
+  if (afterM) {
+    let h = Number(afterM[1]);
+    const mi = afterM[2] ? Number(afterM[2]) : 0;
+    if (afterM[3] === "ทุ่ม") h = h === 1 ? 13 : h + 12;
+    else if (afterM[3] === "โมง" && h < 7) h += 12; // "บ่าย 2 โมง" often written without บ่าย
+    after = h * 60 + mi;
+  }
+  if (beforeM) {
+    let h = Number(beforeM[1]);
+    const mi = beforeM[2] ? Number(beforeM[2]) : 0;
+    if (beforeM[3] === "ทุ่ม") h = h === 1 ? 13 : h + 12;
+    before = h * 60 + mi;
+  }
+  if (after === null && before === null) return null;
+  return { after, before, label: "ช่วงที่ระบุ" };
+}
+
+function isTimeFollowUp(text: string): boolean {
+  const t = text.trim();
+  if (personFromText(t)) return false;
+  if (dayHintFromText(t)) return false; // new day → not just a band follow-up
+  return !!(
+    timeBandFromText(t) ||
+    /^(?:แล้ว)?(?:ช่วง|ตอน)?(?:เช้า|สาย|บ่าย|เย็น|ค่ำ)/.test(t) ||
+    /ว่าง(?:ไหม|มั้ย|รึเปล่า|หรือเปล่า|บ้าง)?$/.test(t)
+  );
+}
+
+function windowFromStored(m?: CommandContext["last_meeting"]): MtWindow | null {
+  if (!m?.window?.start || !m.window.end) return null;
+  const start = parseWall(m.window.start);
+  const end = parseWall(m.window.end);
+  if (!start || !end) return null;
+  return { start, end, label: m.window.label || fmtDate(start) };
+}
+
+function encodeMtData(
+  attendees: MtAttendee[],
+  duration: number,
+  window?: MtWindow | null,
+  band?: { after: number | null; before: number | null } | null,
+  includeLunch = false
+): string {
+  const at = attendees.map((a) => (a.mail ? `m:${a.mail}` : `n:${a.name || ""}`)).join("|");
+  const q = new URLSearchParams({ a: "findmt", d: String(duration), at });
+  if (window) {
+    q.set("ws", wallIso(window.start));
+    q.set("we", wallIso(window.end));
+    q.set("wl", window.label);
+  }
+  if (band?.after != null) q.set("af", String(band.after));
+  if (band?.before != null) q.set("bf", String(band.before));
+  if (includeLunch) q.set("ln", "1");
+  return q.toString();
+}
+
+export function decodeMtAttendees(data: URLSearchParams): {
+  attendees: MtAttendee[];
+  duration: number;
+  window: MtWindow | null;
+  after: number | null;
+  before: number | null;
+  includeLunch: boolean;
+} {
   const attendees = (data.get("at") || "")
     .split("|")
     .filter(Boolean)
     .map((tok) => (tok.startsWith("m:") ? { mail: tok.slice(2) } : tok.startsWith("n:") ? { name: tok.slice(2) } : { name: tok }));
-  return { attendees, duration: Number(data.get("d") || 30) };
+  const ws = parseWall(data.get("ws") || "");
+  const we = parseWall(data.get("we") || "");
+  const window = ws && we ? { start: ws, end: we, label: data.get("wl") || fmtDate(ws) } : null;
+  const af = data.get("af");
+  const bf = data.get("bf");
+  return {
+    attendees,
+    duration: Number(data.get("d") || 30),
+    window,
+    after: af != null && af !== "" ? Number(af) : null,
+    before: bf != null && bf !== "" ? Number(bf) : null,
+    includeLunch: data.get("ln") === "1",
+  };
 }
 
-export async function runFindMeeting(userUpn: string, attendees: MtAttendee[], duration: number): Promise<CommandResult> {
+export async function runFindMeeting(
+  userUpn: string,
+  attendees: MtAttendee[],
+  duration: number,
+  window?: MtWindow | null,
+  band?: { after: number | null; before: number | null; label?: string } | null,
+  includeLunch = false
+): Promise<CommandResult> {
+  const denied = needCalendarConsent();
+  if (denied) return denied;
   // Resolve each name; stop and ask when a name matches more than one person.
   for (let i = 0; i < attendees.length; i++) {
     const a = attendees[i];
@@ -556,11 +699,11 @@ export async function runFindMeeting(userUpn: string, attendees: MtAttendee[], d
     } else if (cands.length > 1) {
       const choices = cands.slice(0, 10).map((c) => {
         const next = attendees.map((x, j) => (j === i ? { mail: c.mail, name: c.displayName } : x));
-        return { mail: c.mail, displayName: c.displayName || c.mail, data: encodeMtData(next, duration) };
+        return { mail: c.mail, displayName: c.displayName || c.mail, data: encodeMtData(next, duration, window, band, includeLunch) };
       });
-      return { intent: "choose_mt_person", reply: `เจอหลายคนที่ตรงกับ “${a.name}” เลือกคนที่ต้องการดูตารางครับ 👇`, choices };
+      const dayNote = window ? ` (ช่วง ${window.label})` : "";
+      return { intent: "choose_mt_person", reply: `เจอหลายคนที่ตรงกับ “${a.name}” เลือกคนที่ต้องการดูตารางครับ${dayNote} 👇`, choices };
     }
-    // cands.length === 0 → leave unresolved (reported below)
   }
 
   const resolved = attendees.filter((a) => a.mail).map((a) => a.mail as string);
@@ -569,20 +712,63 @@ export async function runFindMeeting(userUpn: string, attendees: MtAttendee[], d
     return { intent: "find_meeting_time", reply: "หาคนที่จะดูตารางไม่เจอครับ ลองระบุชื่อ/อีเมลที่ชัดเจนอีกครั้งได้ไหม" };
   }
 
-  const result = await findCommonSlots(userUpn, resolved, duration);
+  const allStarts = !!(window || band?.after != null || band?.before != null);
+  const workEndHour =
+    band?.before != null ? Math.max(WORK_END_HOUR, Math.ceil(band.before / 60)) :
+    band?.after != null && band.after >= 16 * 60 ? Math.max(WORK_END_HOUR, 20) :
+    undefined;
+  const result = await findCommonSlots(
+    userUpn,
+    resolved,
+    duration,
+    allStarts ? 48 : 5,
+    window ? { start: window.start, end: window.end } : undefined,
+    { afterMin: band?.after ?? null, beforeMin: band?.before ?? null, allStarts, workEndHour, includeLunch }
+  );
   const note = unresolved.length ? `\n(หาอีเมลไม่เจอ: ${unresolved.join(", ")})` : "";
-  if (!result.slots.length) return { intent: "find_meeting_time", reply: formatBusy(result.busy) + note };
+  const who = resolved.join(", ");
+  const dayNote = window ? ` วันที่ ${window.label}` : "";
+  const bandNote = band?.label ? ` ${band.label}` : "";
+  if (!result.slots.length) {
+    return {
+      intent: "find_meeting_time",
+      reply: formatBusy(result.busy) + note + `\n(ค้นของ: ${who}${dayNote}${bandNote})`,
+      meeting: {
+        attendees: resolved,
+        duration,
+        subject: "ประชุม",
+        window: window
+          ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
+          : undefined,
+      },
+    };
+  }
 
   if (AUTO_BOOK) {
     const s = result.slots[0];
     await createEvent(userUpn, "ประชุม", s.start, s.end, resolved);
     return { intent: "find_meeting_time", reply: `จองให้เลยตามที่ตั้งค่าไว้ ✅\nประชุม — ${s.label}` };
   }
+
+  const reply =
+    `เจอเวลาที่ทุกคนว่างตรงกัน${dayNote}${bandNote}ครับ\n` +
+    `👤 ${who}\n` +
+    `เลือกเวลาเริ่มประชุม (${duration} นาที) จากรายการด้านล่างได้เลย 👇` +
+    note;
+
   return {
     intent: "choose_slot",
-    reply: `เจอเวลาที่ทุกคนว่างตรงกันครับ เลือกเพื่อจองได้เลย 👇${note}`,
+    reply,
     slots: result.slots,
-    meeting: { attendees: resolved, duration, subject: "ประชุม" },
+    ranges: result.ranges,
+    meeting: {
+      attendees: resolved,
+      duration,
+      subject: "ประชุม",
+      window: window
+        ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
+        : undefined,
+    },
   };
 }
 
@@ -605,13 +791,17 @@ export async function handleCommand(
 export async function handleSelection(userUpn: string, data: URLSearchParams): Promise<CommandResult> {
   const a = data.get("a") || "";
   try {
+    if (a === "avail" || a === "book" || a === "cancel" || a === "findmt") {
+      const denied = needCalendarConsent();
+      if (denied) return denied;
+    }
     if (a === "avail") {
       const mail = data.get("m") || "";
       const name = data.get("n") || mail;
       if (!mail) return { intent: "error", reply: "ข้อมูลไม่ครบ ลองใหม่อีกครั้งครับ" };
       const d = data.get("d");
       const range = d ? resolveDay(d) || periodRange("week") : periodRange(data.get("p") || "week");
-      return await availabilityResponse(userUpn, mail, name, range);
+      return await availabilityResponse(userUpn, mail, name, range, data.get("ln") === "1");
     }
     if (a === "book") {
       const start = parseWall(data.get("s") || "");
@@ -632,8 +822,12 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
       return { intent: "cancelled", reply: "✅ ยกเลิกนัดแล้วครับ" };
     }
     if (a === "findmt") {
-      const { attendees, duration } = decodeMtAttendees(data);
-      return await runFindMeeting(userUpn, attendees, duration);
+      const { attendees, duration, window, after, before, includeLunch } = decodeMtAttendees(data);
+      const band =
+        after != null || before != null
+          ? { after, before, label: after != null && after >= 16 * 60 ? "ช่วงเย็น" : undefined }
+          : null;
+      return await runFindMeeting(userUpn, attendees, duration, window, band, includeLunch);
     }
   } catch (e) {
     return { intent: "error", reply: `⚠️ ทำรายการไม่สำเร็จ: ${String(e).slice(0, 150)}` };
@@ -646,6 +840,20 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   if (context?.selected) {
     const booked = await bookFromContext(userUpn, text, context.selected);
     if (booked) return booked;
+  }
+
+  // Follow-up on a multi-person search: "ตอนเย็นว่างไหม" keeps the same attendees + day.
+  if (context?.last_meeting?.attendees?.length && isTimeFollowUp(text)) {
+    const band = timeBandFromText(text);
+    const window = windowFromStored(context.last_meeting) || dayHintFromText(text);
+    return runFindMeeting(
+      userUpn,
+      context.last_meeting.attendees.map((mail) => ({ mail })),
+      context.last_meeting.duration || 30,
+      window,
+      band,
+      wantsLunchIncluded(text)
+    );
   }
 
   const { intent, params } = await parseIntent(text, context);
@@ -721,6 +929,8 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   }
 
   if (intent === "list_meetings") {
+    const denied = needCalendarConsent();
+    if (denied) return denied;
     const period = (params.period as string) || "upcoming";
     const day = params.date ? resolveDay(String(params.date)) : params.weekday ? resolveWeekday(String(params.weekday)) : null;
     const after = parseHHMM(params.after);
@@ -782,6 +992,8 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   }
 
   if (intent === "my_availability") {
+    const denied = needCalendarConsent();
+    if (denied) return denied;
     const period = (params.period as string) || "week";
     const dayRange = params.weekday ? resolveWeekday(String(params.weekday)) : params.date ? resolveDay(String(params.date)) : null;
     const range = dayRange || periodRange(period);
@@ -790,6 +1002,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       ? `${dayRange.start.getUTCFullYear()}-${String(dayRange.start.getUTCMonth() + 1).padStart(2, "0")}-${String(dayRange.start.getUTCDate()).padStart(2, "0")}`
       : undefined;
 
+    const lunch = wantsLunchIncluded(text);
     const det = mentionsSelf(text) ? "" : personFromText(text);
     if (det) {
       const cands = await searchUsers(det);
@@ -797,24 +1010,24 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         return {
           intent: "choose_person",
           reply: `เจอหลายคนที่ตรงกับ “${det}” เลือกคนที่ต้องการดูตารางครับ 👇`,
-          choices: cands.map((c) => ({ mail: c.mail, displayName: c.displayName, period, date: dayIso })),
+          choices: cands.map((c) => ({ mail: c.mail, displayName: c.displayName, period, date: dayIso, lunch })),
         };
       }
       if (cands.length === 1) {
-        return availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || det, range);
+        return availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || det, range, lunch);
       }
       // name didn't resolve → fall through to the ongoing subject
     }
     if (!mentionsSelf(text)) {
       const lastMail = context?.last_person_mail;
       const lastName = context?.last_person;
-      if (lastMail) return availabilityResponse(userUpn, lastMail, lastName || lastMail, range);
+      if (lastMail) return availabilityResponse(userUpn, lastMail, lastName || lastMail, range, lunch);
       if (lastName) {
         const cands = await searchUsers(lastName);
-        if (cands.length === 1) return availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || lastName, range);
+        if (cands.length === 1) return availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || lastName, range, lunch);
       }
     }
-    const ranges = await freeRanges(userUpn, range.start, range.end, userUpn);
+    const ranges = await freeRanges(userUpn, range.start, range.end, userUpn, lunch);
     return { intent, reply: formatFree(ranges, range.label) };
   }
 
@@ -933,6 +1146,8 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   }
 
   if (intent === "cancel_meeting") {
+    const denied = needCalendarConsent();
+    if (denied) return denied;
     const { start, end } = periodRange("upcoming");
     const events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
     if (!events.length) return { intent, reply: "ไม่มีนัดที่จะยกเลิกในช่วง 2 สัปดาห์ข้างหน้าครับ" };
@@ -977,9 +1192,28 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   }
 
   if (intent === "find_meeting_time") {
+    const denied = needCalendarConsent();
+    if (denied) return denied;
     const attendeesRaw = (params.attendees as string[]) || [];
-    const duration = Number(params.duration_min || 30);
-    return runFindMeeting(userUpn, attendeesRaw.map((name) => ({ name: String(name) })), duration);
+    const duration = Number(params.duration_min || context?.last_meeting?.duration || 30);
+    let window = resolveFindWindow(params, text) || windowFromStored(context?.last_meeting);
+    const bandFromParams = {
+      after: parseHHMM(params.after),
+      before: parseHHMM(params.before),
+      label: undefined as string | undefined,
+    };
+    const band = (bandFromParams.after != null || bandFromParams.before != null)
+      ? bandFromParams
+      : timeBandFromText(text);
+
+    const attendees: MtAttendee[] = attendeesRaw.length
+      ? attendeesRaw.map((name) => ({ name: String(name) }))
+      : (context?.last_meeting?.attendees || []).map((mail) => ({ mail }));
+
+    if (!attendees.length) {
+      return { intent: "find_meeting_time", reply: "ยังไม่ทราบว่าจะนัดกับใครครับ ลองระบุชื่อคนที่ต้องการดูตารางด้วยนะครับ" };
+    }
+    return runFindMeeting(userUpn, attendees, duration, window, band, wantsLunchIncluded(text));
   }
 
   return { intent: "unknown", reply: "ยังไม่เข้าใจคำสั่งนี้ ลองพิมพ์ใหม่อีกครั้งได้ไหมครับ" };

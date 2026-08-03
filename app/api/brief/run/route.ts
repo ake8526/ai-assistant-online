@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { AuthError, checkCronSecret, requireUser } from "@/lib/auth";
 import { buildForToday, runForUser } from "@/lib/brief";
+import { buildDigest, formatStoriesText } from "@/lib/digest";
+import { sendLine } from "@/lib/line";
 import { isDueNow, markSent } from "@/lib/notify";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
@@ -11,8 +13,20 @@ async function linkedUsers(): Promise<string[]> {
   return (data || []).map((r) => r.upn);
 }
 
+/** Push the news digest for one user if their schedule is due (or force). */
+async function pushNewsIfDue(upn: string, force: boolean): Promise<string> {
+  if (!force && !(await isDueNow(upn, "news"))) return "skip (not due)";
+  const { stories, note } = await buildDigest(upn);
+  if (!stories?.length) return note || "no stories";
+  await sendLine(upn, "", formatStoriesText(stories));
+  await markSent(upn, "news");
+  return `delivered ${stories.length} stories`;
+}
+
 // POST/GET — build + deliver the morning brief.
 // Cron mode (?key=CRON_SECRET): run for every linked user, push to LINE.
+//   Also pushes the news digest in the SAME request when due, so brief + news
+//   arrive back-to-back (instead of waiting for a later cron).
 // User mode (Bearer token): build the caller's brief and return the text.
 export async function POST(req: Request) {
   return run(req);
@@ -28,19 +42,27 @@ async function run(req: Request) {
     if (checkCronSecret(req)) {
       // `force=1` bypasses the per-user schedule (manual/test run for everyone).
       const force = new URL(req.url).searchParams.get("force") === "1";
-      const results: Record<string, string> = {};
+      const results: Record<string, { brief: string; news: string }> = {};
       for (const upn of await linkedUsers()) {
+        const row = { brief: "skip", news: "skip" };
         try {
           if (!force && !(await isDueNow(upn, "brief"))) {
-            results[upn] = "skip (not due)";
-            continue;
+            row.brief = "skip (not due)";
+          } else {
+            await runForUser(upn);
+            await markSent(upn, "brief");
+            row.brief = "delivered";
           }
-          await runForUser(upn);
-          await markSent(upn, "brief");
-          results[upn] = "delivered";
         } catch (e) {
-          results[upn] = `ERROR: ${String(e).slice(0, 150)}`;
+          row.brief = `ERROR: ${String(e).slice(0, 150)}`;
         }
+        try {
+          // Always try news in the same pass so it lands right after the brief.
+          row.news = await pushNewsIfDue(upn, force);
+        } catch (e) {
+          row.news = `ERROR: ${String(e).slice(0, 150)}`;
+        }
+        results[upn] = row;
       }
       return NextResponse.json({ ok: true, results });
     }

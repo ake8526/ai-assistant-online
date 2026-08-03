@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { PublicClientApplication, AccountInfo } from "@azure/msal-browser";
-import { msalConfig, loginRequest } from "@/lib/msalConfig";
+import { msalConfig, loginRequest, graphCalendarRequest } from "@/lib/msalConfig";
 
 interface AuthContextType {
   account: AccountInfo | null;
@@ -13,6 +13,8 @@ interface AuthContextType {
   ready: boolean;
   /** ID token (audience = our app) for calling our protected API routes. */
   getToken: () => Promise<string | null>;
+  /** Graph access token (Calendars.*) so schedule APIs honour M365 sharing. */
+  getGraphToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -22,6 +24,7 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   ready: false,
   getToken: async () => null,
+  getGraphToken: async () => null,
 });
 
 let msalInstance: PublicClientApplication | null = null;
@@ -94,6 +97,23 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const getGraphToken = async (): Promise<string | null> => {
+    if (!msalInstance) return null;
+    const acct = account || msalInstance.getAllAccounts()[0];
+    if (!acct) return null;
+    try {
+      const res = await msalInstance.acquireTokenSilent({ ...graphCalendarRequest, account: acct });
+      return res.accessToken || null;
+    } catch {
+      try {
+        const res = await msalInstance.acquireTokenPopup(graphCalendarRequest);
+        return res.accessToken || null;
+      } catch {
+        return null;
+      }
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -103,6 +123,7 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!account,
         ready,
         getToken,
+        getGraphToken,
       }}
     >
       {children}
