@@ -486,11 +486,11 @@ export async function findDuplicateNicknames(opts?: {
   const users: UserInfo[] = [];
   try {
     const token = await getToken();
-    let next: string | null =
+    let nextUrl: string | null =
       `${GRAPH_BASE}/users?$select=mail,userPrincipalName,displayName,givenName,accountEnabled` +
       `&$filter=accountEnabled eq true&$top=100`;
-    while (next && users.length < maxUsers) {
-      const r = await fetch(next, {
+    while (nextUrl && users.length < maxUsers) {
+      const r: Response = await fetch(nextUrl, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
@@ -506,17 +506,24 @@ export async function findDuplicateNicknames(opts?: {
         }
         return { scanned: 0, groups: [], error: `อ่านไดเรกทอรีไม่สำเร็จ (${r.status}): ${body}` };
       }
-      const data = await r.json();
+      const data: {
+        value?: {
+          mail?: string;
+          userPrincipalName?: string;
+          displayName?: string;
+          givenName?: string;
+        }[];
+        "@odata.nextLink"?: string;
+      } = await r.json();
       for (const row of data.value || []) {
         const mail = (row.mail || row.userPrincipalName || "").trim();
         if (!mail || /#ext#/i.test(mail)) continue;
         const displayName = (row.displayName || "").trim() || mail;
         users.push({ mail, displayName });
-        // stash givenName on a side channel via temporary field — re-extract below
         (users[users.length - 1] as UserInfo & { _gn?: string })._gn = row.givenName || "";
         if (users.length >= maxUsers) break;
       }
-      next = data["@odata.nextLink"] || null;
+      nextUrl = data["@odata.nextLink"] || null;
     }
   } catch (e) {
     return { scanned: 0, groups: [], error: `อ่านไดเรกทอรีไม่สำเร็จ: ${String(e).slice(0, 160)}` };
