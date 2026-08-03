@@ -566,16 +566,15 @@ export async function findDuplicateNicknames(opts?: {
     .filter((g) => g.people.length >= 2 && isThaiNickname(g.nick))
     .sort((a, b) => b.people.length - a.people.length || a.nick.localeCompare(b.nick, "th"));
 
-  // Drop English-only people labels when possible; keep person if nick is Thai
-  const thaiGroups = groups.map((g) => ({
-    nick: g.nick,
-    people: g.people
-      .map((p) => {
-        const label = thaiDisplayLabel(p.displayName || "", g.nick);
-        return label ? { mail: p.mail, displayName: label } : null;
-      })
-      .filter((p): p is UserInfo => !!p),
-  })).filter((g) => g.people.length >= 2);
+  const thaiGroups: DupNickGroup[] = [];
+  for (const g of groups) {
+    const people: UserInfo[] = [];
+    for (const p of g.people) {
+      const label = thaiDisplayLabel(p.displayName || "", g.nick);
+      if (label) people.push({ mail: p.mail, displayName: label });
+    }
+    if (people.length >= 2) thaiGroups.push({ nick: g.nick, people });
+  }
 
   dupNickCache = { at: now, scanned: users.length, groups: thaiGroups };
   return { scanned: users.length, groups: thaiGroups };
