@@ -1632,13 +1632,13 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       return {
         intent: "find_duplicate_nicknames",
         reply:
-          `สแกนผู้ใช้ในไดเรกทอรี ${res.scanned} คนแล้ว ไม่พบชื่อเล่นภาษาไทยที่ซ้ำกันครับ\n` +
-          `(กรองเฉพาะชื่อที่มีตัวอักษรไทย — ไม่นับ Acc / Admin / บัญชีระบบ)`,
+          `สแกนผู้ใช้ในไดเรกทอรี ${res.scanned} คนแล้ว ไม่พบชื่อเล่นไทยที่ซ้ำกันครับ\n` +
+          `(นับทั้งตัวไทย และทับศัพท์ เช่น Bas/Best = เบส — ไม่นับ Acc/Admin/บัญชีระบบ)`,
       };
     }
     const lines = [
       `พบชื่อเล่นไทยซ้ำ ${res.groups.length} กลุ่ม จากผู้ใช้ที่สแกน ${res.scanned} คนครับ`,
-      `(แสดงเฉพาะภาษาไทย · รายการทั้งหมด)`,
+      `(นับตัวไทย + ทับศัพท์ เช่น Bas/Best → เบส · รายการทั้งหมด)`,
       "",
     ];
     res.groups.forEach((g, i) => {
@@ -1647,7 +1647,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         lines.push(`   • ${(p.displayName || g.nick).trim()}`);
       });
     });
-    lines.push("", "หมายเหตุ: จากชื่อที่แสดงใน Microsoft 365 ที่มีตัวอักษรไทย");
+    lines.push("", "หมายเหตุ: จากชื่อที่แสดงใน M365 (วงเล็บ/คำแรก) · Bas/Best นับเป็น เบส");
     trace("compose", "สรุปรายชื่อเล่นซ้ำ (ไทยทั้งหมด)");
     return { intent: "find_duplicate_nicknames", reply: lines.join("\n") };
   }

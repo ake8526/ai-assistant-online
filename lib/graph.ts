@@ -456,54 +456,115 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   return results.slice(0, top);
 }
 
-/** First token / parenthetical used as Thai-office “ชื่อเล่น” from displayName. */
+/** Prefer Thai office nick: parentheses → Thai token → short first token. */
 function nicknameKeyFromDisplay(displayName: string, givenName?: string): string | null {
   const dn = (displayName || "").trim();
   if (!dn) return null;
+
+  // 1) Nickname in parentheses — e.g. "Natthaphon Tangrom (แม็ค)" or "Tawan (เบส)"
   const paren = dn.match(/[（(]\s*([^）)]+?)\s*[）)]/);
   if (paren) {
     const inner = paren[1].trim();
-    if (inner.length >= 1 && inner.length <= 16 && !inner.includes("@")) return inner;
+    if (inner.length >= 1 && inner.length <= 16 && !inner.includes("@") && !isServiceNick(inner)) {
+      return inner;
+    }
   }
+
+  // 2) First Thai-script token in the display name
+  const tokens = dn.split(/[\s\-_/|·]+/).filter(Boolean);
+  const thaiTok = tokens.find((t) => isThaiNickname(t) && t.length <= 16 && !isServiceNick(t));
+  if (thaiTok) return thaiTok;
+
+  // 3) givenName if short (often the nick)
   const gn = (givenName || "").trim();
-  if (gn && gn.length >= 1 && gn.length <= 12 && !/[.@]/.test(gn) && !/\s/.test(gn)) {
-    // Prefer short givenName as nick when displayName starts with a longer formal name
-    const first = dn.split(/[\s\-_/|·]+/).filter(Boolean)[0] || "";
-    if (gn.length <= 8 && (first.length > gn.length || /[A-Za-z]{4,}/.test(first))) return gn;
+  if (gn && gn.length >= 1 && gn.length <= 10 && !/[.@\s]/.test(gn) && !isServiceNick(gn)) {
+    return gn;
   }
-  const first = dn.split(/[\s\-_/|·]+/).filter(Boolean)[0] || "";
-  if (!first || first.includes("@") || first.length > 16) return null;
-  // Skip very generic tokens
+
+  // 4) Short first token (romanized Thai nick like Bas / Bank) — skip long formal names
+  const first = tokens[0] || "";
+  if (!first || first.includes("@") || isServiceNick(first)) return null;
   if (/^(mr|mrs|ms|dr|คุณ|นาย|นาง|นางสาว)$/i.test(first)) return null;
+  // Formal English given names are usually longer; Thai nick romanizations are short
+  if (/^[A-Za-z]+$/.test(first) && (first.length < 2 || first.length > 8)) return null;
+  if (first.length > 16) return null;
   return first;
 }
+
+function isServiceNick(s: string): boolean {
+  return /^(acc|admin|collector|ktis|room|noreply|no-reply|service|system|test|tmp|temp)(_|$)/i.test(
+    s.trim()
+  );
+}
+
+/** Map common romanized nicknames → Thai so Bas/Best group with เบส. */
+const ROMAN_NICK_TO_THAI: Record<string, string> = {
+  bas: "เบส",
+  best: "เบส",
+  base: "เบส",
+  bes: "เบส",
+  bang: "แบง",
+  bank: "แบงค์",
+  non: "นนท์",
+  nont: "นนท์",
+  nontt: "นนท์",
+  ake: "เอค",
+  oak: "โอ๊ค",
+  oakk: "โอ๊ค",
+  mac: "แม็ค",
+  mack: "แม็ค",
+  max: "แม็ค",
+  kao: "เก้า",
+  nine: "เก้า",
+};
 
 function nickNorm(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, "");
 }
 
-/** Thai-script nickname (skip Acc / Admin / collector service accounts). */
+function canonicalizeNick(raw: string): { key: string; label: string; thaiish: boolean } {
+  const trimmed = raw.trim();
+  const n = nickNorm(trimmed);
+  if (isThaiNickname(trimmed)) return { key: n, label: trimmed, thaiish: true };
+  const mapped = ROMAN_NICK_TO_THAI[n];
+  if (mapped) return { key: nickNorm(mapped), label: mapped, thaiish: true };
+  return { key: n, label: trimmed, thaiish: false };
+}
+
+/** Thai-script nickname OR known romanized Thai nick (Bas→เบส). */
 export function isThaiNickname(s: string): boolean {
   return /[\u0E00-\u0E7F]/.test(s || "");
 }
 
-/** Keep Thai letters/digits/spaces from a display name for LINE replies. */
+export function isThaiishNickname(s: string): boolean {
+  if (isThaiNickname(s)) return true;
+  return !!ROMAN_NICK_TO_THAI[nickNorm(s)];
+}
+
+/** Label for LINE: keep Thai text, else show Thai nick + original name. */
 export function thaiDisplayLabel(displayName: string, fallbackNick?: string): string | null {
   const raw = (displayName || "").trim();
-  if (!raw) return fallbackNick && isThaiNickname(fallbackNick) ? fallbackNick : null;
-  if (isThaiNickname(raw)) {
-    // Prefer contiguous Thai chunks (drop pure-English tokens)
+  const nick = (fallbackNick || "").trim();
+  if (!raw && !nick) return null;
+  if (raw && isThaiNickname(raw)) {
     const parts = raw.split(/[\s\-_/|·]+/).filter((p) => isThaiNickname(p) || /^[0-9๐-๙]+$/.test(p));
     const joined = parts.join(" ").trim();
     if (joined) return joined;
     return raw.replace(/[A-Za-z@._]+/g, " ").replace(/\s+/g, " ").trim() || raw;
   }
-  return fallbackNick && isThaiNickname(fallbackNick) ? fallbackNick : null;
+  // English display name but Thai/romanized nick group — still show the person
+  if (nick && (isThaiNickname(nick) || isThaiishNickname(nick))) {
+    const canon = canonicalizeNick(nick).label;
+    if (raw && raw.toLowerCase() !== nick.toLowerCase()) return `${canon} · ${raw}`;
+    return canon;
+  }
+  return null;
 }
 
 type DupNickGroup = { nick: string; people: UserInfo[] };
 
-let dupNickCache: { at: number; scanned: number; groups: DupNickGroup[] } | null = null;
+let dupNickCache: { ver: number; at: number; scanned: number; groups: DupNickGroup[] } | null = null;
+const DUP_NICK_CACHE_VER = 3;
 
 /** Scan directory displayNames for shared nicknames (app-only User.Read.All). */
 export async function findDuplicateNicknames(opts?: {
@@ -511,7 +572,7 @@ export async function findDuplicateNicknames(opts?: {
 }): Promise<{ scanned: number; groups: DupNickGroup[]; error?: string }> {
   const maxUsers = opts?.maxUsers ?? 500;
   const now = Date.now();
-  if (dupNickCache && now - dupNickCache.at < 10 * 60_000) {
+  if (dupNickCache && dupNickCache.ver === DUP_NICK_CACHE_VER && now - dupNickCache.at < 10 * 60_000) {
     return { scanned: dupNickCache.scanned, groups: dupNickCache.groups };
   }
 
@@ -561,22 +622,25 @@ export async function findDuplicateNicknames(opts?: {
     return { scanned: 0, groups: [], error: `อ่านไดเรกทอรีไม่สำเร็จ: ${String(e).slice(0, 160)}` };
   }
 
-  const map = new Map<string, { nick: string; people: UserInfo[] }>();
+  const map = new Map<string, { nick: string; people: UserInfo[]; thaiish: boolean }>();
   for (const u of users) {
     const gn = (u as UserInfo & { _gn?: string })._gn;
-    const nick = nicknameKeyFromDisplay(u.displayName || "", gn);
-    if (!nick) continue;
-    const key = nickNorm(nick);
-    if (key.length < 1) continue;
-    const g = map.get(key) || { nick, people: [] };
+    const rawNick = nicknameKeyFromDisplay(u.displayName || "", gn);
+    if (!rawNick || isServiceNick(rawNick)) continue;
+    const canon = canonicalizeNick(rawNick);
+    if (canon.key.length < 1) continue;
+    const g = map.get(canon.key) || { nick: canon.label, people: [], thaiish: canon.thaiish };
+    g.thaiish = g.thaiish || canon.thaiish;
+    // Prefer Thai label as group title
+    if (isThaiNickname(canon.label)) g.nick = canon.label;
     if (!g.people.some((p) => p.mail.toLowerCase() === u.mail.toLowerCase())) {
       g.people.push({ mail: u.mail, displayName: u.displayName });
     }
-    map.set(key, g);
+    map.set(canon.key, g);
   }
 
   const groups = [...map.values()]
-    .filter((g) => g.people.length >= 2 && isThaiNickname(g.nick))
+    .filter((g) => g.people.length >= 2 && g.thaiish)
     .sort((a, b) => b.people.length - a.people.length || a.nick.localeCompare(b.nick, "th"));
 
   const thaiGroups: DupNickGroup[] = [];
@@ -589,7 +653,7 @@ export async function findDuplicateNicknames(opts?: {
     if (people.length >= 2) thaiGroups.push({ nick: g.nick, people });
   }
 
-  dupNickCache = { at: now, scanned: users.length, groups: thaiGroups };
+  dupNickCache = { ver: DUP_NICK_CACHE_VER, at: Date.now(), scanned: users.length, groups: thaiGroups };
   return { scanned: users.length, groups: thaiGroups };
 }
 
