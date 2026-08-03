@@ -527,7 +527,7 @@ async function availabilityResponse(
     label: `${fmtDateTime(r.start)}-${fmtTime(r.end)}`,
   }));
   const reply = slots.length
-    ? `🗓️ เวลาว่างของ ${displayName} (${label}) 👇 เลือกช่วงเพื่อจองได้เลยครับ`
+    ? `🗓️ เวลาว่างของ ${displayName} (${label}) 👇\nเลือกหมายเลขช่วงเพื่อจอง หรือกด “กำหนดเอง” เพื่อพิมพ์เวลาเองครับ`
     : formatFree(ranges, label, displayName);
   return { intent: "availability", reply, person: { mail: email, displayName }, slots };
 }

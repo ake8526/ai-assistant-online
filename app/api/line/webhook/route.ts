@@ -13,7 +13,7 @@ import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
-import { parseWall, wallIso, fmtDateTime, fmtTime } from "@/lib/time";
+import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import { assertConfigured } from "@/lib/supabaseServer";
 
 export const maxDuration = 60;
@@ -81,13 +81,32 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
       add(n, c.data, `เลือก ${n}) ${c.displayName || c.mail}`);
     }
   } else if (Array.isArray(res.slots) && res.slots.length && (res.intent === "availability" || res.intent === "choose_slot")) {
-    const meeting = (res.meeting as { attendees?: string[]; subject?: string }) || {};
+    const meeting = (res.meeting as { attendees?: string[]; subject?: string; duration?: number }) || {};
     const attendees = meeting.attendees || (res.person?.mail ? [res.person.mail] : []);
     const subject = meeting.subject || "ประชุม";
+    const duration = meeting.duration || 30;
     (res.slots as Slot[]).forEach((s, i) => {
       const p = new URLSearchParams({ a: "book", s: s.start, e: s.end, subj: subject, at: attendees.join(",") });
       add(i + 1, p.toString(), `จอง ${i + 1}) ${s.label || ""}`);
     });
+    // Custom time — leave one slot for the button (LINE max 13)
+    if (items.length < 13) {
+      const p = new URLSearchParams({
+        a: "bookcustom",
+        subj: subject,
+        at: attendees.join(","),
+        dur: String(duration),
+      });
+      items.push({
+        type: "action",
+        action: {
+          type: "postback",
+          label: "✏️ กำหนดเอง",
+          data: p.toString().slice(0, 300),
+          displayText: "กำหนดเวลาเอง",
+        },
+      });
+    }
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
     let n = 0;
     for (const c of res.choices as Choice[]) {
@@ -141,6 +160,7 @@ function detailText(res: CommandResult): string {
     }
     parts.push("เลือกเวลาเริ่ม:");
     (res.slots as Slot[]).forEach((s, i) => parts.push(`${i + 1}) ${s.label || `${s.start}-${s.end}`}`));
+    parts.push("✏️) กำหนดเอง — พิมพ์วันเวลาเองได้");
     return "\n\n" + parts.join("\n");
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).filter((c) => c.event_id).map((c, i) => `${i + 1}) ${c.label || ""}`);
@@ -242,8 +262,14 @@ function linkPromptMessage() {
 const DRAFT_KEY = "_line_draft";
 const DRAFT_TTL_MS = 30 * 60 * 1000;
 type Draft = {
-  start: string; end: string; attendees: string[];
-  subject: string; detail: string; await?: "subject" | "detail" | "attendee"; ts: number;
+  start: string;
+  end: string;
+  attendees: string[];
+  subject: string;
+  detail: string;
+  await?: "subject" | "detail" | "attendee" | "custom_time";
+  durationMin?: number;
+  ts: number;
 };
 
 async function loadDraft(upn: string): Promise<Draft | null> {
@@ -289,7 +315,71 @@ function confirmCardMessage(d: Draft, prefix = ""): object {
   };
 }
 
-const BOOKING_ACTIONS = new Set(["book", "confirmbook", "setsubj", "setdetail", "addppl", "canceldraft"]);
+const BOOKING_ACTIONS = new Set(["book", "bookcustom", "confirmbook", "setsubj", "setdetail", "addppl", "canceldraft"]);
+
+/** Parse free-text meeting window, e.g. "พรุ่งนี้ 10:00-11:00", "10.00-11.00", "10 โมง 30 นาที". */
+function parseCustomMeetingWindow(
+  text: string,
+  durationMin = 30
+): { start: string; end: string } | null {
+  let s = text.trim().replace(/\s+/g, " ");
+  if (!s) return null;
+
+  let day = nowWall();
+  if (/มะรืน/.test(s)) {
+    day = periodRange("tomorrow").start;
+    day = addMinutes(day, 24 * 60);
+    s = s.replace(/มะรืน(นี้)?/g, "").trim();
+  } else if (/พรุ่งนี้/.test(s)) {
+    day = periodRange("tomorrow").start;
+    s = s.replace(/พรุ่งนี้/g, "").trim();
+  } else if (/วันนี้/.test(s)) {
+    day = periodRange("today").start;
+    s = s.replace(/วันนี้/g, "").trim();
+  } else {
+    const iso = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+    const dmy = s.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+    if (iso) {
+      day = new Date(Date.UTC(+iso[1], +iso[2] - 1, +iso[3]));
+      s = s.replace(iso[0], "").trim();
+    } else if (dmy) {
+      const y = dmy[3] ? (+dmy[3] < 100 ? 2000 + +dmy[3] : +dmy[3]) : day.getUTCFullYear();
+      day = new Date(Date.UTC(y, +dmy[2] - 1, +dmy[1]));
+      s = s.replace(dmy[0], "").trim();
+    }
+  }
+
+  const y = day.getUTCFullYear();
+  const mo = day.getUTCMonth();
+  const d = day.getUTCDate();
+
+  const range =
+    s.match(/(\d{1,2})[:.](\d{2})\s*[-–ถึง]+\s*(\d{1,2})[:.](\d{2})/) ||
+    s.match(/(\d{1,2})\s*[:.]\s*(\d{2})\s*(?:ถึง|-)\s*(\d{1,2})\s*[:.]\s*(\d{2})/);
+  if (range) {
+    const start = new Date(Date.UTC(y, mo, d, +range[1], +range[2], 0));
+    const end = new Date(Date.UTC(y, mo, d, +range[3], +range[4], 0));
+    if (end <= start) return null;
+    return { start: wallIso(start), end: wallIso(end) };
+  }
+
+  // "10 โมง", "บ่าย 2", "09:00"
+  let startMin: number | null = parseHHMM(s.match(/(\d{1,2}[:.]\d{2})/)?.[1] || "");
+  if (startMin === null) {
+    const th = s.match(/(?:บ่าย|เย็น)?\s*(\d{1,2})\s*โมง(?:\s*(\d{1,2}))?/);
+    if (th) {
+      let h = +th[1];
+      const m = th[2] ? +th[2] : 0;
+      if (/บ่าย|เย็น/.test(s) && h < 12) h += 12;
+      if (/ทุ่ม/.test(s) && h < 12) h += 12;
+      startMin = h * 60 + m;
+    }
+  }
+  if (startMin === null) return null;
+  const start = new Date(Date.UTC(y, mo, d, Math.floor(startMin / 60), startMin % 60, 0));
+  const end = addMinutes(start, durationMin);
+  return { start: wallIso(start), end: wallIso(end) };
+}
 
 async function handleBookingFlow(upn: string, act: string, params: URLSearchParams, replyToken: string): Promise<void> {
   if (act === "book") {
@@ -303,6 +393,30 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
     };
     await saveDraft(upn, draft);
     await replyLineMessages(replyToken, [confirmCardMessage(draft)]);
+    return;
+  }
+
+  if (act === "bookcustom") {
+    const draft: Draft = {
+      start: "",
+      end: "",
+      attendees: (params.get("at") || "").split(",").map((x) => x.trim()).filter(Boolean),
+      subject: params.get("subj") || "ประชุม",
+      detail: "",
+      await: "custom_time",
+      durationMin: Math.max(15, Math.min(240, Number(params.get("dur") || 30) || 30)),
+      ts: Date.now(),
+    };
+    await saveDraft(upn, draft);
+    await replyLine(
+      replyToken,
+      "พิมพ์วันและเวลาที่ต้องการจองได้เลยครับ เช่น\n" +
+        "• พรุ่งนี้ 10:00-11:00\n" +
+        "• วันนี้ 14:00-15:00\n" +
+        "• 10:00-11:00\n" +
+        "• พรุ่งนี้ 10 โมง (จะจอง " +
+        `${draft.durationMin} นาที)`
+    );
     return;
   }
 
@@ -368,6 +482,23 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
 async function handleDraftInput(upn: string, text: string, replyToken: string): Promise<boolean> {
   const draft = await loadDraft(upn);
   if (!draft?.await) return false;
+
+  if (draft.await === "custom_time") {
+    const parsed = parseCustomMeetingWindow(text, draft.durationMin || 30);
+    if (!parsed) {
+      await replyLine(
+        replyToken,
+        "ยังอ่านเวลาไม่ชัดครับ ลองพิมพ์แบบนี้:\n• พรุ่งนี้ 10:00-11:00\n• วันนี้ 14:00-15:00\n• 10:00-11:00"
+      );
+      return true;
+    }
+    draft.start = parsed.start;
+    draft.end = parsed.end;
+    draft.await = undefined;
+    await saveDraft(upn, draft);
+    await replyLineMessages(replyToken, [confirmCardMessage(draft, "ตั้งเวลาเองแล้ว ✅\n\n")]);
+    return true;
+  }
 
   if (draft.await === "subject") {
     draft.subject = text.trim().slice(0, 200) || "ประชุม";
