@@ -14,6 +14,16 @@ const GRAPH_SCOPE = [
   "Calendars.Read.Shared",
   "Calendars.ReadWrite",
 ].join(" ");
+/** Fallback when stored token predates People.Read — avoid forcing re-consent. */
+const GRAPH_SCOPE_CALENDAR = [
+  "openid",
+  "profile",
+  "offline_access",
+  "User.Read",
+  "Calendars.Read",
+  "Calendars.Read.Shared",
+  "Calendars.ReadWrite",
+].join(" ");
 
 function tenant(): string {
   return process.env.TENANT_ID || process.env.NEXT_PUBLIC_AZURE_TENANT_ID || "common";
@@ -119,29 +129,37 @@ export async function getDelegatedGraphToken(upn: string): Promise<string | null
     .maybeSingle();
   if (!data?.refresh_token) return null;
 
-  const r = await fetch(`${AUTH_URL}/${tenant()}/oauth2/v2.0/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId(),
-      client_secret: clientSecret(),
-      refresh_token: data.refresh_token,
-      grant_type: "refresh_token",
-      scope: GRAPH_SCOPE,
-    }),
-  });
-  if (!r.ok) {
-    console.warn(`[ms-oauth] refresh failed for ${upn}:`, (await r.text()).slice(0, 200));
-    return null;
-  }
-  const json = await r.json();
-  // Persist rotated refresh token when Microsoft returns a new one
-  if (json.refresh_token && json.refresh_token !== data.refresh_token) {
+  const tryRefresh = async (scope: string): Promise<{ access?: string; refresh?: string; scope?: string } | null> => {
+    const r = await fetch(`${AUTH_URL}/${tenant()}/oauth2/v2.0/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId(),
+        client_secret: clientSecret(),
+        refresh_token: data.refresh_token,
+        grant_type: "refresh_token",
+        scope,
+      }),
+    });
+    if (!r.ok) {
+      console.warn(`[ms-oauth] refresh failed for ${upn} (${scope.split(" ").length} scopes):`, (await r.text()).slice(0, 200));
+      return null;
+    }
+    const json = await r.json();
+    return { access: json.access_token, refresh: json.refresh_token, scope: json.scope };
+  };
+
+  // Prefer full scopes; if user never consented to People.Read, fall back so calendar still works.
+  let tok = await tryRefresh(GRAPH_SCOPE);
+  if (!tok?.access) tok = await tryRefresh(GRAPH_SCOPE_CALENDAR);
+  if (!tok?.access) return null;
+
+  if (tok.refresh && tok.refresh !== data.refresh_token) {
     try {
-      await saveMicrosoftToken(upn, json.refresh_token, json.scope);
+      await saveMicrosoftToken(upn, tok.refresh, tok.scope);
     } catch { /* ignore */ }
   }
-  return json.access_token || null;
+  return tok.access;
 }
 
 export function calendarConsentNeededMessage(): string {
