@@ -58,9 +58,17 @@ async function graphFetch(
 ): Promise<Response> {
   const url = new URL(path.startsWith("http") ? path : GRAPH_BASE + path);
   for (const [k, v] of Object.entries(opts.params || {})) url.searchParams.set(k, v);
-  // Monitor: one "fetch" stage per M365 call. Redact the mailbox address from the
-  // path so no PII lands in the trace label — resource name only.
-  trace("fetch", `M365 ${opts.method || "GET"} ${url.pathname.replace(/\/users\/[^/]+/, "/users/…")}`);
+  // Monitor: one "fetch" stage per M365 call. Keep labels short so /monitor
+  // console doesn't stretch the layout (event ids / search queries truncated).
+  const shortPath = url.pathname
+    .replace(/\/users\/[^/]+/i, "/users/…")
+    .replace(/\/events\/[^/]+/i, "/events/…")
+    .replace(/\/items\/[^/]+/i, "/items/…")
+    .replace(/\/shares\/[^/]+/i, "/shares/…")
+    .replace(/search\(q='[^']*'\)/i, "search(q='…')")
+    .replace(/root:\/[^?]*/i, "root:/…");
+  const labelPath = shortPath.length > 72 ? shortPath.slice(0, 70) + "…" : shortPath;
+  trace("fetch", `M365 ${opts.method || "GET"} ${labelPath}`);
   return fetch(url, {
     method: opts.method || "GET",
     headers: {

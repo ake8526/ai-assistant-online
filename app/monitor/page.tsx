@@ -64,12 +64,13 @@ const CSS = `
 .mon .bdg.done{border-color:var(--green)}.mon .bdg.done .stt{color:var(--green)}.mon .bdg.done .dot{background:var(--green)}
 @keyframes monpulse{50%{opacity:.2}}
 .mon .caption{font-size:19px;color:var(--dim);text-align:center;padding:9px}.mon .caption b{color:var(--red)}
-.mon .cols{display:grid;grid-template-columns:1fr 340px;gap:12px}
-@media(max-width:900px){.mon .cols{grid-template-columns:1fr}}
-.mon #log{height:220px;overflow:hidden;font-size:18px;line-height:1.18;padding:10px}
-.mon #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mon .cols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:stretch}
+@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr)}}
+.mon .cols > .panel{min-width:0;max-width:100%;overflow:hidden}
+.mon #log{height:220px;overflow-x:hidden;overflow-y:auto;font-size:18px;line-height:1.18;padding:10px;min-width:0}
+.mon #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .mon #log .t{color:var(--dim)}.mon #log .g{color:var(--green)}.mon #log .r{color:var(--red)}.mon #log .a{color:var(--amber)}.mon #log .b{color:#3a86ff}
-.mon #legend{padding:12px;min-height:220px;font-size:18px;line-height:1.5}
+.mon #legend{padding:12px;min-height:220px;font-size:18px;line-height:1.5;min-width:0}
 .mon #legend .row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .mon #legend .sw{width:12px;height:12px;flex:none;border:1px solid #000}
 .mon #legend .rl{font-family:'Press Start 2P';font-size:7px;color:var(--ink)}

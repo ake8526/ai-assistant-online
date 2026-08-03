@@ -98,6 +98,8 @@ export type CommandContext = {
   };
   /** Next index when paging duplicate-nickname groups (“มีอีกไหม”). */
   nick_dup_offset?: number;
+  /** Last meeting index used when linking files (for bare SharePoint URL follow-up). */
+  last_link_meeting_index?: number;
 };
 
 export type CommandResult = {
@@ -112,6 +114,7 @@ export type CommandResult = {
   period?: string;
   /** Persist paging cursor for duplicate nicknames. */
   nick_dup_offset?: number;
+  last_link_meeting_index?: number;
   meeting?: {
     attendees: string[];
     duration: number;
@@ -680,12 +683,26 @@ function historyLines(context?: CommandContext): string[] {
 }
 
 async function parseIntent(text: string, context?: CommandContext): Promise<{ intent: string; params: Record<string, unknown> }> {
-  const textClean = text.trim();
+  // LINE often wraps long SharePoint URLs across lines — collapse before matching.
+  let textClean = text.trim();
+  const collapsedUrl = textClean.replace(/\s+/g, "");
+  if (/^https?:\/\/\S*(sharepoint\.com|onedrive\.live\.com|1drv\.ms)\S*$/i.test(collapsedUrl)) {
+    textClean = collapsedUrl;
+  }
   const textLower = textClean.toLowerCase();
 
   // Fast deterministic shortcuts — skip LLM so LINE replies before the reply-token expires.
   const quick = quickFeedIntent(textClean);
   if (quick) return quick;
+
+  // Bare OneDrive/SharePoint URL after a link attempt → attach to last/first meeting
+  if (/^https?:\/\/\S*(sharepoint\.com|onedrive\.live\.com|1drv\.ms)\S*$/i.test(textClean)) {
+    const mi = Number(context?.last_link_meeting_index) || 1;
+    return {
+      intent: "link_meeting_file",
+      params: { meeting_index: mi, file_query: textClean },
+    };
+  }
 
   // “มีอีกไหม” after nickname duplicate list — next page / confirm complete (no re-dump)
   const moreNick =
@@ -1722,7 +1739,9 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   if (intent === "link_meeting_file") {
     const denied = needCalendarConsent();
     if (denied) return denied;
-    return handleLinkMeetingFile(userUpn, params, context);
+    const res = await handleLinkMeetingFile(userUpn, params, context);
+    const mi = Number(params.meeting_index || 0) || undefined;
+    return mi ? { ...res, last_link_meeting_index: mi } : res;
   }
   if (intent === "link_meeting_url") {
     const denied = needCalendarConsent();
@@ -2066,6 +2085,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     }
     await saveAgendaIds(userUpn, events);
     const reply = lite ? formatEventsSimple(events, label) : await buildForEvents(userUpn, events, label);
+    // Persist the actual day we showed (today for เช้านี้) — never leave last_period as week
     return withCalendarNext({ intent, reply, data: events, period }, "meetings");
   }
 

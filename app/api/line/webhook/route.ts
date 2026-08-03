@@ -276,6 +276,8 @@ async function loadCtx(upn: string): Promise<CommandContext | undefined> {
       last_period: c.last_period,
       last_meeting: c.last_meeting,
       nick_dup_offset: typeof c.nick_dup_offset === "number" ? c.nick_dup_offset : undefined,
+      last_link_meeting_index:
+        typeof c.last_link_meeting_index === "number" ? c.last_link_meeting_index : undefined,
       files: Array.isArray(c.files) ? c.files : undefined,
       history: pruned.history,
       summary: pruned.summary,
@@ -314,6 +316,11 @@ async function saveCtx(upn: string, prev: CommandContext | undefined, res: Comma
     next.nick_dup_offset = res.nick_dup_offset;
   } else if (typeof prev?.nick_dup_offset === "number" && res.intent === "find_duplicate_nicknames") {
     next.nick_dup_offset = prev.nick_dup_offset;
+  }
+  if (typeof res.last_link_meeting_index === "number") {
+    next.last_link_meeting_index = res.last_link_meeting_index;
+  } else if (typeof prev?.last_link_meeting_index === "number") {
+    next.last_link_meeting_index = prev.last_link_meeting_index;
   }
   if (res.person?.mail) {
     next.last_person = res.person.displayName || res.person.mail;
@@ -688,6 +695,14 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
   let text = (ev.message?.text || "").trim();
   if (!ev.replyToken || !userId || !text) return;
+
+  // LINE wraps long SharePoint URLs — collapse whitespace so quick-intent can match
+  {
+    const collapsed = text.replace(/\s+/g, "");
+    if (/^https?:\/\/\S*(sharepoint\.com|onedrive\.live\.com|1drv\.ms)\S*$/i.test(collapsed)) {
+      text = collapsed;
+    }
+  }
 
   const upn = await getUpnByLineId(userId);
   if (!upn) {
