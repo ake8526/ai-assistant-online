@@ -151,9 +151,10 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     const SPINES = ["#c0392b", "#e67e22", "#f1c40f", "#27ae60", "#2980b9", "#8e44ad", "#d35400", "#16a085", "#c0392b", "#2c3e50"];
     const R = (x: number, y: number, w: number, h: number, c: string) => { X.fillStyle = c; X.fillRect(Math.round(x), Math.round(y), Math.max(1, w | 0), Math.max(1, h | 0)); };
 
-    // position badges over seats
+    // Pin each desk badge on top of that desk's monitor (screen top ≈ dy-9);
+    // the badge is translate(-50%,-100%) so it rests just above the screen.
     badgesRef.current.forEach((b, i) => {
-      if (i < 4) { const p = SEAT[i]; b.style.left = (p[0] / 320 * 100) + "%"; b.style.top = ((DESK[i][1] - 26) / 240 * 100) + "%"; }
+      if (i < 4) { b.style.left = (DESK[i][0] / 320 * 100) + "%"; b.style.top = ((DESK[i][1] - 8) / 240 * 100) + "%"; }
     });
 
     function drawFloor() {
@@ -221,7 +222,8 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       if (dash.face === "up") { R(x - 5, hy - 1, 10, 9, hair); }
       else { R(x - 5, hy - 1, 10, 4, hair); R(x - 5, hy, 1, 5, hair); R(x + 4, hy, 1, 5, hair); if (dash.face === "down") { R(x - 3, hy + 4, 2, 2, "#141414"); R(x + 1, hy + 4, 2, 2, "#141414"); } else if (dash.face === "left") { R(x - 3, hy + 4, 2, 2, "#141414"); } else { R(x + 1, hy + 4, 2, 2, "#141414"); } }
       if (st === "work" && !dash.carry) { const p = Math.floor(now / 180) % 2; R(x + 6, y - 22, 1, 1, p ? "#fff" : "#000"); }
-      const b = badgesRef.current[4]; if (b) { b.style.left = (dash.x / 320 * 100) + "%"; b.style.top = ((dash.y - 30) / 240 * 100) + "%"; }
+      // Courier badge rides on the character's head and moves with it every frame.
+      const b = badgesRef.current[4]; if (b) { b.style.left = (dash.x / 320 * 100) + "%"; b.style.top = ((dash.y - 20) / 240 * 100) + "%"; }
     }
     function drawMailbox() {
       const [mx, my] = MAILBOX;
@@ -361,6 +363,10 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
           });
           if (r.ok) {
             const d = await r.json();
+            // Setup not done yet (table missing) → tell the user instead of a blank room.
+            if (d.note && capRef.current && !queueRef.current.length) {
+              capRef.current.innerHTML = '<b style="color:#f0b429">ยังไม่พร้อม</b> — รัน supabase/migration_agent_traces.sql ใน Supabase ก่อน แล้วรีเฟรช';
+            }
             if (Array.isArray(d.events) && d.events.length) {
               // avoid runaway backlog: cap queue
               if (queueRef.current.length < 400) queueRef.current.push(...d.events);
