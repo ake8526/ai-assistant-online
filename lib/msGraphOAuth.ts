@@ -43,7 +43,9 @@ export function buildMicrosoftAuthUrl(state: string): string {
     response_mode: "query",
     scope: GRAPH_SCOPE,
     state,
-    prompt: "select_account consent",
+    // Azure AD allows only ONE prompt value (unlike Google).
+    // "consent" forces the calendar permission screen + refresh token.
+    prompt: "consent",
   });
   return `${AUTH_URL}/${tenant()}/oauth2/v2.0/authorize?${p.toString()}`;
 }
