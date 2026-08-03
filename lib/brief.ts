@@ -1,8 +1,28 @@
-// Morning brief / meeting-prep generation — ported from morning_brief/brief.py + llm.py.
-import { GraphEvent, getEventsRange, searchFiles } from "@/lib/graph";
+// Morning brief / meeting-prep — agenda list first, then deep prep on demand.
+import {
+  GraphEvent,
+  GraphAttachment,
+  getEventsRange,
+  getEvent,
+  getEventAttachments,
+  searchFiles,
+  downloadDriveText,
+} from "@/lib/graph";
 import { chat } from "@/lib/llm";
-import { sendLine } from "@/lib/line";
-import { endOfDay, nowWall, startOfDay, wallIso } from "@/lib/time";
+import { getLineId, pushLineMessages } from "@/lib/line";
+import { fetchArticle } from "@/lib/rss";
+import { getSetting, setSetting } from "@/lib/store";
+import { endOfDay, fmtHHMM, minutesOfDay, nowWall, parseWall, startOfDay, wallIso } from "@/lib/time";
+
+const AGENDA_KEY = "_brief_agenda";
+
+export type AgendaChoice = { index: number; event_id: string; label: string };
+
+export type MorningAgenda = {
+  text: string;
+  events: GraphEvent[];
+  choices: AgendaChoice[];
+};
 
 function keywordsFromSubject(subject: string): string {
   if (!subject) return "";
@@ -14,69 +34,250 @@ function keywordsFromSubject(subject: string): string {
     .join(" ");
 }
 
-function slimEvent(ev: GraphEvent) {
-  return {
-    subject: ev.subject,
-    start: ev.start?.dateTime,
-    end: ev.end?.dateTime,
-    location: ev.location?.displayName,
-    organizer: ev.organizer?.emailAddress?.name,
-    attendees: (ev.attendees || [])
-      .map((a) => a.emailAddress?.name)
+function eventTimeRange(ev: GraphEvent): string {
+  const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+  const ed = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
+  if (!sd) return "?";
+  const a = fmtHHMM(minutesOfDay(sd));
+  const b = ed ? fmtHHMM(minutesOfDay(ed)) : "";
+  return b ? `${a}–${b}` : a;
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&[a-z#0-9]+;/gi, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractUrls(text: string): string[] {
+  const found = text.match(/https?:\/\/[^\s<>"')\]]+/gi) || [];
+  const clean = found.map((u) => u.replace(/[.,;:]+$/, ""));
+  return Array.from(new Set(clean)).filter((u) => !/schemas\.microsoft|aka\.ms\/|teams\.microsoft\.com\/l\/meetup/i.test(u));
+}
+
+function decodeAttachmentText(att: GraphAttachment): string {
+  if (!att.contentBytes) return "";
+  const name = (att.name || "").toLowerCase();
+  const ct = (att.contentType || "").toLowerCase();
+  const textLike =
+    ct.includes("text") ||
+    ct.includes("json") ||
+    ct.includes("xml") ||
+    ct.includes("html") ||
+    /\.(txt|md|csv|json|html?|xml|log)$/i.test(name);
+  if (!textLike) return "";
+  try {
+    const buf = Buffer.from(att.contentBytes, "base64");
+    return buf.toString("utf8").replace(/\s+/g, " ").trim().slice(0, 6000);
+  } catch {
+    return "";
+  }
+}
+
+/** Format today's calendar as a numbered agenda (no LLM). */
+export function formatAgendaList(
+  events: GraphEvent[],
+  periodLabel = "วันนี้",
+  opts: { askPrep?: boolean } = {}
+): string {
+  const askPrep = opts.askPrep !== false;
+  if (!events.length) {
+    return `🌅 ตาราง${periodLabel}\n\nยังไม่มีนัดในปฏิทินครับ — พักผ่อนหรือจัดงานอื่นได้เลย 👍`;
+  }
+  const lines = [`🌅 ตาราง${periodLabel} — มี ${events.length} นัด`, ""];
+  events.forEach((ev, i) => {
+    const subj = (ev.subject || "(ไม่มีหัวข้อ)").trim();
+    const who = ev.organizer?.emailAddress?.name || ev.organizer?.emailAddress?.address || "";
+    const loc = ev.location?.displayName || (ev.onlineMeeting ? "ออนไลน์ (Teams)" : "");
+    const people = (ev.attendees || [])
+      .map((a) => a.emailAddress?.name || a.emailAddress?.address || "")
       .filter(Boolean)
-      .slice(0, 10),
-    is_online: !!ev.onlineMeeting,
-    preview: (ev.bodyPreview || "").slice(0, 300),
+      .slice(0, 4)
+      .join(", ");
+    lines.push(`${i + 1}) ${eventTimeRange(ev)} — ${subj}`);
+    if (who) lines.push(`   ผู้จัด: ${who}`);
+    if (loc) lines.push(`   สถานที่: ${loc}`);
+    if (people) lines.push(`   ผู้เข้าร่วม: ${people}`);
+    if (ev.bodyPreview?.trim()) lines.push(`   รายละเอียดย่อ: ${ev.bodyPreview.trim().slice(0, 120)}`);
+    lines.push("");
+  });
+  if (askPrep) {
+    lines.push("อยากให้ช่วยแนะนำเตรียมตัวนัดไหนดีครับ?");
+    lines.push("กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด 1” / “แนะนำประชุม 2”");
+  }
+  return lines.join("\n").trim();
+}
+
+export async function saveAgendaIds(upn: string, events: GraphEvent[]): Promise<void> {
+  const now = nowWall();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const date = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+  await setSetting(
+    upn,
+    AGENDA_KEY,
+    JSON.stringify({ date, ids: events.map((e) => e.id).filter(Boolean) })
+  );
+}
+
+export async function resolveAgendaEventId(upn: string, index1: number): Promise<string | null> {
+  const raw = await getSetting(upn, AGENDA_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { date?: string; ids?: string[] };
+    const ids = parsed.ids || [];
+    if (index1 < 1 || index1 > ids.length) return null;
+    return ids[index1 - 1] || null;
+  } catch {
+    return null;
+  }
+}
+
+/** List today's meetings + ask which one to prep. */
+export async function buildMorningAgenda(userUpn: string, periodLabel = "วันนี้"): Promise<MorningAgenda> {
+  const now = nowWall();
+  const events = await getEventsRange(userUpn, wallIso(startOfDay(now)), wallIso(endOfDay(now)));
+  await saveAgendaIds(userUpn, events);
+  const choices: AgendaChoice[] = events
+    .filter((e) => e.id)
+    .map((e, i) => ({
+      index: i + 1,
+      event_id: e.id!,
+      label: `${eventTimeRange(e)} — ${(e.subject || "(ไม่มีหัวข้อ)").trim()}`.slice(0, 80),
+    }));
+  return {
+    text: formatAgendaList(events, periodLabel),
+    events,
+    choices,
   };
 }
 
-function systemPrompt(periodLabel: string): string {
-  return `คุณคือผู้ช่วยส่วนตัวเชิงรุกที่ช่วยเตรียมตัวสำหรับการประชุม
-ผู้ใช้จะให้ข้อมูลนัดหมาย (${periodLabel}) เป็น JSON พร้อมไฟล์ที่เกี่ยวข้องของแต่ละนัด
-พูดคุยเป็นธรรมชาติ เป็นกันเอง เหมือนผู้ช่วยที่ใส่ใจ ไม่ใช่ตอบห้วน ๆ
-
-รูปแบบคำตอบ (ภาษาไทย):
-1. เปิดด้วยประโยคทักทาย/สรุปภาพรวมสั้น ๆ 1 บรรทัด (เช่น "ช่วงนี้มี 3 นัดครับ ที่ต้องเตรียมตัวหน่อยคือ...")
-2. ไล่รายประชุม แต่ละนัด:
-   📌 <DD/MM/YYYY เวลา HH:MM> — <หัวข้อ> (ผู้เข้าร่วมหลัก)
-      • เตรียมตัว: สิ่งที่ควรเตรียม (อิงจากหัวข้อ/ผู้เข้าร่วม/ไฟล์)
-      • ควรพูด/ถาม: ประเด็นสำคัญ 2-3 ข้อ
-      • ไฟล์ที่เกี่ยว (ถ้ามี): ชื่อไฟล์ + ข้อเสนอว่าน่าทบทวน/ปรับอะไร
-3. ปิดท้ายด้วย:
-   🎯 โฟกัส${periodLabel}: 1-2 บรรทัด
-   💡 ข้อเสนอเพิ่มเติม: คำแนะนำเชิงรุก 1-3 ข้อ เช่น ควรกันเวลาเตรียมตัวก่อนนัดไหน,
-      ควรส่งวาระล่วงหน้า, นัดไหนซ้อน/ชิดกันควรระวัง, หรือควรเตรียมเอกสารอะไรเพิ่ม
-
-กติกา:
-- วันที่ทุกจุดให้ใช้รูปแบบ DD/MM/YYYY เสมอ (เช่น 30/07/2026) และเวลาแบบ 24 ชม. HH:MM
-- ห้ามแต่งข้อมูลที่ไม่มีในอินพุต ใช้เฉพาะสิ่งที่ให้มา แต่ "ข้อเสนอเพิ่มเติม"
-  ให้แนะนำเชิงปฏิบัติได้จากบริบทที่มี (เวลา/ผู้เข้าร่วม/ความถี่ของนัด)`;
+/** @deprecated Prefer buildMorningAgenda — kept for callers that want the agenda text only. */
+export async function buildForToday(userUpn: string): Promise<string> {
+  return (await buildMorningAgenda(userUpn)).text;
 }
 
-/** Prep brief (prep + talking points + related files) for a set of events. No delivery. */
+/** List view for meetings (no “ask which to prep” footer). */
 export async function buildForEvents(userUpn: string, events: GraphEvent[], periodLabel = "วันนี้"): Promise<string> {
-  const meetings = [];
-  for (const ev of events) {
-    const slim = slimEvent(ev);
-    const query = keywordsFromSubject(slim.subject || "");
-    const files = query ? (await searchFiles(userUpn, query)).slice(0, 5) : [];
-    meetings.push({ event: slim, files: files.map((f) => ({ name: f.name, webUrl: f.webUrl })) });
+  void userUpn;
+  return formatAgendaList(events, periodLabel, { askPrep: false });
+}
+
+const PREP_SYSTEM = `คุณคือผู้ช่วยเตรียมประชุมส่วนตัว อ่านข้อมูลนัด + เนื้อหาอีเมล/ไฟล์แนบ/ลิงก์ที่ให้มา แล้วแนะนำเป็นภาษาไทยอย่างเป็นกันเอง ชัดเจน ใช้ได้จริง
+
+รูปแบบคำตอบ:
+1) บรรทัดแรก: 📌 สรุปสั้น ๆ ว่านัดนี้เกี่ยวกับอะไร (จากหัวข้อ + รายละเอียด)
+2) 📄 สิ่งที่อ่านจากอีเมล/เอกสาร/ลิงก์ (สรุปประเด็นสำคัญเป็นข้อ ๆ — ถ้าไม่มีเอกสารให้บอกตรง ๆ)
+3) ✅ ต้องเตรียม / ต้องทำก่อนเข้าประชุม
+4) 💬 ในที่ประชุมควรพูด / ถาม / ชี้ประเด็นอะไรบ้าง (เป็นข้อ ๆ ปฏิบัติได้)
+5) ⚠️ จุดที่ควรระวังหรือข้อมูลที่ยังขาด (ถ้ามี)
+
+กติกา:
+- ใช้เฉพาะข้อมูลที่มีในอินพุต ห้ามแต่งเอกสารที่ไม่มี
+- ถ้าเนื้อหาเอกสารน้อย ให้แนะนำจากหัวข้อ + รายละเอียดอีเมล + ผู้เข้าร่วมเท่าที่มี
+- วันที่ใช้ DD/MM/YYYY เวลา HH:MM (24 ชม.)`;
+
+/** Deep prep for one meeting: subject, email body, attachments, links, related files. */
+export async function buildMeetingPrep(userUpn: string, eventId: string): Promise<string> {
+  const ev = await getEvent(userUpn, eventId);
+  const bodyHtml = ev.body?.content || "";
+  const bodyText = stripHtml(bodyHtml).slice(0, 8000) || (ev.bodyPreview || "").trim();
+  const urls = extractUrls(bodyHtml + "\n" + bodyText).slice(0, 5);
+
+  const attachments = ev.hasAttachments ? await getEventAttachments(userUpn, eventId) : [];
+  const attachmentNotes: { name: string; contentType?: string; excerpt?: string }[] = [];
+  for (const att of attachments.slice(0, 8)) {
+    if (att.isInline) continue;
+    const name = att.name || "attachment";
+    const excerpt = decodeAttachmentText(att);
+    attachmentNotes.push({
+      name,
+      contentType: att.contentType,
+      excerpt: excerpt || undefined,
+    });
   }
-  const payload = { user: userUpn, period: periodLabel, meetings };
-  return chat(systemPrompt(periodLabel), "ข้อมูลนัดหมาย:\n" + JSON.stringify(payload, null, 2), {
+
+  const linkNotes: { url: string; text: string }[] = [];
+  for (const url of urls.slice(0, 3)) {
+    const text = await fetchArticle(url);
+    linkNotes.push({ url, text: text.slice(0, 4000) || "(ดึงเนื้อหาไม่ได้)" });
+  }
+
+  const query = keywordsFromSubject(ev.subject || "");
+  const files = query ? (await searchFiles(userUpn, query)).slice(0, 5) : [];
+  const fileNotes: { name?: string; webUrl?: string; excerpt?: string }[] = [];
+  for (const f of files) {
+    const note: { name?: string; webUrl?: string; excerpt?: string } = { name: f.name, webUrl: f.webUrl };
+    const n = (f.name || "").toLowerCase();
+    if (f.id && /\.(txt|md|csv|json|html?|xml|log)$/i.test(n)) {
+      const excerpt = await downloadDriveText(userUpn, f.id);
+      if (excerpt) note.excerpt = excerpt.slice(0, 4000);
+    }
+    fileNotes.push(note);
+  }
+
+  const payload = {
+    meeting: {
+      subject: ev.subject,
+      start: ev.start?.dateTime,
+      end: ev.end?.dateTime,
+      location: ev.location?.displayName,
+      online: !!ev.onlineMeeting,
+      organizer: ev.organizer?.emailAddress,
+      attendees: (ev.attendees || []).map((a) => a.emailAddress).filter(Boolean).slice(0, 15),
+      webLink: ev.webLink,
+    },
+    email_body: bodyText.slice(0, 6000),
+    attachments: attachmentNotes,
+    linked_pages: linkNotes,
+    related_onedrive_files: fileNotes,
+  };
+
+  return chat(PREP_SYSTEM, "ข้อมูลนัดประชุมและเอกสารที่เกี่ยวข้อง:\n" + JSON.stringify(payload, null, 2), {
     temperature: 0.3,
   });
 }
 
-export async function buildForToday(userUpn: string): Promise<string> {
-  const now = nowWall();
-  const events = await getEventsRange(userUpn, wallIso(startOfDay(now)), wallIso(endOfDay(now)));
-  return buildForEvents(userUpn, events, "วันนี้");
-}
+/** Push morning agenda to LINE with numbered quick-replies (prep by index). */
+export async function runForUser(userUpn: string, ready?: MorningAgenda): Promise<string> {
+  const agenda = ready || (await buildMorningAgenda(userUpn));
+  const lineId = await getLineId(userUpn);
+  if (!lineId) throw new Error(`${userUpn} ยังไม่ได้เชื่อมบัญชี LINE`);
 
-/** Build and deliver one user's morning brief via LINE. Returns the brief text. */
-export async function runForUser(userUpn: string): Promise<string> {
-  const text = await buildForToday(userUpn);
-  await sendLine(userUpn, "🌅 Morning Brief วันนี้", text);
-  return text;
+  const header = "🌅 สรุปตารางเช้า";
+  const body = `${header}\n\n${agenda.text}`;
+
+  if (!agenda.choices.length) {
+    await pushLineMessages(lineId, [{ type: "text", text: body.slice(0, 4900) }]);
+    return agenda.text;
+  }
+
+  const items = agenda.choices.slice(0, 12).map((c) => ({
+    type: "action",
+    action: {
+      type: "postback",
+      label: `${c.index}`,
+      data: `a=prep&i=${c.index}`,
+      displayText: `เตรียมนัด ${c.index}) ${c.label}`.slice(0, 60),
+    },
+  }));
+
+  await pushLineMessages(lineId, [
+    {
+      type: "text",
+      text: body.slice(0, 4900),
+      quickReply: { items },
+    },
+  ]);
+  return agenda.text;
 }

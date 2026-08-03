@@ -86,9 +86,24 @@ export type GraphEvent = {
   attendees?: { emailAddress?: { name?: string; address?: string }; type?: string }[];
   onlineMeeting?: { joinUrl?: string } | null;
   bodyPreview?: string;
+  body?: { contentType?: string; content?: string };
+  hasAttachments?: boolean;
   organizer?: { emailAddress?: { name?: string; address?: string } };
   sensitivity?: string;
   showAs?: string;
+  webLink?: string;
+};
+
+export type GraphAttachment = {
+  id?: string;
+  name?: string;
+  contentType?: string;
+  size?: number;
+  isInline?: boolean;
+  contentBytes?: string;
+  contentId?: string;
+  contentLocation?: string;
+  "@odata.type"?: string;
 };
 
 /** Calendar events between two ISO datetimes (calendarView expands recurrences). */
@@ -129,9 +144,42 @@ export async function getTodayEvents(userUpn: string): Promise<GraphEvent[]> {
 export async function getEvent(userUpn: string, eventId: string): Promise<GraphEvent> {
   return graphGet(
     `/users/${encodeURIComponent(userUpn)}/events/${encodeURIComponent(eventId)}`,
-    { $select: "subject,start,end,onlineMeeting,attendees,organizer" },
+    {
+      $select:
+        "id,subject,start,end,location,attendees,onlineMeeting,bodyPreview,body,hasAttachments,organizer,webLink",
+    },
     { Prefer: `outlook.timezone="${TIMEZONE}"` }
   );
+}
+
+/** File / item attachments on a calendar event (includes contentBytes for small fileAttachment). */
+export async function getEventAttachments(userUpn: string, eventId: string): Promise<GraphAttachment[]> {
+  try {
+    const data = await graphGet(
+      `/users/${encodeURIComponent(userUpn)}/events/${encodeURIComponent(eventId)}/attachments`,
+      { $top: "20" }
+    );
+    return (data.value || []) as GraphAttachment[];
+  } catch {
+    return [];
+  }
+}
+
+/** Download a drive file as text (best-effort for .txt/.md/.csv/.html). */
+export async function downloadDriveText(userUpn: string, itemId: string, maxChars = 8000): Promise<string> {
+  try {
+    const r = await graphFetch(`/users/${encodeURIComponent(userUpn)}/drive/items/${encodeURIComponent(itemId)}/content`);
+    if (!r.ok) return "";
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("pdf") || ct.includes("image") || ct.includes("octet-stream")) {
+      // binary — skip full parse
+      if (!ct.includes("text") && !ct.includes("json") && !ct.includes("xml")) return "";
+    }
+    const text = await r.text();
+    return text.replace(/\s+/g, " ").trim().slice(0, maxChars);
+  } catch {
+    return "";
+  }
 }
 
 // ---------------------------------------------------------------------------

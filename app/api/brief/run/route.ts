@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { AuthError, checkCronSecret, requireUser } from "@/lib/auth";
-import { buildForToday } from "@/lib/brief";
+import { buildMorningAgenda, runForUser } from "@/lib/brief";
 import { buildDigest, formatStoriesText } from "@/lib/digest";
 import { sendLine } from "@/lib/line";
+import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { isDueNow, markSent } from "@/lib/notify";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
@@ -14,8 +15,7 @@ async function linkedUsers(): Promise<string[]> {
 }
 
 /**
- * Build news + brief in parallel (so we don't stack delays), then push
- * news first and brief right after — as close as possible to the scheduled time.
+ * Build news + agenda in parallel, push news first then agenda (with prep buttons).
  */
 async function deliverMorningForUser(
   upn: string,
@@ -29,27 +29,24 @@ async function deliverMorningForUser(
   };
   if (!newsDue && !briefDue) return row;
 
-  // Parallel build — wall clock ≈ max(news, brief), not sum
-  const [newsResult, briefResult] = await Promise.all([
+  const [newsResult, agendaResult] = await Promise.all([
     newsDue
       ? buildDigest(upn)
           .then((d) => ({ ok: true as const, d }))
           .catch((e) => ({ ok: false as const, err: String(e).slice(0, 150) }))
       : Promise.resolve(null),
     briefDue
-      ? buildForToday(upn)
-          .then((text) => ({ ok: true as const, text }))
+      ? withDelegatedGraph(upn, () => buildMorningAgenda(upn))
+          .then(({ result }) => ({ ok: true as const, agenda: result }))
           .catch((e) => ({ ok: false as const, err: String(e).slice(0, 150) }))
       : Promise.resolve(null),
   ]);
 
-  // Send news first, then brief — back-to-back once both are ready
   if (newsResult) {
     if (!newsResult.ok) {
       row.news = `ERROR: ${newsResult.err}`;
     } else if (!newsResult.d.stories?.length) {
       row.news = newsResult.d.note || "no stories";
-      // Still mark sent so we don't keep retrying empty digests all day
       await markSent(upn, "news");
     } else {
       await sendLine(upn, "", formatStoriesText(newsResult.d.stories));
@@ -58,23 +55,29 @@ async function deliverMorningForUser(
     }
   }
 
-  if (briefResult) {
-    if (!briefResult.ok) {
-      row.brief = `ERROR: ${briefResult.err}`;
+  if (agendaResult) {
+    if (!agendaResult.ok) {
+      row.brief = `ERROR: ${agendaResult.err}`;
     } else {
-      await sendLine(upn, "🌅 Morning Brief วันนี้", briefResult.text);
-      await markSent(upn, "brief");
-      row.brief = "delivered";
+      try {
+        await runForUser(upn, agendaResult.agenda);
+        await markSent(upn, "brief");
+        row.brief = `delivered agenda (${agendaResult.agenda.events.length})`;
+      } catch (e) {
+        try {
+          await sendLine(upn, "🌅 สรุปตารางเช้า", agendaResult.agenda.text);
+          await markSent(upn, "brief");
+          row.brief = `delivered text-fallback`;
+        } catch {
+          row.brief = `ERROR: ${String(e).slice(0, 150)}`;
+        }
+      }
     }
   }
 
   return row;
 }
 
-// POST/GET — build + deliver morning news + brief.
-// Cron mode (?key=CRON_SECRET): for every linked user due now — parallel build,
-// then push ข่าว → ตาราง back-to-back near the user's set time.
-// User mode (Bearer token): build the caller's brief text only.
 export async function POST(req: Request) {
   return run(req);
 }
@@ -102,8 +105,8 @@ async function run(req: Request) {
       return NextResponse.json({ ok: true, results });
     }
     const upn = await requireUser(req);
-    const text = await buildForToday(upn);
-    return NextResponse.json({ ok: true, brief: text });
+    const { result: agenda } = await withDelegatedGraph(upn, () => buildMorningAgenda(upn));
+    return NextResponse.json({ ok: true, brief: agenda.text, meetings: agenda.events.length });
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
     return NextResponse.json({ error: String(e) }, { status: 500 });

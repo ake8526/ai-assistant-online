@@ -31,6 +31,7 @@ type Choice = {
   date?: string;
   event_id?: string;
   feed_id?: string;
+  index?: number;
   label?: string;
   data?: string;
   lunch?: boolean;
@@ -95,6 +96,12 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
       const p = new URLSearchParams({ a: "rmfeed", id: c.feed_id });
       add(n, p.toString(), `ลบ ${n}) ${c.label || ""}`);
     }
+  } else if (res.intent === "choose_prep" && Array.isArray(res.choices)) {
+    for (const c of res.choices as Choice[]) {
+      if (!c.index) continue;
+      const p = new URLSearchParams({ a: "prep", i: String(c.index) });
+      add(c.index, p.toString(), `เตรียม ${c.index}) ${c.label || ""}`);
+    }
   }
   return items.length ? { items } : null;
 }
@@ -120,6 +127,8 @@ function detailText(res: CommandResult): string {
     lines = (res.choices as Choice[]).filter((c) => c.event_id).map((c, i) => `${i + 1}) ${c.label || ""}`);
   } else if (res.intent === "choose_remove_feed" && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).filter((c) => c.feed_id).map((c, i) => `${i + 1}) ${c.label || ""}`);
+  } else if (res.intent === "choose_prep" && Array.isArray(res.choices)) {
+    lines = (res.choices as Choice[]).map((c, i) => `${c.index || i + 1}) ${c.label || ""}`);
   }
   return lines.length ? "\n\n" + lines.join("\n") : "";
 }
@@ -422,6 +431,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       await handleBookingFlow(upn, act, data, ev.replyToken);
       return;
     }
+    if (act === "prep") void showLineLoading(userId, 60);
     const { result: res } = await withDelegatedGraph(upn, () => handleSelection(upn, data));
     await sendResult(ev.replyToken, res);
     // Remember who this selection was about so text follow-ups continue on them.

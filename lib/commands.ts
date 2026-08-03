@@ -1,7 +1,7 @@
 // Natural-language command handling — ported from morning_brief/commands.py.
 // The web / LINE sends free text; the LLM classifies it into an intent + params
 // and we execute. Booking asks for confirmation first (choose_slot) per requirement.
-import { buildForEvents, buildForToday } from "@/lib/brief";
+import { buildForEvents, buildMorningAgenda, buildMeetingPrep, resolveAgendaEventId } from "@/lib/brief";
 import { buildDigest, formatStoriesText } from "@/lib/digest";
 import { normalizeDue, resolveResponsible } from "@/lib/followup";
 import {
@@ -108,12 +108,13 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
 
 {
-  "intent": "<หนึ่งใน: get_brief | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | unknown>",
+  "intent": "<หนึ่งใน: get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | unknown>",
   "params": { ... }
 }
 
 ความหมายของแต่ละ intent:
-- get_brief = สรุปเตรียมตัว/แนะนำสำหรับนัดวันนี้ (ไม่ใช่การสรุปไฟล์)
+- get_brief = ดูรายการตาราง/นัดวันนี้ (แสดงทั้งหมดแล้วถามว่าอยากให้แนะนำเตรียมตัวนัดไหน) — เช่น "สรุปตารางเช้า", "ตารางวันนี้", "มีนัดอะไรบ้างเช้านี้"
+- prep_meeting = แนะนำเตรียมตัวนัดที่เลือก (อ่านหัวข้อ/รายละเอียดอีเมล/ไฟล์แนบ/ลิงก์) — เช่น "เตรียมนัด 1", "แนะนำประชุม 2", "ช่วยเตรียมตัวนัด Weekly Sync"
 - get_news = สรุปเนื้อหาข่าว/โพสต์จากแหล่งที่ติดตามแล้ว — เช่น "มีข่าวอะไรบ้าง", "สรุปข่าววันนี้", "มีคลิปใหม่อะไรบ้าง" (ห้ามใช้เมื่อผู้ใช้ถามแค่ว่าติดตามแหล่งไหน)
 - list_feeds = ดูรายการแหล่งข่าวที่ติดตาม (Facebook/RSS) — เช่น "ดูแหล่งข่าว", "รายการฟีด", "ติดตามอะไรบ้าง", "ตอนนี้ติดตามข่าวอะไรบ้าง", "ติดตามเพจอะไรบ้าง" (ไม่ใช่การสรุปข่าว)
 - add_feed = เพิ่มแหล่งข่าว Facebook หรือ RSS — เช่น "เพิ่มแหล่งข่าว https://...", "ติดตามเพจ https://facebook.com/...", "เพิ่ม RSS https://... ชื่อ Extreme"
@@ -150,11 +151,17 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - complete_task: { "task_id": <number> }
 - find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "weekday": "mon|tue|… (ถ้าพูดชื่อวัน เช่น วันจันทร์นี้)", "date": "YYYY-MM-DD หรือ 31 (ถ้าเจาะจงวันที่)", "period": "today|tomorrow|week (ถ้าไม่ได้เจาะจงวัน)", "after": "HH:MM (เช้า/บ่าย/เย็น หรือหลัง…)", "before": "HH:MM", "note": "..." }
 - get_brief / get_news / list_tasks / summarize_meetings / list_feeds: {}
+- prep_meeting: { "meeting_index": 1 }  หรือ { "subject": "ชื่อนัดถ้าพิมพ์ชื่อ" }
 - add_feed: { "url": "ลิงก์เพจหรือ RSS", "kind": "rss|facebook (ถ้าชัดเจน)", "label": "ชื่อย่อ (ถ้ามี)" }
 - remove_feed: { "feed_index": 1, "feed_id": null }  (ถ้ายังไม่ระบุหมายเลข ปล่อยว่าง — ระบบจะให้เลือก)
 - edit_feed: { "feed_index": 1, "label": "ชื่อใหม่", "url": "ลิงก์ใหม่ถ้าเปลี่ยน" }
 
 ตัวอย่าง:
+"สรุปตารางเช้า" -> {"intent":"get_brief","params":{}}
+"ตารางวันนี้มีอะไรบ้าง" -> {"intent":"get_brief","params":{}}
+"เตรียมนัด 1" -> {"intent":"prep_meeting","params":{"meeting_index":1}}
+"แนะนำประชุม 2" -> {"intent":"prep_meeting","params":{"meeting_index":2}}
+"ช่วยเตรียมตัวนัด Weekly Sync" -> {"intent":"prep_meeting","params":{"subject":"Weekly Sync"}}
 "ดูแหล่งข่าว" -> {"intent":"list_feeds","params":{}}
 "รายการฟีดที่ติดตาม" -> {"intent":"list_feeds","params":{}}
 "ตอนนี้ติดตามข่าวอะไรบ้าง" -> {"intent":"list_feeds","params":{}}
@@ -287,6 +294,14 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   // Summarize stories (slow path) — keep explicit
   if (/^(มี)?ข่าวอะไรบ้าง|สรุปข่าว(วันนี้|ล่าสุด)?|มีคลิปใหม่อะไรบ้าง/i.test(t)) {
     return { intent: "get_news", params: {} };
+  }
+
+  // Prep a numbered meeting from today's agenda
+  const prep = t.match(/^(?:เตรียม|แนะนำ|ช่วยเตรียม)(?:ตัว)?(?:นัด|ประชุม)?\s*(?:หมายเลข|ที่|#)?\s*(\d+)\s*$/i);
+  if (prep) return { intent: "prep_meeting", params: { meeting_index: Number(prep[1]) } };
+
+  if (/สรุปตาราง|ตารางเช้า|ตารางวันนี้|นัดวันนี้มีอะไร/i.test(t) && !/ข่าว/.test(t)) {
+    return { intent: "get_brief", params: {} };
   }
 
   // List followed sources — "ตอนนี้ติดตามข่าวอะไรบ้าง" must NOT go to get_news
@@ -921,6 +936,13 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
       const name = (row.label || "").trim() || row.ref;
       return { intent: "feed_removed", reply: `✅ ลบแหล่งข่าวแล้ว: ${name}` };
     }
+    if (a === "prep") {
+      const idx = Number(data.get("i") || "");
+      const eventId = data.get("id") || (idx ? await resolveAgendaEventId(userUpn, idx) : null);
+      if (!eventId) return { intent: "error", reply: "ไม่พบนัดที่เลือก — พิมพ์ “สรุปตารางเช้า” เพื่อดูรายการใหม่ครับ" };
+      const reply = await buildMeetingPrep(userUpn, eventId);
+      return { intent: "meeting_prep", reply };
+    }
   } catch (e) {
     return { intent: "error", reply: `⚠️ ทำรายการไม่สำเร็จ: ${String(e).slice(0, 150)}` };
   }
@@ -994,14 +1016,42 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   }
 
   if (intent === "get_brief") {
-    if (lite) {
-      const { start, end } = periodRange("today");
+    const denied = needCalendarConsent();
+    if (denied) return denied;
+    const agenda = await buildMorningAgenda(userUpn);
+    if (!agenda.choices.length) return { intent, reply: agenda.text };
+    return {
+      intent: "choose_prep",
+      reply: agenda.text,
+      choices: agenda.choices.map((c) => ({
+        index: c.index,
+        event_id: c.event_id,
+        label: c.label,
+      })),
+    };
+  }
+
+  if (intent === "prep_meeting") {
+    const denied = needCalendarConsent();
+    if (denied) return denied;
+    const idx = Number(params.meeting_index ?? params.index ?? 0);
+    let eventId = idx ? await resolveAgendaEventId(userUpn, idx) : null;
+    if (!eventId && params.subject) {
+      const agenda = await buildMorningAgenda(userUpn);
+      const q = String(params.subject).toLowerCase();
+      const hit = agenda.events.find((e) => (e.subject || "").toLowerCase().includes(q));
+      eventId = hit?.id || null;
+    }
+    if (!eventId) {
+      const agenda = await buildMorningAgenda(userUpn);
       return {
-        intent,
-        reply: formatEventsSimple(await getEventsRange(userUpn, wallIso(start), wallIso(end)), "วันนี้"),
+        intent: "choose_prep",
+        reply: "บอกหมายเลขนัดด้วยครับ เช่น “เตรียมนัด 1”\n\n" + agenda.text,
+        choices: agenda.choices.map((c) => ({ index: c.index, event_id: c.event_id, label: c.label })),
       };
     }
-    return { intent, reply: await buildForToday(userUpn) };
+    const reply = await buildMeetingPrep(userUpn, eventId);
+    return { intent: "meeting_prep", reply };
   }
 
   if (intent === "get_news") {
@@ -1442,11 +1492,9 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     intent: "unknown",
     reply:
       "ยังไม่เข้าใจคำสั่งนี้ ลองพิมพ์ใหม่อีกครั้งได้ไหมครับ\n\n" +
-      "เกี่ยวกับแหล่งข่าว:\n" +
-      "• ดูแหล่งข่าว\n" +
-      "• เพิ่มแหล่งข่าว https://...\n" +
-      "• ลบแหล่งข่าว\n" +
-      "• แก้ชื่อแหล่งข่าว 1 เป็น ...\n" +
-      "• มีข่าวอะไรบ้าง",
+      "เกี่ยวกับตาราง/ข่าว:\n" +
+      "• สรุปตารางเช้า\n" +
+      "• เตรียมนัด 1\n" +
+      "• ดูแหล่งข่าว / มีข่าวอะไรบ้าง",
   };
 }

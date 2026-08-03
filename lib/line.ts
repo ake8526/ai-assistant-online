@@ -40,6 +40,11 @@ export async function pushLineToId(lineUserId: string, text: string): Promise<vo
   await linePost(PUSH_URL, { to: lineUserId, messages });
 }
 
+/** Push arbitrary message objects (text + quickReply, flex, …). */
+export async function pushLineMessages(lineUserId: string, messages: object[]): Promise<void> {
+  await linePost(PUSH_URL, { to: lineUserId, messages: messages.slice(0, 5) });
+}
+
 /** Reply via replyToken (free — no push quota). Tokens are single-use, short-lived. */
 export async function replyLine(replyToken: string, text: string): Promise<void> {
   const messages = chunk(text).slice(0, 5).map((c) => ({ type: "text", text: c }));

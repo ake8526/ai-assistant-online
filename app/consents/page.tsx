@@ -577,7 +577,7 @@ function ConsentsContent() {
               <NotifyCard
                 icon={<CalendarClock className="w-5 h-5 text-slate-950" />} color="bg-amber-400"
                 title="สรุปตารางเช้า (Morning Brief)"
-                hint="นัดหมาย/งานของวันนี้ · นัดใหม่แจ้ง LINE แยกต่างหากอัตโนมัติ"
+                hint="รายการนัดวันนี้ + กดเลือกนัดให้ AI แนะนำเตรียมตัว"
                 cfg={notify.brief} disabled={busy}
                 onChange={(patch) => saveNotify("brief", patch)}
               />
