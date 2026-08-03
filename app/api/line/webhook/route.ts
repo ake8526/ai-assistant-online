@@ -76,7 +76,9 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
   // body) so the full name/time is always readable above; the postback carries
   // the real selection data.
   const add = (num: number, data: string, displayText: string) => {
-    if (data.length > 300 || items.length >= 12) return;
+    // LINE postback data max 300 chars — skip oversized payloads (would fail silently at send)
+    if (items.length >= 12) return;
+    if (data.length > 300) return;
     items.push({ type: "action", action: { type: "postback", label: `${num}`, data, displayText: truncate(displayText, 60) } });
   };
 

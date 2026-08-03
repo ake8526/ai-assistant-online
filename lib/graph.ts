@@ -263,8 +263,8 @@ async function lookupUserByMail(mailOrUpn: string): Promise<UserInfo | null> {
     if (r.ok) {
       const data = await r.json();
       const mail = (data.mail || data.userPrincipalName || raw).trim();
-      const displayName = (data.displayName || "").trim() || mail;
-      return finish({ mail, displayName });
+      const displayName = (data.displayName || "").trim();
+      return finish({ mail, displayName: displayName || mail });
     }
     // Fallback: filter by mail / UPN
     const esc = raw.replace(/'/g, "''");
@@ -277,8 +277,8 @@ async function lookupUserByMail(mailOrUpn: string): Promise<UserInfo | null> {
       const row = (data.value || [])[0];
       if (row) {
         const mail = (row.mail || row.userPrincipalName || raw).trim();
-        const displayName = (row.displayName || "").trim() || mail;
-        return finish({ mail, displayName });
+        const displayName = (row.displayName || "").trim();
+        return finish({ mail, displayName: displayName || mail });
       }
     }
   } catch {

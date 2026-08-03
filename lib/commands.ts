@@ -4,6 +4,7 @@
 import { buildForEvents, buildMorningAgenda, buildMeetingPrep, resolveAgendaEventId } from "@/lib/brief";
 import { buildDigest, formatStoriesText, rememberDeliveredStories } from "@/lib/digest";
 import { normalizeDue, resolveResponsible } from "@/lib/followup";
+import { createHash } from "crypto";
 import {
   GraphEvent,
   UserInfo,
@@ -28,10 +29,12 @@ import {
   addTask,
   deletePlace,
   getPrimaryPlace,
+  getSetting,
   incrementVisit,
   listPlaces,
   listTasks,
   allSettings,
+  setSetting,
   updateTaskStatus,
 } from "@/lib/store";
 import {
@@ -1100,23 +1103,13 @@ function encodeMtData(
   band?: { after: number | null; before: number | null } | null,
   includeLunch = false,
   atMin?: number | null,
-  subject?: string
+  subject?: string,
+  dnRef?: string
 ): string {
-  const at = attendees
-    .map((a) => {
-      if (a.mail) {
-        const dn = (a.name || "").trim();
-        if (dn && !dn.includes("@") && dn.toLowerCase() !== a.mail.toLowerCase()) {
-          // Keep name in postback (URLSearchParams encodes UTF-8). Avoid ~ and | separators.
-          const safe = dn.slice(0, 48).replace(/[~|]/g, " ").trim();
-          return `m:${a.mail}~${safe}`;
-        }
-        return `m:${a.mail}`;
-      }
-      return `n:${a.name || ""}`;
-    })
-    .join("|");
+  // Mails only — Thai display names URL-encode past LINE's 300-char postback limit
+  const at = attendees.map((a) => (a.mail ? `m:${a.mail}` : `n:${a.name || ""}`)).join("|");
   const q = new URLSearchParams({ a: "findmt", d: String(duration), at });
+  if (dnRef) q.set("dn", dnRef);
   if (window) {
     q.set("ws", wallIso(window.start));
     q.set("we", wallIso(window.end));
@@ -1130,6 +1123,36 @@ function encodeMtData(
   return q.toString();
 }
 
+/** Persist mail→displayName so LINE postback stays under 300 chars. */
+async function stashMtDisplayNames(ownerUpn: string, attendees: MtAttendee[]): Promise<string | undefined> {
+  const map: Record<string, string> = {};
+  for (const a of attendees) {
+    const mail = (a.mail || "").toLowerCase();
+    const dn = (a.name || "").trim();
+    if (!mail || !dn || dn.includes("@") || dn.toLowerCase() === mail) continue;
+    map[mail] = dn;
+  }
+  if (!Object.keys(map).length) return undefined;
+  const id = createHash("sha1")
+    .update(`${ownerUpn}|${Date.now()}|${JSON.stringify(map)}`)
+    .digest("hex")
+    .slice(0, 10);
+  await setSetting(ownerUpn, `mt_dn_${id}`, JSON.stringify(map));
+  return id;
+}
+
+async function loadMtDisplayNames(ownerUpn: string, dnRef: string): Promise<Record<string, string>> {
+  if (!dnRef) return {};
+  try {
+    const raw = await getSetting(ownerUpn, `mt_dn_${dnRef}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export function decodeMtAttendees(data: URLSearchParams): {
   attendees: MtAttendee[];
   duration: number;
@@ -1139,6 +1162,7 @@ export function decodeMtAttendees(data: URLSearchParams): {
   atMin: number | null;
   subject: string;
   includeLunch: boolean;
+  dnRef: string;
 } {
   const attendees = (data.get("at") || "")
     .split("|")
@@ -1170,6 +1194,7 @@ export function decodeMtAttendees(data: URLSearchParams): {
     atMin: tm != null && tm !== "" ? Number(tm) : null,
     subject: data.get("subj") || "ประชุม",
     includeLunch: data.get("ln") === "1",
+    dnRef: data.get("dn") || "",
   };
 }
 
@@ -1195,14 +1220,16 @@ export async function runFindMeeting(
       a.mail = cands[0].mail;
       a.name = cands[0].displayName || a.name;
     } else if (cands.length > 1) {
-      const choices = cands.slice(0, 10).map((c) => {
+      const choices = [];
+      for (const c of cands.slice(0, 10)) {
         const next = attendees.map((x, j) => (j === i ? { mail: c.mail, name: c.displayName } : x));
-        return {
+        const dnRef = await stashMtDisplayNames(userUpn, next);
+        choices.push({
           mail: c.mail,
           displayName: c.displayName || c.mail,
-          data: encodeMtData(next, duration, window, band, includeLunch, atMin, subject),
-        };
-      });
+          data: encodeMtData(next, duration, window, band, includeLunch, atMin, subject, dnRef),
+        });
+      }
       const dayNote = window ? ` (${window.label})` : "";
       return { intent: "choose_mt_person", reply: `เจอหลายคนที่ตรงกับ “${a.name}” เลือกคนที่ต้องการดูตารางครับ${dayNote} 👇`, choices };
     }
@@ -1383,10 +1410,11 @@ export async function runFindMeeting(
 async function formatAttendeeLines(attendees: MtAttendee[]): Promise<string> {
   const lines: string[] = [];
   for (const a of attendees) {
-    const mail = (a.mail || "").toLowerCase();
+    const mail = (a.mail || "").trim().toLowerCase();
     if (!mail) continue;
     let name = (a.name || "").trim();
-    if (!name || name.toLowerCase() === mail || name.includes("@")) {
+    const nameIsMail = !name || name.toLowerCase() === mail || name.includes("@");
+    if (nameIsMail) {
       try {
         const info = await resolveUserInfo(mail);
         const dn = (info?.displayName || "").trim();
@@ -1396,7 +1424,12 @@ async function formatAttendeeLines(attendees: MtAttendee[]): Promise<string> {
         name = "";
       }
     }
-    lines.push(name ? `${name} · ${mail}` : mail);
+    // Never render "email · email"
+    if (!name || name.toLowerCase() === mail || name.includes("@")) {
+      lines.push(mail);
+    } else {
+      lines.push(`${name} · ${mail}`);
+    }
   }
   return lines.join("\n👤 ") || "(ไม่ระบุ)";
 }
@@ -1463,7 +1496,14 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
       return { intent: "cancelled", reply: "✅ ยกเลิกนัดแล้วครับ" };
     }
     if (a === "findmt") {
-      const { attendees, duration, window, after, before, atMin, subject, includeLunch } = decodeMtAttendees(data);
+      const { attendees, duration, window, after, before, atMin, subject, includeLunch, dnRef } = decodeMtAttendees(data);
+      if (dnRef) {
+        const map = await loadMtDisplayNames(userUpn, dnRef);
+        for (const att of attendees) {
+          const m = (att.mail || "").toLowerCase();
+          if (m && map[m]) att.name = map[m];
+        }
+      }
       const band =
         after != null || before != null
           ? { after, before, label: after != null && after >= 16 * 60 ? "ช่วงเย็น" : undefined }
