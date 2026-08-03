@@ -1159,13 +1159,18 @@ function timeBandFromText(text: string): { after: number | null; before: number 
 }
 
 function isTimeFollowUp(text: string): boolean {
-  const t = text.trim();
+  const t = text.trim().replace(/\s+/g, " ");
+  if (!t) return false;
   if (personFromText(t)) return false;
-  if (dayHintFromText(t)) return false; // new day → not just a band follow-up
-  return !!(
-    timeBandFromText(t) ||
-    /^(?:แล้ว)?(?:ช่วง|ตอน)?(?:เช้า|สาย|บ่าย|เย็น|ค่ำ)/.test(t) ||
-    /ว่าง(?:ไหม|มั้ย|รึเปล่า|หรือเปล่า|บ้าง)?$/.test(t)
+  if (dayHintFromText(t)) return false;
+  // “ดูประชุมเช้านี้ / นัดเช้า / ตารางวันนี้” = list meetings, NOT a band follow-up
+  if (/^(ดู|ขอดู|เช็ค|เช็ก)?(ประชุม|นัด|ตาราง)/.test(t)) return false;
+  if (/มี(นัด|ประชุม)|รายการ(นัด|ประชุม)/.test(t)) return false;
+  // Only short follow-ups after multi-person search: “แล้วบ่ายล่ะ”, “เช้าว่างไหม”
+  return (
+    /^(?:แล้ว)?(?:ช่วง|ตอน)?(?:เช้า|สาย|บ่าย|เย็น|ค่ำ)(?:\s*ว่าง)?(?:ไหม|มั้ย|ล่ะ|ละ|รึเปล่า|หรือเปล่า)?[!?.…]*$/i.test(
+      t
+    ) || /^(?:แล้ว)?ว่าง(?:ไหม|มั้ย|รึเปล่า|หรือเปล่า|บ้าง)?[!?.…]*$/i.test(t)
   );
 }
 
@@ -1615,6 +1620,16 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
 }
 
 async function handle(userUpn: string, text: string, context?: CommandContext, lite = false): Promise<CommandResult> {
+  // Instant calendar list shortcuts BEFORE follow-up heuristics / LLM
+  // (prevents “ดูประชุมเช้านี้” being eaten by last_meeting time-band follow-up)
+  {
+    const quick = quickFeedIntent(text);
+    if (quick?.intent === "list_meetings" || quick?.intent === "get_brief") {
+      trace("parse", `intent=${quick.intent} (quick)`);
+      return await handleParsed(userUpn, text, context, lite, quick.intent, quick.params);
+    }
+  }
+
   // if the user has a selected time slot, try to act on it first
   if (context?.selected) {
     const booked = await bookFromContext(userUpn, text, context.selected);
@@ -1638,7 +1653,17 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   trace("parse", "แยกเจตนา (intent)", "start");
   const { intent, params } = await parseIntent(text, context);
   trace("parse", `intent=${intent}`);
+  return await handleParsed(userUpn, text, context, lite, intent, params);
+}
 
+async function handleParsed(
+  userUpn: string,
+  text: string,
+  context: CommandContext | undefined,
+  lite: boolean,
+  intent: string,
+  params: Record<string, unknown>
+): Promise<CommandResult> {
   if (intent === "clear_memory") {
     return {
       intent: "clear_memory",

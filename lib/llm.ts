@@ -132,11 +132,17 @@ async function callProvider(
 /** User-facing Thai message — never leak provider JSON / org ids. */
 export function llmUserErrorMessage(err: unknown): string {
   const s = String(err || "");
-  if (/429|rate limit|All LLM providers failed/i.test(s)) {
+  if (/All LLM providers failed|groq 429|qwen 429|gemini 429|rate limit.*(?:groq|qwen|gemini|llama|model)/i.test(s)) {
     return "ระบบตอบคำถามหนาแน่นชั่วคราว ลองใหม่อีกสักครู่ครับ";
+  }
+  if (/Graph\s*429|MailboxConcurrency|ApplicationThrottled|TooManyRequests/i.test(s)) {
+    return "Microsoft 365 หนาแน่นชั่วคราว ลองใหม่อีกสักครู่ครับ";
   }
   if (/No LLM provider configured/i.test(s)) {
     return "ระบบ AI ยังไม่พร้อม ติดต่อแอดมินได้ครับ";
+  }
+  if (/need_calendar_consent|calendar consent|ไม่ได้รับอนุญาตปฏิทิน/i.test(s)) {
+    return "ยังไม่ได้เชื่อมปฏิทิน Microsoft 365 — กดอนุญาตปฏิทินก่อนนะครับ";
   }
   return "เกิดข้อผิดพลาดชั่วคราว ลองใหม่อีกครั้งครับ";
 }
