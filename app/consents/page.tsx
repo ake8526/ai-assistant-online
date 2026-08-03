@@ -5,7 +5,7 @@ import Link from "next/link";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import {
   ArrowLeft, Youtube, Facebook, Rss, Plus, Trash2, Unlink, AlertTriangle,
-  CalendarClock, Newspaper, Clock, LogIn, KeyRound, Globe,
+  CalendarClock, Newspaper, Clock, LogIn, Globe,
 } from "lucide-react";
 
 type YtState = { linked: boolean; email: string | null; name: string | null; channel: string | null };
@@ -15,11 +15,6 @@ type NotifyCfg = { brief: NotifyKindCfg; news: NotifyKindCfg };
 type NewsDataCfg = {
   configured: boolean;
   enabled: boolean;
-  maskedKey: string;
-  languages: string;
-  countries: string;
-  keywords: string;
-  categories: string;
 };
 type PreviewItem = { title: string; link: string; published: string; summary: string };
 type PreviewState = {
@@ -160,7 +155,6 @@ function ConsentsContent() {
   const [notify, setNotify] = useState<NotifyCfg | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [nd, setNd] = useState<NewsDataCfg | null>(null);
-  const [ndKeyInput, setNdKeyInput] = useState("");
   const [ndMsg, setNdMsg] = useState("");
 
   const ytSubtitle = (() => {
@@ -212,13 +206,7 @@ function ConsentsContent() {
         setNd({
           configured: !!ndc.configured,
           enabled: !!ndc.enabled,
-          maskedKey: ndc.maskedKey || "",
-          languages: ndc.languages || "th",
-          countries: ndc.countries || "th",
-          keywords: ndc.keywords || "",
-          categories: ndc.categories || "",
         });
-        setNdKeyInput("");
       }
       setMsg("");
       setNeedReauth(false);
@@ -376,28 +364,14 @@ function ConsentsContent() {
     setBusy(false);
   };
 
-  const saveNewsData = async (patch: Partial<{
-    api_key: string;
-    enabled: boolean;
-    languages: string;
-    countries: string;
-    keywords: string;
-    categories: string;
-    clear: boolean;
-  }>) => {
+  const saveNewsData = async (patch: Partial<{ enabled: boolean }>) => {
     setBusy(true);
     setNdMsg("");
     try {
       const headers = await authHeaders();
       if (!headers) throw new Error("กรุณาเข้าสู่ระบบก่อน");
       const body: Record<string, unknown> = {};
-      if (patch.clear) body.api_key = "__clear__";
-      else if (typeof patch.api_key === "string" && patch.api_key.trim()) body.api_key = patch.api_key.trim();
       if (typeof patch.enabled === "boolean") body.enabled = patch.enabled;
-      if (typeof patch.languages === "string") body.languages = patch.languages;
-      if (typeof patch.countries === "string") body.countries = patch.countries;
-      if (typeof patch.keywords === "string") body.keywords = patch.keywords;
-      if (typeof patch.categories === "string") body.categories = patch.categories;
       const res = await fetch("/api/newsdata", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
@@ -408,14 +382,8 @@ function ConsentsContent() {
       setNd({
         configured: !!data.configured,
         enabled: !!data.enabled,
-        maskedKey: data.maskedKey || "",
-        languages: data.languages || "th",
-        countries: data.countries || "th",
-        keywords: data.keywords || "",
-        categories: data.categories || "",
       });
-      setNdKeyInput("");
-      setNdMsg(patch.clear ? "ลบ API key แล้ว" : "✅ บันทึก NewsData.io แล้ว");
+      setNdMsg(data.enabled ? "✅ เปิด NewsData แล้ว" : "ปิด NewsData แล้ว");
     } catch (e) {
       setNdMsg("บันทึกไม่สำเร็จ: " + (e as Error).message);
     }
@@ -504,18 +472,20 @@ function ConsentsContent() {
             </div>
           )}
 
-          {/* NewsData.io */}
-          <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-3">
+          {/* NewsData.io — server env only; no user-facing key/filters */}
+          <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-2">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 shrink-0 rounded-lg bg-violet-500 flex items-center justify-center">
                 <Globe className="w-5 h-5 text-slate-950" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-slate-100">NewsData.io — ข่าว (รองรับภาษาไทย)</div>
+                <div className="text-sm font-semibold text-slate-100">NewsData.io — ข่าวไทย</div>
                 <div className="text-[11px] text-slate-400 mt-0.5">
                   {nd?.configured
-                    ? `API key: ${nd.maskedKey}${nd.enabled ? " · เปิดใช้" : " · ปิดอยู่"}`
-                    : "ใส่ API key จาก newsdata.io เพื่อดึงข่าวไทยมาสรุป"}
+                    ? nd.enabled
+                      ? "ดึงข่าวจาก NewsData อัตโนมัติ (ภาษา th) · เปิดใช้"
+                      : "พร้อมใช้งาน · ปิดอยู่ — กดสวิตช์เพื่อเปิด"
+                    : "รอตั้งค่าเซิร์ฟเวอร์ — ยังไม่ดึงข่าว NewsData"}
                 </div>
               </div>
               {nd && (
@@ -530,89 +500,6 @@ function ConsentsContent() {
                 </button>
               )}
             </div>
-
-            <p className="text-[11px] text-slate-500 leading-relaxed">
-              สมัครฟรีที่{" "}
-              <a href="https://newsdata.io/" target="_blank" rel="noreferrer" className="text-sky-400 underline">
-                newsdata.io
-              </a>
-              {" "}แล้ววาง API key ด้านล่าง — ค่าเริ่มต้นภาษา <b>th</b> / ประเทศ <b>th</b> รองรับข่าวไทย
-            </p>
-
-            <div className="space-y-2">
-              <label className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                <KeyRound className="w-3.5 h-3.5" /> API key
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  autoComplete="off"
-                  value={ndKeyInput}
-                  onChange={(e) => setNdKeyInput(e.target.value)}
-                  placeholder={nd?.configured ? `คีย์เดิม ${nd.maskedKey} — วางคีย์ใหม่เพื่อเปลี่ยน` : "วาง apikey จาก NewsData.io"}
-                  className="flex-1 text-xs px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-violet-500"
-                />
-                <button
-                  onClick={() => saveNewsData({ api_key: ndKeyInput })}
-                  disabled={busy || !ndKeyInput.trim()}
-                  className="shrink-0 text-xs font-semibold px-4 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50"
-                >
-                  บันทึก
-                </button>
-              </div>
-              {nd?.configured && (
-                <button
-                  onClick={() => saveNewsData({ clear: true, enabled: false })}
-                  disabled={busy}
-                  className="text-[11px] text-rose-300 hover:text-rose-200 underline"
-                >
-                  ลบ API key
-                </button>
-              )}
-            </div>
-
-            {nd && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                <div>
-                  <span className="text-[10px] text-slate-500">ภาษา (เช่น th หรือ th,en)</span>
-                  <input
-                    value={nd.languages}
-                    onChange={(e) => setNd({ ...nd, languages: e.target.value })}
-                    onBlur={() => saveNewsData({ languages: nd.languages })}
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:border-violet-500"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500">ประเทศ (เช่น th)</span>
-                  <input
-                    value={nd.countries}
-                    onChange={(e) => setNd({ ...nd, countries: e.target.value })}
-                    onBlur={() => saveNewsData({ countries: nd.countries })}
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:border-violet-500"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <span className="text-[10px] text-slate-500">คำค้น (ไม่บังคับ)</span>
-                  <input
-                    value={nd.keywords}
-                    onChange={(e) => setNd({ ...nd, keywords: e.target.value })}
-                    onBlur={() => saveNewsData({ keywords: nd.keywords })}
-                    placeholder="เช่น เศรษฐกิจ, AI, พลังงาน"
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-violet-500"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <span className="text-[10px] text-slate-500">หมวด (ไม่บังคับ: business,technology,politics,…)</span>
-                  <input
-                    value={nd.categories}
-                    onChange={(e) => setNd({ ...nd, categories: e.target.value })}
-                    onBlur={() => saveNewsData({ categories: nd.categories })}
-                    placeholder="ว่าง = ทุกหมวด"
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-violet-500"
-                  />
-                </div>
-              </div>
-            )}
             {ndMsg && <p className="text-[11px] text-violet-300">{ndMsg}</p>}
           </div>
 

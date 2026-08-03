@@ -9,7 +9,6 @@ import { chat } from "@/lib/llm";
 import { getNewsCount, isNewsCountAll, NEWS_COUNT_ALL_CAP } from "@/lib/notify";
 import { nowWall, TZ_OFFSET_MIN } from "@/lib/time";
 import { getSetting } from "@/lib/store";
-import { fetchNewsDataNews } from "@/lib/newsdata";
 import * as youtube from "@/lib/youtube";
 
 export interface Story {
@@ -123,33 +122,32 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     }
   }
 
-  // 2c) NewsData.io — Thai-friendly news API when the user saved an access key
+  // 2c) NewsData.io — Thai-friendly news API (API key from server env)
   {
-    const [ndKey, ndEn] = await Promise.all([
-      getSetting(upn, "newsdata_api_key"),
-      getSetting(upn, "newsdata_enabled"),
-    ]);
-    const ndOn = ndEn === null ? !!ndKey?.trim() : ndEn === "1";
-    if (ndOn && ndKey?.trim()) {
-      try {
-        const [languages, countries, keywords, categories] = await Promise.all([
-          getSetting(upn, "newsdata_languages"),
-          getSetting(upn, "newsdata_countries"),
-          getSetting(upn, "newsdata_keywords"),
-          getSetting(upn, "newsdata_categories"),
-        ]);
-        const entries = await fetchNewsDataNews({
-          accessKey: ndKey,
-          languages: languages || "th",
-          countries: countries || "th",
-          keywords: keywords || undefined,
-          categories: categories || undefined,
-          limit: 10,
-        });
-        if (!entries.length) skipped.push("NewsData (ไม่มีข่าวในช่วงนี้)");
-        entries.forEach((e) => items.push({ ...e, kind: "newsdata", feedLabel: e.source }));
-      } catch (e) {
-        skipped.push(`NewsData (${String(e).slice(0, 80)})`);
+    const { isNewsDataConfigured, fetchNewsDataNews } = await import("@/lib/newsdata");
+    if (isNewsDataConfigured()) {
+      const ndEn = await getSetting(upn, "newsdata_enabled");
+      const ndOn = ndEn === null ? true : ndEn === "1";
+      if (ndOn) {
+        try {
+          const [languages, countries, keywords, categories] = await Promise.all([
+            getSetting(upn, "newsdata_languages"),
+            getSetting(upn, "newsdata_countries"),
+            getSetting(upn, "newsdata_keywords"),
+            getSetting(upn, "newsdata_categories"),
+          ]);
+          const entries = await fetchNewsDataNews({
+            languages: languages || undefined,
+            countries: countries || undefined,
+            keywords: keywords || undefined,
+            categories: categories || undefined,
+            limit: 10,
+          });
+          if (!entries.length) skipped.push("NewsData (ไม่มีข่าวในช่วงนี้)");
+          entries.forEach((e) => items.push({ ...e, kind: "newsdata", feedLabel: e.source }));
+        } catch (e) {
+          skipped.push(`NewsData (${String(e).slice(0, 80)})`);
+        }
       }
     }
   }
