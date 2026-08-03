@@ -31,6 +31,12 @@ async function run(req: Request) {
           results[upn] = note || "no stories";
           continue;
         }
+        // seed_seen=1 — remember current batch as already delivered (no LINE push)
+        if (new URL(req.url).searchParams.get("seed_seen") === "1") {
+          await rememberDeliveredStories(upn, stories);
+          results[upn] = `seeded ${stories.length} seen (no push)`;
+          continue;
+        }
         await sendLine(upn, "", formatStoriesText(stories));
         await rememberDeliveredStories(upn, stories);
         await markSent(upn, "news");
