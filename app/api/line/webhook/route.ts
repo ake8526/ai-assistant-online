@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { handleCommand, handleSelection, type CommandContext, type CommandResult } from "@/lib/commands";
 import { getUpnByLineId, replyLine, replyLineMessages, showLineLoading, pushLineToId } from "@/lib/line";
+import {
+  handleNewsOnboardingPostback,
+  handleNewsOnboardingText,
+  isNewsOnboardingAction,
+  startNewsOnboarding,
+} from "@/lib/newsOnboarding";
+import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
@@ -392,13 +399,32 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     void showLineLoading(userId, 60);
     // A pending booking draft awaiting subject/attendee input takes priority.
     if (await handleDraftInput(upn, text, ev.replyToken)) return;
+    // News onboarding (custom topic text / resume)
+    if (await handleNewsOnboardingText(upn, text, ev.replyToken)) return;
+    if (/^(ตั้งค่าข่าว|ตั้งค่าติดตามข่าว|เริ่มติดตามข่าว)$/i.test(text)) {
+      await startNewsOnboarding(upn, "reply", ev.replyToken);
+      return;
+    }
+    // First-time linked user → news onboarding before normal chat
+    {
+      const prefs = await getNewsPrefs(upn);
+      if (!prefs.onboardingDone) {
+        const draft = await loadNewsDraft(upn);
+        if (!draft) {
+          await startNewsOnboarding(upn, "reply", ev.replyToken);
+          return;
+        }
+        // Still mid-flow — nudge them back to the current step
+        await startNewsOnboarding(upn, "reply", ev.replyToken);
+        return;
+      }
+    }
     // Otherwise run the assistant (lite mode: no slow per-meeting enrichment)
     const ctx = await loadCtx(upn);
     const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
     try {
       await sendResult(ev.replyToken, res);
     } catch (replyErr) {
-      // Token expired / already used — still deliver via push so the user isn't left hanging.
       console.warn("[line] reply failed, pushing:", String(replyErr).slice(0, 120));
       await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
     }
@@ -429,6 +455,10 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     // Booking confirmation flow (tap slot → draft → confirm) is handled here.
     if (BOOKING_ACTIONS.has(act)) {
       await handleBookingFlow(upn, act, data, ev.replyToken);
+      return;
+    }
+    if (isNewsOnboardingAction(act)) {
+      await handleNewsOnboardingPostback(upn, data, ev.replyToken);
       return;
     }
     if (act === "prep") void showLineLoading(userId, 60);

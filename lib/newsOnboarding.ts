@@ -1,0 +1,232 @@
+// LINE news onboarding: ask → pick topics → set daily count.
+import { clampNewsCount, saveNotifyKind } from "@/lib/notify";
+import {
+  NEWS_TOPIC_PRESETS,
+  clearNewsDraft,
+  loadNewsDraft,
+  presetById,
+  saveNewsDraft,
+  setNewsInterested,
+  setNewsOnboardingDone,
+  setNewsTopics,
+} from "@/lib/newsPrefs";
+import { getLineId, pushLineMessages, replyLine, replyLineMessages } from "@/lib/line";
+
+function qr(items: { label: string; data: string; displayText?: string }[]) {
+  return {
+    items: items.slice(0, 13).map((it) => ({
+      type: "action",
+      action: {
+        type: "postback",
+        label: it.label.slice(0, 20),
+        data: it.data,
+        displayText: (it.displayText || it.label).slice(0, 60),
+      },
+    })),
+  };
+}
+
+export function askInterestedMessage(): object {
+  return {
+    type: "text",
+    text:
+      "ยินดีต้อนรับครับ 👋\n\n" +
+      "ก่อนเริ่มใช้งาน ขอถามสั้น ๆ:\n" +
+      "คุณต้องการให้ช่วยติดตามและสรุปข่าวสารเข้า LINE ไหมครับ?",
+    quickReply: qr([
+      { label: "✅ ใช่ อยากติดตาม", data: "a=newsyes", displayText: "ใช่ อยากติดตามข่าว" },
+      { label: "❌ ไม่เอาตอนนี้", data: "a=newsno", displayText: "ไม่ติดตามข่าวตอนนี้" },
+    ]),
+  };
+}
+
+function topicsPrompt(selected: string[]): object {
+  const picked = selected.length
+    ? `\n\nเลือกแล้ว: ${selected.join(", ")}`
+    : "\n\nยังไม่ได้เลือกหัวข้อ";
+  const lines = NEWS_TOPIC_PRESETS.map((p, i) => `${i + 1}) ${p.label}`).join("\n");
+  return {
+    type: "text",
+    text:
+      "เลือกหัวข้อข่าวที่สนใจได้เลยครับ (กดปุ่มด้านล่างได้หลายอัน)\n" +
+      "หรือพิมพ์หัวข้อเอง เช่น “เซมิคอนดักเตอร์”, “หุ้นไทย”\n\n" +
+      lines +
+      picked +
+      "\n\nเมื่อครบแล้วกด “เสร็จแล้ว” ได้ครับ",
+    quickReply: qr([
+      ...NEWS_TOPIC_PRESETS.slice(0, 9).map((p) => ({
+        label: p.label,
+        data: `a=newstopic&t=${p.id}`,
+        displayText: `สนใจ ${p.label}`,
+      })),
+      { label: "✅ เสร็จแล้ว", data: "a=newstopicsdone", displayText: "เลือกหัวข้อเสร็จแล้ว" },
+      { label: "✏️ พิมพ์หัวข้อเอง", data: "a=newscustom", displayText: "พิมพ์หัวข้อเอง" },
+    ]),
+  };
+}
+
+function countPrompt(): object {
+  return {
+    type: "text",
+    text:
+      "ต้องการให้อัปเดตข่าววันละกี่เรื่องครับ?\n\n" +
+      "• ทั้งหมด = ทุกเรื่องที่เกี่ยวข้องวันนี้\n" +
+      "• หรือเลือก 3 / 5 / 10 เรื่องต่อวัน",
+    quickReply: qr([
+      { label: "ทั้งหมด", data: "a=newscount&n=0", displayText: "อัปเดตทั้งหมด" },
+      { label: "วันละ 3 เรื่อง", data: "a=newscount&n=3", displayText: "วันละ 3 เรื่อง" },
+      { label: "วันละ 5 เรื่อง", data: "a=newscount&n=5", displayText: "วันละ 5 เรื่อง" },
+      { label: "วันละ 10 เรื่อง", data: "a=newscount&n=10", displayText: "วันละ 10 เรื่อง" },
+    ]),
+  };
+}
+
+/** Start or resume onboarding for a user. */
+export async function startNewsOnboarding(upn: string, via: "push" | "reply", replyToken?: string): Promise<void> {
+  const existing = await loadNewsDraft(upn);
+  let msg: object;
+  if (existing?.step === "topics") {
+    msg = topicsPrompt(existing.topics || []);
+  } else if (existing?.step === "count") {
+    msg = countPrompt();
+  } else {
+    await saveNewsDraft(upn, { step: "ask", topics: existing?.topics || [], ts: Date.now() });
+    await setNewsOnboardingDone(upn, false);
+    msg = askInterestedMessage();
+  }
+  if (via === "reply" && replyToken) {
+    await replyLineMessages(replyToken, [msg]);
+    return;
+  }
+  const lineId = await getLineId(upn);
+  if (!lineId) throw new Error("ยังไม่ได้เชื่อม LINE");
+  await pushLineMessages(lineId, [msg]);
+}
+
+export async function handleNewsOnboardingText(
+  upn: string,
+  text: string,
+  replyToken: string
+): Promise<boolean> {
+  const draft = await loadNewsDraft(upn);
+  if (!draft) return false;
+
+  if (draft.step === "topics") {
+    const custom = text.trim().replace(/^สนใจ\s*/i, "").slice(0, 60);
+    if (!custom) {
+      await replyLine(replyToken, "พิมพ์หัวข้อที่อยากติดตามมาได้เลยครับ เช่น “เซมิคอนดักเตอร์”");
+      return true;
+    }
+    if (!draft.topics.includes(custom)) draft.topics.push(custom);
+    await saveNewsDraft(upn, { ...draft, step: "topics" });
+    await replyLineMessages(replyToken, [
+      topicsPrompt(draft.topics),
+    ]);
+    return true;
+  }
+
+  return false;
+}
+
+export async function handleNewsOnboardingPostback(
+  upn: string,
+  data: URLSearchParams,
+  replyToken: string
+): Promise<boolean> {
+  const a = data.get("a") || "";
+  if (!["newsyes", "newsno", "newstopic", "newscustom", "newstopicsdone", "newscount"].includes(a)) {
+    return false;
+  }
+
+  let draft = await loadNewsDraft(upn);
+  if (!draft && (a === "newsyes" || a === "newsno")) {
+    draft = { step: "ask", topics: [], ts: Date.now() };
+  }
+  if (!draft) {
+    await replyLine(replyToken, "เริ่มตั้งค่าข่าวใหม่ได้ด้วยการพิมพ์ “ตั้งค่าข่าว” ครับ");
+    return true;
+  }
+
+  if (a === "newsno") {
+    await setNewsInterested(upn, false);
+    await setNewsTopics(upn, []);
+    await setNewsOnboardingDone(upn, true);
+    await clearNewsDraft(upn);
+    await saveNotifyKind(upn, "news", { enabled: false });
+    await replyLine(
+      replyToken,
+      "รับทราบครับ จะยังไม่ส่งสรุปข่าวให้อัตโนมัติ\nถ้าเปลี่ยนใจ พิมพ์ “ตั้งค่าข่าว” ได้ตลอดครับ"
+    );
+    return true;
+  }
+
+  if (a === "newsyes") {
+    await setNewsInterested(upn, true);
+    await saveNotifyKind(upn, "news", { enabled: true });
+    draft = { step: "topics", topics: draft.topics || [], ts: Date.now() };
+    await saveNewsDraft(upn, draft);
+    await replyLineMessages(replyToken, [topicsPrompt(draft.topics)]);
+    return true;
+  }
+
+  if (a === "newstopic") {
+    const id = decodeURIComponent(data.get("t") || "");
+    const preset = presetById(id);
+    const label = preset?.label || id;
+    if (label && !draft.topics.includes(label)) draft.topics.push(label);
+    draft.step = "topics";
+    await saveNewsDraft(upn, draft);
+    await replyLineMessages(replyToken, [topicsPrompt(draft.topics)]);
+    return true;
+  }
+
+  if (a === "newscustom") {
+    draft.step = "topics";
+    await saveNewsDraft(upn, draft);
+    await replyLine(replyToken, "พิมพ์หัวข้อที่อยากติดตามมาได้เลยครับ (เช่น “เซมิคอนดักเตอร์”, “หุ้นพลังงาน”)");
+    return true;
+  }
+
+  if (a === "newstopicsdone") {
+    if (!draft.topics.length) {
+      await replyLineMessages(replyToken, [
+        {
+          type: "text",
+          text: "ยังไม่ได้เลือกหัวข้อครับ เลือกอย่างน้อย 1 หัวข้อก่อนนะครับ",
+          quickReply: (topicsPrompt([]) as { quickReply: object }).quickReply,
+        },
+      ]);
+      return true;
+    }
+    await setNewsTopics(upn, draft.topics);
+    draft.step = "count";
+    await saveNewsDraft(upn, draft);
+    await replyLineMessages(replyToken, [countPrompt()]);
+    return true;
+  }
+
+  if (a === "newscount") {
+    const n = clampNewsCount(data.get("n"));
+    await saveNotifyKind(upn, "news", { enabled: true, count: n });
+    await setNewsTopics(upn, draft.topics);
+    await setNewsInterested(upn, true);
+    await setNewsOnboardingDone(upn, true);
+    await clearNewsDraft(upn);
+    const countLabel = n === 0 ? "ทั้งหมดที่เกี่ยวข้องวันนี้" : `วันละ ${n} เรื่อง`;
+    await replyLine(
+      replyToken,
+      "✅ ตั้งค่าข่าวเรียบร้อยครับ\n\n" +
+        `หัวข้อ: ${draft.topics.join(", ")}\n` +
+        `อัปเดต: ${countLabel}\n\n` +
+        "ตอนเช้าจะสรุปข่าวตามหัวข้อเหล่านี้ให้ และถาม “มีข่าวอะไรบ้าง” ได้ตลอดครับ\n" +
+        "เปลี่ยนหัวข้อภายหลัง พิมพ์ “ตั้งค่าข่าว” ได้เลย"
+    );
+    return true;
+  }
+
+  return false;
+}
+
+export function isNewsOnboardingAction(a: string): boolean {
+  return ["newsyes", "newsno", "newstopic", "newscustom", "newstopicsdone", "newscount"].includes(a);
+}

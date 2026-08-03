@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { AuthError, resolveUser } from "@/lib/auth";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
+import { startNewsOnboarding } from "@/lib/newsOnboarding";
+import { getNewsPrefs } from "@/lib/newsPrefs";
 
 // POST { line_user_id } + Bearer → link the LINE account to the signed-in M365 user
 export async function POST(req: Request) {
@@ -17,7 +19,20 @@ export async function POST(req: Request) {
       { onConflict: "upn" }
     );
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ linked: true, upn });
+
+    // First-time (or not yet finished) → welcome news onboarding on LINE
+    let onboarding = false;
+    try {
+      const prefs = await getNewsPrefs(upn);
+      if (!prefs.onboardingDone) {
+        await startNewsOnboarding(upn, "push");
+        onboarding = true;
+      }
+    } catch (e) {
+      console.warn("[line-link] onboarding push failed:", e);
+    }
+
+    return NextResponse.json({ linked: true, upn, onboarding });
   } catch (e) {
     const status = e instanceof AuthError ? 401 : 500;
     return NextResponse.json({ error: String(e instanceof AuthError ? e.message : e) }, { status });

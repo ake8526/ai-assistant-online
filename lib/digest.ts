@@ -128,6 +128,37 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     }
   }
 
+  // 2c) Topic interests — NewsData keyword search for user-selected topics
+  {
+    const { getNewsPrefs, topicQuery } = await import("@/lib/newsPrefs");
+    const prefs = await getNewsPrefs(upn);
+    if (prefs.interested && prefs.topics.length) {
+      try {
+        const { isNewsDataConfigured, fetchNewsByTopic } = await import("@/lib/newsdata");
+        if (isNewsDataConfigured()) {
+          for (const topic of prefs.topics.slice(0, 6)) {
+            try {
+              const entries = await fetchNewsByTopic(topicQuery(topic), 4);
+              entries.forEach((e) =>
+                items.push({
+                  ...e,
+                  kind: "rss",
+                  feedLabel: e.source || `หัวข้อ · ${topic}`,
+                })
+              );
+            } catch (e) {
+              skipped.push(`หัวข้อ “${topic}” (${String(e).slice(0, 60)})`);
+            }
+          }
+        } else {
+          skipped.push("หัวข้อข่าว (ยังไม่ได้ตั้ง NEWSDATA_API_KEY)");
+        }
+      } catch (e) {
+        skipped.push(`หัวข้อข่าว (${String(e).slice(0, 60)})`);
+      }
+    }
+  }
+
   if (items.length === 0) {
     return { stories: [], skipped, note: "ยังไม่มีเนื้อหา — เชื่อม YouTube หรือเพิ่มแหล่งข่าว" };
   }
