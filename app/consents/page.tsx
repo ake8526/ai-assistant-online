@@ -87,6 +87,7 @@ function NotifyCard({
             className={selCls}
             aria-label="จำนวนข่าวต่อวัน"
           >
+            <option value={0}>ทั้งหมด (เฉพาะที่อัปเดตวันนี้)</option>
             {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
               <option key={n} value={n}>{n} ข่าว</option>
             ))}
@@ -579,7 +580,11 @@ function ConsentsContent() {
                 onChange={(patch) => saveNotify("news", patch)}
               />
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                ค่าเริ่มต้น: ตาราง + ข่าว จ–ศ 07:00 (ส่งต่อกันทันที) · {notify.news.count ?? 3} ข่าว/วัน · นัดใหม่ตรวจทุก ~15 นาที
+                ค่าเริ่มต้น: ตาราง + ข่าว จ–ศ 07:00 (ส่งต่อกันทันที) ·{" "}
+                {(notify.news.count ?? 3) === 0
+                  ? "ทั้งหมดที่อัปเดตวันนี้"
+                  : `${notify.news.count ?? 3} ข่าว/วัน`}{" "}
+                · นัดใหม่ตรวจทุก ~15 นาที
               </p>
             </>
           ) : loadFailed || needReauth ? (

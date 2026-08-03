@@ -16,15 +16,24 @@ export const NOTIFY_DEFAULTS: Record<NotifyKind, { enabled: boolean; time: strin
 export type KindConfig = { enabled: boolean; time: string; days: number[]; count?: number };
 export type NotifyConfig = { brief: KindConfig; news: KindConfig };
 
-/** How many news stories to deliver per day (RSS/YouTube/Facebook digest). Default 3. */
+/** How many news stories to deliver per day (RSS/YouTube/Facebook digest). Default 3.
+ *  0 = "all" — every story published/updated today (Bangkok day), up to NEWS_COUNT_ALL_CAP. */
 export const NEWS_COUNT_DEFAULT = 3;
 export const NEWS_COUNT_MIN = 1;
 export const NEWS_COUNT_MAX = 10;
+export const NEWS_COUNT_ALL = 0;
+export const NEWS_COUNT_ALL_CAP = 20; // safety cap when "all" is selected (LLM + LINE length)
 
 export function clampNewsCount(n: unknown): number {
+  if (n === "all" || n === "ALL") return NEWS_COUNT_ALL;
   const v = typeof n === "number" ? n : parseInt(String(n ?? ""), 10);
   if (!Number.isFinite(v)) return NEWS_COUNT_DEFAULT;
+  if (v === NEWS_COUNT_ALL) return NEWS_COUNT_ALL;
   return Math.min(NEWS_COUNT_MAX, Math.max(NEWS_COUNT_MIN, Math.round(v)));
+}
+
+export function isNewsCountAll(n: number): boolean {
+  return n === NEWS_COUNT_ALL;
 }
 
 function parseDays(s: string | null, def: number[]): number[] {
