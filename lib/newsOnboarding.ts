@@ -129,12 +129,6 @@ function topicsPrompt(selected: string[]): object {
     ? `\n\n✅ เลือกแล้ว ${n} หัวข้อ:\n${selected.map((t, i) => `  ${i + 1}. ${t}`).join("\n")}`
     : "\n\nยังไม่ได้เลือก — กดปุ่มด้านล่างได้หลายอันเรื่อย ๆ";
 
-  const remaining = NEWS_TOPIC_PRESETS.filter((p) => !selected.includes(p.label));
-  const lines =
-    remaining.length > 0
-      ? remaining.map((p, i) => `${i + 1}) ${p.label}`).join("\n")
-      : "(เลือกครบทุกหัวข้อแล้ว)";
-
   const actions: { label: string; data: string; displayText?: string }[] = [];
   if (n > 0) {
     actions.push({
@@ -143,13 +137,27 @@ function topicsPrompt(selected: string[]): object {
       displayText: "เลือกหัวข้อเสร็จแล้ว",
     });
   }
-  for (const p of remaining) {
+
+  // Show every preset so selected ones can be toggled off (✓ = selected)
+  for (const p of NEWS_TOPIC_PRESETS) {
+    const on = selected.includes(p.label);
     actions.push({
-      label: p.label.slice(0, 20),
+      label: (on ? `✓${p.label}` : p.label).slice(0, 20),
       data: `a=newstopic&t=${p.id}`,
-      displayText: `เพิ่ม ${p.label}`,
+      displayText: on ? `เอา ${p.label} ออก` : `เพิ่ม ${p.label}`,
     });
   }
+
+  // Custom topics (typed) — show as ✓ buttons to remove
+  for (const t of selected) {
+    if (NEWS_TOPIC_PRESETS.some((p) => p.label === t)) continue;
+    actions.push({
+      label: `✓${t}`.slice(0, 20),
+      data: `a=newstopic&t=${encodeURIComponent(t)}`,
+      displayText: `เอา ${t} ออก`,
+    });
+  }
+
   actions.push({ label: "✏️ พิมพ์เอง", data: "a=newscustom", displayText: "พิมพ์หัวข้อเอง" });
   if (n === 0) {
     actions.push({ label: "✅ เสร็จแล้ว", data: "a=newstopicsdone", displayText: "เลือกหัวข้อเสร็จแล้ว" });
@@ -159,9 +167,9 @@ function topicsPrompt(selected: string[]): object {
     type: "text",
     text:
       "เลือกหัวข้อข่าวได้หลายอันครับ 👍\n" +
-      "กดปุ่มทีละหัวข้อได้เรื่อย ๆ (หัวข้อที่เลือกแล้วจะหายจากปุ่ม)\n" +
+      "กดปุ่มทีละหัวข้อได้เรื่อย ๆ · กดหัวข้อที่มี ✓ อีกครั้งเพื่อเอาออก\n" +
       "หรือพิมพ์หัวข้อเอง เช่น “เซมิคอนดักเตอร์”\n\n" +
-      (remaining.length ? `หัวข้อที่ยังเลือกได้:\n${lines}` : lines) +
+      `หัวข้อแนะนำ:\n${NEWS_TOPIC_PRESETS.map((p, i) => `${i + 1}) ${p.label}`).join("\n")}` +
       picked +
       (n > 0 ? "\n\nครบแล้วกด “เสร็จแล้ว” ได้เลย" : "\n\nเลือกอย่างน้อย 1 หัวข้อ แล้วกด “เสร็จแล้ว”"),
     quickReply: qr(actions),
@@ -841,8 +849,12 @@ export async function handleNewsOnboardingPostback(
     const id = decodeURIComponent(data.get("t") || "");
     const preset = presetById(id);
     const label = preset?.label || id;
-    if (label && !draft.topics.includes(label)) {
-      draft.topics.push(label);
+    if (label) {
+      if (draft.topics.includes(label)) {
+        draft.topics = draft.topics.filter((t) => t !== label);
+      } else {
+        draft.topics.push(label);
+      }
     }
     draft.step = "topics";
     await saveNewsDraft(upn, draft);
