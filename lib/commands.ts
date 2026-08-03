@@ -20,6 +20,7 @@ import { getUserGraphToken } from "@/lib/graphAuth";
 import { chat } from "@/lib/llm";
 import { listRecentOnline } from "@/lib/meetings";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
+import { notifyMeetingInviteOnLine } from "@/lib/meetingInvite";
 import { busyRanges, findCommonSlots, formatBusy, formatFree, freeRanges, wantsLunchIncluded } from "@/lib/scheduling";
 import {
   addPlace,
@@ -709,19 +710,33 @@ async function bookFromContext(userUpn: string, text: string, sel: NonNullable<C
   if (!start) return { intent: "error", reply: "⚠️ ช่วงเวลาที่เลือกไม่ถูกต้อง ลองเลือกใหม่อีกครั้งครับ" };
   const end = addMinutes(start, duration);
   try {
-    await createEvent(userUpn, subject, wallIso(start), wallIso(end), attendees);
+    const ev = await createEvent(userUpn, subject, wallIso(start), wallIso(end), attendees);
+    const ping = await notifyMeetingInviteOnLine({
+      organizerUpn: userUpn,
+      subject,
+      startIso: wallIso(start),
+      endIso: wallIso(end),
+      attendees,
+      eventId: ev?.id,
+    }).catch(() => ({ notified: 0, names: [] as string[] }));
+    const who = person.displayName || attendees[0] || "";
+    const extra = attendees.length > 1 ? ` +${attendees.length - 1} คน` : "";
+    const lineNote =
+      ping.notified > 0
+        ? `\n\n📲 ส่ง LINE ขอให้ยืนยันนัดแล้ว ${ping.notified} คน`
+        : attendees.length
+          ? "\n\n📲 ยังไม่มีผู้เข้าร่วมที่ผูก LINE — ส่งคำเชิญ Outlook แล้วครับ"
+          : "";
+    return {
+      intent: "booked",
+      reply: `✅ จองประชุมแล้ว!\n📌 ${subject}\n👤 ${who}${extra}\n🕐 ${fmtDateTime(start)} (${duration} นาที)${lineNote}`,
+    };
   } catch (e) {
     return {
       intent: "error",
       reply: `⚠️ จองไม่สำเร็จ: ${String(e).slice(0, 150)}\n(อาจต้องเพิ่มสิทธิ์ Calendars.ReadWrite)`,
     };
   }
-  const who = person.displayName || attendees[0] || "";
-  const extra = attendees.length > 1 ? ` +${attendees.length - 1} คน` : "";
-  return {
-    intent: "booked",
-    reply: `✅ จองประชุมแล้ว!\n📌 ${subject}\n👤 ${who}${extra}\n🕐 ${fmtDateTime(start)} (${duration} นาที)`,
-  };
 }
 
 async function searchFilesSmart(userUpn: string, query: string, filetype: string) {
@@ -943,8 +958,17 @@ export async function runFindMeeting(
 
   if (AUTO_BOOK) {
     const s = result.slots[0];
-    await createEvent(userUpn, "ประชุม", s.start, s.end, resolved);
-    return { intent: "find_meeting_time", reply: `จองให้เลยตามที่ตั้งค่าไว้ ✅\nประชุม — ${s.label}` };
+    const ev = await createEvent(userUpn, "ประชุม", s.start, s.end, resolved);
+    const ping = await notifyMeetingInviteOnLine({
+      organizerUpn: userUpn,
+      subject: "ประชุม",
+      startIso: s.start,
+      endIso: s.end,
+      attendees: resolved,
+      eventId: ev?.id,
+    }).catch(() => ({ notified: 0, names: [] as string[] }));
+    const lineNote = ping.notified > 0 ? `\n📲 ส่ง LINE ขอให้ยืนยันแล้ว ${ping.notified} คน` : "";
+    return { intent: "find_meeting_time", reply: `จองให้เลยตามที่ตั้งค่าไว้ ✅\nประชุม — ${s.label}${lineNote}` };
   }
 
   const reply =
@@ -1006,10 +1030,24 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
       const subject = data.get("subj") || "ประชุม";
       const attendees = (data.get("at") || "").split(",").map((s) => s.trim()).filter(Boolean);
       if (!start || !end) return { intent: "error", reply: "ช่วงเวลาไม่ถูกต้อง ลองเลือกใหม่ครับ" };
-      await createEvent(userUpn, subject, wallIso(start), wallIso(end), attendees);
+      const ev = await createEvent(userUpn, subject, wallIso(start), wallIso(end), attendees);
+      const ping = await notifyMeetingInviteOnLine({
+        organizerUpn: userUpn,
+        subject,
+        startIso: wallIso(start),
+        endIso: wallIso(end),
+        attendees,
+        eventId: ev?.id,
+      }).catch(() => ({ notified: 0, names: [] as string[] }));
+      const lineNote =
+        ping.notified > 0
+          ? `\n\n📲 ส่ง LINE ขอให้ยืนยันนัดแล้ว ${ping.notified} คน`
+          : attendees.length
+            ? "\n\n📲 ยังไม่มีผู้เข้าร่วมที่ผูก LINE — ส่งคำเชิญ Outlook แล้วครับ"
+            : "";
       return {
         intent: "booked",
-        reply: `✅ จองประชุมแล้ว!\n📌 ${subject}\n🕐 ${fmtDateTime(start)}-${fmtTime(end)}${attendees.length ? `\n👤 ${attendees.join(", ")}` : ""}`,
+        reply: `✅ จองประชุมแล้ว!\n📌 ${subject}\n🕐 ${fmtDateTime(start)}-${fmtTime(end)}${attendees.length ? `\n👤 ${attendees.join(", ")}` : ""}${lineNote}`,
       };
     }
     if (a === "cancel") {

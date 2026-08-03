@@ -13,6 +13,7 @@ import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
+import { notifyMeetingInviteOnLine, respondMeetingInvite } from "@/lib/meetingInvite";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -350,6 +351,7 @@ function confirmCardMessage(d: Draft, prefix = ""): object {
 }
 
 const BOOKING_ACTIONS = new Set(["book", "bookcustom", "confirmbook", "setsubj", "setdetail", "addppl", "canceldraft"]);
+const MEETING_RSVP_ACTIONS = new Set(["mtaccept", "mtdecline"]);
 
 /** Parse free-text meeting window, e.g. "พรุ่งนี้ 10:00-11:00", "10.00-11.00", "10 โมง 30 นาที". */
 function parseCustomMeetingWindow(
@@ -490,7 +492,7 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       return;
     }
     try {
-      const { asUser } = await withDelegatedGraph(upn, () =>
+      const { result: ev, asUser } = await withDelegatedGraph(upn, () =>
         createEvent(upn, draft.subject, wallIso(s), wallIso(e), draft.attendees, true, draft.detail || undefined)
       );
       if (!asUser) {
@@ -498,11 +500,35 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
         return;
       }
       await clearDraft(upn);
+
+      let lineNote = "";
+      try {
+        const ping = await notifyMeetingInviteOnLine({
+          organizerUpn: upn,
+          subject: draft.subject,
+          startIso: wallIso(s),
+          endIso: wallIso(e),
+          attendees: draft.attendees,
+          eventId: ev?.id,
+          detail: draft.detail || undefined,
+        });
+        if (ping.notified > 0) {
+          lineNote =
+            `\n\n📲 ส่ง LINE ขอให้ยืนยันนัดแล้ว ${ping.notified} คน` +
+            ` (เฉพาะคนที่เพิ่มเพื่อนบอทแล้ว)`;
+        } else {
+          lineNote = "\n\n📲 ยังไม่มีผู้เข้าร่วมที่ผูก LINE ไว้ — ส่งคำเชิญทาง Outlook ตามปกติแล้วครับ";
+        }
+      } catch (e) {
+        console.warn("[confirmbook] line notify", String(e).slice(0, 120));
+      }
+
       await replyLine(
         replyToken,
         `✅ ส่งนัดประชุมแล้ว!\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}` +
           (draft.detail ? `\n📝 ${draft.detail}` : "") +
-          `\n👤 ${draft.attendees.join(", ")}`
+          `\n👤 ${draft.attendees.join(", ")}` +
+          lineNote
       );
     } catch (err) {
       await replyLine(replyToken, `⚠️ ส่งนัดไม่สำเร็จ: ${String(err).slice(0, 150)}`);
@@ -650,6 +676,14 @@ async function handlePostback(ev: LineEvent): Promise<void> {
   try {
     const data = new URLSearchParams(ev.postback?.data || "");
     const act = data.get("a") || "";
+    // Attendee RSVP on LINE after being invited
+    if (MEETING_RSVP_ACTIONS.has(act)) {
+      const oid = decodeURIComponent(data.get("oid") || "");
+      const id = data.get("id") || "";
+      const result = await respondMeetingInvite(upn, oid, id, act === "mtaccept");
+      await replyLine(ev.replyToken, result.reply);
+      return;
+    }
     // Booking confirmation flow (tap slot → draft → confirm) is handled here.
     if (BOOKING_ACTIONS.has(act)) {
       await handleBookingFlow(upn, act, data, ev.replyToken);
