@@ -443,6 +443,107 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   return results.slice(0, top);
 }
 
+/** First token / parenthetical used as Thai-office “ชื่อเล่น” from displayName. */
+function nicknameKeyFromDisplay(displayName: string, givenName?: string): string | null {
+  const dn = (displayName || "").trim();
+  if (!dn) return null;
+  const paren = dn.match(/[（(]\s*([^）)]+?)\s*[）)]/);
+  if (paren) {
+    const inner = paren[1].trim();
+    if (inner.length >= 1 && inner.length <= 16 && !inner.includes("@")) return inner;
+  }
+  const gn = (givenName || "").trim();
+  if (gn && gn.length >= 1 && gn.length <= 12 && !/[.@]/.test(gn) && !/\s/.test(gn)) {
+    // Prefer short givenName as nick when displayName starts with a longer formal name
+    const first = dn.split(/[\s\-_/|·]+/).filter(Boolean)[0] || "";
+    if (gn.length <= 8 && (first.length > gn.length || /[A-Za-z]{4,}/.test(first))) return gn;
+  }
+  const first = dn.split(/[\s\-_/|·]+/).filter(Boolean)[0] || "";
+  if (!first || first.includes("@") || first.length > 16) return null;
+  // Skip very generic tokens
+  if (/^(mr|mrs|ms|dr|คุณ|นาย|นาง|นางสาว)$/i.test(first)) return null;
+  return first;
+}
+
+function nickNorm(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, "");
+}
+
+type DupNickGroup = { nick: string; people: UserInfo[] };
+
+let dupNickCache: { at: number; scanned: number; groups: DupNickGroup[] } | null = null;
+
+/** Scan directory displayNames for shared nicknames (app-only User.Read.All). */
+export async function findDuplicateNicknames(opts?: {
+  maxUsers?: number;
+}): Promise<{ scanned: number; groups: DupNickGroup[]; error?: string }> {
+  const maxUsers = opts?.maxUsers ?? 500;
+  const now = Date.now();
+  if (dupNickCache && now - dupNickCache.at < 10 * 60_000) {
+    return { scanned: dupNickCache.scanned, groups: dupNickCache.groups };
+  }
+
+  const users: UserInfo[] = [];
+  try {
+    const token = await getToken();
+    let next: string | null =
+      `${GRAPH_BASE}/users?$select=mail,userPrincipalName,displayName,givenName,accountEnabled` +
+      `&$filter=accountEnabled eq true&$top=100`;
+    while (next && users.length < maxUsers) {
+      const r = await fetch(next, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!r.ok) {
+        const body = (await r.text()).slice(0, 240);
+        if (r.status === 403) {
+          return {
+            scanned: 0,
+            groups: [],
+            error:
+              "ยังไม่มีสิทธิ์อ่านรายชื่อทั้งองค์กร (User.Read.All) — ติดต่อแอดมินให้เปิดสิทธิ์แอป Graph ครับ",
+          };
+        }
+        return { scanned: 0, groups: [], error: `อ่านไดเรกทอรีไม่สำเร็จ (${r.status}): ${body}` };
+      }
+      const data = await r.json();
+      for (const row of data.value || []) {
+        const mail = (row.mail || row.userPrincipalName || "").trim();
+        if (!mail || /#ext#/i.test(mail)) continue;
+        const displayName = (row.displayName || "").trim() || mail;
+        users.push({ mail, displayName });
+        // stash givenName on a side channel via temporary field — re-extract below
+        (users[users.length - 1] as UserInfo & { _gn?: string })._gn = row.givenName || "";
+        if (users.length >= maxUsers) break;
+      }
+      next = data["@odata.nextLink"] || null;
+    }
+  } catch (e) {
+    return { scanned: 0, groups: [], error: `อ่านไดเรกทอรีไม่สำเร็จ: ${String(e).slice(0, 160)}` };
+  }
+
+  const map = new Map<string, { nick: string; people: UserInfo[] }>();
+  for (const u of users) {
+    const gn = (u as UserInfo & { _gn?: string })._gn;
+    const nick = nicknameKeyFromDisplay(u.displayName || "", gn);
+    if (!nick) continue;
+    const key = nickNorm(nick);
+    if (key.length < 1) continue;
+    const g = map.get(key) || { nick, people: [] };
+    if (!g.people.some((p) => p.mail.toLowerCase() === u.mail.toLowerCase())) {
+      g.people.push({ mail: u.mail, displayName: u.displayName });
+    }
+    map.set(key, g);
+  }
+
+  const groups = [...map.values()]
+    .filter((g) => g.people.length >= 2)
+    .sort((a, b) => b.people.length - a.people.length || a.nick.localeCompare(b.nick, "th"));
+
+  dupNickCache = { at: now, scanned: users.length, groups };
+  return { scanned: users.length, groups };
+}
+
 export type Attendee = { name?: string; email?: string };
 
 /** Match a transcript name to someone who was IN the meeting; returns their email. */

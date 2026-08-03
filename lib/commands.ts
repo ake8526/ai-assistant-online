@@ -11,6 +11,7 @@ import {
   UserInfo,
   createEvent,
   deleteEvent,
+  findDuplicateNicknames,
   getEventsRange,
   resolveUser,
   resolveUserInfo,
@@ -123,7 +124,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
 
 {
-  "intent": "<หนึ่งใน: get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | unknown>",
+  "intent": "<หนึ่งใน: get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | unknown>",
   "params": { ... }
 }
 
@@ -141,6 +142,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - summarize_meetings = สรุป "ประชุมที่จบไปแล้ว" จาก transcript
 - summarize_file = อ่านหรือสรุปเนื้อหาในไฟล์ที่ค้นพบ หรือไฟล์ที่ผู้ใช้อ้างถึง (เช่น "อ่านและสรุป", "สรุปไฟล์นี้", "อ่านอันแรก", "สรุปให้ฟัง")
 - search_files = ค้นหาไฟล์ใน OneDrive
+- find_duplicate_nicknames = หาว่าในองค์กรมีคนชื่อเล่นซ้ำกันกี่คน/ใครบ้าง (จากชื่อที่แสดงในไดเรกทอรี) — เช่น "ชื่อเล่นซ้ำกี่คน", "ในองค์กรมีคนชื่อเล่นซ้ำกันไหม", "ใครชื่อเล่นซ้ำบ้าง"
 
 สำคัญ: หากบริบทก่อนหน้าเพิ่งมีการค้นหาไฟล์ (search_files หรือ file_results) แล้วผู้ใช้พิมพ์ว่า "อ่านและสรุป", "สรุปให้ฟัง", "อ่านไฟล์" ให้เลือก intent เป็น "summarize_file" เสมอ (ห้ามเลือก get_brief)!
 
@@ -186,6 +188,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "ตอนนี้ติดตามข่าวอะไรบ้าง" -> {"intent":"list_feeds","params":{}}
 "ติดตามอะไรบ้าง" -> {"intent":"list_feeds","params":{}}
 "มีข่าวอะไรบ้าง" -> {"intent":"get_news","params":{}}
+"ในองค์กรมีคนชื่อเล่นซ้ำกันกี่คน ใครบ้าง" -> {"intent":"find_duplicate_nicknames","params":{}}
 "เพิ่มแหล่งข่าว https://www.extreme.co.th/feed" -> {"intent":"add_feed","params":{"url":"https://www.extreme.co.th/feed","kind":"rss"}}
 "ติดตามเพจ https://www.facebook.com/ExtremeIT ชื่อ Extreme" -> {"intent":"add_feed","params":{"url":"https://www.facebook.com/ExtremeIT","kind":"facebook","label":"Extreme"}}
 "เพิ่ม RSS https://example.com/rss.xml ชื่อข่าวไอที" -> {"intent":"add_feed","params":{"url":"https://example.com/rss.xml","kind":"rss","label":"ข่าวไอที"}}
@@ -437,6 +440,15 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
 
   if (/^ช่วย(เหลือ)?เรื่องอื่น$/i.test(t)) {
     return { intent: "help_menu", params: {} };
+  }
+
+  // Duplicate nicknames in org directory
+  if (
+    /ชื่อเล่น\s*ซ้ำ|ซ้ำ\s*กัน.*ชื่อเล่น|ชื่อเล่น.*(?:กี่คน|ใครบ้าง|มีไหม|มีมั้ย)|คนชื่อเล่นซ้ำ|ในองก.?ร์.*ชื่อเล่น|ในองค์กร.*ชื่อเล่น/i.test(
+      t
+    )
+  ) {
+    return { intent: "find_duplicate_nicknames", params: {} };
   }
 
   if (/^(ล้าง|ลบ|เคลียร์|clear)(ความจำ|แชท|บริบท|chat)?(ai|เอไอ)?$|^(เริ่มใหม่|เริ่มแชทใหม่|reset chat)$/i.test(t)) {
@@ -1589,6 +1601,40 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
       ],
     };
+  }
+
+  if (intent === "find_duplicate_nicknames") {
+    trace("fetch", "สแกนชื่อเล่นซ้ำในไดเรกทอรี", "start");
+    const res = await findDuplicateNicknames({ maxUsers: 500 });
+    if (res.error) {
+      return { intent: "find_duplicate_nicknames", reply: `⚠️ ${res.error}` };
+    }
+    if (!res.groups.length) {
+      return {
+        intent: "find_duplicate_nicknames",
+        reply:
+          `สแกนผู้ใช้ในไดเรกทอรี ${res.scanned} คนแล้ว ไม่พบชื่อเล่นซ้ำครับ\n` +
+          `(ดูจากคำแรกของชื่อที่แสดง / ชื่อในวงเล็บ — ไม่ใช่ชื่อเล่นนอกระบบ)`,
+      };
+    }
+    const top = res.groups.slice(0, 12);
+    const lines = [
+      `พบชื่อเล่นซ้ำ ${res.groups.length} กลุ่ม จากผู้ใช้ที่สแกน ${res.scanned} คนครับ`,
+      "",
+    ];
+    top.forEach((g, i) => {
+      lines.push(`${i + 1}) “${g.nick}” — ${g.people.length} คน`);
+      g.people.slice(0, 6).forEach((p) => {
+        lines.push(`   • ${(p.displayName || p.mail).trim()} — ${p.mail}`);
+      });
+      if (g.people.length > 6) lines.push(`   • …อีก ${g.people.length - 6} คน`);
+    });
+    if (res.groups.length > top.length) {
+      lines.push("", `…และอีก ${res.groups.length - top.length} กลุ่ม`);
+    }
+    lines.push("", "หมายเหตุ: เทียบจากชื่อที่แสดงใน Microsoft 365 (คำแรก/วงเล็บ)");
+    trace("compose", "สรุปรายชื่อเล่นซ้ำ");
+    return { intent: "find_duplicate_nicknames", reply: lines.join("\n") };
   }
 
   if (intent === "summarize_file") {
