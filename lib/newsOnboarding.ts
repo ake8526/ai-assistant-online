@@ -473,7 +473,7 @@ function otherHelpMessage(): object {
       { label: "📅 ตารางวันนี้", message: "ตารางวันนี้" },
       { label: "🗓 นัดพรุ่งนี้", message: "นัดพรุ่งนี้" },
       { label: "📰 ตั้งค่าข่าว", message: "ตั้งค่าข่าว" },
-      { label: "🧹 ล้างความจำ", message: "ล้างความจำ" },
+      { label: "/ล้างความจำ", message: "/ล้างความจำ" },
       { label: "🌐 หน้าตั้งค่า", uri: SETTINGS_URL },
     ]),
   };

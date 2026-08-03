@@ -22,6 +22,14 @@ import {
   type ChatTurn,
   CHAT_MEMORY_TTL_MS,
 } from "@/lib/chatMemory";
+import {
+  isSlashMenu,
+  matchSlashCommand,
+  parseSlashCommand,
+  slashMenuMessage,
+  slashToUserText,
+  textWithDraftEscape,
+} from "@/lib/slashCommands";
 import { assertConfigured } from "@/lib/supabaseServer";
 
 export const maxDuration = 60;
@@ -444,15 +452,17 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       ts: Date.now(),
     };
     await saveDraft(upn, draft);
-    await replyLine(
-      replyToken,
-      "พิมพ์วันและเวลาที่ต้องการจองได้เลยครับ เช่น\n" +
-        "• พรุ่งนี้ 10:00-11:00\n" +
-        "• วันนี้ 14:00-15:00\n" +
-        "• 10:00-11:00\n" +
-        "• พรุ่งนี้ 10 โมง (จะจอง " +
-        `${draft.durationMin} นาที)`
-    );
+    await replyLineMessages(replyToken, [
+      textWithDraftEscape(
+        "พิมพ์วันและเวลาที่ต้องการจองได้เลยครับ เช่น\n" +
+          "• พรุ่งนี้ 10:00-11:00\n" +
+          "• วันนี้ 14:00-15:00\n" +
+          "• 10:00-11:00\n" +
+          "• พรุ่งนี้ 10 โมง (จะจอง " +
+          `${draft.durationMin} นาที)\n\n` +
+          "หรือกด /ล้างความจำ · /ยกเลิก ด้านล่างได้ครับ"
+      ),
+    ]);
     return;
   }
 
@@ -465,19 +475,25 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
   if (act === "setsubj") {
     draft.await = "subject";
     await saveDraft(upn, draft);
-    await replyLine(replyToken, "พิมพ์หัวข้อประชุมมาได้เลยครับ (เช่น “อัปเดตงาน IT”)");
+    await replyLineMessages(replyToken, [
+      textWithDraftEscape("พิมพ์หัวข้อประชุมมาได้เลยครับ (เช่น “อัปเดตงาน IT”)"),
+    ]);
     return;
   }
   if (act === "setdetail") {
     draft.await = "detail";
     await saveDraft(upn, draft);
-    await replyLine(replyToken, "พิมพ์รายละเอียด/วาระการประชุมมาได้เลยครับ (จะแนบไว้ในคำเชิญ)");
+    await replyLineMessages(replyToken, [
+      textWithDraftEscape("พิมพ์รายละเอียด/วาระการประชุมมาได้เลยครับ (จะแนบไว้ในคำเชิญ)"),
+    ]);
     return;
   }
   if (act === "addppl") {
     draft.await = "attendee";
     await saveDraft(upn, draft);
-    await replyLine(replyToken, "พิมพ์ชื่อคนที่จะเพิ่มเข้าประชุมครับ (หลายคนคั่นด้วย , หรือขึ้นบรรทัดใหม่)");
+    await replyLineMessages(replyToken, [
+      textWithDraftEscape("พิมพ์ชื่อคนที่จะเพิ่มเข้าประชุมครับ (หลายคนคั่นด้วย , หรือขึ้นบรรทัดใหม่)"),
+    ]);
     return;
   }
   if (act === "canceldraft") {
@@ -546,10 +562,11 @@ async function handleDraftInput(upn: string, text: string, replyToken: string): 
   if (draft.await === "custom_time") {
     const parsed = parseCustomMeetingWindow(text, draft.durationMin || 30);
     if (!parsed) {
-      await replyLine(
-        replyToken,
-        "ยังอ่านเวลาไม่ชัดครับ ลองพิมพ์แบบนี้:\n• พรุ่งนี้ 10:00-11:00\n• วันนี้ 14:00-15:00\n• 10:00-11:00"
-      );
+      await replyLineMessages(replyToken, [
+        textWithDraftEscape(
+          "ยังอ่านเวลาไม่ชัดครับ ลองพิมพ์แบบนี้:\n• พรุ่งนี้ 10:00-11:00\n• วันนี้ 14:00-15:00\n• 10:00-11:00\n\nหรือกด /ล้างความจำ · /ยกเลิก ด้านล่างได้ครับ"
+        ),
+      ]);
       return true;
     }
     draft.start = parsed.start;
@@ -596,7 +613,7 @@ async function handleDraftInput(upn: string, text: string, replyToken: string): 
 
 async function handleTextMessage(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
-  const text = (ev.message?.text || "").trim();
+  let text = (ev.message?.text || "").trim();
   if (!ev.replyToken || !userId || !text) return;
 
   const upn = await getUpnByLineId(userId);
@@ -605,9 +622,59 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     return;
   }
   try {
-    // Let the user see the bot is working (reply tokens die ~30s if we stay silent).
     void showLineLoading(userId, 60);
-    // A pending booking draft awaiting subject/attendee input takes priority.
+
+    // Slash commands always win over booking drafts / onboarding text input
+    if (isSlashMenu(text)) {
+      await replyLineMessages(ev.replyToken, [slashMenuMessage()]);
+      return;
+    }
+    const slashBody = parseSlashCommand(text);
+    if (slashBody) {
+      const cmd = matchSlashCommand(slashBody);
+      if (!cmd) {
+        await replyLineMessages(ev.replyToken, [
+          {
+            type: "text",
+            text: `ไม่รู้จักคำสั่ง /${slashBody} ครับ\nพิมพ์ / เพื่อดูรายการคำสั่ง`,
+            quickReply: (slashMenuMessage() as { quickReply: object }).quickReply,
+          },
+        ]);
+        return;
+      }
+      if (cmd.cmd === "ล้างความจำ") {
+        try {
+          await deleteSetting(upn, CTX_KEY);
+        } catch { /* ignore */ }
+        try {
+          await clearDraft(upn);
+        } catch { /* ignore */ }
+        await replyLineMessages(ev.replyToken, [
+          {
+            type: "text",
+            text: "ล้างความจำการสนทนาแล้วครับ — เริ่มเรื่องใหม่ได้เลย 🧹\n(ยกเลิกงานจองนัดที่ค้างไว้ด้วย)",
+            quickReply: (slashMenuMessage() as { quickReply: object }).quickReply,
+          },
+        ]);
+        return;
+      }
+      if (cmd.cmd === "ยกเลิก") {
+        await clearDraft(upn);
+        await replyLine(ev.replyToken, "ยกเลิกงานที่ค้างไว้แล้วครับ — พิมพ์คำสั่งใหม่หรือพิมพ์ / เพื่อเลือกคำสั่ง");
+        return;
+      }
+      if (cmd.cmd === "ตั้งค่าข่าว") {
+        const prefs = await getNewsPrefs(upn);
+        if (prefs.onboardingDone) await openNewsSettings(upn, "reply", ev.replyToken);
+        else await startNewsOnboarding(upn, "reply", ev.replyToken);
+        return;
+      }
+      // Map other slash cmds to normal assistant text
+      text = slashToUserText(cmd);
+    }
+
+    // A pending booking draft awaiting subject/attendee input takes priority
+    // (only after slash commands were checked).
     if (await handleDraftInput(upn, text, ev.replyToken)) return;
     // News onboarding (custom topic text / resume)
     if (await handleNewsOnboardingText(upn, text, ev.replyToken)) return;
@@ -629,12 +696,10 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
           await startNewsOnboarding(upn, "reply", ev.replyToken);
           return;
         }
-        // Still mid-flow — nudge them back to the current step
         await startNewsOnboarding(upn, "reply", ev.replyToken);
         return;
       }
     }
-    // Otherwise run the assistant (lite mode: no slow per-meeting enrichment)
     const ctx = await loadCtx(upn);
     const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
     try {

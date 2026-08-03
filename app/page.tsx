@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Send, LogIn, Loader2, MapPin, FileText, Folder, Settings as SettingsIcon, Eraser } from "lucide-react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } from "@/lib/chatMemory";
+import { SLASH_COMMANDS, isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText } from "@/lib/slashCommands";
 
 type Slot = { start: string; end: string; label: string };
 type Choice = { mail?: string; displayName?: string; period?: string; event_id?: string; label?: string; index?: number };
@@ -33,11 +34,11 @@ type Msg = {
 };
 
 const SUGGESTIONS = [
-  "วันนี้มีนัดอะไรบ้าง",
-  "งานค้างมีอะไรบ้าง",
-  "ช่วงไหนว่างบ้าง",
-  "สรุปประชุมที่ผ่านมา",
-  "ล้างความจำ",
+  "/",
+  "/ล้างความจำ",
+  "/ตารางวันนี้",
+  "/นัดพรุ่งนี้",
+  "/ตั้งค่าข่าว",
 ];
 
 function LoginGate() {
@@ -147,11 +148,57 @@ function ChatContent() {
   };
 
   const send = async (text?: string) => {
-    const t = (text ?? input).trim();
+    const original = (text ?? input).trim();
+    let t = original;
     if (!t || busy) return;
     setInput("");
     setBusy(true);
-    addMsg({ role: "me", text: t });
+
+    // Slash menu / commands (same as LINE — always override mid-flow)
+    if (isSlashMenu(t)) {
+      addMsg({ role: "me", text: t });
+      addMsg({
+        role: "bot",
+        text:
+          "เลือกคำสั่งได้เลยครับ\n\n" +
+          SLASH_COMMANDS.map((c, i) => `${i + 1}) /${c.cmd} — ${c.hint}`).join("\n"),
+        choices: SLASH_COMMANDS.map((c) => ({ label: c.message, displayName: c.label })),
+        intent: "slash_menu",
+      });
+      setBusy(false);
+      return;
+    }
+    const slashBody = parseSlashCommand(t);
+    if (slashBody) {
+      const cmd = matchSlashCommand(slashBody);
+      if (!cmd) {
+        addMsg({ role: "me", text: t });
+        addMsg({
+          role: "bot",
+          text: `ไม่รู้จักคำสั่ง /${slashBody} ครับ\nพิมพ์ / เพื่อดูรายการคำสั่ง`,
+          choices: SLASH_COMMANDS.map((c) => ({ label: c.message, displayName: c.label })),
+          intent: "slash_menu",
+        });
+        setBusy(false);
+        return;
+      }
+      if (cmd.cmd === "ล้างความจำ") {
+        addMsg({ role: "me", text: t });
+        clearMemory();
+        setBusy(false);
+        return;
+      }
+      if (cmd.cmd === "ยกเลิก") {
+        addMsg({ role: "me", text: t });
+        ctxRef.current.selected = undefined;
+        addMsg({ role: "bot", text: "ยกเลิกงานที่ค้างไว้แล้วครับ — พิมพ์ / เพื่อเลือกคำสั่ง" });
+        setBusy(false);
+        return;
+      }
+      t = slashToUserText(cmd);
+    }
+
+    addMsg({ role: "me", text: original });
     const ctx = ctxRef.current;
     const now = Date.now();
     // Idle > 30 min → brand-new topic
@@ -226,6 +273,11 @@ function ChatContent() {
 
   const pickChoice = async (c: Choice, intent?: string) => {
     if (busy) return;
+    if (intent === "slash_menu") {
+      const cmd = c.label || c.displayName;
+      if (cmd) void send(cmd);
+      return;
+    }
     setBusy(true);
     try {
       if (intent === "choose_person" && c.mail) {
@@ -280,25 +332,21 @@ function ChatContent() {
     ctx.files = undefined;
     ctx.selected = undefined;
     ctx.last_activity_ts = Date.now();
-    setMsgs([{ role: "bot", text: "ล้างความจำการสนทนาแล้วครับ — เริ่มเรื่องใหม่ได้เลย 🧹" }]);
+    setMsgs([
+      {
+        role: "bot",
+        text: "ล้างความจำการสนทนาแล้วครับ — เริ่มเรื่องใหม่ได้เลย 🧹\n(หรือพิมพ์ / แล้วเลือก /ล้างความจำ ก็ได้)",
+      },
+    ]);
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative">
       <header className="p-4 border-b border-slate-800 flex items-center gap-3">
         <div className="flex-1 min-w-0">
           <div className="font-bold">AI Assistant</div>
           <div className="text-[11px] text-slate-500 truncate">{account?.username}</div>
         </div>
-        <button
-          type="button"
-          onClick={clearMemory}
-          disabled={busy}
-          title="ล้างความจำ AI"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 disabled:opacity-50"
-        >
-          <Eraser className="w-4 h-4" /> ล้างความจำ
-        </button>
         <Link
           href="/settings"
           className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200"
@@ -400,7 +448,7 @@ function ChatContent() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
-              placeholder="พิมพ์คำสั่ง เช่น วันนี้มีนัดอะไร…"
+              placeholder="พิมพ์ / เพื่อเลือกคำสั่ง หรือพิมพ์เอง…"
               disabled={busy}
               className="flex-1 rounded-xl bg-slate-900 border border-slate-700 px-4 py-2.5 text-sm outline-none focus:border-sky-600"
             />
@@ -414,6 +462,16 @@ function ChatContent() {
           </div>
         </div>
       </footer>
+
+      <button
+        type="button"
+        onClick={clearMemory}
+        disabled={busy}
+        title="ล้างความจำ AI"
+        className="fixed bottom-24 right-4 z-20 flex items-center gap-1.5 rounded-full bg-slate-800/95 border border-slate-600 px-3.5 py-2.5 text-xs font-semibold text-slate-100 shadow-lg shadow-black/40 hover:bg-slate-700 disabled:opacity-50"
+      >
+        <Eraser className="w-4 h-4" /> ล้างความจำ
+      </button>
     </div>
   );
 }
