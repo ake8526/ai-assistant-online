@@ -13,9 +13,39 @@ import {
 } from "@/lib/newsPrefs";
 import { listManagedFeeds } from "@/lib/feeds";
 import { getLineId, pushLineMessages, replyLine, replyLineMessages } from "@/lib/line";
+import { admin } from "@/lib/supabaseServer";
 
 const APP_BASE = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/$/, "");
 const SETTINGS_URL = `${APP_BASE}/consents`;
+
+async function getYouTubeFollowStatus(upn: string): Promise<{
+  linked: boolean;
+  email: string | null;
+  channel: string | null;
+  granted: boolean;
+}> {
+  const [{ data: tok }, { data: cons }] = await Promise.all([
+    admin
+      .from("oauth_tokens")
+      .select("refresh_token, account_email, account_name, account_channel")
+      .eq("owner_upn", upn)
+      .eq("provider", "google")
+      .maybeSingle(),
+    admin
+      .from("consents")
+      .select("granted")
+      .eq("owner_upn", upn)
+      .eq("capability", "src_youtube")
+      .maybeSingle(),
+  ]);
+  const linked = !!tok?.refresh_token;
+  return {
+    linked,
+    email: (tok as { account_email?: string } | null)?.account_email || null,
+    channel: (tok as { account_channel?: string } | null)?.account_channel || null,
+    granted: cons?.granted !== false && linked, // default on when linked
+  };
+}
 
 function qr(items: { label: string; data?: string; uri?: string; displayText?: string }[]) {
   return {
@@ -130,13 +160,34 @@ function countLabel(n: number): string {
 
 async function buildFollowListText(upn: string): Promise<string> {
   const prefs = await getNewsPrefs(upn);
-  const feeds = await listManagedFeeds(upn).catch(() => []);
+  const [feeds, yt] = await Promise.all([
+    listManagedFeeds(upn).catch(() => []),
+    getYouTubeFollowStatus(upn).catch(() => ({
+      linked: false,
+      email: null,
+      channel: null,
+      granted: false,
+    })),
+  ]);
   const lines = ["📰 รายการที่คุณติดตามอยู่ตอนนี้", ""];
 
   if (!prefs.interested) {
-    lines.push("สถานะ: ปิดการติดตามข่าวอัตโนมัติ");
+    lines.push("สถานะสรุปหัวข้อข่าว: ปิดอัตโนมัติ");
   } else {
-    lines.push(`สถานะ: เปิดติดตาม · อัปเดต ${countLabel(prefs.count)}`);
+    lines.push(`สถานะสรุปหัวข้อข่าว: เปิด · อัปเดต ${countLabel(prefs.count)}`);
+  }
+  lines.push("");
+
+  // YouTube subscriptions (OAuth — not a manual feed row)
+  if (yt.linked) {
+    const who = [yt.channel ? `ช่อง: ${yt.channel}` : null, yt.email].filter(Boolean).join(" · ");
+    lines.push("YouTube:");
+    lines.push(`  ✅ เชื่อมแล้ว${who ? ` (${who})` : ""}`);
+    lines.push("     → ดึงคลิปใหม่จากช่องที่คุณกด Subscribe");
+    if (!yt.granted) lines.push("     ⚠️ ยังไม่ได้เปิดสิทธิ์ src_youtube — ลองเชื่อมใหม่ที่หน้าตั้งค่า");
+  } else {
+    lines.push("YouTube: ยังไม่ได้เชื่อมบัญชี Google");
+    lines.push(`  → เชื่อมได้ที่หน้าตั้งค่า: ${SETTINGS_URL}`);
   }
   lines.push("");
 
