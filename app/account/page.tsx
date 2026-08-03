@@ -34,7 +34,7 @@ function Badge({ ok, on = "เชื่อมต่อแล้ว", off = "ย�
 }
 
 function AccountContent() {
-  const { account, login, logout, getToken, ready } = useM365Auth();
+  const { account, login, logout, getToken, reauth, ready } = useM365Auth();
   const upn = account?.username || "";
 
   const [line, setLine] = useState<LineState | null>(null);
@@ -42,6 +42,7 @@ function AccountContent() {
   const [msg, setMsg] = useState("กำลังโหลด…");
   const [msgOk, setMsgOk] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [needReauth, setNeedReauth] = useState(false);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
   const [confirmLogoutM365, setConfirmLogoutM365] = useState(false);
 
@@ -70,13 +71,21 @@ function AccountContent() {
     if (!account) {
       setLine(null);
       setMsCal(null);
+      setNeedReauth(false);
       setMsg("กรุณาเข้าสู่ระบบ Microsoft 365 เพื่อดูบัญชีของตัวเอง");
       setMsgOk(false);
       return;
     }
     try {
       const token = await getToken();
-      if (!token) throw new Error("ได้ token ไม่สำเร็จ");
+      if (!token) {
+        // Redirect may be in progress (LINE webview) — or need manual reauth.
+        setNeedReauth(true);
+        setMsg("เซสชันหมดอายุหรือถูกบล็อกใน LINE — กดปุ่มด้านล่างเพื่อยืนยันตัวตนอีกครั้ง แล้วข้อมูลจะโหลดขึ้นมา");
+        setMsgOk(false);
+        return;
+      }
+      setNeedReauth(false);
       const headers = { Authorization: `Bearer ${token}` };
       const [ls, ms] = await Promise.all([
         fetch("/api/line/status", { cache: "no-store", headers }).then((r) => r.json()),
@@ -89,6 +98,7 @@ function AccountContent() {
     } catch (e) {
       setMsg("โหลดไม่สำเร็จ: " + (e as Error).message);
       setMsgOk(false);
+      setNeedReauth(true);
     }
   }, [account, getToken]);
 
@@ -101,7 +111,13 @@ function AccountContent() {
     setBusy(true);
     try {
       const token = await getToken();
-      if (!token) throw new Error("เข้าสู่ระบบก่อน");
+      if (!token) {
+        setNeedReauth(true);
+        setMsg("ต้องยืนยันตัวตนอีกครั้งก่อนอนุญาตปฏิทิน");
+        setMsgOk(false);
+        setBusy(false);
+        return;
+      }
       window.location.href = `/api/oauth/microsoft/start?token=${encodeURIComponent(token)}&back=/account`;
     } catch (e) {
       setMsg(String((e as Error).message));
@@ -161,6 +177,14 @@ function AccountContent() {
           <p className="text-xs text-slate-400 mt-1">ดูว่าเชื่อมบัญชีอะไรไว้ อนุญาตติดตามอะไรบ้าง และยกเลิกได้จากที่นี่</p>
           {msg && (
             <p className={`text-xs mt-2 ${msgOk ? "text-emerald-400" : "text-rose-400"}`}>{msg}</p>
+          )}
+          {needReauth && (
+            <button
+              onClick={() => reauth()}
+              className="mt-3 w-full inline-flex items-center justify-center gap-2 text-xs font-semibold px-3 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white"
+            >
+              <LogIn className="w-4 h-4" /> ยืนยันตัวตน Microsoft 365 อีกครั้ง
+            </button>
           )}
         </header>
 
@@ -235,9 +259,16 @@ function AccountContent() {
                 <Unlink className="w-4 h-4" /> ยกเลิก
               </button>
             ) : (
-              <Link href="/line-link" className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950">
+              <a
+                href={
+                  process.env.NEXT_PUBLIC_LIFF_ID
+                    ? `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID}`
+                    : "/line-link"
+                }
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950"
+              >
                 ผูกบัญชี
-              </Link>
+              </a>
             )}
           </Row>
 

@@ -1,8 +1,39 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { PublicClientApplication, AccountInfo } from "@azure/msal-browser";
+import { PublicClientApplication, AccountInfo, InteractionRequiredAuthError } from "@azure/msal-browser";
 import { msalConfig, loginRequest, graphCalendarRequest } from "@/lib/msalConfig";
+
+const RETURN_KEY = "msal_return_path";
+
+/** LINE / Instagram / Android WebView — popups and silent iframes often fail. */
+function isEmbeddedBrowser(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return (
+    /Line\//i.test(ua) ||
+    /FBAN|FBAV/i.test(ua) ||
+    /Instagram/i.test(ua) ||
+    /; wv\)/i.test(ua) ||
+    !!(window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView
+  );
+}
+
+function rememberReturnPath() {
+  try {
+    sessionStorage.setItem(RETURN_KEY, window.location.pathname + window.location.search);
+  } catch { /* ignore */ }
+}
+
+function consumeReturnPath(): string | null {
+  try {
+    const p = sessionStorage.getItem(RETURN_KEY);
+    if (p) sessionStorage.removeItem(RETURN_KEY);
+    return p;
+  } catch {
+    return null;
+  }
+}
 
 interface AuthContextType {
   account: AccountInfo | null;
@@ -15,6 +46,8 @@ interface AuthContextType {
   getToken: () => Promise<string | null>;
   /** Graph access token (Calendars.*) so schedule APIs honour M365 sharing. */
   getGraphToken: () => Promise<string | null>;
+  /** Force interactive re-auth (redirect) — use when silent token fails in LINE. */
+  reauth: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -25,6 +58,7 @@ const AuthContext = createContext<AuthContextType>({
   ready: false,
   getToken: async () => null,
   getGraphToken: async () => null,
+  reauth: async () => {},
 });
 
 let msalInstance: PublicClientApplication | null = null;
@@ -40,23 +74,34 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
         msalInstance = new PublicClientApplication(msalConfig);
         await msalInstance.initialize();
       }
-      // Complete a redirect-based login if we're returning from Microsoft.
+      // Complete a redirect-based login / token renew if we're returning from Microsoft.
       try {
         const resp = await msalInstance.handleRedirectPromise();
-        if (resp?.account) msalInstance.setActiveAccount(resp.account);
+        if (resp?.account) {
+          msalInstance.setActiveAccount(resp.account);
+          setAccount(resp.account);
+        }
       } catch { /* no redirect in progress */ }
+
       const acct = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0] || null;
-      if (acct) setAccount(acct);
+      if (acct) {
+        msalInstance.setActiveAccount(acct);
+        setAccount(acct);
+      }
       setReady(true);
+
+      // After redirect, send user back to the page they were on (e.g. /account).
+      const ret = consumeReturnPath();
+      if (ret && ret !== window.location.pathname + window.location.search) {
+        window.location.replace(ret);
+      }
     };
     boot().catch(() => setReady(true));
   }, []);
 
   const login = async () => {
     if (!msalInstance) return;
-    // Redirect flow works everywhere, including the LINE in-app webview where
-    // popups are blocked. The result is picked up by handleRedirectPromise on
-    // return (see boot()).
+    rememberReturnPath();
     try {
       await msalInstance.loginRedirect(loginRequest);
     } catch (err) {
@@ -64,32 +109,56 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const reauth = async () => {
+    if (!msalInstance) return;
+    rememberReturnPath();
+    const acct = account || msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
+    try {
+      if (acct) {
+        await msalInstance.acquireTokenRedirect({ ...loginRequest, account: acct });
+      } else {
+        await msalInstance.loginRedirect(loginRequest);
+      }
+    } catch (err) {
+      console.error("M365 reauth error:", err);
+    }
+  };
+
   const logout = async () => {
     if (!msalInstance) return;
     const acct = msalInstance.getAllAccounts()[0];
-    // No mainWindowRedirectUri: the popup ends the MS session but leaves the main
-    // window alone, so the clearCache below always runs.
     try {
       await msalInstance.logoutPopup({ account: acct });
     } catch {
-      // popup closed/blocked — that's fine, we still wipe the local cache next
+      // popup closed/blocked — still wipe local cache
     }
-    // Always clear the local MSAL cache so the browser truly forgets this account
-    // (otherwise 365 keeps showing as connected even after "sign out").
     try { await msalInstance.clearCache(); } catch { /* ignore */ }
     setAccount(null);
   };
 
   const getToken = async (): Promise<string | null> => {
     if (!msalInstance) return null;
-    const acct = account || msalInstance.getAllAccounts()[0];
+    const acct = account || msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
     if (!acct) return null;
     try {
       const res = await msalInstance.acquireTokenSilent({ ...loginRequest, account: acct });
       return res.idToken || null;
-    } catch {
+    } catch (err) {
+      const code = (err as { errorCode?: string })?.errorCode || "";
+      const needInteract =
+        isEmbeddedBrowser() ||
+        err instanceof InteractionRequiredAuthError ||
+        code === "interaction_required" ||
+        code === "login_required" ||
+        code === "consent_required" ||
+        code === "monitor_window_timeout";
       try {
-        const res = await msalInstance.acquireTokenPopup(loginRequest);
+        if (needInteract) {
+          rememberReturnPath();
+          await msalInstance.acquireTokenRedirect({ ...loginRequest, account: acct });
+          return null; // navigation in progress
+        }
+        const res = await msalInstance.acquireTokenPopup({ ...loginRequest, account: acct });
         return res.idToken || null;
       } catch {
         return null;
@@ -99,13 +168,26 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
 
   const getGraphToken = async (): Promise<string | null> => {
     if (!msalInstance) return null;
-    const acct = account || msalInstance.getAllAccounts()[0];
+    const acct = account || msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
     if (!acct) return null;
     try {
       const res = await msalInstance.acquireTokenSilent({ ...graphCalendarRequest, account: acct });
       return res.accessToken || null;
-    } catch {
+    } catch (err) {
+      const code = (err as { errorCode?: string })?.errorCode || "";
+      const needInteract =
+        isEmbeddedBrowser() ||
+        err instanceof InteractionRequiredAuthError ||
+        code === "interaction_required" ||
+        code === "login_required" ||
+        code === "consent_required" ||
+        code === "monitor_window_timeout";
       try {
+        if (needInteract) {
+          rememberReturnPath();
+          await msalInstance.acquireTokenRedirect({ ...graphCalendarRequest, account: acct });
+          return null;
+        }
         const res = await msalInstance.acquireTokenPopup(graphCalendarRequest);
         return res.accessToken || null;
       } catch {
@@ -124,6 +206,7 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
         ready,
         getToken,
         getGraphToken,
+        reauth,
       }}
     >
       {children}

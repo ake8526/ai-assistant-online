@@ -131,13 +131,15 @@ function Row({ icon, color, title, subtitle, children }: {
 }
 
 function ConsentsContent() {
-  const { account, login, getToken, ready } = useM365Auth();
+  const { account, login, getToken, reauth, ready } = useM365Auth();
   const upn = account?.username || "";
 
   const [yt, setYt] = useState<YtState>({ linked: false, email: null, name: null, channel: null });
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [needReauth, setNeedReauth] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [confirmUnlinkYt, setConfirmUnlinkYt] = useState(false);
   const [newUrl, setNewUrl] = useState("");
   const [newLabel, setNewLabel] = useState("");
@@ -168,11 +170,20 @@ function ConsentsContent() {
   const refresh = useCallback(async () => {
     if (!account) {
       setMsg("กรุณาเข้าสู่ระบบ Microsoft 365 ก่อนจัดการแหล่งข่าว");
+      setNeedReauth(false);
+      setLoadFailed(false);
+      setNotify(null);
       return;
     }
     try {
       const headers = await authHeaders();
-      if (!headers) throw new Error("ได้ token ไม่สำเร็จ");
+      if (!headers) {
+        setNeedReauth(true);
+        setLoadFailed(true);
+        setNotify(null);
+        setMsg("เซสชันหมดอายุหรือถูกบล็อกใน LINE — กดปุ่มยืนยันตัวตนอีกครั้ง แล้ว YouTube / ลิงก์ข่าว / เวลาส่ง จะโหลดขึ้นมา (ข้อมูลไม่ได้หาย)");
+        return;
+      }
       const [ys, fs, nt] = await Promise.all([
         fetch("/api/oauth/google/status", { cache: "no-store", headers }).then((r) => r.json()),
         fetch("/api/feeds", { cache: "no-store", headers }).then((r) => r.json()),
@@ -184,8 +195,13 @@ function ConsentsContent() {
       if (Array.isArray(fs)) setFeeds(fs.filter((f: Feed) => f.kind === "rss" || f.kind === "facebook"));
       if (nt && !nt.error && nt.brief && nt.news) setNotify(nt as NotifyCfg);
       setMsg("");
+      setNeedReauth(false);
+      setLoadFailed(false);
     } catch (e) {
       setMsg("โหลดไม่สำเร็จ: " + (e as Error).message);
+      setNeedReauth(true);
+      setLoadFailed(true);
+      setNotify(null);
     }
   }, [account, authHeaders]);
 
@@ -212,7 +228,11 @@ function ConsentsContent() {
 
   const connectYouTube = async () => {
     const token = await getToken();
-    if (!token) { login(); return; }
+    if (!token) {
+      setNeedReauth(true);
+      await reauth();
+      return;
+    }
     window.location.href = `/api/oauth/google/start?token=${encodeURIComponent(token)}&back=/consents`;
   };
 
@@ -364,6 +384,14 @@ function ConsentsContent() {
             </button>
           )}
           {msg && <p className="text-xs text-amber-300 mt-2">{msg}</p>}
+          {needReauth && (
+            <button
+              onClick={() => reauth()}
+              className="mt-3 w-full inline-flex items-center justify-center gap-2 text-xs font-semibold px-3 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white"
+            >
+              <LogIn className="w-4 h-4" /> ยืนยันตัวตน Microsoft 365 อีกครั้ง
+            </button>
+          )}
         </header>
 
         <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
@@ -554,8 +582,14 @@ function ConsentsContent() {
                 ค่าเริ่มต้น: ตาราง + ข่าว จ–ศ 07:00 (ส่งต่อกันทันที) · {notify.news.count ?? 3} ข่าว/วัน · นัดใหม่ตรวจทุก ~15 นาที
               </p>
             </>
-          ) : (
+          ) : loadFailed || needReauth ? (
+            <p className="text-xs text-amber-300/90 leading-relaxed">
+              โหลดการตั้งค่าเวลาไม่ได้ — กด “ยืนยันตัวตน Microsoft 365 อีกครั้ง” ด้านบน แล้วข้อมูลจะกลับมา (ไม่ได้ถูกลบ)
+            </p>
+          ) : account ? (
             <p className="text-xs text-slate-500">กำลังโหลดการตั้งค่า…</p>
+          ) : (
+            <p className="text-xs text-slate-500">เข้าสู่ระบบ Microsoft 365 เพื่อตั้งเวลาส่ง</p>
           )}
         </section>
       </div>
