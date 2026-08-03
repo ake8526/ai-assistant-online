@@ -64,7 +64,9 @@ const WORK_END_HOUR = Number(process.env.WORK_END_HOUR || 17);
 const AUTO_BOOK = (process.env.AUTO_BOOK || "false").toLowerCase() === "true";
 
 export type CommandContext = {
-  history?: { role?: string; text?: string }[];
+  history?: { role?: string; text?: string; ts?: number }[];
+  /** Compact gist of turns that aged out of the 30-minute window. */
+  summary?: string;
   last_intent?: string;
   last_person?: string;
   last_person_mail?: string;
@@ -136,7 +138,9 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 สำคัญ: หากบริบทก่อนหน้าเพิ่งมีการค้นหาไฟล์ (search_files หรือ file_results) แล้วผู้ใช้พิมพ์ว่า "อ่านและสรุป", "สรุปให้ฟัง", "อ่านไฟล์" ให้เลือก intent เป็น "summarize_file" เสมอ (ห้ามเลือก get_brief)!
 
 ความต่อเนื่องของบทสนทนา (สำคัญมาก — ห้ามเริ่มคิดใหม่เอง):
-ระบบจะแนบ [ประวัติการสนทนาก่อนหน้า] และ [บริบทล่าสุด] (มี last_person / last_meeting) มาให้ ให้ถือว่าบทสนทนาต่อเนื่องกันเสมอ:
+ระบบจะแนบ [ประวัติการสนทนาก่อนหน้า] และ [บริบทล่าสุด] (มี last_person / last_meeting / summary) มาให้ ให้ถือว่าบทสนทนาต่อเนื่องกันเสมอ:
+- จำบริบทได้ประมาณ 30 นาทีหลังข้อความล่าสุด — ถ้าไม่มีประวัติแนบมา ให้ถือว่าเป็นเรื่องใหม่
+- ถ้ามี “สรุปเรื่องก่อนหน้า” ให้ใช้เป็นบริบทยาว แต่รายละเอียดล่าสุดในประวัติสำคัญกว่า
 - ถ้าเพิ่งหาเวลาว่างตรงกันหลายคน (last_meeting มี attendees) แล้วผู้ใช้พิมพ์เจาะจงช่วงเวลาโดยไม่เอ่ยชื่อใหม่ เช่น "ตอนเย็นว่างไหม", "แล้วบ่ายล่ะ", "เช้าว่างไหม" → ใช้ intent "find_meeting_time" และใส่ after/before ตามช่วง (เช้า≈09:00-12:00, บ่าย≈12:00-16:00, เย็น≈16:00-20:00) โดย attendees ปล่อยว่างได้ (ระบบจะใช้ last_meeting)
 - ถ้าผู้ใช้พิมพ์ต่อเนื่องโดย "ไม่ได้เอ่ยชื่อคนใหม่" (เช่น เจาะจงวัน/เวลาเพิ่ม เช่น "วันที่ 30 ตอน 9 โมง", "แล้วบ่ายล่ะ", "ช่วงเช้าว่างไหม") ให้เข้าใจว่ายังพูดถึงคน/เรื่องเดิมใน last_person — ต้องปล่อย params.person ให้ "ว่าง" ไว้ (ระบบจะเติม last_person ให้เอง)
 - ห้ามตีความคำบอกวัน/เวลา เช่น "ตอน", "โมง", "เช้า", "บ่าย", "เย็น", "ครึ่ง", "ทุ่ม" เป็นชื่อคนเด็ดขาด
@@ -429,12 +433,15 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
 
 function historyLines(context?: CommandContext): string[] {
   const lines: string[] = [];
+  if (context?.summary?.trim()) {
+    lines.push(`(สรุปเรื่องก่อนหน้าในรอบนี้: ${context.summary.trim().slice(0, 500)})`);
+  }
   for (const turn of context?.history || []) {
     const role = turn.role === "me" || turn.role === "user" ? "ผู้ใช้" : "ผู้ช่วย";
     const t = (turn.text || "").trim().replace(/\n/g, " ");
     if (t) lines.push(`${role}: ${t.slice(0, 200)}`);
   }
-  return lines.slice(-6);
+  return lines.slice(-12);
 }
 
 async function parseIntent(text: string, context?: CommandContext): Promise<{ intent: string; params: Record<string, unknown> }> {
@@ -468,6 +475,7 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
     if (context.last_intent) compact.last_intent = context.last_intent;
     if (context.last_person) compact.last_person = context.last_person;
     if (context.last_period) compact.last_period = context.last_period;
+    if (context.summary) compact.has_summary = true;
     if (context.last_meeting?.attendees?.length) {
       compact.last_meeting = {
         attendees: context.last_meeting.attendees,

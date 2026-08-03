@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Send, LogIn, Loader2, MapPin, FileText, Folder, Settings as SettingsIcon } from "lucide-react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
+import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } from "@/lib/chatMemory";
 
 type Slot = { start: string; end: string; label: string };
 type Choice = { mail?: string; displayName?: string; period?: string; event_id?: string; label?: string; index?: number };
@@ -71,11 +72,13 @@ function ChatContent() {
     last_intent?: string;
     last_person?: string;
     last_person_mail?: string;
+    last_activity_ts?: number;
+    summary?: string;
     files?: FileHit[];
     selected?: { start: string; person?: { mail?: string; displayName?: string } };
     meeting?: { attendees: string[]; duration: number; subject: string; window?: { start: string; end: string; label: string } };
     last_meeting?: { attendees: string[]; duration: number; subject?: string; window?: { start: string; end: string; label: string } };
-    history: { role: string; text: string }[];
+    history: ChatTurn[];
   }>({ history: [] });
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -100,7 +103,9 @@ function ChatContent() {
 
   const applyResult = (res: ApiResult) => {
     const ctx = ctxRef.current;
+    const now = Date.now();
     ctx.last_intent = res.intent;
+    ctx.last_activity_ts = now;
     if (res.person?.mail) {
       ctx.last_person_mail = res.person.mail;
       ctx.last_person = res.person.displayName || res.person.mail;
@@ -112,8 +117,9 @@ function ChatContent() {
         ctx.last_meeting = res.meeting as typeof ctx.last_meeting;
       }
     }
-    ctx.history.push({ role: "bot", text: res.reply || "" });
-    ctx.history = ctx.history.slice(-8);
+    const pruned = pruneChatHistory(appendChatTurns(ctx.history, undefined, res.reply || "", now), ctx.summary, now);
+    ctx.history = pruned.history;
+    ctx.summary = pruned.summary;
     addMsg({
       role: "bot",
       text: res.reply || res.error || "…",
@@ -132,12 +138,31 @@ function ChatContent() {
     setBusy(true);
     addMsg({ role: "me", text: t });
     const ctx = ctxRef.current;
-    ctx.history.push({ role: "me", text: t });
+    const now = Date.now();
+    // Idle > 30 min → brand-new topic
+    if (chatMemoryExpired(ctx.last_activity_ts, now)) {
+      ctx.history = [];
+      ctx.summary = undefined;
+      ctx.last_intent = undefined;
+      ctx.last_person = undefined;
+      ctx.last_person_mail = undefined;
+      ctx.last_meeting = undefined;
+      ctx.meeting = undefined;
+      ctx.files = undefined;
+      ctx.selected = undefined;
+    } else {
+      const pruned = pruneChatHistory(ctx.history, ctx.summary, now);
+      ctx.history = pruned.history;
+      ctx.summary = pruned.summary;
+    }
+    ctx.history = appendChatTurns(ctx.history, t, undefined, now);
+    ctx.last_activity_ts = now;
     try {
       const res = await api("/api/command", {
         text: t,
         context: {
-          history: ctx.history.slice(-6),
+          history: ctx.history,
+          summary: ctx.summary,
           last_intent: ctx.last_intent,
           last_person: ctx.last_person,
           last_person_mail: ctx.last_person_mail,

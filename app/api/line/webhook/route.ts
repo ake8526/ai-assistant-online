@@ -14,6 +14,13 @@ import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
+import {
+  appendChatTurns,
+  chatMemoryExpired,
+  pruneChatHistory,
+  type ChatTurn,
+  CHAT_MEMORY_TTL_MS,
+} from "@/lib/chatMemory";
 import { assertConfigured } from "@/lib/supabaseServer";
 
 export const maxDuration = 60;
@@ -172,24 +179,39 @@ function detailText(res: CommandResult): string {
   return lines.length ? "\n\n" + lines.join("\n") : "";
 }
 
-// --- per-user conversation context (so "วันนี้ 10 โมง ติดอะไร" keeps talking
-// about the same person as the previous turn, like the web app does) ---
+// --- per-user conversation context (30-minute rolling memory) ---
 const CTX_KEY = "_line_ctx";
-const CTX_TTL_MS = 30 * 60 * 1000; // forget the thread after 30 min idle
 
 async function loadCtx(upn: string): Promise<CommandContext | undefined> {
   try {
     const raw = await getSetting(upn, CTX_KEY);
     if (!raw) return undefined;
     const c = JSON.parse(raw);
-    if (!c.ts || Date.now() - c.ts > CTX_TTL_MS) return undefined;
+    // No reply for > 30 min → brand-new topic
+    if (chatMemoryExpired(c.ts)) {
+      try {
+        await deleteSetting(upn, CTX_KEY);
+      } catch { /* ignore */ }
+      return undefined;
+    }
+    const pruned = pruneChatHistory(
+      Array.isArray(c.history)
+        ? c.history.map((t: ChatTurn) => ({
+            role: String(t.role || "user"),
+            text: String(t.text || ""),
+            ts: typeof t.ts === "number" ? t.ts : c.ts || Date.now(),
+          }))
+        : [],
+      typeof c.summary === "string" ? c.summary : undefined
+    );
     return {
       last_intent: c.last_intent,
       last_person: c.last_person,
       last_person_mail: c.last_person_mail,
       last_period: c.last_period,
       last_meeting: c.last_meeting,
-      history: Array.isArray(c.history) ? c.history : undefined,
+      history: pruned.history,
+      summary: pruned.summary,
     };
   } catch {
     return undefined;
@@ -197,17 +219,29 @@ async function loadCtx(upn: string): Promise<CommandContext | undefined> {
 }
 
 async function saveCtx(upn: string, prev: CommandContext | undefined, res: CommandResult, userText?: string): Promise<void> {
-  const history = [...(prev?.history || [])];
-  if (userText?.trim()) history.push({ role: "user", text: userText.trim().slice(0, 200) });
-  if (res.reply) history.push({ role: "assistant", text: String(res.reply).slice(0, 300) });
+  const now = Date.now();
+  const withNew = appendChatTurns(
+    (prev?.history || []).map((t) => ({
+      role: String(t.role || "user"),
+      text: String(t.text || ""),
+      ts: typeof t.ts === "number" ? t.ts : now,
+    })),
+    userText,
+    res.reply,
+    now
+  );
+  const pruned = pruneChatHistory(withNew, prev?.summary, now);
+
   const next: Record<string, unknown> = {
-    ts: Date.now(),
+    ts: now,
     last_intent: res.intent || prev?.last_intent,
     last_person: prev?.last_person,
     last_person_mail: prev?.last_person_mail,
     last_period: res.period || prev?.last_period,
     last_meeting: prev?.last_meeting,
-    history: history.slice(-6),
+    history: pruned.history,
+    summary: pruned.summary,
+    ttl_ms: CHAT_MEMORY_TTL_MS,
   };
   if (res.person?.mail) {
     next.last_person = res.person.displayName || res.person.mail;
