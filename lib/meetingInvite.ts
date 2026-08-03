@@ -626,14 +626,62 @@ export async function respondMeetingInvite(
   await saveInvite(rec.organizerUpn, rec);
   await setPendingRsvp(who, rec).catch(() => undefined);
 
-  // Decline → ask cancel vs reschedule (don't finalize / notify host yet)
+  // Decline → notify host immediately, then ask attendee cancel vs reschedule
   if (!accept) {
     const when = whenLabel(rec.start, rec.end);
+    const holding = !rec.eventId && rec.status !== "booked";
+    try {
+      const orgLine = await getLineId(rec.organizerUpn);
+      if (orgLine) {
+        const oid = encodeURIComponent(rec.organizerUpn);
+        await pushLineMessages(orgLine, [
+          {
+            type: "text",
+            text:
+              `📬 อัปเดตคำขอนัด\n` +
+              `📌 ${rec.subject}\n` +
+              `🕐 ${when}\n` +
+              `👤 ${who} กดไม่สะดวก ❌\n\n` +
+              (holding ? "ยังไม่ได้สร้างใน Outlook ครับ\n" : "") +
+              `ระบบกำลังถามอีกฝั่งว่าจะยกเลิก หรือขอเปลี่ยนวันเวลา — รอสักครู่ หรือกดหาเวลาใหม่ได้เลยครับ`,
+            quickReply: {
+              items: [
+                {
+                  type: "action",
+                  action: {
+                    type: "message",
+                    label: "📅 หาเวลาใหม่",
+                    text: `นัด${who.includes("@") ? who.split("@")[0] : who} `,
+                  },
+                },
+                {
+                  type: "action",
+                  action: {
+                    type: "postback",
+                    label: "❌ ยกเลิกคำขอ",
+                    data: `a=mthostcancel&oid=${oid}&id=${rec.id}`,
+                    displayText: "ยกเลิกนัดนี้",
+                  },
+                },
+                {
+                  type: "action",
+                  action: { type: "message", label: "รออีกฝั่งก่อน", text: "รับทราบ รออีกฝั่ง" },
+                },
+              ],
+            },
+          },
+        ]);
+      } else {
+        console.warn("[mt-invite] host has no LINE link", rec.organizerUpn);
+      }
+    } catch (e) {
+      console.warn("[mt-invite] notify host on decline", String(e).slice(0, 150));
+    }
     return {
       ok: true,
       reply:
         `รับทราบว่าช่วงนี้ไม่สะดวกครับ\n📌 ${rec.subject}\n🕐 ${when}\n\n` +
-        `ต้องการยกเลิกนัดนี้ หรือขอเปลี่ยนวันเวลาครับ?`,
+        `แจ้งเจ้าของนัดแล้ว — ต้องการยกเลิกนัดนี้ หรือขอเปลี่ยนวันเวลาครับ?`,
       quickReply: declineChoiceQuickReply(rec),
     };
   }
