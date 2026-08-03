@@ -366,6 +366,26 @@ export async function openNewsSettings(upn: string, via: "push" | "reply", reply
   await send(via, upn, [manageMenuMessage(listText)], replyToken);
 }
 
+/** Push notify schedule wizard (count → time → days) for preview / re-edit. */
+export async function previewNewsNotifySetup(upn: string): Promise<void> {
+  const prefs = await getNewsPrefs(upn);
+  await saveNewsDraft(upn, {
+    step: "count",
+    topics: prefs.topics.length ? prefs.topics : ["เทคโนโลยี"],
+    count: prefs.count,
+    ts: Date.now(),
+  });
+  await send("push", upn, [
+    {
+      type: "text",
+      text:
+        "ตัวอย่างตั้งเวลาแจ้งเตือนข่าวครับ ⏰\n" +
+        "หลังเลือกหัวข้อเสร็จ ระบบจะถาม 3 ข้อนี้ต่อ — ลองกดปุ่มด้านล่างได้เลย",
+    },
+    countPrompt(),
+  ]);
+}
+
 /** Start or resume first-time onboarding. */
 export async function startNewsOnboarding(upn: string, via: "push" | "reply", replyToken?: string): Promise<void> {
   const prefs = await getNewsPrefs(upn);

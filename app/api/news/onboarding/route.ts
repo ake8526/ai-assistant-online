@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AuthError, checkCronSecret, requireUser } from "@/lib/auth";
-import { startNewsOnboarding } from "@/lib/newsOnboarding";
+import { previewNewsNotifySetup, startNewsOnboarding } from "@/lib/newsOnboarding";
 import { getNewsPrefs, resetNewsOnboarding } from "@/lib/newsPrefs";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 /**
  * POST — start / reset news onboarding.
  * Cron: ?key=CRON_SECRET&upn=...&reset=1  (simulate new user)
+ * Cron: ?key=CRON_SECRET&upn=...&preview=notify  (push schedule wizard)
  * User: Bearer → start for self
  */
 export async function POST(req: Request) {
@@ -16,6 +17,7 @@ export async function POST(req: Request) {
     assertConfigured();
     const url = new URL(req.url);
     const reset = url.searchParams.get("reset") === "1";
+    const preview = (url.searchParams.get("preview") || "").trim();
 
     if (checkCronSecret(req)) {
       let upn = (url.searchParams.get("upn") || "").trim().toLowerCase();
@@ -24,6 +26,10 @@ export async function POST(req: Request) {
         upn = data?.[0]?.upn || "";
       }
       if (!upn) return NextResponse.json({ error: "no linked user" }, { status: 400 });
+      if (preview === "notify") {
+        await previewNewsNotifySetup(upn);
+        return NextResponse.json({ ok: true, upn, mode: "preview_notify" });
+      }
       if (reset) await resetNewsOnboarding(upn);
       await startNewsOnboarding(upn, "push");
       const prefs = await getNewsPrefs(upn);
@@ -31,6 +37,10 @@ export async function POST(req: Request) {
     }
 
     const upn = await requireUser(req);
+    if (preview === "notify") {
+      await previewNewsNotifySetup(upn);
+      return NextResponse.json({ ok: true, upn, mode: "preview_notify" });
+    }
     if (reset) await resetNewsOnboarding(upn);
     await startNewsOnboarding(upn, "push");
     return NextResponse.json({ ok: true, upn });
