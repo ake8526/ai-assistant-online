@@ -1,12 +1,12 @@
 // Pluggable LLM client with provider fallback.
-// LLM_PROVIDER supports a comma-separated chain, e.g. "qwen,groq"
+// LLM_PROVIDER supports a comma-separated chain, e.g. "qwen,groq,gemini"
 // (try first, fall back on failure). Always replies in Thai (primary) / English only.
 import { trace } from "@/lib/trace";
 
 const LANGUAGE_RULE =
   "\n\nกติกาภาษา: ตอบเป็นภาษาไทยเป็นหลักเสมอ ใช้อังกฤษเฉพาะศัพท์เทคนิค/ชื่อเฉพาะ ห้ามตอบภาษาอื่นเด็ดขาด";
 
-type Provider = "qwen" | "groq";
+type Provider = "qwen" | "groq" | "gemini";
 
 /** Skip a provider briefly after 429 so the next LINE message hits a healthy one first. */
 const rateLimitedUntil = new Map<Provider, number>();
@@ -25,14 +25,14 @@ function isRateLimited(provider: Provider): boolean {
 }
 
 function providerChain(fast = false): Provider[] {
-  const raw = (process.env.LLM_PROVIDER || "qwen,groq").toLowerCase();
+  const raw = (process.env.LLM_PROVIDER || "qwen,groq,gemini").toLowerCase();
   const wanted = raw.split(",").map((s) => s.trim()).filter(Boolean) as Provider[];
-  const known: Provider[] = ["qwen", "groq"];
+  const known: Provider[] = ["qwen", "groq", "gemini"];
   let chain = wanted.filter((p) => known.includes(p));
-  if (!chain.length) chain = fast ? ["groq", "qwen"] : ["qwen", "groq"];
+  if (!chain.length) chain = fast ? ["groq", "qwen", "gemini"] : ["qwen", "groq", "gemini"];
   // Latency-sensitive calls (e.g. intent parsing on every LINE message) prefer
   // groq: it classifies in ~0.5s vs ~5s for qwen. Quality-sensitive generation
-  // keeps the configured order.
+  // keeps the configured order. Gemini is a solid mid/fallback.
   if (fast && chain.includes("groq")) chain = ["groq", ...chain.filter((p) => p !== "groq")];
   // Soft-rotate away from recently rate-limited providers
   const healthy = chain.filter((p) => !isRateLimited(p));
@@ -48,6 +48,18 @@ function settings(provider: Provider): { baseUrl: string; key: string; model: st
       baseUrl: process.env.QWEN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
       key,
       model: process.env.QWEN_MODEL || "qwen3-max",
+    };
+  }
+  if (provider === "gemini") {
+    const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+    if (!key) return null;
+    return {
+      // OpenAI-compatible endpoint (Google AI Studio / Gemini API)
+      baseUrl:
+        process.env.GEMINI_BASE_URL ||
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+      key,
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
     };
   }
   const key = process.env.GROQ_API_KEY || "";
@@ -85,27 +97,33 @@ async function callProvider(
   const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 20000);
   let res: Response;
   try {
+    const body: Record<string, unknown> = {
+      model: cfg.model,
+      temperature: opts?.temperature ?? 0.3,
+      messages: [
+        { role: "system", content: system + (opts?.json ? "" : LANGUAGE_RULE) },
+        { role: "user", content: user },
+      ],
+    };
+    if (opts?.json) body.response_format = { type: "json_object" };
+    // Gemini 2.5 Flash can spend tokens on "thinking"; for fast intent JSON keep it light.
+    if (provider === "gemini" && opts?.fast) {
+      body.reasoning_effort = "none";
+    }
+
     res = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: { Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" },
       signal: controller.signal,
-      body: JSON.stringify({
-        model: cfg.model,
-        temperature: opts?.temperature ?? 0.3,
-        ...(opts?.json ? { response_format: { type: "json_object" } } : {}),
-        messages: [
-          { role: "system", content: system + (opts?.json ? "" : LANGUAGE_RULE) },
-          { role: "user", content: user },
-        ],
-      }),
+      body: JSON.stringify(body),
     });
   } finally {
     clearTimeout(timer);
   }
   if (!res.ok) {
-    const body = (await res.text()).slice(0, 240);
+    const text = (await res.text()).slice(0, 240);
     if (res.status === 429) markRateLimited(provider);
-    throw new ProviderHttpError(provider, res.status, body);
+    throw new ProviderHttpError(provider, res.status, text);
   }
   const data = await res.json();
   return (data.choices?.[0]?.message?.content ?? "").trim();
@@ -129,7 +147,9 @@ export async function chat(
   opts?: { json?: boolean; temperature?: number; fast?: boolean; timeoutMs?: number }
 ): Promise<string> {
   const chain = providerChain(opts?.fast).filter((p) => settings(p));
-  if (!chain.length) throw new Error("No LLM provider configured (set QWEN_API_KEY and/or GROQ_API_KEY)");
+  if (!chain.length) {
+    throw new Error("No LLM provider configured (set QWEN_API_KEY, GROQ_API_KEY, and/or GEMINI_API_KEY)");
+  }
 
   const errors: string[] = [];
   for (let i = 0; i < chain.length; i++) {
