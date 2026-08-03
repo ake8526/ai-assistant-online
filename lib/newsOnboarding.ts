@@ -1,5 +1,5 @@
 // LINE news onboarding + later “ตั้งค่าข่าว” manage menu.
-import { clampNewsCount, saveNotifyKind } from "@/lib/notify";
+import { clampNewsCount, getNotifyConfig, saveNotifyKind } from "@/lib/notify";
 import {
   NEWS_TOPIC_PRESETS,
   clearNewsDraft,
@@ -142,7 +142,8 @@ function countPrompt(): object {
   return {
     type: "text",
     text:
-      "ต้องการให้อัปเดตข่าววันละกี่เรื่องครับ?\n\n" +
+      "ต่อไปตั้งการแจ้งเตือนครับ 📬\n\n" +
+      "① ต้องการให้อัปเดตข่าววันละกี่เรื่อง?\n\n" +
       "• ทั้งหมด = ทุกเรื่องที่เกี่ยวข้องวันนี้\n" +
       "• หรือเลือก 3 / 5 / 10 เรื่องต่อวัน",
     quickReply: qr([
@@ -154,13 +155,114 @@ function countPrompt(): object {
   };
 }
 
+function timePrompt(): object {
+  return {
+    type: "text",
+    text:
+      "② ส่งสรุปข่าวเข้า LINE กี่โมงครับ?\n(เวลาไทย 24 ชม.)",
+    quickReply: qr([
+      { label: "06:00", data: "a=newstime&t=06:00", displayText: "ส่งตอน 06:00" },
+      { label: "07:00", data: "a=newstime&t=07:00", displayText: "ส่งตอน 07:00" },
+      { label: "08:00", data: "a=newstime&t=08:00", displayText: "ส่งตอน 08:00" },
+      { label: "09:00", data: "a=newstime&t=09:00", displayText: "ส่งตอน 09:00" },
+      { label: "12:00", data: "a=newstime&t=12:00", displayText: "ส่งตอน 12:00" },
+      { label: "18:00", data: "a=newstime&t=18:00", displayText: "ส่งตอน 18:00" },
+    ]),
+  };
+}
+
+const DAY_LABELS = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+
+function daysPrompt(selected: number[]): object {
+  const sel = selected.length
+    ? selected
+        .slice()
+        .sort((a, b) => a - b)
+        .map((d) => DAY_LABELS[d])
+        .join(" ")
+    : "(ยังไม่เลือก)";
+  const remaining = [1, 2, 3, 4, 5, 6, 0].filter((d) => !selected.includes(d));
+  const actions: { label: string; data: string; displayText?: string }[] = [];
+  if (selected.length) {
+    actions.push({
+      label: `✅ เสร็จ (${selected.length} วัน)`,
+      data: "a=newsdaysdone",
+      displayText: "ตั้งวันส่งเสร็จแล้ว",
+    });
+  }
+  actions.push(
+    { label: "จ–ศ", data: "a=newsdays&p=weekday", displayText: "ส่งจันทร์–ศุกร์" },
+    { label: "ทุกวัน", data: "a=newsdays&p=everyday", displayText: "ส่งทุกวัน" }
+  );
+  for (const d of remaining) {
+    actions.push({
+      label: DAY_LABELS[d],
+      data: `a=newsdays&d=${d}`,
+      displayText: `เพิ่มวัน${DAY_LABELS[d]}`,
+    });
+  }
+  if (!selected.length) {
+    actions.push({ label: "✅ เสร็จ", data: "a=newsdaysdone", displayText: "ตั้งวันส่งเสร็จแล้ว" });
+  }
+  return {
+    type: "text",
+    text:
+      "③ ส่งวันไหนบ้างครับ?\n" +
+      "กดปุ่มวันทีละวันได้หลายอัน หรือเลือกชุดสำเร็จรูป\n\n" +
+      `เลือกแล้ว: ${sel}`,
+    quickReply: qr(actions),
+  };
+}
+
 function countLabel(n: number): string {
   return n === 0 ? "ทั้งหมดที่เกี่ยวข้องวันนี้" : `วันละ ${n} เรื่อง`;
 }
 
+function formatDays(days: number[]): string {
+  if (!days.length) return "-";
+  const sorted = [...days].sort((a, b) => a - b);
+  if (sorted.length === 7) return "ทุกวัน";
+  if (sorted.join(",") === "1,2,3,4,5") return "จ–ศ";
+  return sorted.map((d) => DAY_LABELS[d]).join(" ");
+}
+
+async function finishNewsNotify(
+  upn: string,
+  draft: { topics: string[]; count?: number; time?: string; days?: number[] },
+  replyToken: string,
+  prefsOnboarded: boolean
+): Promise<void> {
+  const count = draft.count ?? 3;
+  const time = draft.time || "07:00";
+  const days = draft.days?.length ? draft.days : [1, 2, 3, 4, 5];
+  await setNewsTopics(upn, draft.topics);
+  await setNewsInterested(upn, true);
+  await saveNotifyKind(upn, "news", { enabled: true, count, time, days });
+  await setNewsOnboardingDone(upn, true);
+  await clearNewsDraft(upn);
+
+  const summary =
+    "✅ ตั้งค่าการแจ้งเตือนข่าวเรียบร้อยครับ\n\n" +
+    `หัวข้อ: ${draft.topics.join(", ") || "-"}\n` +
+    `จำนวน: ${countLabel(count)}\n` +
+    `เวลาส่ง: ${time} น.\n` +
+    `วันที่ส่ง: ${formatDays(days)}\n\n` +
+    "ระบบจะส่งสรุปเข้า LINE ตามเวลานี้ครับ\n" +
+    "เปลี่ยนทีหลังพิมพ์ “ตั้งค่าข่าว” ได้เลย";
+
+  if (prefsOnboarded) {
+    await replyLineMessages(replyToken, [
+      { type: "text", text: summary },
+      manageMenuMessage(await buildFollowListText(upn)),
+    ]);
+  } else {
+    await replyLine(replyToken, summary + `\n\nหน้าตั้งค่าเพิ่มเติม: ${SETTINGS_URL}`);
+  }
+}
+
 async function buildFollowListText(upn: string): Promise<string> {
   const prefs = await getNewsPrefs(upn);
-  const [feeds, yt] = await Promise.all([
+  const [feeds, yt, notify] = await Promise.all([
     listManagedFeeds(upn).catch(() => []),
     getYouTubeFollowStatus(upn).catch(() => ({
       linked: false,
@@ -168,13 +270,17 @@ async function buildFollowListText(upn: string): Promise<string> {
       channel: null,
       granted: false,
     })),
+    getNotifyConfig(upn).catch(() => null),
   ]);
+  const newsN = notify?.news;
   const lines = ["📰 รายการที่คุณติดตามอยู่ตอนนี้", ""];
 
-  if (!prefs.interested) {
-    lines.push("สถานะสรุปหัวข้อข่าว: ปิดอัตโนมัติ");
+  if (!prefs.interested || newsN?.enabled === false) {
+    lines.push("สถานะสรุปข่าว: ปิดอัตโนมัติ");
   } else {
-    lines.push(`สถานะสรุปหัวข้อข่าว: เปิด · อัปเดต ${countLabel(prefs.count)}`);
+    lines.push(
+      `สถานะสรุปข่าว: เปิด · ${countLabel(prefs.count)} · เวลา ${newsN?.time || "07:00"} น. · ${formatDays(newsN?.days || [1, 2, 3, 4, 5])}`
+    );
   }
   lines.push("");
 
@@ -223,6 +329,7 @@ function manageMenuMessage(listText: string): object {
       { label: "🗑 ลบหัวข้อ", data: "a=newsdel", displayText: "ลบหัวข้อข่าว" },
       { label: "✏️ กำหนดเอง", data: "a=newscustom", displayText: "พิมพ์หัวข้อเอง" },
       { label: "🔢 จำนวนข่าว/วัน", data: "a=newseditcount", displayText: "เปลี่ยนจำนวนข่าวต่อวัน" },
+      { label: "⏰ เวลาแจ้งเตือน", data: "a=newsschedule", displayText: "ตั้งเวลาแจ้งเตือนข่าว" },
       { label: "🌐 หน้าตั้งค่า", uri: SETTINGS_URL },
     ]),
   };
@@ -274,6 +381,10 @@ export async function startNewsOnboarding(upn: string, via: "push" | "reply", re
     msg = topicsPrompt(existing.topics || []);
   } else if (existing?.step === "count") {
     msg = countPrompt();
+  } else if (existing?.step === "time") {
+    msg = timePrompt();
+  } else if (existing?.step === "days") {
+    msg = daysPrompt(existing.days || []);
   } else if (existing?.step === "delete" || existing?.step === "manage") {
     await openNewsSettings(upn, via, replyToken);
     return;
@@ -317,10 +428,14 @@ const NEWS_ACTIONS = new Set([
   "newscustom",
   "newstopicsdone",
   "newscount",
+  "newstime",
+  "newsdays",
+  "newsdaysdone",
   "newsadd",
   "newsdel",
   "newsdeli",
   "newseditcount",
+  "newsschedule",
   "newsmenu",
 ]);
 
@@ -374,10 +489,11 @@ export async function handleNewsOnboardingPostback(
     return true;
   }
 
-  if (a === "newseditcount") {
+  if (a === "newseditcount" || a === "newsschedule") {
     await saveNewsDraft(upn, {
       step: "count",
       topics: prefs.topics,
+      count: prefs.count,
       ts: Date.now(),
     });
     await replyLineMessages(replyToken, [countPrompt()]);
@@ -449,13 +565,7 @@ export async function handleNewsOnboardingPostback(
       return true;
     }
     await setNewsTopics(upn, draft.topics);
-    // If already onboarded, skip count and return to manage menu
-    if (prefs.onboardingDone) {
-      await setNewsInterested(upn, true);
-      await clearNewsDraft(upn);
-      await openNewsSettings(upn, "reply", replyToken);
-      return true;
-    }
+    // After topics → continue to notify schedule (count → time → days)
     draft.step = "count";
     await saveNewsDraft(upn, draft);
     await replyLineMessages(replyToken, [countPrompt()]);
@@ -464,24 +574,60 @@ export async function handleNewsOnboardingPostback(
 
   if (a === "newscount") {
     const n = clampNewsCount(data.get("n"));
-    await saveNotifyKind(upn, "news", { enabled: true, count: n });
-    await setNewsTopics(upn, draft.topics.length ? draft.topics : prefs.topics);
-    await setNewsInterested(upn, true);
-    await setNewsOnboardingDone(upn, true);
-    await clearNewsDraft(upn);
-    if (prefs.onboardingDone) {
-      await openNewsSettings(upn, "reply", replyToken);
+    draft.count = n;
+    draft.step = "time";
+    await saveNewsDraft(upn, draft);
+    await replyLineMessages(replyToken, [timePrompt()]);
+    return true;
+  }
+
+  if (a === "newstime") {
+    const t = data.get("t") || "07:00";
+    draft.time = /^\d{1,2}:\d{2}$/.test(t) ? t.padStart(5, "0") : "07:00";
+    draft.step = "days";
+    draft.days = draft.days || [];
+    await saveNewsDraft(upn, draft);
+    await replyLineMessages(replyToken, [daysPrompt(draft.days)]);
+    return true;
+  }
+
+  if (a === "newsdays") {
+    const preset = data.get("p") || "";
+    if (preset === "weekday") {
+      draft.days = [1, 2, 3, 4, 5];
+      await finishNewsNotify(upn, draft, replyToken, prefs.onboardingDone);
       return true;
     }
-    await replyLine(
-      replyToken,
-      "✅ ตั้งค่าข่าวเรียบร้อยครับ\n\n" +
-        `หัวข้อ: ${(draft.topics.length ? draft.topics : prefs.topics).join(", ") || "-"}\n` +
-        `อัปเดต: ${countLabel(n)}\n\n` +
-        "ตอนเช้าจะสรุปข่าวตามหัวข้อเหล่านี้ให้ และถาม “มีข่าวอะไรบ้าง” ได้ตลอดครับ\n" +
-        "เปลี่ยนภายหลัง พิมพ์ “ตั้งค่าข่าว” ได้เลย\n" +
-        `หรือเปิดหน้าตั้งค่า: ${SETTINGS_URL}`
-    );
+    if (preset === "everyday") {
+      draft.days = [0, 1, 2, 3, 4, 5, 6];
+      await finishNewsNotify(upn, draft, replyToken, prefs.onboardingDone);
+      return true;
+    }
+    const d = Number(data.get("d"));
+    if (Number.isInteger(d) && d >= 0 && d <= 6) {
+      const cur = new Set(draft.days || []);
+      if (cur.has(d)) cur.delete(d);
+      else cur.add(d);
+      draft.days = Array.from(cur).sort((a, b) => a - b);
+    }
+    draft.step = "days";
+    await saveNewsDraft(upn, draft);
+    await replyLineMessages(replyToken, [daysPrompt(draft.days || [])]);
+    return true;
+  }
+
+  if (a === "newsdaysdone") {
+    if (!draft.days?.length) {
+      await replyLineMessages(replyToken, [
+        {
+          type: "text",
+          text: "เลือกอย่างน้อย 1 วันก่อนนะครับ หรือกด “จ–ศ” / “ทุกวัน”",
+          quickReply: (daysPrompt([]) as { quickReply: object }).quickReply,
+        },
+      ]);
+      return true;
+    }
+    await finishNewsNotify(upn, draft, replyToken, prefs.onboardingDone);
     return true;
   }
 
