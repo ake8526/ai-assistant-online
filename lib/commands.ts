@@ -1613,27 +1613,23 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       return {
         intent: "find_duplicate_nicknames",
         reply:
-          `สแกนผู้ใช้ในไดเรกทอรี ${res.scanned} คนแล้ว ไม่พบชื่อเล่นซ้ำครับ\n` +
-          `(ดูจากคำแรกของชื่อที่แสดง / ชื่อในวงเล็บ — ไม่ใช่ชื่อเล่นนอกระบบ)`,
+          `สแกนผู้ใช้ในไดเรกทอรี ${res.scanned} คนแล้ว ไม่พบชื่อเล่นภาษาไทยที่ซ้ำกันครับ\n` +
+          `(กรองเฉพาะชื่อที่มีตัวอักษรไทย — ไม่นับ Acc / Admin / บัญชีระบบ)`,
       };
     }
-    const top = res.groups.slice(0, 12);
     const lines = [
-      `พบชื่อเล่นซ้ำ ${res.groups.length} กลุ่ม จากผู้ใช้ที่สแกน ${res.scanned} คนครับ`,
+      `พบชื่อเล่นไทยซ้ำ ${res.groups.length} กลุ่ม จากผู้ใช้ที่สแกน ${res.scanned} คนครับ`,
+      `(แสดงเฉพาะภาษาไทย · รายการทั้งหมด)`,
       "",
     ];
-    top.forEach((g, i) => {
+    res.groups.forEach((g, i) => {
       lines.push(`${i + 1}) “${g.nick}” — ${g.people.length} คน`);
-      g.people.slice(0, 6).forEach((p) => {
-        lines.push(`   • ${(p.displayName || p.mail).trim()} — ${p.mail}`);
+      g.people.forEach((p) => {
+        lines.push(`   • ${(p.displayName || g.nick).trim()}`);
       });
-      if (g.people.length > 6) lines.push(`   • …อีก ${g.people.length - 6} คน`);
     });
-    if (res.groups.length > top.length) {
-      lines.push("", `…และอีก ${res.groups.length - top.length} กลุ่ม`);
-    }
-    lines.push("", "หมายเหตุ: เทียบจากชื่อที่แสดงใน Microsoft 365 (คำแรก/วงเล็บ)");
-    trace("compose", "สรุปรายชื่อเล่นซ้ำ");
+    lines.push("", "หมายเหตุ: จากชื่อที่แสดงใน Microsoft 365 ที่มีตัวอักษรไทย");
+    trace("compose", "สรุปรายชื่อเล่นซ้ำ (ไทยทั้งหมด)");
     return { intent: "find_duplicate_nicknames", reply: lines.join("\n") };
   }
 

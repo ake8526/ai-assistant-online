@@ -469,6 +469,25 @@ function nickNorm(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, "");
 }
 
+/** Thai-script nickname (skip Acc / Admin / collector service accounts). */
+export function isThaiNickname(s: string): boolean {
+  return /[\u0E00-\u0E7F]/.test(s || "");
+}
+
+/** Keep Thai letters/digits/spaces from a display name for LINE replies. */
+export function thaiDisplayLabel(displayName: string, fallbackNick?: string): string | null {
+  const raw = (displayName || "").trim();
+  if (!raw) return fallbackNick && isThaiNickname(fallbackNick) ? fallbackNick : null;
+  if (isThaiNickname(raw)) {
+    // Prefer contiguous Thai chunks (drop pure-English tokens)
+    const parts = raw.split(/[\s\-_/|·]+/).filter((p) => isThaiNickname(p) || /^[0-9๐-๙]+$/.test(p));
+    const joined = parts.join(" ").trim();
+    if (joined) return joined;
+    return raw.replace(/[A-Za-z@._]+/g, " ").replace(/\s+/g, " ").trim() || raw;
+  }
+  return fallbackNick && isThaiNickname(fallbackNick) ? fallbackNick : null;
+}
+
 type DupNickGroup = { nick: string; people: UserInfo[] };
 
 let dupNickCache: { at: number; scanned: number; groups: DupNickGroup[] } | null = null;
@@ -544,11 +563,22 @@ export async function findDuplicateNicknames(opts?: {
   }
 
   const groups = [...map.values()]
-    .filter((g) => g.people.length >= 2)
+    .filter((g) => g.people.length >= 2 && isThaiNickname(g.nick))
     .sort((a, b) => b.people.length - a.people.length || a.nick.localeCompare(b.nick, "th"));
 
-  dupNickCache = { at: now, scanned: users.length, groups };
-  return { scanned: users.length, groups };
+  // Drop English-only people labels when possible; keep person if nick is Thai
+  const thaiGroups = groups.map((g) => ({
+    nick: g.nick,
+    people: g.people
+      .map((p) => {
+        const label = thaiDisplayLabel(p.displayName || "", g.nick);
+        return label ? { mail: p.mail, displayName: label } : null;
+      })
+      .filter((p): p is UserInfo => !!p),
+  })).filter((g) => g.people.length >= 2);
+
+  dupNickCache = { at: now, scanned: users.length, groups: thaiGroups };
+  return { scanned: users.length, groups: thaiGroups };
 }
 
 export type Attendee = { name?: string; email?: string };
