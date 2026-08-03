@@ -665,7 +665,8 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
   setTraceUser(upn);
   trace("receive", "ข้อความเข้าจาก LINE");
   try {
-    void showLineLoading(userId, 60);
+    // Classic LINE 3-dot bubble (same as clip) — await so it starts before work.
+    await showLineLoading(userId, 60);
 
     // Meeting RSVP / reschedule by text — before news onboarding
     {
@@ -800,38 +801,6 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       }
     }
     const ctx = await loadCtx(upn);
-
-    // News digest is slow (feeds + LLM). LINE reply tokens die ~30s → ack then push
-    // so “ข่าววันนี้” never ends up Read-with-no-answer.
-    const newsAsk =
-      /^(มี)?ข่าว(อะไรบ้าง|วันนี้|ล่าสุด)?[!?.…]*$|สรุปข่าว(วันนี้|ล่าสุด)?|มีคลิปใหม่อะไรบ้าง|ขอ(สรุป)?ข่าว(วันนี้|ล่าสุด)?/i.test(
-        text.trim()
-      );
-    if (newsAsk) {
-      let acked = false;
-      try {
-        await replyLine(ev.replyToken, "กำลังสรุปข่าวให้ครับ รอสักครู่… 📰");
-        acked = true;
-      } catch {
-        /* token may already be stale — fall through to push-only */
-      }
-      const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
-      const body = (res.reply || "ยังไม่มีข่าวให้สรุปครับ") + detailText(res);
-      try {
-        if (acked) await pushLineToId(userId, body);
-        else await sendResult(ev.replyToken, res);
-        trace("reply", `ตอบกลับ (${res.intent})`);
-      } catch (replyErr) {
-        console.warn("[line] news reply/push failed:", String(replyErr).slice(0, 120));
-        try {
-          await pushLineToId(userId, body);
-          trace("reply", `push fallback (${res.intent})`, "error");
-        } catch { /* give up */ }
-      }
-      await saveCtx(upn, ctx, res, text);
-      return;
-    }
-
     const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
     try {
       await sendResult(ev.replyToken, res);
@@ -873,6 +842,8 @@ async function handlePostback(ev: LineEvent): Promise<void> {
   }
   setTraceUser(upn);
   try {
+    // Show 3-dot loading for any real work (not just prep).
+    await showLineLoading(userId, 60);
     const data = new URLSearchParams(ev.postback?.data || "");
     const act = data.get("a") || "";
     trace("receive", `กดปุ่ม: ${act || "?"}`);
@@ -904,14 +875,25 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       await handleNewsOnboardingPostback(upn, data, ev.replyToken);
       return;
     }
-    if (act === "prep") void showLineLoading(userId, 60);
     const { result: res } = await withDelegatedGraph(upn, () => handleSelection(upn, data));
-    await sendResult(ev.replyToken, res);
-    trace("reply", `ตอบกลับ (${res.intent})`);
+    try {
+      await sendResult(ev.replyToken, res);
+      trace("reply", `ตอบกลับ (${res.intent})`);
+    } catch (replyErr) {
+      console.warn("[line] postback reply failed, pushing:", String(replyErr).slice(0, 120));
+      await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
+      trace("reply", `push fallback (${res.intent})`, "error");
+    }
     // Remember who this selection was about so text follow-ups continue on them.
     await saveCtx(upn, await loadCtx(upn), res);
   } catch (e) {
-    await replyLine(ev.replyToken, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
+    try {
+      await replyLine(ev.replyToken, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
+    } catch {
+      try {
+        await pushLineToId(userId, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);
+      } catch { /* give up */ }
+    }
   }
 }
 

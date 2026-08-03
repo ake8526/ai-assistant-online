@@ -24,13 +24,13 @@ async function linePost(url: string, body: unknown): Promise<void> {
   if (!r.ok) throw new Error(`LINE ${r.status}: ${(await r.text()).slice(0, 300)}`);
 }
 
-/** Show “กำลังพิมพ์…” / loading bubble so the user knows the bot is working (5–60s). */
+/** Show LINE’s 3-dot “typing” bubble while the bot works (5–60s). */
 export async function showLineLoading(lineUserId: string, seconds = 60): Promise<void> {
   const sec = Math.min(60, Math.max(5, Math.round(seconds)));
   try {
     await linePost(LOADING_URL, { chatId: lineUserId, loadingSeconds: sec });
-  } catch {
-    /* optional UX — ignore if channel plan / API unavailable */
+  } catch (e) {
+    console.warn("[line] loading animation failed:", String(e).slice(0, 160));
   }
 }
 
