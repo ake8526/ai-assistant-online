@@ -575,7 +575,7 @@ function ConsentsContent() {
               <NotifyCard
                 icon={<Newspaper className="w-5 h-5 text-slate-950" />} color="bg-sky-400"
                 title="สรุปข่าวที่ติดตาม (News Digest)"
-                hint="ข่าวจาก Facebook / RSS / YouTube ที่ติดตาม + ข่าวไทยจาก NewsData"
+                hint="ข่าวจาก Facebook / RSS / YouTube ที่ติดตาม"
                 cfg={notify.news} disabled={busy} showCount
                 onChange={(patch) => saveNotify("news", patch)}
               />

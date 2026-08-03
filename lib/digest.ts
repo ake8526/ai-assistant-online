@@ -15,7 +15,7 @@ export interface Story {
   id: string;
   title: string;
   source: string;
-  kind: "rss" | "youtube" | "facebook" | "newsdata";
+  kind: "rss" | "youtube" | "facebook";
   whatHappened: string;
   cause: string;
   progress: string;
@@ -119,20 +119,6 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
       }
     } else {
       skipped.push("YouTube (ยังไม่ได้เชื่อมบัญชี Google)");
-    }
-  }
-
-  // 2c) NewsData.io — always on when NEWSDATA_API_KEY is set (no user toggle)
-  {
-    const { isNewsDataConfigured, fetchNewsDataNews } = await import("@/lib/newsdata");
-    if (isNewsDataConfigured()) {
-      try {
-        const entries = await fetchNewsDataNews({ limit: 10 });
-        if (!entries.length) skipped.push("NewsData (ไม่มีข่าวในช่วงนี้)");
-        entries.forEach((e) => items.push({ ...e, kind: "newsdata", feedLabel: e.source }));
-      } catch (e) {
-        skipped.push(`NewsData (${String(e).slice(0, 80)})`);
-      }
     }
   }
 
