@@ -51,6 +51,35 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const sinceId = Number(url.searchParams.get("since") || "0") || 0;
   const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") || "200") || 200));
+  // replay=1 → first load returns recent history (demo). Default: seed cursor only so
+  // refreshing /monitor does not look like the AI started work by itself.
+  const replay = url.searchParams.get("replay") === "1";
+
+  // First load (since=0): jump to the tip — do not replay past jobs as live work.
+  if (sinceId <= 0 && !replay) {
+    const { data, error } = await admin
+      .from("agent_traces")
+      .select("id")
+      .order("id", { ascending: false })
+      .limit(1);
+    if (error) {
+      const code = (error as { code?: string }).code || "";
+      const missing =
+        code === "42P01" ||
+        code === "PGRST205" ||
+        /could not find the table|schema cache|does not exist/i.test(error.message || "");
+      if (missing) {
+        return NextResponse.json({
+          events: [],
+          cursor: 0,
+          note: "agent_traces table not found — run supabase/migration_agent_traces.sql",
+        });
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    const tip = ((data as { id: number }[]) || [])[0]?.id || 0;
+    return NextResponse.json({ events: [], cursor: tip, seeded: true });
+  }
 
   let query = admin
     .from("agent_traces")
@@ -58,10 +87,10 @@ export async function GET(req: Request) {
     .order("id", { ascending: true })
     .limit(limit);
 
-  // First load (since=0): show the most recent window so the room isn't empty.
   if (sinceId > 0) {
     query = query.gt("id", sinceId);
   } else {
+    // replay=1 demo mode: last 60 events
     query = admin
       .from("agent_traces")
       .select("id,trace_id,upn,channel,step,label,status,seq,ms,created_at")

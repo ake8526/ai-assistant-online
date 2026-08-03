@@ -105,6 +105,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const cursorRef = useRef(0);
   const curTraceRef = useRef<string | null>(null);
   const busyRef = useRef(false);
+  const primedRef = useRef(false);
   const [status, setStatus] = useState("IDLE");
 
   const log = useCallback((m: string, c = "t") => {
@@ -381,8 +382,16 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
             if (d.note && capRef.current && !queueRef.current.length) {
               capRef.current.innerHTML = '<b style="color:#f0b429">ยังไม่พร้อม</b> — รัน supabase/migration_agent_traces.sql ใน Supabase ก่อน แล้วรีเฟรช';
             }
-            if (Array.isArray(d.events) && d.events.length) {
-              // avoid runaway backlog: cap queue
+            // First response: seed cursor only — F5 must not replay old jobs as if live.
+            if (!primedRef.current) {
+              primedRef.current = true;
+              if (typeof d.cursor === "number") cursorRef.current = d.cursor;
+              setHud("IDLE", "var(--dim)");
+              if (capRef.current) {
+                capRef.current.innerHTML = "<b>พร้อม</b> — รอคำขอใหม่จาก LINE / Web (ไม่เล่นซ้ำงานเก่า)";
+              }
+              log("พร้อมรับงานใหม่ — กด F5 ไม่ได้สั่งงาน (ข้ามประวัติ)", "a");
+            } else if (Array.isArray(d.events) && d.events.length) {
               if (queueRef.current.length < 400) queueRef.current.push(...d.events);
               cursorRef.current = d.cursor || cursorRef.current;
             } else if (typeof d.cursor === "number") {
@@ -408,7 +417,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
           </svg>
           <div>
             <h1 className="pix">AI ASSISTANT · <em>AGENT ROOM</em></h1>
-            <div className="tag">ดูการทำงานจริงของผู้ช่วย — แต่ละโต๊ะคือหนึ่งสเตจของ pipeline</div>
+            <div className="tag">ดูงานจริงแบบสด — แสดงเฉพาะคำขอใหม่หลังเปิดหน้านี้ (ไม่เล่นซ้ำตอนรีเฟรช)</div>
           </div>
           <div className="spacer" />
           <div className="badge">STATUS <b ref={(el) => { hudRef.current = el; }}>{status}</b></div>
