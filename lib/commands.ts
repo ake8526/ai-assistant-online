@@ -2,7 +2,7 @@
 // The web / LINE sends free text; the LLM classifies it into an intent + params
 // and we execute. Booking asks for confirmation first (choose_slot) per requirement.
 import { buildForEvents, buildMorningAgenda, buildMeetingPrep, resolveAgendaEventId } from "@/lib/brief";
-import { buildDigest, formatStoriesText } from "@/lib/digest";
+import { buildDigest, formatStoriesText, rememberDeliveredStories } from "@/lib/digest";
 import { normalizeDue, resolveResponsible } from "@/lib/followup";
 import {
   GraphEvent,
@@ -1639,6 +1639,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       };
     }
     const extra = skipped.length ? `\n\n(ข้ามบางแหล่ง: ${skipped.join(", ")})` : "";
+    await rememberDeliveredStories(userUpn, stories);
     return { intent, reply: formatStoriesText(stories) + extra, data: stories };
   }
 

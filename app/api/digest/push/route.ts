@@ -3,7 +3,7 @@ import { checkCronSecret } from "@/lib/auth";
 import { sendLine } from "@/lib/line";
 import { isDueNow, markSent } from "@/lib/notify";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
-import { buildDigest, formatStoriesText } from "@/lib/digest";
+import { buildDigest, formatStoriesText, rememberDeliveredStories } from "@/lib/digest";
 
 export const maxDuration = 300;
 
@@ -32,6 +32,7 @@ async function run(req: Request) {
           continue;
         }
         await sendLine(upn, "", formatStoriesText(stories));
+        await rememberDeliveredStories(upn, stories);
         await markSent(upn, "news");
         results[upn] = `delivered ${stories.length} stories`;
       } catch (e) {

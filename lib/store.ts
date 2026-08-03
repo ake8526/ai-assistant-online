@@ -1,6 +1,7 @@
 // Supabase-backed storage helpers — ported from morning_brief/storage.py
 // (tasks, settings, places, seen_meetings). Feeds/consents/line_links already
 // have their own routes; line link lookups live in lib/line.ts.
+import { createHash } from "crypto";
 import { admin } from "@/lib/supabaseServer";
 
 export type Task = {
@@ -112,6 +113,80 @@ export async function allSettings(ownerUpn: string): Promise<Record<string, stri
   const out: Record<string, string> = {};
   for (const r of data || []) out[r.key] = r.value;
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Seen news stories — skip already-summarized links on the next digest
+// ---------------------------------------------------------------------------
+const NEWS_SEEN_KEY = "news_seen";
+const NEWS_SEEN_MAX = 400;
+const NEWS_SEEN_DAYS = 21;
+
+export function newsStoryKey(link: string, title = ""): string {
+  const raw = (link || title || "").trim().toLowerCase();
+  if (!raw) return "";
+  return createHash("sha1").update(raw, "utf8").digest("hex");
+}
+
+/** Story keys the user already received in a digest (last ~3 weeks). */
+export async function loadSeenNewsKeys(ownerUpn: string): Promise<Set<string>> {
+  const raw = await getSetting(ownerUpn, NEWS_SEEN_KEY);
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw) as { k: string; t: number }[] | string[];
+    const cutoff = Date.now() - NEWS_SEEN_DAYS * 24 * 60 * 60_000;
+    const keys = new Set<string>();
+    if (Array.isArray(parsed) && parsed.length && typeof parsed[0] === "string") {
+      for (const k of parsed as string[]) if (k) keys.add(k);
+      return keys;
+    }
+    for (const row of parsed as { k: string; t: number }[]) {
+      if (!row?.k) continue;
+      if (typeof row.t === "number" && row.t < cutoff) continue;
+      keys.add(row.k);
+    }
+    return keys;
+  } catch {
+    return new Set();
+  }
+}
+
+/** Remember stories after they were summarized / pushed to the user. */
+export async function markNewsStoriesSeen(
+  ownerUpn: string,
+  stories: { rawLink?: string; shortLink?: string; title?: string; id?: string }[]
+): Promise<void> {
+  if (!ownerUpn || !stories?.length) return;
+  const now = Date.now();
+  const cutoff = now - NEWS_SEEN_DAYS * 24 * 60 * 60_000;
+  const byKey = new Map<string, number>();
+
+  const raw = await getSetting(ownerUpn, NEWS_SEEN_KEY);
+  try {
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed)) {
+      for (const row of parsed) {
+        if (typeof row === "string" && row) {
+          byKey.set(row, now);
+          continue;
+        }
+        if (row?.k && typeof row.t === "number" && row.t >= cutoff) byKey.set(row.k, row.t);
+      }
+    }
+  } catch {
+    /* rebuild from new stories only */
+  }
+
+  for (const s of stories) {
+    const k = newsStoryKey(s.rawLink || s.shortLink || "", s.title || "") || String(s.id || "");
+    if (k) byKey.set(k, now);
+  }
+
+  const rows = [...byKey.entries()]
+    .map(([k, t]) => ({ k, t }))
+    .sort((a, b) => b.t - a.t)
+    .slice(0, NEWS_SEEN_MAX);
+  await setSetting(ownerUpn, NEWS_SEEN_KEY, JSON.stringify(rows));
 }
 
 // ---------------------------------------------------------------------------

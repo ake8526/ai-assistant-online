@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { AuthError, checkCronSecret, requireUser } from "@/lib/auth";
 import { buildMorningAgenda, runForUser } from "@/lib/brief";
-import { buildDigest, formatStoriesText } from "@/lib/digest";
+import { buildDigest, formatStoriesText, rememberDeliveredStories } from "@/lib/digest";
 import { sendLine } from "@/lib/line";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { isDueNow, markSent } from "@/lib/notify";
@@ -50,6 +50,7 @@ async function deliverMorningForUser(
       await markSent(upn, "news");
     } else {
       await sendLine(upn, "", formatStoriesText(newsResult.d.stories));
+      await rememberDeliveredStories(upn, newsResult.d.stories);
       await markSent(upn, "news");
       row.news = `delivered ${newsResult.d.stories.length} stories`;
     }

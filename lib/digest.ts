@@ -8,7 +8,7 @@ import { recentPosts as facebookPosts } from "@/lib/facebook";
 import { chat } from "@/lib/llm";
 import { getNewsCount, isNewsCountAll, NEWS_COUNT_ALL_CAP } from "@/lib/notify";
 import { nowWall, TZ_OFFSET_MIN } from "@/lib/time";
-import { getSetting } from "@/lib/store";
+import { loadSeenNewsKeys, newsStoryKey } from "@/lib/store";
 import * as youtube from "@/lib/youtube";
 
 export interface Story {
@@ -205,6 +205,30 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
 
   if (items.length === 0) {
     return { stories: [], skipped, note: "ยังไม่มีเนื้อหา — เชื่อม YouTube หรือเพิ่มแหล่งข่าว / เลือกหัวข้อ" };
+  }
+
+  // Skip stories already summarized for this user (push or “มีข่าวอะไรบ้าง”)
+  const seenKeys = await loadSeenNewsKeys(upn);
+  let skippedSeen = 0;
+  if (seenKeys.size) {
+    const fresh = items.filter((it) => {
+      const k = newsStoryKey(it.link || "", it.title || "");
+      return !k || !seenKeys.has(k);
+    });
+    skippedSeen = items.length - fresh.length;
+    items.length = 0;
+    items.push(...fresh);
+  }
+
+  if (items.length === 0) {
+    return {
+      stories: [],
+      skipped,
+      note:
+        skippedSeen > 0
+          ? `ข่าวใหม่ยังไม่มีครับ — สรุปไปแล้ว ${skippedSeen} รายการจากแหล่งที่ติดตาม (จะส่งเมื่อมีข่าวใหม่)`
+          : "ยังไม่มีเนื้อหา — เชื่อม YouTube หรือเพิ่มแหล่งข่าว / เลือกหัวข้อ",
+    };
   }
 
   items.sort((a, b) => (b.published || "").localeCompare(a.published || ""));
@@ -415,4 +439,10 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   }
 
   return { stories, skipped };
+}
+
+/** Call after a digest was shown/pushed so the same links are not summarized again. */
+export async function rememberDeliveredStories(upn: string, stories: Story[]): Promise<void> {
+  const { markNewsStoriesSeen } = await import("@/lib/store");
+  await markNewsStoriesSeen(upn, stories);
 }
