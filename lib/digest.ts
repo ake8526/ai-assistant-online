@@ -9,14 +9,14 @@ import { chat } from "@/lib/llm";
 import { getNewsCount, isNewsCountAll, NEWS_COUNT_ALL_CAP } from "@/lib/notify";
 import { nowWall, TZ_OFFSET_MIN } from "@/lib/time";
 import { getSetting } from "@/lib/store";
-import { fetchMediaStackNews } from "@/lib/mediastack";
+import { fetchNewsDataNews } from "@/lib/newsdata";
 import * as youtube from "@/lib/youtube";
 
 export interface Story {
   id: string;
   title: string;
   source: string;
-  kind: "rss" | "youtube" | "facebook" | "mediastack";
+  kind: "rss" | "youtube" | "facebook" | "newsdata";
   whatHappened: string;
   cause: string;
   progress: string;
@@ -123,33 +123,33 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     }
   }
 
-  // 2c) MediaStack — global news API when the user saved an access key
+  // 2c) NewsData.io — Thai-friendly news API when the user saved an access key
   {
-    const [msKey, msEn] = await Promise.all([
-      getSetting(upn, "mediastack_api_key"),
-      getSetting(upn, "mediastack_enabled"),
+    const [ndKey, ndEn] = await Promise.all([
+      getSetting(upn, "newsdata_api_key"),
+      getSetting(upn, "newsdata_enabled"),
     ]);
-    const msOn = msEn === null ? !!msKey?.trim() : msEn === "1";
-    if (msOn && msKey?.trim()) {
+    const ndOn = ndEn === null ? !!ndKey?.trim() : ndEn === "1";
+    if (ndOn && ndKey?.trim()) {
       try {
         const [languages, countries, keywords, categories] = await Promise.all([
-          getSetting(upn, "mediastack_languages"),
-          getSetting(upn, "mediastack_countries"),
-          getSetting(upn, "mediastack_keywords"),
-          getSetting(upn, "mediastack_categories"),
+          getSetting(upn, "newsdata_languages"),
+          getSetting(upn, "newsdata_countries"),
+          getSetting(upn, "newsdata_keywords"),
+          getSetting(upn, "newsdata_categories"),
         ]);
-        const entries = await fetchMediaStackNews({
-          accessKey: msKey,
-          languages: languages || "th,en",
+        const entries = await fetchNewsDataNews({
+          accessKey: ndKey,
+          languages: languages || "th",
           countries: countries || "th",
           keywords: keywords || undefined,
           categories: categories || undefined,
-          limit: 25,
+          limit: 10,
         });
-        if (!entries.length) skipped.push("MediaStack (ไม่มีข่าวในช่วงนี้)");
-        entries.forEach((e) => items.push({ ...e, kind: "mediastack", feedLabel: e.source }));
+        if (!entries.length) skipped.push("NewsData (ไม่มีข่าวในช่วงนี้)");
+        entries.forEach((e) => items.push({ ...e, kind: "newsdata", feedLabel: e.source }));
       } catch (e) {
-        skipped.push(`MediaStack (${String(e).slice(0, 80)})`);
+        skipped.push(`NewsData (${String(e).slice(0, 80)})`);
       }
     }
   }

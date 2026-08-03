@@ -12,7 +12,7 @@ type YtState = { linked: boolean; email: string | null; name: string | null; cha
 type Feed = { id: number; kind: string; ref: string; label: string };
 type NotifyKindCfg = { enabled: boolean; time: string; days: number[]; count?: number };
 type NotifyCfg = { brief: NotifyKindCfg; news: NotifyKindCfg };
-type MediaStackCfg = {
+type NewsDataCfg = {
   configured: boolean;
   enabled: boolean;
   maskedKey: string;
@@ -159,9 +159,9 @@ function ConsentsContent() {
   const [fbMsg, setFbMsg] = useState("");
   const [notify, setNotify] = useState<NotifyCfg | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
-  const [ms, setMs] = useState<MediaStackCfg | null>(null);
-  const [msKeyInput, setMsKeyInput] = useState("");
-  const [msMsg, setMsMsg] = useState("");
+  const [nd, setNd] = useState<NewsDataCfg | null>(null);
+  const [ndKeyInput, setNdKeyInput] = useState("");
+  const [ndMsg, setNdMsg] = useState("");
 
   const ytSubtitle = (() => {
     if (yt.linked) {
@@ -197,28 +197,28 @@ function ConsentsContent() {
         setMsg("เซสชันหมดอายุหรือถูกบล็อกใน LINE — กดปุ่มยืนยันตัวตนอีกครั้ง แล้ว YouTube / ลิงก์ข่าว / เวลาส่ง จะโหลดขึ้นมา (ข้อมูลไม่ได้หาย)");
         return;
       }
-      const [ys, fs, nt, msc] = await Promise.all([
+      const [ys, fs, nt, ndc] = await Promise.all([
         fetch("/api/oauth/google/status", { cache: "no-store", headers }).then((r) => r.json()),
         fetch("/api/feeds", { cache: "no-store", headers }).then((r) => r.json()),
         fetch("/api/notify", { cache: "no-store", headers }).then((r) => r.json()),
-        fetch("/api/mediastack", { cache: "no-store", headers }).then((r) => r.json()),
+        fetch("/api/newsdata", { cache: "no-store", headers }).then((r) => r.json()),
       ]);
       if (ys && !ys.error) {
         setYt({ linked: !!ys.linked, email: ys.email || null, name: ys.name || null, channel: ys.channel || null });
       }
       if (Array.isArray(fs)) setFeeds(fs.filter((f: Feed) => f.kind === "rss" || f.kind === "facebook"));
       if (nt && !nt.error && nt.brief && nt.news) setNotify(nt as NotifyCfg);
-      if (msc && !msc.error) {
-        setMs({
-          configured: !!msc.configured,
-          enabled: !!msc.enabled,
-          maskedKey: msc.maskedKey || "",
-          languages: msc.languages || "th,en",
-          countries: msc.countries || "th",
-          keywords: msc.keywords || "",
-          categories: msc.categories || "",
+      if (ndc && !ndc.error) {
+        setNd({
+          configured: !!ndc.configured,
+          enabled: !!ndc.enabled,
+          maskedKey: ndc.maskedKey || "",
+          languages: ndc.languages || "th",
+          countries: ndc.countries || "th",
+          keywords: ndc.keywords || "",
+          categories: ndc.categories || "",
         });
-        setMsKeyInput("");
+        setNdKeyInput("");
       }
       setMsg("");
       setNeedReauth(false);
@@ -376,7 +376,7 @@ function ConsentsContent() {
     setBusy(false);
   };
 
-  const saveMediaStack = async (patch: Partial<{
+  const saveNewsData = async (patch: Partial<{
     api_key: string;
     enabled: boolean;
     languages: string;
@@ -386,7 +386,7 @@ function ConsentsContent() {
     clear: boolean;
   }>) => {
     setBusy(true);
-    setMsMsg("");
+    setNdMsg("");
     try {
       const headers = await authHeaders();
       if (!headers) throw new Error("กรุณาเข้าสู่ระบบก่อน");
@@ -398,26 +398,26 @@ function ConsentsContent() {
       if (typeof patch.countries === "string") body.countries = patch.countries;
       if (typeof patch.keywords === "string") body.keywords = patch.keywords;
       if (typeof patch.categories === "string") body.categories = patch.categories;
-      const res = await fetch("/api/mediastack", {
+      const res = await fetch("/api/newsdata", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data?.error) throw new Error(data.error);
-      setMs({
+      setNd({
         configured: !!data.configured,
         enabled: !!data.enabled,
         maskedKey: data.maskedKey || "",
-        languages: data.languages || "th,en",
+        languages: data.languages || "th",
         countries: data.countries || "th",
         keywords: data.keywords || "",
         categories: data.categories || "",
       });
-      setMsKeyInput("");
-      setMsMsg(patch.clear ? "ลบ API key แล้ว" : "✅ บันทึก MediaStack แล้ว");
+      setNdKeyInput("");
+      setNdMsg(patch.clear ? "ลบ API key แล้ว" : "✅ บันทึก NewsData.io แล้ว");
     } catch (e) {
-      setMsMsg("บันทึกไม่สำเร็จ: " + (e as Error).message);
+      setNdMsg("บันทึกไม่สำเร็จ: " + (e as Error).message);
     }
     setBusy(false);
   };
@@ -504,39 +504,39 @@ function ConsentsContent() {
             </div>
           )}
 
-          {/* MediaStack */}
+          {/* NewsData.io */}
           <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-3">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 shrink-0 rounded-lg bg-violet-500 flex items-center justify-center">
                 <Globe className="w-5 h-5 text-slate-950" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-slate-100">MediaStack — ข่าวทั่วโลก</div>
+                <div className="text-sm font-semibold text-slate-100">NewsData.io — ข่าว (รองรับภาษาไทย)</div>
                 <div className="text-[11px] text-slate-400 mt-0.5">
-                  {ms?.configured
-                    ? `API key: ${ms.maskedKey}${ms.enabled ? " · เปิดใช้" : " · ปิดอยู่"}`
-                    : "ใส่ API key จาก mediastack.com เพื่อดึงข่าวมาสรุป"}
+                  {nd?.configured
+                    ? `API key: ${nd.maskedKey}${nd.enabled ? " · เปิดใช้" : " · ปิดอยู่"}`
+                    : "ใส่ API key จาก newsdata.io เพื่อดึงข่าวไทยมาสรุป"}
                 </div>
               </div>
-              {ms && (
+              {nd && (
                 <button
-                  onClick={() => saveMediaStack({ enabled: !ms.enabled })}
-                  disabled={busy || !ms.configured}
+                  onClick={() => saveNewsData({ enabled: !nd.enabled })}
+                  disabled={busy || !nd.configured}
                   role="switch"
-                  aria-checked={ms.enabled}
-                  className={`relative w-11 h-6 shrink-0 rounded-full transition disabled:opacity-40 ${ms.enabled ? "bg-emerald-500" : "bg-slate-600"}`}
+                  aria-checked={nd.enabled}
+                  className={`relative w-11 h-6 shrink-0 rounded-full transition disabled:opacity-40 ${nd.enabled ? "bg-emerald-500" : "bg-slate-600"}`}
                 >
-                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition ${ms.enabled ? "translate-x-5" : ""}`} />
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition ${nd.enabled ? "translate-x-5" : ""}`} />
                 </button>
               )}
             </div>
 
             <p className="text-[11px] text-slate-500 leading-relaxed">
               สมัครฟรีที่{" "}
-              <a href="https://mediastack.com/" target="_blank" rel="noreferrer" className="text-sky-400 underline">
-                mediastack.com
+              <a href="https://newsdata.io/" target="_blank" rel="noreferrer" className="text-sky-400 underline">
+                newsdata.io
               </a>
-              {" "}แล้ววาง Access Key ด้านล่าง — ระบบจะดึงข่าวตามภาษา/ประเทศ/คำค้น แล้วให้ AI สรุปเหมือนแหล่งอื่น
+              {" "}แล้ววาง API key ด้านล่าง — ค่าเริ่มต้นภาษา <b>th</b> / ประเทศ <b>th</b> รองรับข่าวไทย
             </p>
 
             <div className="space-y-2">
@@ -547,22 +547,22 @@ function ConsentsContent() {
                 <input
                   type="password"
                   autoComplete="off"
-                  value={msKeyInput}
-                  onChange={(e) => setMsKeyInput(e.target.value)}
-                  placeholder={ms?.configured ? `คีย์เดิม ${ms.maskedKey} — วางคีย์ใหม่เพื่อเปลี่ยน` : "วาง access_key จาก MediaStack"}
+                  value={ndKeyInput}
+                  onChange={(e) => setNdKeyInput(e.target.value)}
+                  placeholder={nd?.configured ? `คีย์เดิม ${nd.maskedKey} — วางคีย์ใหม่เพื่อเปลี่ยน` : "วาง apikey จาก NewsData.io"}
                   className="flex-1 text-xs px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-violet-500"
                 />
                 <button
-                  onClick={() => saveMediaStack({ api_key: msKeyInput })}
-                  disabled={busy || !msKeyInput.trim()}
+                  onClick={() => saveNewsData({ api_key: ndKeyInput })}
+                  disabled={busy || !ndKeyInput.trim()}
                   className="shrink-0 text-xs font-semibold px-4 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50"
                 >
                   บันทึก
                 </button>
               </div>
-              {ms?.configured && (
+              {nd?.configured && (
                 <button
-                  onClick={() => saveMediaStack({ clear: true, enabled: false })}
+                  onClick={() => saveNewsData({ clear: true, enabled: false })}
                   disabled={busy}
                   className="text-[11px] text-rose-300 hover:text-rose-200 underline"
                 >
@@ -571,49 +571,49 @@ function ConsentsContent() {
               )}
             </div>
 
-            {ms && (
+            {nd && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 <div>
-                  <span className="text-[10px] text-slate-500">ภาษา (เช่น th,en)</span>
+                  <span className="text-[10px] text-slate-500">ภาษา (เช่น th หรือ th,en)</span>
                   <input
-                    value={ms.languages}
-                    onChange={(e) => setMs({ ...ms, languages: e.target.value })}
-                    onBlur={() => saveMediaStack({ languages: ms.languages })}
+                    value={nd.languages}
+                    onChange={(e) => setNd({ ...nd, languages: e.target.value })}
+                    onBlur={() => saveNewsData({ languages: nd.languages })}
                     className="w-full text-xs px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:border-violet-500"
                   />
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500">ประเทศ (เช่น th)</span>
                   <input
-                    value={ms.countries}
-                    onChange={(e) => setMs({ ...ms, countries: e.target.value })}
-                    onBlur={() => saveMediaStack({ countries: ms.countries })}
+                    value={nd.countries}
+                    onChange={(e) => setNd({ ...nd, countries: e.target.value })}
+                    onBlur={() => saveNewsData({ countries: nd.countries })}
                     className="w-full text-xs px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:border-violet-500"
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <span className="text-[10px] text-slate-500">คำค้น (ไม่บังคับ)</span>
                   <input
-                    value={ms.keywords}
-                    onChange={(e) => setMs({ ...ms, keywords: e.target.value })}
-                    onBlur={() => saveMediaStack({ keywords: ms.keywords })}
-                    placeholder="เช่น AI, พลังงาน, เศรษฐกิจ"
+                    value={nd.keywords}
+                    onChange={(e) => setNd({ ...nd, keywords: e.target.value })}
+                    onBlur={() => saveNewsData({ keywords: nd.keywords })}
+                    placeholder="เช่น เศรษฐกิจ, AI, พลังงาน"
                     className="w-full text-xs px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-violet-500"
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <span className="text-[10px] text-slate-500">หมวด (ไม่บังคับ: business,technology,health,…)</span>
+                  <span className="text-[10px] text-slate-500">หมวด (ไม่บังคับ: business,technology,politics,…)</span>
                   <input
-                    value={ms.categories}
-                    onChange={(e) => setMs({ ...ms, categories: e.target.value })}
-                    onBlur={() => saveMediaStack({ categories: ms.categories })}
+                    value={nd.categories}
+                    onChange={(e) => setNd({ ...nd, categories: e.target.value })}
+                    onBlur={() => saveNewsData({ categories: nd.categories })}
                     placeholder="ว่าง = ทุกหมวด"
                     className="w-full text-xs px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-violet-500"
                   />
                 </div>
               </div>
             )}
-            {msMsg && <p className="text-[11px] text-violet-300">{msMsg}</p>}
+            {ndMsg && <p className="text-[11px] text-violet-300">{ndMsg}</p>}
           </div>
 
           {/* Facebook pages */}
@@ -758,7 +758,7 @@ function ConsentsContent() {
               <NotifyCard
                 icon={<Newspaper className="w-5 h-5 text-slate-950" />} color="bg-sky-400"
                 title="สรุปข่าวที่ติดตาม (News Digest)"
-                hint="ข่าว RSS + Facebook + YouTube + MediaStack ที่ติดตาม"
+                hint="ข่าว RSS + Facebook + YouTube + NewsData ที่ติดตาม"
                 cfg={notify.news} disabled={busy} showCount
                 onChange={(patch) => saveNotify("news", patch)}
               />
