@@ -476,23 +476,23 @@ export async function previewBriefNotifySetup(upn: string): Promise<void> {
   const prefs = await getNewsPrefs(upn);
   const notify = await getNotifyConfig(upn).catch(() => null);
   await saveNewsDraft(upn, {
-    step: "brief_time",
+    step: "brief_days",
     topics: prefs.topics,
     count: prefs.count,
     time: notify?.news.time,
     days: notify?.news.days,
-    briefTime: notify?.brief.time,
-    briefDays: notify?.brief.days,
+    briefTime: notify?.brief.time || "07:00",
+    briefDays: [1, 2, 3, 4, 5],
     ts: Date.now(),
   });
   await send("push", upn, [
     {
       type: "text",
       text:
-        "ตัวอย่างตั้งสรุปตารางเช้า (Morning Brief) ครับ 📅\n" +
-        "หลังตั้งข่าวเสร็จ ระบบจะถามต่อแบบนี้ — ลองกดปุ่มด้านล่างได้เลย",
+        "ตัวอย่างเลือกวันสรุปตารางเช้าครับ 📅\n" +
+        "ตอนนี้เลือก จ–ศ ไว้แล้ว — กดวันที่มี ✓ เพื่อเอาออกได้ หรือกด ✅ เสร็จ · จ–ศ",
     },
-    timePrompt("brief"),
+    daysPrompt([1, 2, 3, 4, 5], "brief"),
   ]);
 }
 
