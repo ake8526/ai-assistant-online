@@ -28,10 +28,27 @@ export function wantsLunchIncluded(text: string): boolean {
   );
 }
 
-function searchWindow(override?: { start: Date; end: Date }): { start: Date; end: Date } {
+function searchWindow(
+  override?: { start: Date; end: Date },
+  opts?: { exactStart?: Date }
+): { start: Date; end: Date } {
   if (override) {
     const now = nowWall();
     let start = override.start;
+    const exact = opts?.exactStart;
+    // Exact clock time (e.g. 13:50) — don't bump the window past that slot.
+    if (exact && exact.getTime() <= override.end.getTime()) {
+      if (exact.getTime() > now.getTime() - 2 * 60_000) {
+        // Align to availability interval so Graph buckets stay on :00/:30
+        const bucket = new Date(exact);
+        bucket.setUTCMinutes(Math.floor(bucket.getUTCMinutes() / INTERVAL) * INTERVAL, 0, 0);
+        const nowBucket = new Date(now);
+        nowBucket.setUTCMinutes(Math.floor(nowBucket.getUTCMinutes() / INTERVAL) * INTERVAL, 0, 0);
+        start = bucket < nowBucket ? nowBucket : bucket;
+        if (start > override.end) start = override.end;
+        return { start, end: override.end };
+      }
+    }
     // If the window includes "now", don't offer slots in the past.
     if (start < now) {
       const rounded = new Date(now);
@@ -47,6 +64,25 @@ function searchWindow(override?: { start: Date; end: Date }): { start: Date; end
   return { start, end: addDays(start, SCHEDULE_DAYS_AHEAD) };
 }
 
+/** Build a wall-clock Date on the same calendar day as `day` at minute-of-day. */
+function atMinuteOfDay(day: Date, minOfDay: number): Date {
+  const d = new Date(day);
+  d.setUTCHours(Math.floor(minOfDay / 60), minOfDay % 60, 0, 0);
+  return d;
+}
+
+/** True when every INTERVAL bucket covering [start, end) is free ('0'). */
+function rangeIsFree(view: string, windowStart: Date, rangeStart: Date, rangeEnd: Date): boolean {
+  if (rangeEnd <= rangeStart) return false;
+  const startIdx = Math.floor((rangeStart.getTime() - windowStart.getTime()) / (INTERVAL * 60_000));
+  const endIdx = Math.ceil((rangeEnd.getTime() - windowStart.getTime()) / (INTERVAL * 60_000));
+  if (startIdx < 0 || endIdx > view.length) return false;
+  for (let i = startIdx; i < endIdx; i++) {
+    if (view[i] !== "0") return false;
+  }
+  return true;
+}
+
 export async function findCommonSlots(
   organizerUpn: string,
   attendeeEmails: string[],
@@ -56,13 +92,20 @@ export async function findCommonSlots(
   opts?: {
     afterMin?: number | null;
     beforeMin?: number | null;
+    /** Exact meeting start (minute-of-day). Prefer this over a tight after/before band. */
+    atMin?: number | null;
     allStarts?: boolean;
     workEndHour?: number;
     /** When false (default), skip 12:00–13:00. */
     includeLunch?: boolean;
   }
 ): Promise<{ slots: Slot[]; busy: BusyMap; ranges: Slot[] }> {
-  const { start, end } = searchWindow(window);
+  const atMin = opts?.atMin ?? null;
+  const exactStart =
+    atMin != null && window
+      ? atMinuteOfDay(window.start, atMin)
+      : undefined;
+  const { start, end } = searchWindow(window, exactStart ? { exactStart } : undefined);
   const schedules = [organizerUpn, ...attendeeEmails.filter((a) => a && a !== organizerUpn)];
   const data = await getSchedule(organizerUpn, schedules, wallIso(start), wallIso(end), INTERVAL);
 
@@ -76,14 +119,80 @@ export async function findCommonSlots(
   const views = data.map((d) => d.availabilityView || "");
   const n = views.length ? Math.min(...views.map((v) => v.length)) : 0;
   const need = Math.max(1, Math.ceil(durationMin / INTERVAL));
-  const afterMin = opts?.afterMin ?? null;
-  const beforeMin = opts?.beforeMin ?? null;
+  let afterMin = opts?.afterMin ?? null;
+  let beforeMin = opts?.beforeMin ?? null;
+  // Tight after/before (== duration window) is an exact-time ask — handled via atMin, not grid band.
+  if (
+    atMin == null &&
+    afterMin != null &&
+    beforeMin != null &&
+    beforeMin - afterMin <= durationMin + 1
+  ) {
+    // Fall through: treat as atMin below using afterMin
+  }
+  const resolvedAt =
+    atMin != null
+      ? atMin
+      : afterMin != null && beforeMin != null && beforeMin - afterMin <= durationMin + 1
+        ? afterMin
+        : null;
+  if (resolvedAt != null) {
+    // Don't also filter the 30-min grid with an impossible 10-min band
+    afterMin = null;
+    beforeMin = null;
+  }
   const allStarts = opts?.allStarts ?? false;
   const includeLunch = opts?.includeLunch ?? false;
   const workEnd = opts?.workEndHour ?? WORK_END_HOUR;
   const cap = allStarts ? Math.max(maxSlots, 48) : maxSlots;
 
   const slots: Slot[] = [];
+
+  // Exact clock time (นัดตอน 13:50) — check that window directly; 30-min grid can't start at :50.
+  if (resolvedAt != null && window) {
+    const now = nowWall();
+    let slotStart = atMinuteOfDay(window.start, resolvedAt);
+    const slotEnd = addMinutes(slotStart, durationMin);
+    if (slotEnd > now && slotStart < end) {
+      const graceStart = slotStart.getTime() < now.getTime() - 2 * 60_000 ? null : slotStart;
+      if (graceStart) {
+        const allFree = views.every((v) => rangeIsFree(v, start, slotStart, slotEnd));
+        const startMin = resolvedAt;
+        const endMin = startMin + durationMin;
+        const lunchOk = includeLunch || !overlapsLunch(startMin, endMin);
+        const dow = slotStart.getUTCDay();
+        const inHours = dow >= 1 && dow <= 5 && endMin <= workEnd * 60 + 30;
+        if (allFree && lunchOk && inHours) {
+          slots.push({
+            start: wallIso(slotStart),
+            end: wallIso(slotEnd),
+            label: `${fmtDateTime(slotStart)}-${fmtTime(slotEnd)}`,
+          });
+        }
+      }
+    }
+    // If exact time worked (or failed), still allow nearby grid suggestions when exact failed
+    if (slots.length) {
+      const busy: BusyMap = {};
+      for (const d of data) {
+        const items = ((d.scheduleItems as Record<string, unknown>[]) || []).slice(0, 5).map((it) => {
+          const s = it.start as { dateTime?: string } | undefined;
+          const e = it.end as { dateTime?: string } | undefined;
+          return {
+            start: s?.dateTime,
+            end: e?.dateTime,
+            subject: (it.subject as string) || "(ไม่ระบุ)",
+            status: it.status as string,
+          };
+        });
+        busy[d.scheduleId || ""] = items;
+      }
+      return { slots, busy, ranges: [...slots] };
+    }
+    // Exact miss → suggest later starts the same day (after the requested time)
+    afterMin = resolvedAt;
+  }
+
   let i = 0;
   while (i < n && slots.length < cap) {
     const slotStart = addMinutes(start, INTERVAL * i);
@@ -228,21 +337,27 @@ export function formatFree(ranges: Range[], label: string, who = "คุณ"): s
 }
 
 export function formatBusy(busy: BusyMap): string {
-  const lines = ["หาเวลาที่ทุกคนว่างตรงกันไม่เจอในช่วงนี้ครับ 😅", "", "ตารางที่ติด:"];
+  const lines = ["หาเวลาที่ทุกคนว่างตรงกันไม่เจอในช่วงที่ขอครับ 😅", "", "ตารางที่เห็น:"];
   for (const [email, items] of Object.entries(busy)) {
     if (!items.length) {
-      lines.push(`  • ${email}: ว่างตลอด`);
+      lines.push(`  • ${email}: ไม่มีรายการติดในช่วงที่ค้น`);
       continue;
     }
-    const first = items[0];
-    let endT = "?";
-    if (first.end) {
-      const d = new Date(first.end.replace(/\.\d+/, "") + "Z");
-      if (!isNaN(d.getTime()))
-        endT = `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")} ${fmtTime(d)}`;
+    const parts: string[] = [];
+    for (const it of items.slice(0, 3)) {
+      let span = "";
+      if (it.start || it.end) {
+        const s = it.start ? new Date(it.start.replace(/\.\d+/, "") + "Z") : null;
+        const e = it.end ? new Date(it.end.replace(/\.\d+/, "") + "Z") : null;
+        const fmt = (d: Date) =>
+          `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")} ${fmtTime(d)}`;
+        if (s && e && !isNaN(s.getTime()) && !isNaN(e.getTime())) span = ` ${fmt(s)}–${fmt(e)}`;
+        else if (e && !isNaN(e.getTime())) span = ` ถึง ${fmt(e)}`;
+      }
+      parts.push(`“${it.subject}”${span}`);
     }
-    lines.push(`  • ${email}: ติด “${first.subject}” ถึง ${endT}` + (items.length > 1 ? " (และมีอีก)" : ""));
+    lines.push(`  • ${email}: ${parts.join("; ")}` + (items.length > 3 ? " …" : ""));
   }
-  lines.push("", "ลองขยายช่วงวัน หรือระบุวันที่ต้องการเจาะจงได้ครับ");
+  lines.push("", "ถ้าคนนั้นว่างจริง ลองพิมพ์เวลาใหม่ หรือดูตารางว่างของเขาได้ครับ");
   return lines.join("\n");
 }

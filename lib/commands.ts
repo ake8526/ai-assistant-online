@@ -219,9 +219,9 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "แล้วบ่ายล่ะ" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"12:00","before":"16:00"}}
 "ช่วงเช้าว่างไหม" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"09:00","before":"12:00"}}
 "นัดประชุมกับสมชายและสมหญิง 30 นาที" -> {"intent":"find_meeting_time","params":{"attendees":["สมชาย","สมหญิง"],"duration_min":30}}
-"นัดเบสวันนี้ 10นาทีตอน 13:50 เรื่อง test meeting" -> {"intent":"find_meeting_time","params":{"attendees":["เบส"],"duration_min":10,"period":"today","after":"13:50","note":"test meeting"}}
+"นัดเบสวันนี้ 10นาทีตอน 13:50 เรื่อง test meeting" -> {"intent":"find_meeting_time","params":{"attendees":["เบส"],"duration_min":10,"period":"today","at":"13:50","note":"test meeting"}}
 "นัดพี่นนท์พรุ่งนี้ 30 นาที เรื่อง sync" -> {"intent":"find_meeting_time","params":{"attendees":["พี่นนท์"],"duration_min":30,"period":"tomorrow","note":"sync"}}
-(หมายเหตุสำคัญ: ประโยคขึ้นต้นด้วย นัด/จอง + ชื่อคน = find_meeting_time เสมอ — "เรื่อง ..." คือหัวข้อประชุม ห้ามใช้ add_task)
+(หมายเหตุสำคัญ: ประโยคขึ้นต้นด้วย นัด/จอง + ชื่อคน = find_meeting_time เสมอ — "เรื่อง ..." คือหัวข้อประชุม ห้ามใช้ add_task; ถ้ามี "ตอน HH:MM" ให้ใส่ params.at)
 (หมายเหตุสำคัญมาก: ถ้าถามดูตาราง/เวลาว่างของ "คนตั้งแต่ 2 คนขึ้นไปพร้อมกัน" (มีคำเชื่อม กับ/และ/, คั่นชื่อ) ให้ใช้ find_meeting_time เพื่อหาเวลาที่ทุกคนว่างตรงกัน — ห้ามใช้ my_availability หรือ list_meetings ที่รองรับทีละคน และห้าม fallback เป็นตารางของผู้ถามเอง)
 (หมายเหตุ: ถ้าผู้ใช้ระบุวัน เช่น "วันจันทร์นี้/เสาร์หน้า/วันที่ 5" ต้องใส่ weekday หรือ date ด้วยเสมอ ห้ามปล่อยให้ค้นทั้งสัปดาห์)
 (หมายเหตุ: follow-up เรื่องเช้า/บ่าย/เย็น หลัง find_meeting_time ต้องคง intent เป็น find_meeting_time ห้ามสลับไป my_availability ของคนเดียว)
@@ -480,15 +480,12 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
   }
 
   let after: string | undefined;
-  let before: string | undefined;
+  let at: string | undefined;
   const timeM =
     body.match(/(?:ตอน|เวลา|ที่)\s*(\d{1,2}:\d{2})/i) || body.match(/\b(\d{1,2}:\d{2})\b/);
   if (timeM) {
-    after = timeM[1].padStart(5, "0");
-    if (after.length === 4) after = `0${after}`; // 9:30 → already 5 with pad? "9:30".padStart(5,"0") = "09:30" ✓
-    const [hh, mm] = after.split(":").map(Number);
-    const end = hh * 60 + mm + duration_min;
-    before = `${String(Math.floor(end / 60) % 24).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}`;
+    at = timeM[1].length === 4 ? `0${timeM[1]}` : timeM[1].padStart(5, "0");
+    after = at; // also keep after for fallback suggestions after the asked time
     body = body.replace(timeM[0], " ").replace(/\s+/g, " ").trim();
   }
 
@@ -521,8 +518,8 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
 
   const params: Record<string, unknown> = { attendees, duration_min };
   if (period) params.period = period;
-  if (after) params.after = after;
-  if (before) params.before = before;
+  if (at) params.at = at;
+  else if (after) params.after = after;
   if (note) params.note = note;
   return { intent: "find_meeting_time", params };
 }
@@ -939,7 +936,9 @@ function encodeMtData(
   duration: number,
   window?: MtWindow | null,
   band?: { after: number | null; before: number | null } | null,
-  includeLunch = false
+  includeLunch = false,
+  atMin?: number | null,
+  subject?: string
 ): string {
   const at = attendees.map((a) => (a.mail ? `m:${a.mail}` : `n:${a.name || ""}`)).join("|");
   const q = new URLSearchParams({ a: "findmt", d: String(duration), at });
@@ -950,6 +949,8 @@ function encodeMtData(
   }
   if (band?.after != null) q.set("af", String(band.after));
   if (band?.before != null) q.set("bf", String(band.before));
+  if (atMin != null) q.set("tm", String(atMin));
+  if (subject && subject !== "ประชุม") q.set("subj", subject.slice(0, 80));
   if (includeLunch) q.set("ln", "1");
   return q.toString();
 }
@@ -960,6 +961,8 @@ export function decodeMtAttendees(data: URLSearchParams): {
   window: MtWindow | null;
   after: number | null;
   before: number | null;
+  atMin: number | null;
+  subject: string;
   includeLunch: boolean;
 } {
   const attendees = (data.get("at") || "")
@@ -971,12 +974,15 @@ export function decodeMtAttendees(data: URLSearchParams): {
   const window = ws && we ? { start: ws, end: we, label: data.get("wl") || fmtDate(ws) } : null;
   const af = data.get("af");
   const bf = data.get("bf");
+  const tm = data.get("tm");
   return {
     attendees,
     duration: Number(data.get("d") || 30),
     window,
     after: af != null && af !== "" ? Number(af) : null,
     before: bf != null && bf !== "" ? Number(bf) : null,
+    atMin: tm != null && tm !== "" ? Number(tm) : null,
+    subject: data.get("subj") || "ประชุม",
     includeLunch: data.get("ln") === "1",
   };
 }
@@ -988,7 +994,8 @@ export async function runFindMeeting(
   window?: MtWindow | null,
   band?: { after: number | null; before: number | null; label?: string } | null,
   includeLunch = false,
-  subject = "ประชุม"
+  subject = "ประชุม",
+  atMin: number | null = null
 ): Promise<CommandResult> {
   const denied = needCalendarConsent();
   if (denied) return denied;
@@ -1003,9 +1010,13 @@ export async function runFindMeeting(
     } else if (cands.length > 1) {
       const choices = cands.slice(0, 10).map((c) => {
         const next = attendees.map((x, j) => (j === i ? { mail: c.mail, name: c.displayName } : x));
-        return { mail: c.mail, displayName: c.displayName || c.mail, data: encodeMtData(next, duration, window, band, includeLunch) };
+        return {
+          mail: c.mail,
+          displayName: c.displayName || c.mail,
+          data: encodeMtData(next, duration, window, band, includeLunch, atMin, subject),
+        };
       });
-      const dayNote = window ? ` (ช่วง ${window.label})` : "";
+      const dayNote = window ? ` (${window.label})` : "";
       return { intent: "choose_mt_person", reply: `เจอหลายคนที่ตรงกับ “${a.name}” เลือกคนที่ต้องการดูตารางครับ${dayNote} 👇`, choices };
     }
   }
@@ -1016,27 +1027,58 @@ export async function runFindMeeting(
     return { intent: "find_meeting_time", reply: "หาคนที่จะดูตารางไม่เจอครับ ลองระบุชื่อ/อีเมลที่ชัดเจนอีกครั้งได้ไหม" };
   }
 
-  const allStarts = !!(window || band?.after != null || band?.before != null);
+  let resolvedAt = atMin;
+  if (
+    resolvedAt == null &&
+    band?.after != null &&
+    band?.before != null &&
+    band.before - band.after <= duration + 1
+  ) {
+    resolvedAt = band.after;
+  }
+
+  const searchBand =
+    resolvedAt != null
+      ? { after: resolvedAt, before: null as number | null, label: band?.label }
+      : band;
+
+  const allStarts = !!(window || searchBand?.after != null || searchBand?.before != null || resolvedAt != null);
   const workEndHour =
-    band?.before != null ? Math.max(WORK_END_HOUR, Math.ceil(band.before / 60)) :
-    band?.after != null && band.after >= 16 * 60 ? Math.max(WORK_END_HOUR, 20) :
-    undefined;
+    searchBand?.before != null
+      ? Math.max(WORK_END_HOUR, Math.ceil(searchBand.before / 60))
+      : searchBand?.after != null && searchBand.after >= 16 * 60
+        ? Math.max(WORK_END_HOUR, 20)
+        : resolvedAt != null
+          ? Math.max(WORK_END_HOUR, 20)
+          : undefined;
   const result = await findCommonSlots(
     userUpn,
     resolved,
     duration,
     allStarts ? 48 : 5,
     window ? { start: window.start, end: window.end } : undefined,
-    { afterMin: band?.after ?? null, beforeMin: band?.before ?? null, allStarts, workEndHour, includeLunch }
+    {
+      afterMin: searchBand?.after ?? null,
+      beforeMin: searchBand?.before ?? null,
+      atMin: resolvedAt,
+      allStarts,
+      workEndHour,
+      includeLunch,
+    }
   );
   const note = unresolved.length ? `\n(หาอีเมลไม่เจอ: ${unresolved.join(", ")})` : "";
   const who = resolved.join(", ");
-  const dayNote = window ? ` วันที่ ${window.label}` : "";
-  const bandNote = band?.label ? ` ${band.label}` : "";
+  const dayNote = window ? ` (${window.label})` : "";
+  const bandNote =
+    resolvedAt != null ? ` ตอน ${fmtHHMM(resolvedAt)}` : band?.label ? ` ${band.label}` : "";
   if (!result.slots.length) {
+    const hint =
+      resolvedAt != null
+        ? `\n\nช่วง ${fmtHHMM(resolvedAt)} อาจผ่านไปแล้วหรือติด — ลองดูตารางว่าง หรือระบุเวลาใหม่ได้ครับ`
+        : "";
     return {
       intent: "find_meeting_time",
-      reply: formatBusy(result.busy) + note + `\n(ค้นของ: ${who}${dayNote}${bandNote})`,
+      reply: formatBusy(result.busy) + note + hint + `\n(ค้นของ: ${who}${dayNote}${bandNote})`,
       meeting: {
         attendees: resolved,
         duration,
@@ -1150,12 +1192,12 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
       return { intent: "cancelled", reply: "✅ ยกเลิกนัดแล้วครับ" };
     }
     if (a === "findmt") {
-      const { attendees, duration, window, after, before, includeLunch } = decodeMtAttendees(data);
+      const { attendees, duration, window, after, before, atMin, subject, includeLunch } = decodeMtAttendees(data);
       const band =
         after != null || before != null
           ? { after, before, label: after != null && after >= 16 * 60 ? "ช่วงเย็น" : undefined }
           : null;
-      return await runFindMeeting(userUpn, attendees, duration, window, band, includeLunch);
+      return await runFindMeeting(userUpn, attendees, duration, window, band, includeLunch, subject, atMin);
     }
     if (a === "rmfeed") {
       const id = Number(data.get("id") || "");
@@ -1770,7 +1812,8 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       return { intent: "find_meeting_time", reply: "ยังไม่ทราบว่าจะนัดกับใครครับ ลองระบุชื่อคนที่ต้องการดูตารางด้วยนะครับ" };
     }
     const subject = String(params.note || params.subject || "ประชุม").trim() || "ประชุม";
-    return runFindMeeting(userUpn, attendees, duration, window, band, wantsLunchIncluded(text), subject);
+    const atMin = parseHHMM(params.at);
+    return runFindMeeting(userUpn, attendees, duration, window, band, wantsLunchIncluded(text), subject, atMin);
   }
 
   return {
