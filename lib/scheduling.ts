@@ -2,7 +2,7 @@
 // availabilityView: one char per interval: '0'=free, '1'=tentative, '2'=busy,
 // '3'=out-of-office, '4'=working-elsewhere. A slot is bookable only if everyone is '0'.
 import { getSchedule } from "@/lib/graph";
-import { addDays, addMinutes, fmtDate, fmtDateTime, fmtTime, nowWall, wallIso } from "@/lib/time";
+import { addDays, addMinutes, fmtDate, fmtDateTime, fmtTime, nowWall, startOfDay, wallIso } from "@/lib/time";
 
 const INTERVAL = 30; // minutes per availability slot
 
@@ -30,11 +30,13 @@ export function wantsLunchIncluded(text: string): boolean {
 
 function searchWindow(
   override?: { start: Date; end: Date },
-  opts?: { exactStart?: Date }
+  opts?: { exactStart?: Date; durationMin?: number }
 ): { start: Date; end: Date } {
+  const durationMin = opts?.durationMin ?? 30;
   if (override) {
     const now = nowWall();
     let start = override.start;
+    let end = override.end;
     const exact = opts?.exactStart;
     // Exact clock time (e.g. 13:50) — don't bump the window past that slot.
     if (exact && exact.getTime() <= override.end.getTime()) {
@@ -52,16 +54,28 @@ function searchWindow(
     // If the window includes "now", don't offer slots in the past.
     if (start < now) {
       const rounded = new Date(now);
-      rounded.setUTCMinutes(0, 0, 0);
-      start = addMinutes(rounded, 60);
-      if (start > override.end) start = override.end;
+      rounded.setUTCMinutes(Math.floor(rounded.getUTCMinutes() / INTERVAL) * INTERVAL, 0, 0);
+      // Next bookable bucket (at least one interval ahead)
+      start = addMinutes(rounded, INTERVAL);
+      if (start < now) start = addMinutes(start, INTERVAL);
     }
-    return { start, end: override.end };
+    // Late in the day / remaining work time too short → keep looking on following days
+    const workEndToday = new Date(start);
+    workEndToday.setUTCHours(WORK_END_HOUR, 0, 0, 0);
+    const remainingWork = workEndToday.getTime() - start.getTime();
+    if (remainingWork < durationMin * 60_000 || start >= workEndToday) {
+      end = addDays(startOfDay(now), Math.max(SCHEDULE_DAYS_AHEAD, 3));
+      if (end < override.end) end = override.end;
+    }
+    if (start > end) start = end;
+    return { start, end };
   }
   const now = nowWall();
-  now.setUTCMinutes(0, 0, 0);
-  const start = addMinutes(now, 60);
-  return { start, end: addDays(start, SCHEDULE_DAYS_AHEAD) };
+  const rounded = new Date(now);
+  rounded.setUTCMinutes(Math.floor(rounded.getUTCMinutes() / INTERVAL) * INTERVAL, 0, 0);
+  let start = addMinutes(rounded, INTERVAL);
+  if (start < now) start = addMinutes(start, INTERVAL);
+  return { start, end: addDays(startOfDay(now), SCHEDULE_DAYS_AHEAD) };
 }
 
 /** Build a wall-clock Date on the same calendar day as `day` at minute-of-day. */
@@ -105,7 +119,10 @@ export async function findCommonSlots(
     atMin != null && window
       ? atMinuteOfDay(window.start, atMin)
       : undefined;
-  const { start, end } = searchWindow(window, exactStart ? { exactStart } : undefined);
+  const { start, end } = searchWindow(window, {
+    exactStart: exactStart || undefined,
+    durationMin,
+  });
   const schedules = [organizerUpn, ...attendeeEmails.filter((a) => a && a !== organizerUpn)];
   const data = await getSchedule(organizerUpn, schedules, wallIso(start), wallIso(end), INTERVAL);
 
@@ -173,21 +190,7 @@ export async function findCommonSlots(
     }
     // If exact time worked (or failed), still allow nearby grid suggestions when exact failed
     if (slots.length) {
-      const busy: BusyMap = {};
-      for (const d of data) {
-        const items = ((d.scheduleItems as Record<string, unknown>[]) || []).slice(0, 5).map((it) => {
-          const s = it.start as { dateTime?: string } | undefined;
-          const e = it.end as { dateTime?: string } | undefined;
-          return {
-            start: s?.dateTime,
-            end: e?.dateTime,
-            subject: (it.subject as string) || "(ไม่ระบุ)",
-            status: it.status as string,
-          };
-        });
-        busy[d.scheduleId || ""] = items;
-      }
-      return { slots, busy, ranges: [...slots] };
+      return { slots, busy: collectBusy(data, start), ranges: [...slots] };
     }
     // Exact miss → suggest later starts the same day (after the requested time)
     afterMin = resolvedAt;
@@ -236,27 +239,40 @@ export async function findCommonSlots(
     }
   }
 
-  const busy: BusyMap = {};
-  for (const d of data) {
-    const items = ((d.scheduleItems as Record<string, unknown>[]) || []).slice(0, 5).map((it) => {
-      const s = it.start as { dateTime?: string } | undefined;
-      const e = it.end as { dateTime?: string } | undefined;
-      return {
-        start: s?.dateTime,
-        end: e?.dateTime,
-        subject: (it.subject as string) || "(ไม่ระบุ)",
-        status: it.status as string,
-      };
-    });
-    busy[d.scheduleId || ""] = items;
-  }
-  return { slots, busy, ranges };
+  return { slots, busy: collectBusy(data, start), ranges };
 }
 
 /** Parse wall-iso "YYYY-MM-DDTHH:MM:SS" back to a Date with UTC fields = local. */
 function parseWallLabel(iso: string): Date | null {
   const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
   return isNaN(d.getTime()) ? null : d;
+}
+
+function collectBusy(data: { scheduleId?: string; scheduleItems?: unknown[] }[], searchStart: Date): BusyMap {
+  const busy: BusyMap = {};
+  for (const d of data) {
+    const items = ((d.scheduleItems as Record<string, unknown>[]) || [])
+      .map((it) => {
+        const s = it.start as { dateTime?: string } | undefined;
+        const e = it.end as { dateTime?: string } | undefined;
+        return {
+          start: s?.dateTime,
+          end: e?.dateTime,
+          subject: (it.subject as string) || "(ไม่ระบุ)",
+          status: it.status as string,
+        };
+      })
+      .filter((it) => {
+        if (!it.end) return true;
+        const raw = it.end.replace(/\.\d+/, "").replace(/Z$/, "");
+        const e = parseWallLabel(raw);
+        if (!e) return true;
+        return e.getTime() > searchStart.getTime();
+      })
+      .slice(0, 5);
+    busy[d.scheduleId || ""] = items;
+  }
+  return busy;
 }
 
 type Range = { start: Date; end: Date };
@@ -358,6 +374,6 @@ export function formatBusy(busy: BusyMap): string {
     }
     lines.push(`  • ${email}: ${parts.join("; ")}` + (items.length > 3 ? " …" : ""));
   }
-  lines.push("", "ถ้าคนนั้นว่างจริง ลองพิมพ์เวลาใหม่ หรือดูตารางว่างของเขาได้ครับ");
+  lines.push("", "ถ้ายังไม่ตรง ลองพิมพ์วัน/ช่วงใหม่ได้ เช่น “พรุ่งนี้” หรือ “ช่วงบ่าย” ครับ");
   return lines.join("\n");
 }

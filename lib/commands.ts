@@ -2003,7 +2003,11 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     if (denied) return denied;
     const attendeesRaw = (params.attendees as string[]) || [];
     const duration = Number(params.duration_min || context?.last_meeting?.duration || 30);
-    let window = resolveFindWindow(params, text) || windowFromStored(context?.last_meeting);
+    let window = resolveFindWindow(params, text);
+    // Only reuse last meeting day for short time follow-ups (“แล้วบ่ายล่ะ”) — not for a new “ดูตาราง A กับ B”
+    if (!window && isTimeFollowUp(text)) {
+      window = windowFromStored(context?.last_meeting);
+    }
     const bandFromParams = {
       after: parseHHMM(params.after),
       before: parseHHMM(params.before),
