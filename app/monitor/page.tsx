@@ -388,9 +388,8 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
               if (typeof d.cursor === "number") cursorRef.current = d.cursor;
               setHud("IDLE", "var(--dim)");
               if (capRef.current) {
-                capRef.current.innerHTML = "<b>พร้อม</b> — รอคำขอใหม่จาก LINE / Web (ไม่เล่นซ้ำงานเก่า)";
+                capRef.current.innerHTML = "<b>พร้อม</b> — รอคำขอใหม่จาก LINE / Web";
               }
-              log("พร้อมรับงานใหม่ — กด F5 ไม่ได้สั่งงาน (ข้ามประวัติ)", "a");
             } else if (Array.isArray(d.events) && d.events.length) {
               if (queueRef.current.length < 400) queueRef.current.push(...d.events);
               cursorRef.current = d.cursor || cursorRef.current;
