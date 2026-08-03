@@ -111,6 +111,8 @@ export async function getPendingRsvp(attendeeUpn: string): Promise<PendingRsvp |
 export function classifyMeetingRsvpText(text: string): "accept" | "decline" | null {
   const t = (text || "").trim();
   if (!t) return null;
+  // Reschedule asks are handled separately — don't treat as decline
+  if (isMeetingRescheduleText(t)) return null;
   if (
     /^(ยืนยัน(เข้าร่วม(นัด)?)?|เข้าร่วม(นัด)?|ไปได้|รับนัด|ตกลง|ok)$/i.test(t) ||
     /^ยืนยันเข้าร่วม/.test(t)
@@ -125,6 +127,96 @@ export function classifyMeetingRsvpText(text: string): "accept" | "decline" | nu
     return "decline";
   }
   return null;
+}
+
+/** Attendee asking to move the meeting time (e.g. เปลี่ยนเวลาเป็นบ่าย3). */
+export function isMeetingRescheduleText(text: string): boolean {
+  const t = (text || "").trim();
+  if (!t) return false;
+  return /เปลี่ยนเวลา|เลื่อน(นัด|เวลา|ประชุม)?|ขอเลื่อน|ย้ายเวลา|เลื่อนไป|เปลี่ยนเป็น|ขอเปลี่ยน/.test(t);
+}
+
+/** Best-effort parse of requested time for the host notification. */
+export function extractRescheduleHint(text: string): string {
+  const t = text.trim();
+  const hhmm = t.match(/(\d{1,2})\s*[:.]\s*(\d{2})/);
+  if (hhmm) {
+    const h = Number(hhmm[1]);
+    const m = Number(hhmm[2]);
+    if (h < 24 && m < 60) return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+  const bai = t.match(/บ่าย\s*(\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)/);
+  if (bai) {
+    const map: Record<string, number> = { หนึ่ง: 1, สอง: 2, สาม: 3, สี่: 4, ห้า: 5, หก: 6 };
+    const n = map[bai[1]] ?? Number(bai[1]);
+    if (n >= 1 && n <= 6) return `${String(n === 1 ? 13 : n + 12).padStart(2, "0")}:00`;
+  }
+  const chao = t.match(/เช้า\s*(\d{1,2})/);
+  if (chao) {
+    const n = Number(chao[1]);
+    if (n >= 6 && n <= 11) return `${String(n).padStart(2, "0")}:00`;
+  }
+  const mong = t.match(/(\d{1,2})\s*โมง/);
+  if (mong) {
+    let h = Number(mong[1]);
+    if (h < 7) h += 12;
+    if (h < 24) return `${String(h).padStart(2, "0")}:00`;
+  }
+  return t.slice(0, 80);
+}
+
+export async function tryHandleMeetingRescheduleText(
+  responderUpn: string,
+  text: string
+): Promise<{ ok: boolean; reply: string } | null> {
+  if (!isMeetingRescheduleText(text)) return null;
+  const pending = await getPendingRsvp(responderUpn);
+  if (!pending) return null; // let normal chat handle (e.g. host changing their own plan)
+
+  const who = responderUpn.toLowerCase();
+  const when = whenLabel(pending.start, pending.end);
+  const hint = extractRescheduleHint(text);
+  const orgLine = await getLineId(pending.organizerUpn);
+
+  if (orgLine) {
+    try {
+      await pushLineMessages(orgLine, [
+        {
+          type: "text",
+          text:
+            `📬 คำขอเปลี่ยนเวลานัด\n` +
+            `📌 ${pending.subject}\n` +
+            `🕐 เดิม: ${when}\n` +
+            `🙋 ${who} ขอเปลี่ยนเป็นประมาณ ${hint}\n` +
+            `💬 ข้อความเดิม: “${text.trim().slice(0, 120)}”\n\n` +
+            `กรุณาปรับใน Outlook / พิมพ์จองเวลาใหม่ได้ครับ`,
+        },
+      ]);
+    } catch (e) {
+      console.warn("[mt-invite] reschedule notify host", String(e).slice(0, 120));
+      return {
+        ok: false,
+        reply: "รับทราบครับ แต่ส่งแจ้งเตือนถึงเจ้าของนัดไม่สำเร็จ ลองติดต่อโดยตรงอีกครั้งนะครับ",
+      };
+    }
+  } else {
+    return {
+      ok: true,
+      reply:
+        `รับทราบครับ บันทึกว่าต้องการเปลี่ยนเป็นประมาณ ${hint}\n` +
+        `แต่เจ้าของนัดยังไม่ได้เชื่อม LINE — กรุณาแจ้ง ${pending.organizerUpn} โดยตรงด้วยนะครับ`,
+    };
+  }
+
+  return {
+    ok: true,
+    reply:
+      `รับทราบครับ ส่งคำขอเปลี่ยนเวลาไปยังเจ้าของนัดแล้ว ✅\n` +
+      `📌 ${pending.subject}\n` +
+      `🕐 เดิม: ${when}\n` +
+      `➡️ ขอเป็นประมาณ ${hint}\n\n` +
+      `รอเจ้าของนัดปรับเวลาให้นะครับ`,
+  };
 }
 
 export async function tryHandleMeetingRsvpText(
