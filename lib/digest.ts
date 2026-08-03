@@ -60,14 +60,20 @@ function storyBullets(s: Story): string[] {
 
 /** Render stories as a natural bullet digest (for LINE push and chat). */
 export function formatStoriesText(stories: Story[]): string {
-  const lines = ["📰 สรุปข่าวที่คุณติดตามวันนี้", ""];
+  const lines = ["📰 สรุปข่าวที่คุณติดตามวันนี้", "อ่านจบในแชทได้เลย — ไม่ต้องเปิดลิงก์ก็รู้เรื่อง", ""];
   stories.forEach((s, i) => {
-    lines.push(`${i + 1}) ${s.title}`);
-    lines.push(`   ${s.source}`);
-    for (const b of storyBullets(s).slice(0, 5)) {
+    const bullets = storyBullets(s).slice(0, 4);
+    const gist = bullets[0] || s.title;
+    const rest = bullets.slice(1);
+    lines.push(`${i + 1}) ${s.source}`);
+    lines.push(`   📌 ${gist}`);
+    for (const b of rest) {
       lines.push(`   • ${b}`);
     }
-    if (s.rawLink) lines.push(`   🔗 ${s.rawLink}`);
+    if (s.title && s.title !== gist && !gist.includes(s.title.slice(0, 20))) {
+      lines.push(`   (หัวข้อเดิม: ${s.title.slice(0, 80)})`);
+    }
+    if (s.rawLink) lines.push(`   🔗 อ่านเต็ม: ${s.rawLink}`);
     lines.push("");
   });
   return lines.join("\n").trim();
@@ -212,30 +218,42 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     picks = Array.from(new Set(picks)).slice(0, highlightN);
   }
 
-  // 4) fetch article text + stage 2 — natural bullet summaries
+  // 4) fetch article text + stage 2 — natural bullet summaries (batch for quality)
   const chosen = picks.map((i) => pool[i]);
   const withText = await Promise.all(
     chosen.map(async (it) => ({ ...it, full: (await fetchArticle(it.link)) || it.summary }))
   );
-  const writerInput = withText
-    .map((it, i) => `#${i}\nหัวข้อ: ${it.title}\nแหล่ง: ${it.feedLabel}\nเนื้อหา: ${it.full.slice(0, 4000)}`)
-    .join("\n\n");
-  let summaries: Record<string, { bullets?: string[]; points?: string[] }> = {};
-  try {
-    const raw = await chat(
-      "สรุปข่าวแต่ละชิ้นเป็นภาษาไทยแบบเป็นธรรมชาติ อ่านง่าย ตอบ JSON เท่านั้น:\n" +
-        '{"0":{"bullets":["ประเด็นสำคัญ 1","ประเด็นสำคัญ 2","ประเด็นสำคัญ 3"]}, "1":{...}}\n' +
-        "กติกา:\n" +
-        "- แต่ละข่าวมี 2–4 หัวข้อย่อย (bullets) สั้น ๆ เป็นประโยคสมบูรณ์\n" +
-        "- ห้ามใช้ป้ายกำกับตายตัวอย่าง เกิดอะไรขึ้น/สาเหตุ/เป็นยังไงต่อ/สรุป\n" +
-        "- เขียนเหมือนเล่าให้เพื่อนฟัง เป็นหัวข้อ ๆ\n" +
-        "- สรุปจากเนื้อหาจริงเท่านั้น ห้ามแต่ง",
-      writerInput,
-      { json: true, temperature: 0.35 }
-    );
-    summaries = JSON.parse(raw);
-  } catch {
-    summaries = {};
+  const summaries: Record<string, { bullets?: string[]; points?: string[] }> = {};
+  const BATCH = 5;
+  for (let offset = 0; offset < withText.length; offset += BATCH) {
+    const batch = withText.slice(offset, offset + BATCH);
+    const writerInput = batch
+      .map((it, j) => {
+        const globalIdx = offset + j;
+        const body = (it.full || it.summary || it.title || "").slice(0, 4000);
+        return `#${globalIdx}\nหัวข้อ: ${it.title}\nแหล่ง: ${it.feedLabel}\nเนื้อหา: ${body}`;
+      })
+      .join("\n\n");
+    try {
+      const raw = await chat(
+        "คุณเป็นบรรณาธิการสรุปข่าวให้ผู้บริหารอ่านบน LINE มือถือ — สรุปให้เข้าใจเนื้อหาโดยไม่ต้องเปิดลิงก์\n" +
+          "ตอบ JSON เท่านั้น โดยใช้เลข index ตาม # ที่ให้มา:\n" +
+          '{"0":{"bullets":["...","...","..."]}, "1":{...}}\n' +
+          "กติกาสำคัญ:\n" +
+          "- แต่ละข่าวมี 3–4 bullets เป็นภาษาไทย อ่านง่าย\n" +
+          "- bullet แรกต้องตอบว่า “เรื่องนี้พูดถึงอะไร” ใน 1 ประโยคชัดเจน (ใคร/ทำอะไร/ผลลัพธ์หรือประเด็นหลัก)\n" +
+          "- bullet ถัดไป = รายละเอียดสำคัญ / ตัวเลข / ผลกระทบ / สิ่งที่ควรรู้ต่อ\n" +
+          "- ห้ามแค่ถอดหัวข้อข่าวมาวาง ห้ามคลุมเครือแบบ “มีความคืบหน้า” โดยไม่อธิบายว่าอะไร\n" +
+          "- ห้ามใช้ป้าย เกิดอะไรขึ้น/สาเหตุ/สรุป\n" +
+          "- สรุปจากเนื้อหาที่ให้เท่านั้น ห้ามแต่ง — ถ้าเนื้อหาน้อย ให้สรุปเท่าที่มีอย่างตรงไปตรงมา",
+        writerInput,
+        { json: true, temperature: 0.3 }
+      );
+      const parsed = JSON.parse(raw) as Record<string, { bullets?: string[]; points?: string[] }>;
+      Object.assign(summaries, parsed);
+    } catch {
+      /* keep whatever we have; fallbacks below */
+    }
   }
 
   // 5) build stories

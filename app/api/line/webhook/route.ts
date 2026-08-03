@@ -180,14 +180,23 @@ function detailText(res: CommandResult): string {
     lines = (res.choices as Choice[]).filter((c) => c.mail).map((c, i) => `${i + 1}) ${c.displayName || c.mail} — ${c.mail}`);
   } else if (Array.isArray(res.slots) && res.slots.length && (res.intent === "availability" || res.intent === "choose_slot")) {
     const ranges = Array.isArray(res.ranges) ? (res.ranges as Slot[]) : [];
+    const slots = res.slots as Slot[];
     const parts: string[] = [];
-    if (ranges.length) {
+    // Don't duplicate: when ranges mirror slots (common for choose_slot), show one list only
+    const rangesUnique =
+      res.intent !== "choose_slot" &&
+      ranges.length > 0 &&
+      !(
+        ranges.length === slots.length &&
+        ranges.every((r, i) => (r.label || "") === (slots[i]?.label || ""))
+      );
+    if (rangesUnique) {
       parts.push("ช่วงว่างทั้งหมด:");
       ranges.forEach((s, i) => parts.push(`${i + 1}) ${s.label || `${s.start}-${s.end}`}`));
       parts.push("");
     }
-    parts.push("เลือกเวลาเริ่ม:");
-    (res.slots as Slot[]).forEach((s, i) => parts.push(`${i + 1}) ${s.label || `${s.start}-${s.end}`}`));
+    parts.push(res.intent === "choose_slot" ? "เลือกเวลาเริ่มได้เลย:" : "เลือกเวลาเริ่ม:");
+    slots.forEach((s, i) => parts.push(`${i + 1}) ${s.label || `${s.start}-${s.end}`}`));
     parts.push("✏️) กำหนดเอง — พิมพ์วันเวลาเองได้");
     return "\n\n" + parts.join("\n");
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
