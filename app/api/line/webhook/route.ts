@@ -105,6 +105,16 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
       const p = new URLSearchParams({ a: "book", s: s.start, e: s.end, subj: subject, at: attendees.join(",") });
       add(i + 1, p.toString(), `จอง ${i + 1}) ${s.label || ""}`);
     });
+    // "ขอดูเพิ่มเติม" sits after the numbered slots (before custom)
+    if (items.length < 13 && Array.isArray(res.suggestions)) {
+      for (const s of res.suggestions.slice(0, 2)) {
+        if (!s?.label || !s?.text || items.length >= 13) break;
+        items.push({
+          type: "action",
+          action: { type: "message", label: truncate(s.label, 20), text: s.text.slice(0, 300) },
+        });
+      }
+    }
     // Custom time — leave one slot for the button (LINE max 13)
     if (items.length < 13) {
       const p = new URLSearchParams({
@@ -122,15 +132,6 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
           displayText: "กำหนดเวลาเอง",
         },
       });
-    }
-    if (items.length < 13 && Array.isArray(res.suggestions)) {
-      for (const s of res.suggestions.slice(0, 2)) {
-        if (!s?.label || !s?.text || items.length >= 13) break;
-        items.push({
-          type: "action",
-          action: { type: "message", label: truncate(s.label, 20), text: s.text.slice(0, 300) },
-        });
-      }
     }
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
     let n = 0;
@@ -206,6 +207,9 @@ function detailText(res: CommandResult): string {
     }
     parts.push(res.intent === "choose_slot" ? "เลือกเวลาเริ่มได้เลย:" : "เลือกเวลาเริ่ม:");
     slots.forEach((s, i) => parts.push(`${i + 1}) ${s.label || `${s.start}-${s.end}`}`));
+    const hasMore = Array.isArray(res.suggestions) &&
+      res.suggestions.some((s) => /ขอดูเพิ่มเติม|แสดงเพิ่ม/.test(s?.text || s?.label || ""));
+    if (hasMore) parts.push("ขอดูเพิ่มเติม");
     parts.push("✏️) กำหนดเอง — พิมพ์วันเวลาเองได้");
     return "\n\n" + parts.join("\n");
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {

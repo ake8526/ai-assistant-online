@@ -234,11 +234,33 @@ export type UserInfo = { mail: string; displayName?: string };
 
 const resolveCache = new Map<string, UserInfo | null>();
 
+/** Look up displayName for a known mail/UPN (Graph /users/{id}). */
+async function lookupUserByMail(mailOrUpn: string): Promise<UserInfo | null> {
+  const key = mailOrUpn.trim().toLowerCase();
+  if (!key.includes("@")) return null;
+  if (resolveCache.has(key)) return resolveCache.get(key)!;
+  try {
+    const data = await graphGet(`/users/${encodeURIComponent(mailOrUpn.trim())}`, {
+      $select: "mail,userPrincipalName,displayName",
+    });
+    const mail = (data.mail || data.userPrincipalName || mailOrUpn).trim();
+    const displayName = (data.displayName || "").trim() || mail;
+    const info: UserInfo = { mail, displayName };
+    resolveCache.set(key, info);
+    resolveCache.set(mail.toLowerCase(), info);
+    return info;
+  } catch {
+    const fallback: UserInfo = { mail: mailOrUpn.trim(), displayName: mailOrUpn.trim() };
+    resolveCache.set(key, fallback);
+    return fallback;
+  }
+}
+
 /** Resolve email/display name/Thai nickname to {mail, displayName}; prefers real mailboxes. */
 export async function resolveUserInfo(nameOrEmail: string): Promise<UserInfo | null> {
   const q = nameOrEmail.trim();
   if (!q) return null;
-  if (q.includes("@")) return { mail: q, displayName: q };
+  if (q.includes("@")) return lookupUserByMail(q);
   if (resolveCache.has(q)) return resolveCache.get(q)!;
   const candidates = await searchUsers(q);
   const result = candidates[0] || null;

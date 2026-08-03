@@ -497,8 +497,12 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   const cancel = quickCancelIntent(t);
   if (cancel) return cancel;
 
-  // "แสดงเพิ่ม" after a slot list — continue same attendees
-  if (/^แสดงเพิ่ม(เติม)?(ได้)?(ไหม)?$/i.test(t) || /^ดู(เวลา|ช่วง)?เพิ่ม/i.test(t)) {
+  // "ขอดูเพิ่มเติม" / "แสดงเพิ่ม" after a slot list — continue same attendees
+  if (
+    /^ขอดูเพิ่มเติม$/i.test(t) ||
+    /^แสดงเพิ่ม(เติม)?(ได้)?(ไหม)?$/i.test(t) ||
+    /^ดู(เวลา|ช่วง)?เพิ่ม/i.test(t)
+  ) {
     return { intent: "find_meeting_time", params: { show_more: true } };
   }
 
@@ -1233,11 +1237,15 @@ export async function runFindMeeting(
 
   const SHOW_CAP = 8;
   const offset = opts?.showMore ? SHOW_CAP : 0;
-  const allAnnotated = annotateAfterHoursSlots(result.slots);
+  // Strip any legacy "· หลังเลิกงาน" on labels — explain once in the reply instead
+  const cleaned = result.slots.map((s) => ({
+    ...s,
+    label: (s.label || "").replace(/\s*·\s*หลังเลิกงาน/g, ""),
+  }));
   const todayKey = fmtDate(nowWall());
   const todayFirst = [
-    ...allAnnotated.filter((s) => (s.label || "").startsWith(todayKey)),
-    ...allAnnotated.filter((s) => !(s.label || "").startsWith(todayKey)),
+    ...cleaned.filter((s) => (s.label || "").startsWith(todayKey)),
+    ...cleaned.filter((s) => !(s.label || "").startsWith(todayKey)),
   ];
   const totalFound = todayFirst.length;
   const page = todayFirst.slice(offset, offset + SHOW_CAP);
@@ -1246,6 +1254,11 @@ export async function runFindMeeting(
   const hiddenCount = hidden.length;
   const tomorrowKey = fmtDate(addDays(startOfDay(nowWall()), 1));
   const moreTomorrow = hidden.some((s) => (s.label || "").startsWith(tomorrowKey));
+  const pageHasAfterHours = page.some((s) => {
+    const start = parseWall(s.start);
+    if (!start) return false;
+    return start.getUTCHours() * 60 + start.getUTCMinutes() >= WORK_END_HOUR * 60;
+  });
 
   const note = unresolved.length ? `\n(หาอีเมลไม่เจอ: ${unresolved.join(", ")})` : "";
   const who = await formatAttendeeLines(attendees.filter((a) => a.mail));
@@ -1294,18 +1307,8 @@ export async function runFindMeeting(
     return { intent: "find_meeting_time", reply: head + held.note };
   }
 
-  let moreNote = "";
-  if (hiddenCount > 0 || moreTomorrow) {
-    moreNote =
-      `\n\nมีช่วงว่างให้เลือกเพิ่มได้อีก` +
-      (hiddenCount > 0 ? ` ${hiddenCount} ช่วง` : "") +
-      (moreTomorrow ? " (รวมวันพรุ่งนี้)" : "") +
-      ` — พิมพ์ “แสดงเพิ่ม” ได้ครับ`;
-  }
-
-  const afterHoursInPage = page.some((s) => (s.label || "").includes("หลังเลิกงาน"));
-  const afterHoursNote = afterHoursInPage
-    ? `\n⚠️ ช่วงที่มีคำว่า “หลังเลิกงาน” = หลัง ${WORK_END_HOUR}:00 น. แล้วครับ`
+  const afterHoursNote = pageHasAfterHours
+    ? `\n💡 ${String(WORK_END_HOUR).padStart(2, "0")}:00–20:00 น. = หลังเลิกงาน`
     : "";
 
   const reply =
@@ -1314,7 +1317,6 @@ export async function runFindMeeting(
     (subject && subject !== "ประชุม" ? `📌 ${subject}\n` : "") +
     `เลือกเวลาเริ่มประชุม (${duration} นาที) จากรายการด้านล่างได้เลย 👇` +
     afterHoursNote +
-    moreNote +
     note;
 
   return {
@@ -1330,7 +1332,11 @@ export async function runFindMeeting(
         ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
         : undefined,
     },
-    suggestions: hiddenCount > 0 || moreTomorrow ? [{ label: "แสดงเพิ่ม", text: "แสดงเพิ่ม" }] : undefined,
+    // Shown after slot #8 in the list + as a quick-reply button
+    suggestions:
+      hiddenCount > 0 || moreTomorrow
+        ? [{ label: "ขอดูเพิ่มเติม", text: "ขอดูเพิ่มเติม" }]
+        : undefined,
   };
 }
 
@@ -1353,21 +1359,6 @@ async function formatAttendeeLines(attendees: MtAttendee[]): Promise<string> {
   return lines.join("\n👤 ") || "(ไม่ระบุ)";
 }
 
-/** Mark slots that start at/after official work end. */
-function annotateAfterHoursSlots(
-  slots: { start: string; end: string; label: string }[]
-): { start: string; end: string; label: string }[] {
-  return slots.map((s) => {
-    const start = parseWall(s.start);
-    if (!start) return s;
-    const mins = start.getUTCHours() * 60 + start.getUTCMinutes();
-    if (mins >= WORK_END_HOUR * 60) {
-      const base = (s.label || "").replace(/\s*·\s*หลังเลิกงาน/g, "");
-      return { ...s, label: `${base} · หลังเลิกงาน` };
-    }
-    return s;
-  });
-}
 
 export async function handleCommand(
   userUpn: string,
