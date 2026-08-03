@@ -13,7 +13,7 @@ import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
-import { notifyMeetingInviteOnLine, respondMeetingInvite, tryHandleMeetingRsvpText, isMeetingRsvpText, getPendingRsvp } from "@/lib/meetingInvite";
+import { notifyMeetingInviteOnLine, respondMeetingInvite, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp } from "@/lib/meetingInvite";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -624,8 +624,13 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
   try {
     void showLineLoading(userId, 60);
 
-    // Meeting RSVP by text (ยืนยัน / ไม่สะดวก / ยกเลิก) — before news onboarding
+    // Meeting RSVP / reschedule by text — before news onboarding
     {
+      const reschedule = await tryHandleMeetingRescheduleText(upn, text);
+      if (reschedule) {
+        await replyLine(ev.replyToken, reschedule.reply);
+        return;
+      }
       const rsvp = await tryHandleMeetingRsvpText(upn, text);
       if (rsvp) {
         await replyLineMessages(ev.replyToken, [
@@ -637,13 +642,15 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         ]);
         return;
       }
-      // Attendee typed cancel/decline but invite pointer missing — don't dump into news welcome
-      if (isMeetingRsvpText(text)) {
+      // Attendee typed cancel/decline/reschedule but invite pointer missing — don't dump into news welcome
+      if (isMeetingRsvpText(text) || isMeetingRescheduleText(text)) {
         const prefs = await getNewsPrefs(upn);
         if (!prefs.onboardingDone) {
           await replyLine(
             ev.replyToken,
-            "รับทราบครับ แต่ยังผูกกับนัดล่าสุดไม่เจอในระบบ\nให้กดปุ่ม ❌ ไม่สะดวก จากข้อความเชิญนัด หรือให้เจ้าของนัดส่งคำเชิญใหม่ได้ครับ"
+            isMeetingRescheduleText(text)
+              ? "รับทราบว่าอยากเปลี่ยนเวลาครับ แต่ยังผูกกับนัดล่าสุดไม่เจอในระบบ\nให้เจ้าของนัดส่งคำเชิญใหม่ หรือแจ้งโดยตรงได้ครับ"
+              : "รับทราบครับ แต่ยังผูกกับนัดล่าสุดไม่เจอในระบบ\nให้กดปุ่ม ❌ ไม่สะดวก จากข้อความเชิญนัด หรือให้เจ้าของนัดส่งคำเชิญใหม่ได้ครับ"
           );
           return;
         }
