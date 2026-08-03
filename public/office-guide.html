@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>THE OFFICE — คู่มือห้อง pipeline</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --panel: #121212;
+      --panel2: #171717;
+      --ink: #f5f5f5;
+      --dim: #7c7c7c;
+      --red: #ee1b24;
+      --green: #39d353;
+      --amber: #f0b429;
+      --blue: #3a86ff;
+      --leaf: #2f9e44;
+      --gold: #f0b429;
+      --purple: #7048e8;
+      --hair: #262626;
+      --wood: #7a5636;
+      --aisle: #946f49;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "VT323", monospace;
+      font-size: 22px;
+      line-height: 1.35;
+      min-height: 100vh;
+      padding: 20px 16px 48px;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+      background: repeating-linear-gradient(0deg, rgba(0,0,0,.14) 0 1px, transparent 1px 3px);
+      mix-blend-mode: multiply;
+    }
+    .wrap { max-width: 920px; margin: 0 auto; position: relative; z-index: 1; }
+    .pix { font-family: "Press Start 2P", monospace; }
+    header {
+      border: 2px solid var(--hair);
+      background: var(--panel);
+      padding: 16px 18px;
+      margin-bottom: 14px;
+    }
+    header h1 { font-size: 14px; line-height: 1.55; }
+    header h1 em { color: var(--red); font-style: normal; }
+    header .tag { color: var(--dim); margin-top: 8px; font-size: 20px; }
+    header a {
+      display: inline-block;
+      margin-top: 12px;
+      font-family: "Press Start 2P", monospace;
+      font-size: 9px;
+      color: #000;
+      background: var(--ink);
+      padding: 10px 12px;
+      text-decoration: none;
+      border: 2px solid var(--ink);
+    }
+    header a:hover { background: var(--red); border-color: var(--red); color: #fff; }
+
+    .panel {
+      border: 2px solid var(--hair);
+      background: var(--panel);
+      margin-bottom: 14px;
+    }
+    .ph {
+      font-family: "Press Start 2P", monospace;
+      font-size: 9px;
+      color: var(--dim);
+      padding: 10px 12px;
+      border-bottom: 2px solid var(--hair);
+      background: var(--panel2);
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .ph .live { color: var(--red); }
+    .body { padding: 16px 18px; }
+    .body p + p { margin-top: 10px; }
+    .body b { color: var(--red); }
+
+    /* Mini office map */
+    .map {
+      display: grid;
+      grid-template-columns: 1fr 72px 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 10px;
+      padding: 14px;
+      background:
+        linear-gradient(90deg, transparent 0, transparent calc(50% - 36px), var(--aisle) calc(50% - 36px), var(--aisle) calc(50% + 36px), transparent calc(50% + 36px)),
+        repeating-linear-gradient(0deg, #6b4a2e 0 1px, var(--wood) 1px 12px);
+      border: 2px solid #3a2a1a;
+      image-rendering: pixelated;
+    }
+    .desk {
+      background: rgba(10, 7, 4, .88);
+      border: 2px solid var(--hair);
+      padding: 10px 12px;
+      min-height: 88px;
+    }
+    .desk .nm {
+      font-family: "Press Start 2P", monospace;
+      font-size: 10px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .desk .sw { width: 12px; height: 12px; border: 1px solid #000; flex: none; }
+    .desk .role {
+      font-family: "Press Start 2P", monospace;
+      font-size: 7px;
+      color: var(--amber);
+      margin-bottom: 6px;
+    }
+    .desk .cap { color: var(--dim); font-size: 18px; }
+    .aisle {
+      grid-row: 1 / span 2;
+      grid-column: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-align: center;
+    }
+    .dash-card {
+      background: rgba(10, 7, 4, .92);
+      border: 2px solid var(--red);
+      padding: 10px 8px;
+      width: 100%;
+    }
+    .dash-card .nm {
+      font-family: "Press Start 2P", monospace;
+      font-size: 9px;
+      color: var(--ink);
+    }
+    .dash-card .role {
+      font-family: "Press Start 2P", monospace;
+      font-size: 6px;
+      color: var(--red);
+      margin: 6px 0;
+    }
+    .dash-card .cap { color: var(--dim); font-size: 15px; line-height: 1.2; }
+    .mailbox {
+      grid-column: 1 / -1;
+      text-align: center;
+      background: rgba(10, 7, 4, .9);
+      border: 2px dashed #7a0d10;
+      padding: 10px;
+      font-size: 18px;
+      color: var(--dim);
+    }
+    .mailbox strong {
+      font-family: "Press Start 2P", monospace;
+      font-size: 8px;
+      color: var(--red);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .chip {
+      font-family: "Press Start 2P", monospace;
+      font-size: 8px;
+      padding: 8px 10px;
+      border: 2px solid var(--hair);
+      background: #0d0d0d;
+    }
+    .chip.gate { border-color: var(--blue); color: var(--blue); }
+    .chip.brain { border-color: var(--leaf); color: #5ad879; }
+    .chip.runner { border-color: var(--gold); color: var(--gold); }
+    .chip.scribe { border-color: var(--purple); color: #b197fc; }
+    .chip.dash { border-color: var(--red); color: var(--red); }
+    .chip.mail { border-color: var(--green); color: var(--green); }
+    .arrow { color: var(--dim); font-family: "Press Start 2P", monospace; font-size: 8px; }
+
+    .status-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+    .st {
+      font-family: "Press Start 2P", monospace;
+      font-size: 7px;
+      padding: 6px 8px;
+      border: 2px solid var(--hair);
+    }
+    .st.idle { color: var(--dim); }
+    .st.work { color: var(--amber); border-color: var(--amber); }
+    .st.done { color: var(--green); border-color: var(--green); }
+
+    .list { list-style: none; }
+    .list li {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--hair);
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 12px;
+    }
+    .list li:last-child { border-bottom: 0; }
+    .list .who {
+      font-family: "Press Start 2P", monospace;
+      font-size: 9px;
+      line-height: 1.4;
+    }
+    .list .who small {
+      display: block;
+      font-size: 7px;
+      color: var(--dim);
+      margin-top: 4px;
+    }
+    .foot {
+      font-family: "Press Start 2P", monospace;
+      font-size: 8px;
+      color: #3a3a3a;
+      text-align: center;
+      margin-top: 18px;
+    }
+
+    @media (max-width: 700px) {
+      .map {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        background: repeating-linear-gradient(0deg, #6b4a2e 0 1px, var(--wood) 1px 12px);
+      }
+      .aisle { grid-row: auto; grid-column: auto; }
+      .list li { grid-template-columns: 1fr; gap: 4px; }
+      header h1 { font-size: 11px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1 class="pix">AI ASSISTANT · <em>THE OFFICE</em></h1>
+      <div class="tag">คู่มือห้องจำลอง pipeline จริง — แต่ละโต๊ะ = 1 ขั้นตอนเวลาผู้ช่วยตอบ LINE</div>
+      <a href="/monitor">เปิดห้อง LIVE →</a>
+    </header>
+
+    <div class="panel">
+      <div class="ph"><span>ภาพรวมห้อง</span><span class="live">● GUIDE</span></div>
+      <div class="body">
+        <p>หน้า <b>/monitor</b> ไม่ใช่เกมสุ่ม — เป็นภาพจำลองจาก <b>stage จริง</b> ของ pipeline ทุกครั้งที่มีคนคุยกับผู้ช่วยผ่าน LINE</p>
+        <p>ระบบบันทึกขั้นตอน (ไม่เก็บเนื้อหาข้อความ) แล้วห้องนี้ดึงมาเล่นเป็นแอนิเมชัน: โต๊ะไหนถึงคิวจะติด WORKING / DONE</p>
+      </div>
+      <div class="map" aria-label="แผนผัง THE OFFICE">
+        <div class="desk">
+          <div class="nm"><span class="sw" style="background:var(--blue)"></span>GATE</div>
+          <div class="role">RECEIVE</div>
+          <div class="cap">รับข้อความเข้าจากผู้ใช้</div>
+        </div>
+        <div class="aisle">
+          <div class="dash-card">
+            <div class="nm">DASH</div>
+            <div class="role">REPLY</div>
+            <div class="cap">คนตรงกลาง<br/>ส่งคำตอบ</div>
+          </div>
+        </div>
+        <div class="desk">
+          <div class="nm"><span class="sw" style="background:var(--leaf)"></span>BRAIN</div>
+          <div class="role">PARSE</div>
+          <div class="cap">แยกเจตนา (intent) ด้วย LLM</div>
+        </div>
+        <div class="desk">
+          <div class="nm"><span class="sw" style="background:var(--gold)"></span>RUNNER</div>
+          <div class="role">FETCH</div>
+          <div class="cap">ดึงข้อมูลจาก Microsoft 365</div>
+        </div>
+        <div class="desk">
+          <div class="nm"><span class="sw" style="background:var(--purple)"></span>SCRIBE</div>
+          <div class="role">COMPOSE</div>
+          <div class="cap">เขียนคำตอบภาษาไทย</div>
+        </div>
+        <div class="mailbox">
+          <strong>MAILBOX · LINE</strong>
+          จุดส่งคำตอบกลับเข้าแชทผู้ใช้
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><span>ลำดับงาน (pipeline)</span></div>
+      <div class="body">
+        <div class="flow">
+          <span class="chip gate">GATE</span><span class="arrow">→</span>
+          <span class="chip brain">BRAIN</span><span class="arrow">→</span>
+          <span class="chip runner">RUNNER</span><span class="arrow">→</span>
+          <span class="chip scribe">SCRIBE</span><span class="arrow">→</span>
+          <span class="chip dash">DASH</span><span class="arrow">→</span>
+          <span class="chip mail">MAILBOX</span>
+        </div>
+        <p style="margin-top:14px">บางคำสั่งอาจข้ามโต๊ะได้ เช่น ไม่ต้องดึงปฏิทินก็ไม่จุด RUNNER / ไม่ต้องเขียนยาวก็ไม่จุด SCRIBE — เลยเห็นบางเครื่อง IDLE ได้ตามปกติ</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><span>แต่ละตัวละคร</span></div>
+      <div class="body">
+        <ul class="list">
+          <li>
+            <div class="who" style="color:var(--blue)">GATE<small>โต๊ะบนซ้าย · receive</small></div>
+            <div>ประตูรับงาน — ข้อความจาก LINE เข้ามาถึงระบบแล้ว เริ่ม trace ชุดใหม่</div>
+          </li>
+          <li>
+            <div class="who" style="color:#5ad879">BRAIN<small>โต๊ะบนขวา · parse</small></div>
+            <div>สมองแยกเจตนา — ใช้ LLM ตัดสินว่าผู้ใช้ต้องการอะไร (ดูตาราง / สรุปข่าว / จองนัด ฯลฯ)</div>
+          </li>
+          <li>
+            <div class="who" style="color:var(--gold)">RUNNER<small>โต๊ะล่างซ้าย · fetch</small></div>
+            <div>นักวิ่งข้อมูล — ไปเรียก Microsoft Graph / แหล่งข้อมูลที่จำเป็นตาม intent</div>
+          </li>
+          <li>
+            <div class="who" style="color:#b197fc">SCRIBE<small>โต๊ะล่างขวา · compose</small></div>
+            <div>นักเขียน — เรียบเรียงคำตอบเป็นภาษาไทยให้อ่านบน LINE</div>
+          </li>
+          <li>
+            <div class="who" style="color:var(--red)">DASH<small>คนตรงกลาง · reply</small></div>
+            <div>
+              คนส่งพัสดุ — เมื่อขั้นตอบกลับถึงคิว จะเดินไป<strong>ข้างโต๊ะคอมเครื่องสุดท้ายที่ทำงาน</strong>
+              (ไม่ทะลุโต๊ะ) หยิบคำตอบ แล้วเดินไป <b>ตู้จดหมาย</b> เพื่อส่งกลับผู้ใช้ แล้วกลับมาตรงกลางทางเดิน
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><span>สถานะบนป้าย</span></div>
+      <div class="body">
+        <div class="status-row">
+          <span class="st idle">■ IDLE</span>
+          <span class="st work">■ WORKING</span>
+          <span class="st done">■ DONE</span>
+        </div>
+        <p style="margin-top:12px"><b>IDLE</b> = ยังไม่ถึงคิวหรือข้ามขั้นนี้ · <b>WORKING</b> = กำลังทำ · <b>DONE</b> = ขั้นนี้เสร็จแล้ว (จอขึ้นเครื่องหมายถูกเขียว)</p>
+        <p>จอคอมสีดำ = เครื่องนั้นไม่ได้ถูกใช้ในคำขอนี้</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><span>ทำไมถึงขยับ</span></div>
+      <div class="body">
+        <p>1) ผู้ใช้พิมพ์ใน LINE → webhook รับข้อความ</p>
+        <p>2) โค้ดเรียก <b>trace(step)</b> ตามขั้น เช่น receive / parse / fetch / compose / reply</p>
+        <p>3) บันทึกลงตาราง <b>agent_traces</b> (เฉพาะชื่อขั้น ไม่เก็บข้อความ)</p>
+        <p>4) หน้า /monitor ดึง <b>/api/monitor/events</b> แล้วเล่นแอนิเมชันตามลำดับ</p>
+      </div>
+    </div>
+
+    <div class="foot pix">KTIS · AI ASSISTANT · OFFICE GUIDE</div>
+  </div>
+</body>
+</html>
