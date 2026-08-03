@@ -1003,7 +1003,17 @@ export async function searchFiles(
   userUpn: string,
   query: string,
   top = 25
-): Promise<{ id?: string; name?: string; webUrl?: string; lastModifiedDateTime?: string; size?: number }[]> {
+): Promise<
+  {
+    id?: string;
+    name?: string;
+    webUrl?: string;
+    lastModifiedDateTime?: string;
+    size?: number;
+    folder?: unknown;
+    file?: unknown;
+  }[]
+> {
   if (!query.trim()) return [];
   const q = encodeURIComponent(query.replace(/'/g, "''"));
   try {

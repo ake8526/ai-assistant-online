@@ -1,6 +1,6 @@
 // Link OneDrive files / URLs to a calendar meeting for later morning prep.
 import { buildMorningAgenda, resolveAgendaEventId } from "@/lib/brief";
-import { canAccessDriveItem, getEvent } from "@/lib/graph";
+import { canAccessDriveItem, getEvent, searchFiles } from "@/lib/graph";
 import {
   addMeetingMaterial,
   formatMaterialsList,
@@ -17,6 +17,7 @@ export type LinkCmdContext = {
 export type LinkCmdResult = {
   intent: string;
   reply: string;
+  files?: { id?: string; name?: string; url?: string; is_folder?: boolean }[];
   choices?: { index: number; event_id: string; label: string }[];
   suggestions?: { label: string; text: string }[];
 };
@@ -28,6 +29,17 @@ function pickFile(
   if (!files?.length) return null;
   const i = fileIndex && fileIndex >= 1 ? fileIndex - 1 : 0;
   return files[i] || null;
+}
+
+function thaiOrdinalToIndex(s: string): number | null {
+  const t = s.trim();
+  if (/^(แรก|ที่\s*1|อัน\s*1|1)$/i.test(t)) return 1;
+  if (/^(สอง|ที่\s*2|อัน\s*2|2)$/i.test(t)) return 2;
+  if (/^(สาม|ที่\s*3|อัน\s*3|3)$/i.test(t)) return 3;
+  if (/^(สี่|ที่\s*4|อัน\s*4|4)$/i.test(t)) return 4;
+  if (/^(ห้า|ที่\s*5|อัน\s*5|5)$/i.test(t)) return 5;
+  const m = t.match(/(\d+)/);
+  return m ? Number(m[1]) : null;
 }
 
 async function resolveEvent(
@@ -77,6 +89,25 @@ async function resolveEvent(
   return { eventId: eventId!, subject: subj || "นัดหมาย", index: idx || undefined };
 }
 
+/** Prefer exact filename match, then extension match, else first hit. */
+function pickBestSearchHit(
+  hits: { id?: string; name?: string; webUrl?: string; folder?: unknown }[],
+  query: string
+): { id?: string; name?: string; url?: string; is_folder?: boolean } | null {
+  const files = hits.filter((h) => !h.folder);
+  if (!files.length) return null;
+  const q = query.trim().toLowerCase();
+  const base = q.replace(/\.[a-z0-9]{1,8}$/i, "");
+  const exact = files.find((f) => (f.name || "").toLowerCase() === q);
+  const ends = files.find((f) => (f.name || "").toLowerCase().endsWith(q));
+  const contains = files.find((f) => {
+    const n = (f.name || "").toLowerCase();
+    return n.includes(q) || (base.length >= 4 && n.includes(base));
+  });
+  const hit = exact || ends || contains || files[0]!;
+  return { id: hit.id, name: hit.name, url: hit.webUrl, is_folder: false };
+}
+
 export function quickLinkMeetingIntent(
   text: string
 ): { intent: string; params: Record<string, unknown> } | null {
@@ -107,6 +138,37 @@ export function quickLinkMeetingIntent(
       intent: "link_meeting_url",
       params: { meeting_index: Number(link[1]), url: link[2].replace(/[)\].,;]+$/, "") },
     };
+  }
+
+  // อันแรกผูกกับ ไฟล์xxx.html  /  นัด 1 ผูกกับ ฟังก์ชัน….html
+  const named =
+    t.match(
+      /^(?:อัน|นัด|ประชุม|ข้อ)?\s*(แรก|สอง|สาม|สี่|ห้า|\d+)\s*(?:ผูก|แนบ)(?:กับ|ให้)?\s*(?:ไฟล์)?\s*(.+)$/i
+    ) ||
+    t.match(
+      /^(?:ผูก|แนบ)\s*(?:ไฟล์)?\s*(.+?)\s*(?:กับ|ให้)\s*(?:นัด|ประชุม|อัน)\s*(?:หมายเลข|ที่|#)?\s*(แรก|\d+)$/i
+    );
+  if (named) {
+    // form A: (ordinal)(filename)  form B: (filename)(ordinal)
+    let meetingIndex: number | null = null;
+    let fileQuery = "";
+    if (/^(?:อัน|นัด|ประชุม|ข้อ)?\s*(แรก|สอง|สาม|สี่|ห้า|\d+)\s*(?:ผูก|แนบ)/i.test(t)) {
+      meetingIndex = thaiOrdinalToIndex(named[1] || "");
+      fileQuery = (named[2] || "").trim();
+    } else {
+      fileQuery = (named[1] || "").trim();
+      meetingIndex = thaiOrdinalToIndex(named[2] || "");
+    }
+    fileQuery = fileQuery
+      .replace(/^(?:กับ|ไฟล์)\s+/i, "")
+      .replace(/[“”"']/g, "")
+      .trim();
+    if (meetingIndex && fileQuery && fileQuery.length >= 2 && !/^https?:\/\//i.test(fileQuery)) {
+      return {
+        intent: "link_meeting_file",
+        params: { meeting_index: meetingIndex, file_query: fileQuery },
+      };
+    }
   }
 
   // ผูกไฟล์นัด 1 / แนบอัน 2 กับนัด 1 / ผูกไฟล์กับนัด 1
@@ -148,16 +210,54 @@ export async function handleLinkMeetingFile(
   const meetingIndex = Number(params.meeting_index || 0);
   const fileIndex = Number(params.file_index || 0) || undefined;
   const subject = String(params.subject || "").trim() || undefined;
+  const fileQuery = String(params.file_query || params.file_name || params.query || "").trim();
 
   const resolved = await resolveEvent(upn, meetingIndex, subject);
   if ("ask" in resolved) return resolved.ask;
 
-  const file = pickFile(context?.files, fileIndex);
+  let file = pickFile(context?.files, fileIndex);
+  let searchedFiles: LinkCmdResult["files"];
+
+  // Named file in the same message → search OneDrive immediately (no prior “หาไฟล์” needed)
+  if ((!file || file.is_folder) && fileQuery) {
+    const hits = await searchFiles(upn, fileQuery, 15);
+    const best = pickBestSearchHit(hits, fileQuery);
+    if (!best) {
+      // try stem without extension
+      const stem = fileQuery.replace(/\.[a-z0-9]{1,8}$/i, "");
+      const hits2 = stem !== fileQuery ? await searchFiles(upn, stem, 15) : [];
+      const best2 = pickBestSearchHit(hits2, fileQuery);
+      if (!best2) {
+        return {
+          intent: "link_meeting_file",
+          reply:
+            `หาไฟล์ “${fileQuery}” ใน OneDrive ไม่เจอครับ\n` +
+            `ลองชื่อสั้นลง หรือพิมพ์ “หาไฟล์ ${stem || fileQuery}” แล้วเลือกอันที่ถูก`,
+          suggestions: [
+            { label: `หาไฟล์ ${stem || fileQuery}`.slice(0, 20), text: `หาไฟล์ ${stem || fileQuery}` },
+            { label: "ตารางวันนี้", text: "ตารางวันนี้" },
+          ],
+        };
+      }
+      file = best2;
+      searchedFiles = hits2
+        .filter((h) => !h.folder)
+        .slice(0, 5)
+        .map((h) => ({ id: h.id, name: h.name, url: h.webUrl, is_folder: false }));
+    } else {
+      file = best;
+      searchedFiles = hits
+        .filter((h) => !h.folder)
+        .slice(0, 5)
+        .map((h) => ({ id: h.id, name: h.name, url: h.webUrl, is_folder: false }));
+    }
+  }
+
   if (!file || file.is_folder) {
     return {
       intent: "link_meeting_file",
       reply:
-        "ยังไม่มีไฟล์ให้ผูกครับ — พิมพ์ค้นก่อน เช่น “หาไฟล์งบ Q3” แล้วค่อยพิมพ์ “ผูกไฟล์นัด 1” หรือ “แนบอัน 2 กับนัด 1”",
+        "ยังไม่มีไฟล์ให้ผูกครับ — บอกชื่อไฟล์มาเลยได้ เช่น “อันแรกผูกกับ งบ Q3.xlsx” หรือค้นก่อนด้วย “หาไฟล์…”",
       suggestions: [
         { label: "หาไฟล์", text: "หาไฟล์" },
         { label: "ตารางวันนี้", text: "ตารางวันนี้" },
@@ -196,6 +296,7 @@ export async function handleLinkMeetingFile(
   const n = resolved.index || meetingIndex || "?";
   return {
     intent: "link_meeting_file",
+    files: searchedFiles,
     reply:
       `✅ ผูกไฟล์กับนัดแล้วครับ\n` +
       `📌 ${resolved.subject}\n` +

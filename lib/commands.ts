@@ -1,7 +1,7 @@
 // Natural-language command handling — ported from morning_brief/commands.py.
 // The web / LINE sends free text; the LLM classifies it into an intent + params
 // and we execute. Booking asks for confirmation first (choose_slot) per requirement.
-import { buildForEvents, buildMorningAgenda, buildMeetingPrep, resolveAgendaEventId } from "@/lib/brief";
+import { buildForEvents, buildMorningAgenda, buildMeetingPrep, resolveAgendaEventId, saveAgendaIds } from "@/lib/brief";
 import {
   handleLinkMeetingFile,
   handleLinkMeetingUrl,
@@ -154,13 +154,14 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - summarize_file = อ่านหรือสรุปเนื้อหาในไฟล์ที่ค้นพบ หรือไฟล์ที่ผู้ใช้อ้างถึง (เช่น "อ่านและสรุป", "สรุปไฟล์นี้", "อ่านอันแรก", "สรุปให้ฟัง")
 - search_files = ค้นหาไฟล์ใน OneDrive
 - find_duplicate_nicknames = หาว่าในองค์กรมีคนชื่อเล่นซ้ำกันกี่คน/ใครบ้าง (จากชื่อที่แสดงในไดเรกทอรี) — เช่น "ชื่อเล่นซ้ำกี่คน", "ในองค์กรมีคนชื่อเล่นซ้ำกันไหม", "ใครชื่อเล่นซ้ำบ้าง"
-- link_meeting_file = ผูกไฟล์ OneDrive กับนัดที่มีอยู่แล้ว (ยังไม่ได้อยู่ในปฏิทินแนบ) — เช่น "ผูกไฟล์นัด 1", "แนบอัน 2 กับนัด 1", "ผูกไฟล์นี้กับนัด Weekly"
+- link_meeting_file = ผูกไฟล์ OneDrive กับนัดที่มีอยู่แล้ว (ยังไม่ได้อยู่ในปฏิทินแนบ) — เช่น "ผูกไฟล์นัด 1", "แนบอัน 2 กับนัด 1", "อันแรกผูกกับ งบ Q3.xlsx", "ผูกไฟล์นี้กับนัด Weekly"
 - link_meeting_url = ผูกลิงก์กับนัด — เช่น "แนบลิงก์นัด 2 https://..."
 - list_meeting_materials = ดูไฟล์/ลิงก์ที่ผูกกับนัด — เช่น "เอกสารนัด 1"
 - unlink_meeting_material = เลิกผูกไฟล์/ลิงก์ออกจากนัด — เช่น "เลิกแนบนัด 1 ไฟล์ 2"
 
 สำคัญ: หากบริบทก่อนหน้าเพิ่งมีการค้นหาไฟล์ (search_files หรือ file_results) แล้วผู้ใช้พิมพ์ว่า "อ่านและสรุป", "สรุปให้ฟัง", "อ่านไฟล์" ให้เลือก intent เป็น "summarize_file" เสมอ (ห้ามเลือก get_brief)!
 ถ้าเพิ่งค้นไฟล์แล้วผู้ใช้พูดว่า "ผูกกับนัด 1" / "แนบให้นัด 2" ให้ใช้ link_meeting_file
+ถ้าผู้ใช้บอกชื่อไฟล์มาเลยพร้อมหมายเลขนัด (เช่น "อันแรกผูกกับ รายงาน.pdf") ให้ใช้ link_meeting_file พร้อม meeting_index และ file_query=ชื่อไฟล์ — ห้ามตอบให้ไปค้นเองก่อน
 
 ความต่อเนื่องของบทสนทนา (สำคัญมาก — ห้ามเริ่มคิดใหม่เอง):
 ระบบจะแนบ [ประวัติการสนทนาก่อนหน้า] และ [บริบทล่าสุด] (มี last_person / last_meeting / summary) มาให้ ให้ถือว่าบทสนทนาต่อเนื่องกันเสมอ:
@@ -207,6 +208,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "ในองค์กรมีคนชื่อเล่นซ้ำกันกี่คน ใครบ้าง" -> {"intent":"find_duplicate_nicknames","params":{}}
 "ผูกไฟล์นัด 1" -> {"intent":"link_meeting_file","params":{"meeting_index":1}}
 "แนบอัน 2 กับนัด 1" -> {"intent":"link_meeting_file","params":{"file_index":2,"meeting_index":1}}
+"อันแรกผูกกับ ฟังก์ชันทั้งระบบ-AI-Assistant.html" -> {"intent":"link_meeting_file","params":{"meeting_index":1,"file_query":"ฟังก์ชันทั้งระบบ-AI-Assistant.html"}}
 "แนบลิงก์นัด 2 https://example.com/deck" -> {"intent":"link_meeting_url","params":{"meeting_index":2,"url":"https://example.com/deck"}}
 "เอกสารนัด 1" -> {"intent":"list_meeting_materials","params":{"meeting_index":1}}
 "เพิ่มแหล่งข่าว https://www.extreme.co.th/feed" -> {"intent":"add_feed","params":{"url":"https://www.extreme.co.th/feed","kind":"rss"}}
@@ -503,7 +505,7 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   ) {
     // “ดูประชุมเช้านี้” → list morning meetings without LLM (avoids Groq 429 on intent)
     if (/เช้า/.test(t)) {
-      return { intent: "list_meetings", params: { period: "today", before: "12:00" } };
+      return { intent: "list_meetings", params: { period: "today", after: "00:00", before: "12:00" } };
     }
     return { intent: "list_meetings", params: { period: "today" } };
   }
@@ -2004,7 +2006,15 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     let { start, end, label } = day || periodRange(period);
     let events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
 
-    if (!events.length && !day && (period === "today" || period === "tomorrow") && at === null) {
+    // Don't widen to "upcoming" when user asked a specific day/window (เช้านี้ / ก่อนเที่ยง)
+    const pinnedWindow = after !== null || before !== null || /เช้า|บ่าย|เย็น|วันนี้|พรุ่งนี้/.test(text);
+    if (
+      !events.length &&
+      !day &&
+      (period === "today" || period === "tomorrow") &&
+      at === null &&
+      !pinnedWindow
+    ) {
       const up = periodRange("upcoming");
       events = await getEventsRange(userUpn, wallIso(up.start), wallIso(up.end));
       if (events.length) label = `${label}ไม่มีนัด — นัดที่กำลังจะมาถึง (${up.label})`;
@@ -2050,6 +2060,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         "meetings"
       );
     }
+    await saveAgendaIds(userUpn, events);
     const reply = lite ? formatEventsSimple(events, label) : await buildForEvents(userUpn, events, label);
     return withCalendarNext({ intent, reply, data: events, period }, "meetings");
   }
