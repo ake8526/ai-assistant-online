@@ -45,6 +45,7 @@ import {
   getFeed,
 } from "@/lib/feeds";
 import {
+  addDays,
   addMinutes,
   fmtDate,
   fmtDateTime,
@@ -57,6 +58,7 @@ import {
   periodRange,
   resolveDay,
   resolveWeekday,
+  startOfDay,
   wallIso,
 } from "@/lib/time";
 
@@ -494,6 +496,11 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   // "ยกเลิกนัด" / "ยกเลิกนัดกับเบส"
   const cancel = quickCancelIntent(t);
   if (cancel) return cancel;
+
+  // "แสดงเพิ่ม" after a slot list — continue same attendees
+  if (/^แสดงเพิ่ม(เติม)?(ได้)?(ไหม)?$/i.test(t) || /^ดู(เวลา|ช่วง)?เพิ่ม/i.test(t)) {
+    return { intent: "find_meeting_time", params: { show_more: true } };
+  }
 
   // "นัดเบสวันนี้ 10นาทีตอน 13:50 เรื่อง X" → book/find meeting (not add_task)
   const book = quickBookIntent(t);
@@ -1145,7 +1152,8 @@ export async function runFindMeeting(
   band?: { after: number | null; before: number | null; label?: string } | null,
   includeLunch = false,
   subject = "ประชุม",
-  atMin: number | null = null
+  atMin: number | null = null,
+  opts?: { showMore?: boolean }
 ): Promise<CommandResult> {
   const denied = needCalendarConsent();
   if (denied) return denied;
@@ -1222,26 +1230,42 @@ export async function runFindMeeting(
       includeLunch,
     }
   );
-  // Prefer showing remaining-today slots first (then later days), capped for LINE buttons
-  if (result.slots.length > 5) {
-    const today = fmtDate(nowWall());
-    const todaySlots = result.slots.filter((s) => s.label.startsWith(today) || s.start.slice(0, 10) === wallIso(nowWall()).slice(0, 10));
-    const rest = result.slots.filter((s) => !todaySlots.includes(s));
-    result.slots = [...todaySlots, ...rest].slice(0, 8);
-  }
+
+  const SHOW_CAP = 8;
+  const offset = opts?.showMore ? SHOW_CAP : 0;
+  const allAnnotated = annotateAfterHoursSlots(result.slots);
+  const todayKey = fmtDate(nowWall());
+  const todayFirst = [
+    ...allAnnotated.filter((s) => (s.label || "").startsWith(todayKey)),
+    ...allAnnotated.filter((s) => !(s.label || "").startsWith(todayKey)),
+  ];
+  const totalFound = todayFirst.length;
+  const page = todayFirst.slice(offset, offset + SHOW_CAP);
+  result.slots = page;
+  const hidden = todayFirst.slice(offset + SHOW_CAP);
+  const hiddenCount = hidden.length;
+  const tomorrowKey = fmtDate(addDays(startOfDay(nowWall()), 1));
+  const moreTomorrow = hidden.some((s) => (s.label || "").startsWith(tomorrowKey));
+
   const note = unresolved.length ? `\n(หาอีเมลไม่เจอ: ${unresolved.join(", ")})` : "";
-  const who = resolved.join(", ");
+  const who = await formatAttendeeLines(attendees.filter((a) => a.mail));
   const dayNote = window ? ` (${window.label})` : "";
   const bandNote =
     resolvedAt != null ? ` ตอน ${fmtHHMM(resolvedAt)}` : band?.label ? ` ${band.label}` : "";
   if (!result.slots.length) {
+    if (opts?.showMore && totalFound > 0 && offset >= totalFound) {
+      return {
+        intent: "find_meeting_time",
+        reply: "แสดงครบทุกช่วงว่างที่ค้นเจอแล้วครับ — เลือกจากรายการก่อนหน้า หรือพิมพ์วัน/เวลาเองได้ครับ",
+      };
+    }
     const hint =
       resolvedAt != null
         ? `\n\nช่วง ${fmtHHMM(resolvedAt)} อาจผ่านไปแล้วหรือติด — ลองดูตารางว่าง หรือระบุเวลาใหม่ได้ครับ`
         : "";
     return {
       intent: "find_meeting_time",
-      reply: formatBusy(result.busy) + note + hint + `\n(ค้นของ: ${who}${dayNote}${bandNote})`,
+      reply: formatBusy(result.busy) + note + hint + `\n(ค้นของ:\n👤 ${who}${dayNote}${bandNote})`,
       meeting: {
         attendees: resolved,
         duration,
@@ -1253,7 +1277,7 @@ export async function runFindMeeting(
     };
   }
 
-  if (AUTO_BOOK) {
+  if (AUTO_BOOK && !opts?.showMore) {
     const s = result.slots[0];
     const held = await bookMeetingWithLineHold({
       organizerUpn: userUpn,
@@ -1270,11 +1294,27 @@ export async function runFindMeeting(
     return { intent: "find_meeting_time", reply: head + held.note };
   }
 
+  let moreNote = "";
+  if (hiddenCount > 0 || moreTomorrow) {
+    moreNote =
+      `\n\nมีช่วงว่างให้เลือกเพิ่มได้อีก` +
+      (hiddenCount > 0 ? ` ${hiddenCount} ช่วง` : "") +
+      (moreTomorrow ? " (รวมวันพรุ่งนี้)" : "") +
+      ` — พิมพ์ “แสดงเพิ่ม” ได้ครับ`;
+  }
+
+  const afterHoursInPage = page.some((s) => (s.label || "").includes("หลังเลิกงาน"));
+  const afterHoursNote = afterHoursInPage
+    ? `\n⚠️ ช่วงที่มีคำว่า “หลังเลิกงาน” = หลัง ${WORK_END_HOUR}:00 น. แล้วครับ`
+    : "";
+
   const reply =
-    `เจอเวลาที่ทุกคนว่างตรงกัน${dayNote}${bandNote}ครับ\n` +
+    (opts?.showMore ? `ช่วงว่างเพิ่มเติมครับ\n` : `เจอเวลาที่ทุกคนว่างตรงกัน${dayNote}${bandNote}ครับ\n`) +
     `👤 ${who}\n` +
     (subject && subject !== "ประชุม" ? `📌 ${subject}\n` : "") +
     `เลือกเวลาเริ่มประชุม (${duration} นาที) จากรายการด้านล่างได้เลย 👇` +
+    afterHoursNote +
+    moreNote +
     note;
 
   return {
@@ -1290,7 +1330,43 @@ export async function runFindMeeting(
         ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
         : undefined,
     },
+    suggestions: hiddenCount > 0 || moreTomorrow ? [{ label: "แสดงเพิ่ม", text: "แสดงเพิ่ม" }] : undefined,
   };
+}
+
+async function formatAttendeeLines(attendees: MtAttendee[]): Promise<string> {
+  const lines: string[] = [];
+  for (const a of attendees) {
+    const mail = (a.mail || "").toLowerCase();
+    if (!mail) continue;
+    let name = (a.name || "").trim();
+    if (!name || name.toLowerCase() === mail || name.includes("@")) {
+      try {
+        const info = await resolveUserInfo(mail);
+        name = (info?.displayName || "").trim();
+      } catch {
+        name = "";
+      }
+    }
+    lines.push(name ? `${name} · ${mail}` : mail);
+  }
+  return lines.join("\n👤 ") || "(ไม่ระบุ)";
+}
+
+/** Mark slots that start at/after official work end. */
+function annotateAfterHoursSlots(
+  slots: { start: string; end: string; label: string }[]
+): { start: string; end: string; label: string }[] {
+  return slots.map((s) => {
+    const start = parseWall(s.start);
+    if (!start) return s;
+    const mins = start.getUTCHours() * 60 + start.getUTCMinutes();
+    if (mins >= WORK_END_HOUR * 60) {
+      const base = (s.label || "").replace(/\s*·\s*หลังเลิกงาน/g, "");
+      return { ...s, label: `${base} · หลังเลิกงาน` };
+    }
+    return s;
+  });
 }
 
 export async function handleCommand(
@@ -2044,7 +2120,17 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     }
     const subject = String(params.note || params.subject || "ประชุม").trim() || "ประชุม";
     const atMin = parseHHMM(params.at);
-    return runFindMeeting(userUpn, attendees, duration, window, band, wantsLunchIncluded(text), subject, atMin);
+    return runFindMeeting(
+      userUpn,
+      attendees,
+      duration,
+      window,
+      band,
+      wantsLunchIncluded(text),
+      subject,
+      atMin,
+      { showMore: !!params.show_more }
+    );
   }
 
   return {

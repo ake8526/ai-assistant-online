@@ -123,6 +123,15 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
         },
       });
     }
+    if (items.length < 13 && Array.isArray(res.suggestions)) {
+      for (const s of res.suggestions.slice(0, 2)) {
+        if (!s?.label || !s?.text || items.length >= 13) break;
+        items.push({
+          type: "action",
+          action: { type: "message", label: truncate(s.label, 20), text: s.text.slice(0, 300) },
+        });
+      }
+    }
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
     let n = 0;
     for (const c of res.choices as Choice[]) {
