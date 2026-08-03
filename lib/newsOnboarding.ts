@@ -41,27 +41,43 @@ export function askInterestedMessage(): object {
 }
 
 function topicsPrompt(selected: string[]): object {
-  const picked = selected.length
-    ? `\n\nเลือกแล้ว: ${selected.join(", ")}`
-    : "\n\nยังไม่ได้เลือกหัวข้อ";
-  const lines = NEWS_TOPIC_PRESETS.map((p, i) => `${i + 1}) ${p.label}`).join("\n");
+  const n = selected.length;
+  const picked = n
+    ? `\n\n✅ เลือกแล้ว ${n} หัวข้อ:\n${selected.map((t, i) => `  ${i + 1}. ${t}`).join("\n")}`
+    : "\n\nยังไม่ได้เลือก — กดปุ่มด้านล่างได้หลายอันเรื่อย ๆ";
+  const lines = NEWS_TOPIC_PRESETS.map((p, i) => {
+    const on = selected.includes(p.label);
+    return `${i + 1}) ${on ? "✓ " : ""}${p.label}`;
+  }).join("\n");
+
+  // เสร็จแล้ว first (when possible) so multi-select users always see it
+  const actions: { label: string; data: string; displayText?: string }[] = [];
+  if (n > 0) {
+    actions.push({ label: `✅ เสร็จแล้ว (${n})`, data: "a=newstopicsdone", displayText: "เลือกหัวข้อเสร็จแล้ว" });
+  }
+  for (const p of NEWS_TOPIC_PRESETS) {
+    const on = selected.includes(p.label);
+    actions.push({
+      label: on ? `✓ ${p.label}`.slice(0, 20) : p.label.slice(0, 20),
+      data: `a=newstopic&t=${p.id}`,
+      displayText: on ? `เอาออก ${p.label}` : `เพิ่ม ${p.label}`,
+    });
+  }
+  actions.push({ label: "✏️ พิมพ์เอง", data: "a=newscustom", displayText: "พิมพ์หัวข้อเอง" });
+  if (n === 0) {
+    actions.push({ label: "✅ เสร็จแล้ว", data: "a=newstopicsdone", displayText: "เลือกหัวข้อเสร็จแล้ว" });
+  }
+
   return {
     type: "text",
     text:
-      "เลือกหัวข้อข่าวที่สนใจได้เลยครับ (กดปุ่มด้านล่างได้หลายอัน)\n" +
-      "หรือพิมพ์หัวข้อเอง เช่น “เซมิคอนดักเตอร์”, “หุ้นไทย”\n\n" +
+      "เลือกหัวข้อข่าวได้หลายอันครับ 👍\n" +
+      "กดปุ่มทีละหัวข้อได้เรื่อย ๆ (กดซ้ำ = เอาออก)\n" +
+      "หรือพิมพ์หัวข้อเอง เช่น “เซมิคอนดักเตอร์”\n\n" +
       lines +
       picked +
-      "\n\nเมื่อครบแล้วกด “เสร็จแล้ว” ได้ครับ",
-    quickReply: qr([
-      ...NEWS_TOPIC_PRESETS.slice(0, 9).map((p) => ({
-        label: p.label,
-        data: `a=newstopic&t=${p.id}`,
-        displayText: `สนใจ ${p.label}`,
-      })),
-      { label: "✅ เสร็จแล้ว", data: "a=newstopicsdone", displayText: "เลือกหัวข้อเสร็จแล้ว" },
-      { label: "✏️ พิมพ์หัวข้อเอง", data: "a=newscustom", displayText: "พิมพ์หัวข้อเอง" },
-    ]),
+      (n > 0 ? "\n\nครบแล้วกด “เสร็จแล้ว” ด้านล่างได้เลย" : "\n\nเลือกอย่างน้อย 1 หัวข้อ แล้วกด “เสร็จแล้ว”"),
+    quickReply: qr(actions),
   };
 }
 
@@ -173,7 +189,14 @@ export async function handleNewsOnboardingPostback(
     const id = decodeURIComponent(data.get("t") || "");
     const preset = presetById(id);
     const label = preset?.label || id;
-    if (label && !draft.topics.includes(label)) draft.topics.push(label);
+    if (label) {
+      // Toggle: tap again to remove — supports picking many topics
+      if (draft.topics.includes(label)) {
+        draft.topics = draft.topics.filter((t) => t !== label);
+      } else {
+        draft.topics.push(label);
+      }
+    }
     draft.step = "topics";
     await saveNewsDraft(upn, draft);
     await replyLineMessages(replyToken, [topicsPrompt(draft.topics)]);
