@@ -77,17 +77,21 @@ export async function saveMicrosoftToken(
   scope?: string,
   accountEmail?: string
 ): Promise<void> {
-  await admin.from("oauth_tokens").upsert(
-    {
-      owner_upn: upn.toLowerCase(),
-      provider: "microsoft",
-      refresh_token: refresh,
-      scope: scope || GRAPH_SCOPE,
-      account_email: accountEmail || upn,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "owner_upn,provider" }
-  );
+  const base = {
+    owner_upn: upn.toLowerCase(),
+    provider: "microsoft",
+    refresh_token: refresh,
+    scope: scope || GRAPH_SCOPE,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Prefer identity columns when migration is applied; fall back if missing.
+  const full = { ...base, account_email: accountEmail || upn };
+  let { error } = await admin.from("oauth_tokens").upsert(full, { onConflict: "owner_upn,provider" });
+  if (error && /account_email|account_name|account_channel|column/i.test(error.message)) {
+    ({ error } = await admin.from("oauth_tokens").upsert(base, { onConflict: "owner_upn,provider" }));
+  }
+  if (error) throw new Error(`saveMicrosoftToken: ${error.message}`);
 }
 
 export async function hasMicrosoftToken(upn: string): Promise<boolean> {

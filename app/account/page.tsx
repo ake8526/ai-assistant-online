@@ -49,13 +49,15 @@ function AccountContent() {
   const m365Connected = !!account;
 
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search).get("ms");
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("ms");
+    const detail = params.get("ms_detail");
     if (!q) return;
     const map: Record<string, { text: string; ok?: boolean }> = {
-      connected: { text: "อนุญาตปฏิทินตามสิทธิ์ Microsoft 365 แล้ว — ดูตารางเหมือนใน Outlook", ok: true },
+      connected: { text: "✅ อนุญาตปฏิทินตามสิทธิ์ Microsoft 365 แล้ว — ดูตารางเหมือนใน Outlook", ok: true },
       denied: { text: "ยกเลิกการอนุญาตปฏิทิน" },
-      error: { text: "อนุญาตปฏิทินไม่สำเร็จ ลองใหม่อีกครั้ง" },
-      no_refresh: { text: "Microsoft ไม่ได้ให้ refresh token — ลองอนุญาตอีกครั้ง" },
+      error: { text: `อนุญาตปฏิทินไม่สำเร็จ${detail ? `: ${detail}` : " — ลองใหม่อีกครั้ง"}` },
+      no_refresh: { text: "Microsoft ไม่ได้ให้ refresh token — ลองอนุญาตอีกครั้ง (ต้องกด ยอมรับ บนหน้า Microsoft)" },
       need_login: { text: "กรุณาเข้าสู่ระบบ Microsoft 365 ก่อน" },
       need_oauth: { text: "ยังไม่ได้ตั้งค่า OAuth ปฏิทินบนเซิร์ฟเวอร์" },
     };
@@ -79,7 +81,6 @@ function AccountContent() {
     try {
       const token = await getToken();
       if (!token) {
-        // Redirect may be in progress (LINE webview) — or need manual reauth.
         setNeedReauth(true);
         setMsg("เซสชันหมดอายุหรือถูกบล็อกใน LINE — กดปุ่มด้านล่างเพื่อยืนยันตัวตนอีกครั้ง แล้วข้อมูลจะโหลดขึ้นมา");
         setMsgOk(false);
@@ -94,7 +95,7 @@ function AccountContent() {
       if (ls.error) throw new Error(ls.error);
       setLine({ linked: !!ls.linked, display_name: ls.display_name || null, upn: ls.upn || null });
       setMsCal({ linked: !!ms.linked, note: ms.note });
-      setMsg((prev) => (prev.includes("เหมือนใน Outlook") ? prev : ""));
+      setMsg((prev) => (prev.includes("เหมือนใน Outlook") || prev.startsWith("✅") ? prev : ""));
     } catch (e) {
       setMsg("โหลดไม่สำเร็จ: " + (e as Error).message);
       setMsgOk(false);
@@ -250,6 +251,11 @@ function AccountContent() {
             )}
           </Row>
           {msCal && <Badge ok={msCal.linked} on="สถานะ: ใช้สิทธิ์ของคุณแล้ว" off="สถานะ: ยังไม่อนุญาต" />}
+          {!msCal?.linked && m365Connected && (
+            <p className="text-[11px] text-slate-500 leading-relaxed px-1">
+              กดอนุญาตแล้วจะเปิดหน้า Microsoft → กดปุ่มสีน้ำเงิน <b>ยอมรับ</b> (ไม่ใช่ยกเลิก) แล้วระบบจะพากลับมาที่นี่พร้อมสถานะเชื่อมต่อแล้ว
+            </p>
+          )}
 
           <Row icon={<MessageCircle className="w-5 h-5 text-slate-950" />} color="bg-emerald-400"
                title="LINE" subtitle={line?.linked ? (line.display_name || "เชื่อมกับ LINE นี้") : "ยังไม่ได้ผูกกับ LINE"}>

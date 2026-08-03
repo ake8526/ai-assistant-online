@@ -5,6 +5,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code") || "";
   const err = url.searchParams.get("error");
+  const errDesc = url.searchParams.get("error_description") || "";
   const stateRaw = url.searchParams.get("state") || "";
 
   let back = "/account";
@@ -18,18 +19,29 @@ export async function GET(req: Request) {
     if (state.back?.startsWith("/")) back = state.back;
   } catch { /* bad state */ }
 
-  const dest = (q: string) => NextResponse.redirect(`${url.origin}${back}?ms=${q}`);
+  const dest = (q: string, detail?: string) => {
+    const u = new URL(`${url.origin}${back}`);
+    u.searchParams.set("ms", q);
+    if (detail) u.searchParams.set("ms_detail", detail.slice(0, 120));
+    return NextResponse.redirect(u.toString());
+  };
 
-  if (err) return dest(err === "access_denied" ? "denied" : "error");
-  if (!code || !upn) return dest("error");
+  if (err) {
+    console.error("[ms-oauth] authorize error", err, errDesc);
+    return dest(err === "access_denied" ? "denied" : "error", errDesc || err);
+  }
+  if (!code || !upn) return dest("error", !code ? "missing_code" : "missing_upn");
 
   try {
     const tok = await exchangeMicrosoftCode(code);
-    if (!tok.refresh_token) return dest("no_refresh");
+    if (!tok.refresh_token) {
+      console.error("[ms-oauth] no refresh_token in response", Object.keys(tok));
+      return dest("no_refresh");
+    }
     await saveMicrosoftToken(upn, tok.refresh_token, tok.scope, upn);
     return dest("connected");
   } catch (e) {
     console.error("[ms-oauth] callback", e);
-    return dest("error");
+    return dest("error", String(e).slice(0, 120));
   }
 }
