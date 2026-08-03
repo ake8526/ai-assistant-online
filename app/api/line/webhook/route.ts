@@ -13,7 +13,7 @@ import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
-import { respondMeetingInvite, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold } from "@/lib/meetingInvite";
+import { respondMeetingInvite, handleMeetingInviteChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -359,7 +359,7 @@ function confirmCardMessage(d: Draft, prefix = ""): object {
 }
 
 const BOOKING_ACTIONS = new Set(["book", "bookcustom", "confirmbook", "setsubj", "setdetail", "addppl", "canceldraft"]);
-const MEETING_RSVP_ACTIONS = new Set(["mtaccept", "mtdecline"]);
+const MEETING_RSVP_ACTIONS = new Set(["mtaccept", "mtdecline", "mtcancel", "mtresched"]);
 
 /** Parse free-text meeting window, e.g. "พรุ่งนี้ 10:00-11:00", "10.00-11.00", "10 โมง 30 นาที". */
 function parseCustomMeetingWindow(
@@ -786,7 +786,10 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     if (MEETING_RSVP_ACTIONS.has(act)) {
       const oid = decodeURIComponent(data.get("oid") || "");
       const id = data.get("id") || "";
-      const result = await respondMeetingInvite(upn, oid, id, act === "mtaccept");
+      const choice = await handleMeetingInviteChoice(upn, act, oid, id);
+      const result =
+        choice ||
+        (await respondMeetingInvite(upn, oid, id, act === "mtaccept"));
       await replyLineMessages(ev.replyToken, [
         {
           type: "text",

@@ -193,7 +193,8 @@ export async function tryHandleMeetingRescheduleText(
             `🕐 เดิม: ${when}\n` +
             `🙋 ${who} ขอเปลี่ยนเป็นประมาณ ${hint}\n` +
             `💬 ข้อความเดิม: “${text.trim().slice(0, 120)}”\n\n` +
-            `กรุณาปรับใน Outlook / พิมพ์จองเวลาใหม่ได้ครับ`,
+            `ต้องการปรับเวลาใหม่ หรือรับทราบไปก่อนครับ?`,
+          quickReply: hostNextStepQuickReply(who),
         },
       ]);
     } catch (e) {
@@ -227,9 +228,18 @@ export async function tryHandleMeetingRsvpText(
   responderUpn: string,
   text: string
 ): Promise<{ ok: boolean; reply: string; quickReply?: object } | null> {
+  const t = text.trim();
+  const pending = await getPendingRsvp(responderUpn);
+
+  if (pending && /^(ยกเลิกนัดนี้|ยืนยันยกเลิก)$/i.test(t)) {
+    return handleMeetingInviteChoice(responderUpn, "mtcancel", pending.organizerUpn, pending.inviteId);
+  }
+  if (pending && /^(ขอเปลี่ยนวันเวลา|เปลี่ยนวันเวลา)$/i.test(t)) {
+    return handleMeetingInviteChoice(responderUpn, "mtresched", pending.organizerUpn, pending.inviteId);
+  }
+
   const kind = classifyMeetingRsvpText(text);
   if (!kind) return null;
-  const pending = await getPendingRsvp(responderUpn);
   if (!pending) return null;
   return respondMeetingInvite(responderUpn, pending.organizerUpn, pending.inviteId, kind === "accept");
 }
@@ -335,6 +345,74 @@ function rsvpFollowUpQuickReply(rec: MeetingInviteRecord, accepted: boolean): ob
           },
         ],
   };
+}
+
+/** After “ไม่สะดวก” — ask cancel vs reschedule. */
+function declineChoiceQuickReply(rec: MeetingInviteRecord): object {
+  const oid = encodeURIComponent(rec.organizerUpn);
+  return {
+    items: [
+      {
+        type: "action",
+        action: {
+          type: "postback",
+          label: "❌ ยกเลิกนัดนี้",
+          data: `a=mtcancel&oid=${oid}&id=${rec.id}`,
+          displayText: "ยกเลิกนัดนี้",
+        },
+      },
+      {
+        type: "action",
+        action: {
+          type: "postback",
+          label: "🕐 เปลี่ยนวันเวลา",
+          data: `a=mtresched&oid=${oid}&id=${rec.id}`,
+          displayText: "ขอเปลี่ยนวันเวลา",
+        },
+      },
+    ],
+  };
+}
+
+function hostNextStepQuickReply(attendeeHint?: string): object {
+  const who = (attendeeHint || "").toLowerCase();
+  const short = who.includes("@") ? who.split("@")[0] : who;
+  return {
+    items: [
+      {
+        type: "action",
+        action: {
+          type: "message",
+          label: "📅 หาเวลาใหม่",
+          text: short ? `นัด${short} ` : "นัดประชุม ",
+        },
+      },
+      {
+        type: "action",
+        action: { type: "message", label: "รับทราบ", text: "รับทราบ" },
+      },
+    ],
+  };
+}
+
+async function notifyHostDeclineFinal(rec: MeetingInviteRecord, who: string, kind: "cancel" | "busy"): Promise<void> {
+  const when = whenLabel(rec.start, rec.end);
+  const orgLine = await getLineId(rec.organizerUpn);
+  if (!orgLine) return;
+  const holding = !rec.eventId && rec.status !== "booked";
+  await pushLineMessages(orgLine, [
+    {
+      type: "text",
+      text:
+        (kind === "cancel" ? `📬 อีกฝั่งยกเลิกคำขอนัด\n` : `📬 อัปเดตการยืนยันนัด\n`) +
+        `📌 ${rec.subject}\n` +
+        `🕐 ${when}\n` +
+        `👤 ${who} ไม่สะดวก ❌\n\n` +
+        (holding ? "ยังไม่ได้สร้างนัดใน Outlook ครับ\n\n" : "") +
+        `ต้องการหาเวลาใหม่ หรือรับทราบไปก่อนครับ?`,
+      quickReply: hostNextStepQuickReply(who),
+    },
+  ]);
 }
 
 /**
@@ -467,41 +545,24 @@ export async function respondMeetingInvite(
   await saveInvite(rec.organizerUpn, rec);
   await setPendingRsvp(who, rec).catch(() => undefined);
 
-  const when = whenLabel(rec.start, rec.end);
-  const holding = !rec.eventId && rec.status !== "booked";
-  const awaiting = linkedAwaitList(rec);
-
-  // Decline while holding → cancel proposal, never create Outlook
-  if (!accept && holding) {
-    rec.status = "cancelled";
-    await saveInvite(rec.organizerUpn, rec);
-    try {
-      const orgLine = await getLineId(rec.organizerUpn);
-      if (orgLine) {
-        await pushLineMessages(orgLine, [
-          {
-            type: "text",
-            text:
-              `📬 คำขอนัดถูกปฏิเสธ\n` +
-              `📌 ${rec.subject}\n` +
-              `🕐 ${when}\n` +
-              `👤 ${who} ไม่สะดวก\n\n` +
-              `ยังไม่ได้สร้างนัดใน Outlook ครับ`,
-          },
-        ]);
-      }
-    } catch {
-      /* best-effort */
-    }
+  // Decline → ask cancel vs reschedule (don't finalize / notify host yet)
+  if (!accept) {
+    const when = whenLabel(rec.start, rec.end);
     return {
       ok: true,
-      reply: `รับทราบครับ บันทึกว่าไม่สะดวก\n📌 ${rec.subject}\n🕐 ${when}\n\nจะแจ้งเจ้าของนัดแล้ว (ยังไม่สร้างใน Outlook)`,
-      quickReply: rsvpFollowUpQuickReply(rec, false),
+      reply:
+        `รับทราบว่าช่วงนี้ไม่สะดวกครับ\n📌 ${rec.subject}\n🕐 ${when}\n\n` +
+        `ต้องการยกเลิกนัดนี้ หรือขอเปลี่ยนวันเวลาครับ?`,
+      quickReply: declineChoiceQuickReply(rec),
     };
   }
 
+  const holding = !rec.eventId && rec.status !== "booked";
+  const awaiting = linkedAwaitList(rec);
+  const when = whenLabel(rec.start, rec.end);
+
   // Accept while holding → create Outlook only when everyone we're waiting on has accepted
-  if (accept && holding) {
+  if (holding) {
     const allAccepted = awaiting.every((u) => rec.responses[u] === "accept");
     if (!allAccepted) {
       const pending = awaiting.filter((u) => rec.responses[u] !== "accept");
@@ -582,19 +643,14 @@ export async function respondMeetingInvite(
     };
   }
 
-  // Already booked (legacy path) — just record RSVP
-  const reply = accept
-    ? `✅ ยืนยันเข้าร่วมแล้วครับ\n📌 ${rec.subject}\n🕐 ${when}\n\nนัดนี้อยู่ในปฏิทิน Outlook ของคุณด้วยครับ\nถ้าไม่สะดวกทีหลัง พิมพ์ “ยกเลิก” หรือกดปุ่มด้านล่างได้ครับ`
-    : `รับทราบครับ บันทึกว่าไม่สะดวกเข้าร่วม\n📌 ${rec.subject}\n🕐 ${when}\n\nถ้าเปลี่ยนใจ พิมพ์ “ยืนยันเข้าร่วม” หรือกดปุ่มได้ครับ`;
-
+  // Already booked (legacy path) — accept only (decline returns earlier with choice ask)
   try {
     const orgLine = await getLineId(rec.organizerUpn);
     if (orgLine) {
-      const status = accept ? "ยืนยันเข้าร่วมแล้ว ✅" : "แจ้งว่าไม่สะดวก ❌";
       await pushLineMessages(orgLine, [
         {
           type: "text",
-          text: `📬 อัปเดตการยืนยันนัด\n📌 ${rec.subject}\n🕐 ${when}\n👤 ${who} ${status}`,
+          text: `📬 อัปเดตการยืนยันนัด\n📌 ${rec.subject}\n🕐 ${when}\n👤 ${who} ยืนยันเข้าร่วมแล้ว ✅`,
         },
       ]);
     }
@@ -602,5 +658,69 @@ export async function respondMeetingInvite(
     /* best-effort */
   }
 
-  return { ok: true, reply, quickReply: rsvpFollowUpQuickReply(rec, accept) };
+  return {
+    ok: true,
+    reply:
+      `✅ ยืนยันเข้าร่วมแล้วครับ\n📌 ${rec.subject}\n🕐 ${when}\n\n` +
+      `นัดนี้อยู่ในปฏิทิน Outlook ของคุณด้วยครับ\nถ้าไม่สะดวกทีหลัง พิมพ์ “ยกเลิก” หรือกดปุ่มด้านล่างได้ครับ`,
+    quickReply: rsvpFollowUpQuickReply(rec, true),
+  };
+}
+
+/** Attendee chose “ยกเลิกนัดนี้” or “เปลี่ยนวันเวลา” after ไม่สะดวก. */
+export async function handleMeetingInviteChoice(
+  responderUpn: string,
+  act: string,
+  organizerUpn: string,
+  inviteId: string
+): Promise<{ ok: boolean; reply: string; quickReply?: object } | null> {
+  if (act !== "mtcancel" && act !== "mtresched") return null;
+
+  const rec = await readInvite(organizerUpn.toLowerCase(), inviteId);
+  if (!rec) {
+    return { ok: false, reply: "ไม่พบนัดนี้แล้วครับ (อาจหมดอายุหรือถูกยกเลิก)" };
+  }
+
+  const who = responderUpn.toLowerCase();
+  await setPendingRsvp(who, rec).catch(() => undefined);
+
+  if (act === "mtresched") {
+    return {
+      ok: true,
+      reply:
+        `ได้ครับ พิมพ์วันเวลาที่สะดวกมาได้เลย เช่น\n` +
+        `• พรุ่งนี้ 15:00\n` +
+        `• เปลี่ยนเวลาเป็นบ่าย 3\n` +
+        `• วันนี้ 16:00-16:30\n\n` +
+        `ระบบจะส่งคำขอไปให้เจ้าของนัดครับ`,
+    };
+  }
+
+  // mtcancel — finalize
+  rec.responses[who] = "decline";
+  rec.status = "cancelled";
+  await saveInvite(rec.organizerUpn, rec);
+
+  // If Outlook event already existed, try delete
+  if (rec.eventId) {
+    try {
+      const { withDelegatedGraph } = await import("@/lib/msGraphOAuth");
+      const { deleteEvent } = await import("@/lib/graph");
+      await withDelegatedGraph(rec.organizerUpn, () => deleteEvent(rec.organizerUpn, rec.eventId!));
+    } catch (e) {
+      console.warn("[mt-invite] delete on cancel", String(e).slice(0, 120));
+    }
+  }
+
+  try {
+    await notifyHostDeclineFinal(rec, who, "cancel");
+  } catch {
+    /* best-effort */
+  }
+
+  const when = whenLabel(rec.start, rec.end);
+  return {
+    ok: true,
+    reply: `รับทราบครับ ยกเลิกคำขอนัดแล้ว\n📌 ${rec.subject}\n🕐 ${when}\n\nแจ้งเจ้าของนัดเรียบร้อยแล้วครับ`,
+  };
 }
