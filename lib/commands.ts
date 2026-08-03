@@ -219,6 +219,9 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "แล้วบ่ายล่ะ" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"12:00","before":"16:00"}}
 "ช่วงเช้าว่างไหม" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"09:00","before":"12:00"}}
 "นัดประชุมกับสมชายและสมหญิง 30 นาที" -> {"intent":"find_meeting_time","params":{"attendees":["สมชาย","สมหญิง"],"duration_min":30}}
+"นัดเบสวันนี้ 10นาทีตอน 13:50 เรื่อง test meeting" -> {"intent":"find_meeting_time","params":{"attendees":["เบส"],"duration_min":10,"period":"today","after":"13:50","note":"test meeting"}}
+"นัดพี่นนท์พรุ่งนี้ 30 นาที เรื่อง sync" -> {"intent":"find_meeting_time","params":{"attendees":["พี่นนท์"],"duration_min":30,"period":"tomorrow","note":"sync"}}
+(หมายเหตุสำคัญ: ประโยคขึ้นต้นด้วย นัด/จอง + ชื่อคน = find_meeting_time เสมอ — "เรื่อง ..." คือหัวข้อประชุม ห้ามใช้ add_task)
 (หมายเหตุสำคัญมาก: ถ้าถามดูตาราง/เวลาว่างของ "คนตั้งแต่ 2 คนขึ้นไปพร้อมกัน" (มีคำเชื่อม กับ/และ/, คั่นชื่อ) ให้ใช้ find_meeting_time เพื่อหาเวลาที่ทุกคนว่างตรงกัน — ห้ามใช้ my_availability หรือ list_meetings ที่รองรับทีละคน และห้าม fallback เป็นตารางของผู้ถามเอง)
 (หมายเหตุ: ถ้าผู้ใช้ระบุวัน เช่น "วันจันทร์นี้/เสาร์หน้า/วันที่ 5" ต้องใส่ weekday หรือ date ด้วยเสมอ ห้ามปล่อยให้ค้นทั้งสัปดาห์)
 (หมายเหตุ: follow-up เรื่องเช้า/บ่าย/เย็น หลัง find_meeting_time ต้องคง intent เป็น find_meeting_time ห้ามสลับไป my_availability ของคนเดียว)
@@ -433,7 +436,95 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     };
   }
 
+  // "นัดเบสวันนี้ 10นาทีตอน 13:50 เรื่อง X" → book/find meeting (not add_task)
+  const book = quickBookIntent(t);
+  if (book) return book;
+
   return null;
+}
+
+/** Deterministic parse for “นัด/จอง + ชื่อคน (+ วัน/เวลา/เรื่อง)” — avoids LLM mistaking เรื่อง… as add_task. */
+function quickBookIntent(text: string): { intent: string; params: Record<string, unknown> } | null {
+  const t = text.trim().replace(/\s+/g, " ");
+  if (!t) return null;
+
+  // Bare day lists already handled above; don't steal them
+  if (/^(นัด|ประชุม|ตาราง)(วัน)?(วันนี้|พรุ่งนี้|สัปดาห์นี้|อาทิตย์นี้)$/i.test(t)) return null;
+  if (/^(วันนี้|พรุ่งนี้)มี(นัด|ประชุม)/i.test(t)) return null;
+
+  if (
+    !/^(?:นัด|จอง)(?:ประชุม)?(?:กับ)?/.test(t) &&
+    !/^หาเวลา(?:ว่าง)?(?:ตรงกัน)?(?:กับ)?/.test(t) &&
+    !/^ขอ(?:นัด|จอง)(?:ประชุม)?(?:กับ)?/.test(t)
+  ) {
+    return null;
+  }
+
+  let body = t;
+  let note: string | undefined;
+  const subjM = body.match(/\sเรื่อง\s+(.+)$/i);
+  if (subjM) {
+    note = subjM[1].trim();
+    body = body.slice(0, subjM.index).trim();
+  }
+
+  let duration_min = 30;
+  const durHr = body.match(/(\d+)\s*(?:ชม\.?|ชั่วโมง|hr|hour)/i);
+  const durMin = body.match(/(\d+)\s*(?:นาที|min)/i);
+  if (durHr) {
+    duration_min = Math.max(15, Number(durHr[1]) * 60);
+    body = body.replace(durHr[0], " ").replace(/\s+/g, " ").trim();
+  } else if (durMin) {
+    duration_min = Math.max(5, Number(durMin[1]));
+    body = body.replace(durMin[0], " ").replace(/\s+/g, " ").trim();
+  }
+
+  let after: string | undefined;
+  let before: string | undefined;
+  const timeM =
+    body.match(/(?:ตอน|เวลา|ที่)\s*(\d{1,2}:\d{2})/i) || body.match(/\b(\d{1,2}:\d{2})\b/);
+  if (timeM) {
+    after = timeM[1].padStart(5, "0");
+    if (after.length === 4) after = `0${after}`; // 9:30 → already 5 with pad? "9:30".padStart(5,"0") = "09:30" ✓
+    const [hh, mm] = after.split(":").map(Number);
+    const end = hh * 60 + mm + duration_min;
+    before = `${String(Math.floor(end / 60) % 24).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}`;
+    body = body.replace(timeM[0], " ").replace(/\s+/g, " ").trim();
+  }
+
+  let period: string | undefined;
+  if (/วันนี้/.test(body)) {
+    period = "today";
+    body = body.replace(/วันนี้/g, " ");
+  } else if (/พรุ่งนี้/.test(body)) {
+    period = "tomorrow";
+    body = body.replace(/พรุ่งนี้/g, " ");
+  } else if (/มะรืน(นี้)?/.test(body)) {
+    period = "week";
+    body = body.replace(/มะรืน(นี้)?/g, " ");
+  }
+  body = body.replace(/\s+/g, " ").trim();
+
+  body = body
+    .replace(/^(?:นัด|จอง)(?:ประชุม)?(?:กับ)?/i, "")
+    .replace(/^หาเวลา(?:ว่าง)?(?:ตรงกัน)?(?:กับ)?/i, "")
+    .replace(/^ขอ(?:นัด|จอง)(?:ประชุม)?(?:กับ)?/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const attendees = body
+    .split(/\s*(?:กับ|และ|,)\s*/)
+    .map((s) => stripHonorificPublic(s).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
+    .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง)$/i.test(s));
+
+  if (!attendees.length) return null;
+
+  const params: Record<string, unknown> = { attendees, duration_min };
+  if (period) params.period = period;
+  if (after) params.after = after;
+  if (before) params.before = before;
+  if (note) params.note = note;
+  return { intent: "find_meeting_time", params };
 }
 
 function historyLines(context?: CommandContext): string[] {
@@ -896,7 +987,8 @@ export async function runFindMeeting(
   duration: number,
   window?: MtWindow | null,
   band?: { after: number | null; before: number | null; label?: string } | null,
-  includeLunch = false
+  includeLunch = false,
+  subject = "ประชุม"
 ): Promise<CommandResult> {
   const denied = needCalendarConsent();
   if (denied) return denied;
@@ -948,7 +1040,7 @@ export async function runFindMeeting(
       meeting: {
         attendees: resolved,
         duration,
-        subject: "ประชุม",
+        subject,
         window: window
           ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
           : undefined,
@@ -958,22 +1050,23 @@ export async function runFindMeeting(
 
   if (AUTO_BOOK) {
     const s = result.slots[0];
-    const ev = await createEvent(userUpn, "ประชุม", s.start, s.end, resolved);
+    const ev = await createEvent(userUpn, subject, s.start, s.end, resolved);
     const ping = await notifyMeetingInviteOnLine({
       organizerUpn: userUpn,
-      subject: "ประชุม",
+      subject,
       startIso: s.start,
       endIso: s.end,
       attendees: resolved,
       eventId: ev?.id,
     }).catch(() => ({ notified: 0, names: [] as string[] }));
     const lineNote = ping.notified > 0 ? `\n📲 ส่ง LINE ขอให้ยืนยันแล้ว ${ping.notified} คน` : "";
-    return { intent: "find_meeting_time", reply: `จองให้เลยตามที่ตั้งค่าไว้ ✅\nประชุม — ${s.label}${lineNote}` };
+    return { intent: "find_meeting_time", reply: `จองให้เลยตามที่ตั้งค่าไว้ ✅\n${subject} — ${s.label}${lineNote}` };
   }
 
   const reply =
     `เจอเวลาที่ทุกคนว่างตรงกัน${dayNote}${bandNote}ครับ\n` +
     `👤 ${who}\n` +
+    (subject && subject !== "ประชุม" ? `📌 ${subject}\n` : "") +
     `เลือกเวลาเริ่มประชุม (${duration} นาที) จากรายการด้านล่างได้เลย 👇` +
     note;
 
@@ -985,7 +1078,7 @@ export async function runFindMeeting(
     meeting: {
       attendees: resolved,
       duration,
-      subject: "ประชุม",
+      subject,
       window: window
         ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
         : undefined,
@@ -1676,7 +1769,8 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     if (!attendees.length) {
       return { intent: "find_meeting_time", reply: "ยังไม่ทราบว่าจะนัดกับใครครับ ลองระบุชื่อคนที่ต้องการดูตารางด้วยนะครับ" };
     }
-    return runFindMeeting(userUpn, attendees, duration, window, band, wantsLunchIncluded(text));
+    const subject = String(params.note || params.subject || "ประชุม").trim() || "ประชุม";
+    return runFindMeeting(userUpn, attendees, duration, window, band, wantsLunchIncluded(text), subject);
   }
 
   return {
