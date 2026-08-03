@@ -330,7 +330,7 @@ function withCalendarNext(res: CommandResult, kind: "meetings" | "free"): Comman
 }
 
 function hasDayHint(text: string): boolean {
-  return /วันนี้|พรุ่งนี้|มะรืน|สัปดาห์นี้|อาทิตย์นี้|เดือนนี้|วัน(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)|วันที่\s*\d|\d{1,2}\/\d{1,2}/.test(
+  return /วันนี้|พรุ่งนี้|มะรืน|เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้|สัปดาห์นี้|อาทิตย์นี้|เดือนนี้|วัน(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)|วันที่\s*\d|\d{1,2}\/\d{1,2}/.test(
     text || ""
   );
 }
@@ -343,9 +343,13 @@ function resolvePeriodParam(
   fallback = "week"
 ): string {
   if (params.weekday || params.date) return String(params.period || fallback);
-  if (hasDayHint(text) && params.period) return String(params.period);
+  // Explicit period from quick-intent / LLM always wins (e.g. เช้านี้ → today).
+  // Do NOT let last_period="week" override it just because the text lacks "วันนี้".
+  if (params.period) return String(params.period);
   if (!hasDayHint(text) && context?.last_period) return context.last_period;
-  return String(params.period || fallback);
+  if (/พรุ่งนี้/.test(text || "")) return "tomorrow";
+  if (/เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้|วันนี้|ดูประชุมเช้า|นัดเช้า/.test(text || "")) return "today";
+  return fallback;
 }
 
 function mentionsSelf(text: string): boolean {
