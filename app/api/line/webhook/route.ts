@@ -156,20 +156,27 @@ async function loadCtx(upn: string): Promise<CommandContext | undefined> {
       last_intent: c.last_intent,
       last_person: c.last_person,
       last_person_mail: c.last_person_mail,
+      last_period: c.last_period,
       last_meeting: c.last_meeting,
+      history: Array.isArray(c.history) ? c.history : undefined,
     };
   } catch {
     return undefined;
   }
 }
 
-async function saveCtx(upn: string, prev: CommandContext | undefined, res: CommandResult): Promise<void> {
+async function saveCtx(upn: string, prev: CommandContext | undefined, res: CommandResult, userText?: string): Promise<void> {
+  const history = [...(prev?.history || [])];
+  if (userText?.trim()) history.push({ role: "user", text: userText.trim().slice(0, 200) });
+  if (res.reply) history.push({ role: "assistant", text: String(res.reply).slice(0, 300) });
   const next: Record<string, unknown> = {
     ts: Date.now(),
     last_intent: res.intent || prev?.last_intent,
     last_person: prev?.last_person,
     last_person_mail: prev?.last_person_mail,
+    last_period: res.period || prev?.last_period,
     last_meeting: prev?.last_meeting,
+    history: history.slice(-6),
   };
   if (res.person?.mail) {
     next.last_person = res.person.displayName || res.person.mail;
@@ -434,7 +441,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       console.warn("[line] reply failed, pushing:", String(replyErr).slice(0, 120));
       await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
     }
-    await saveCtx(upn, ctx, res);
+    await saveCtx(upn, ctx, res, text);
   } catch (e) {
     try {
       await replyLine(ev.replyToken, `ขออภัยครับ เกิดข้อผิดพลาด: ${String(e).slice(0, 200)}`);

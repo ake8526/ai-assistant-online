@@ -68,6 +68,8 @@ export type CommandContext = {
   last_intent?: string;
   last_person?: string;
   last_person_mail?: string;
+  /** Last calendar day scope the user was talking about (today/tomorrow/week/…). */
+  last_period?: string;
   files?: { id?: string; name?: string; url?: string; is_folder?: boolean }[];
   selected?: { start: string; person?: { mail?: string; displayName?: string } };
   /** Last multi-person schedule search — used for follow-ups like "ตอนเย็นว่างไหม". */
@@ -87,6 +89,8 @@ export type CommandResult = {
   slots?: unknown[];
   ranges?: unknown[];
   choices?: unknown[];
+  /** Day scope used for this reply — stored so follow-ups keep the same day. */
+  period?: string;
   meeting?: {
     attendees: string[];
     duration: number;
@@ -147,6 +151,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - list_meetings: { "period": "today|tomorrow|week|month|upcoming", "date": "วันที่เจาะจง เช่น 31 หรือ 2026-07-31 (ถ้าผู้ใช้ระบุวัน)", "weekday": "ชื่อวันในสัปดาห์เป็น mon|tue|wed|thu|fri|sat|sun (ถ้าผู้ใช้พูดชื่อวัน เช่น วันจันทร์/เสาร์นี้/อาทิตย์หน้า)", "after": "HH:MM (ถ้าบอก เช่น หลัง 9 โมงครึ่ง)", "before": "HH:MM (ถ้าบอก เช่น ก่อนเที่ยง)", "at": "HH:MM (ถ้าถามเจาะจงเวลา 'จุดเดียว' เช่น '10 โมงติดอะไร', 'ตอนบ่ายสองว่างไหม', 'ตอน 9 โมงติดไหม')", "person": "ชื่อ/อีเมลคนอื่น ถ้าถามว่าคนนั้น 'ติด/ไม่ว่าง/มีนัด' ช่วงไหน (ถ้าไม่ระบุ = ตัวเอง)" }
 - summarize_file: { "file_index": 0 }
 - my_availability: { "period": "today|tomorrow|week", "weekday": "mon|tue|wed|thu|fri|sat|sun (ถ้าพูดชื่อวัน เช่น เสาร์นี้ว่างไหม)", "person": "ชื่อ/อีเมลคนที่อยากดูตาราง (ถ้าไม่ระบุ = ตัวเอง)" }
+- ถ้าประวัติ/บริบทรอบก่อนพูดถึงวันใดวันหนึ่ง (เช่น พรุ่งนี้ / last_period) แล้วผู้ใช้ถามต่อแบบไม่ระบุวัน เช่น "ขอตารางว่าง", "ว่างกี่โมง", "แล้วว่างไหม" → คง period/วันเดิมจากบริบท (ห้ามดีฟอลต์เป็นวันนี้)
 - add_task: { "title": "...", "responsible": "...", "due": "YYYY-MM-DD HH:MM หรือ null" }
 - complete_task: { "task_id": <number> }
 - find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "weekday": "mon|tue|… (ถ้าพูดชื่อวัน เช่น วันจันทร์นี้)", "date": "YYYY-MM-DD หรือ 31 (ถ้าเจาะจงวันที่)", "period": "today|tomorrow|week (ถ้าไม่ได้เจาะจงวัน)", "after": "HH:MM (เช้า/บ่าย/เย็น หรือหลัง…)", "before": "HH:MM", "note": "..." }
@@ -196,6 +201,8 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 (หมายเหตุ: ถ้าถามว่าคนอื่น "ติด/ไม่ว่าง/มีนัด/ติดประชุม" ช่วงไหน ให้ใช้ list_meetings พร้อม person; แต่ถ้าถามว่า "ว่างไหม/ตารางว่าง" ให้ใช้ my_availability)
 "ดูตารางว่าง" -> {"intent":"my_availability","params":{"period":"week"}}
 "วันนี้ว่างกี่โมง" -> {"intent":"my_availability","params":{"period":"today"}}
+"พรุ่งนี้ว่างไหม" -> {"intent":"my_availability","params":{"period":"tomorrow"}}
+"ขอตารางว่าง" (หลังคุยเรื่องพรุ่งนี้) -> {"intent":"my_availability","params":{"period":"tomorrow"}}
 "เบสว่างช่วงไหน" -> {"intent":"my_availability","params":{"person":"เบส","period":"week"}}
 "ดูตารางเบสกับพี่นนท์" -> {"intent":"find_meeting_time","params":{"attendees":["เบส","พี่นนท์"]}}
 "เบสกับนนท์ว่างตรงกันช่วงไหน" -> {"intent":"find_meeting_time","params":{"attendees":["เบส","นนท์"]}}
@@ -248,6 +255,25 @@ const NAME_SUFFIX = [
 const SELF_WORDS = new Set(["", "ฉัน", "ผม", "ดิฉัน", "ตัวเอง", "เรา", "ของฉัน", "ของผม"]);
 const SELF_HINT = ["ของฉัน", "ของผม", "ตัวเอง", "ตัวฉัน", "ผมเอง", "ฉันเอง", "ตารางฉัน", "ตารางผม", "ฉันว่าง", "ผมว่าง", "ของตัวเอง"];
 
+function hasDayHint(text: string): boolean {
+  return /วันนี้|พรุ่งนี้|มะรืน|สัปดาห์นี้|อาทิตย์นี้|เดือนนี้|วัน(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)|วันที่\s*\d|\d{1,2}\/\d{1,2}/.test(
+    text || ""
+  );
+}
+
+/** Reuse last calendar day when user asks a follow-up without naming a day. */
+function resolvePeriodParam(
+  text: string,
+  params: Record<string, unknown>,
+  context?: CommandContext,
+  fallback = "week"
+): string {
+  if (params.weekday || params.date) return String(params.period || fallback);
+  if (hasDayHint(text) && params.period) return String(params.period);
+  if (!hasDayHint(text) && context?.last_period) return context.last_period;
+  return String(params.period || fallback);
+}
+
 function mentionsSelf(text: string): boolean {
   return SELF_HINT.some((w) => (text || "").includes(w));
 }
@@ -299,6 +325,18 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   // Prep a numbered meeting from today's agenda
   const prep = t.match(/^(?:เตรียม|แนะนำ|ช่วยเตรียม)(?:ตัว)?(?:นัด|ประชุม)?\s*(?:หมายเลข|ที่|#)?\s*(\d+)\s*$/i);
   if (prep) return { intent: "prep_meeting", params: { meeting_index: Number(prep[1]) } };
+
+  // Bare free-time ask — period filled later from last_period / LLM defaults
+  if (/^(ขอ)?(ดู)?ตารางว่าง(หน่อย)?$|^(ผม|ฉัน|ตัวเอง)?ว่าง(กี่โมง|ช่วงไหน|ไหม|มั้ย)?$/i.test(t)) {
+    return { intent: "my_availability", params: {} };
+  }
+
+  if (/^(นัด|ประชุม|ตาราง)(วัน)?พรุ่งนี้$/i.test(t) || /^พรุ่งนี้มี(นัด|ประชุม)/i.test(t)) {
+    return { intent: "list_meetings", params: { period: "tomorrow" } };
+  }
+  if (/^(นัด|ประชุม|ตาราง)(วัน)?วันนี้$/i.test(t) || /^วันนี้มี(นัด|ประชุม)/i.test(t)) {
+    return { intent: "list_meetings", params: { period: "today" } };
+  }
 
   if (/สรุปตาราง|ตารางเช้า|ตารางวันนี้|นัดวันนี้มีอะไร/i.test(t) && !/ข่าว/.test(t)) {
     return { intent: "get_brief", params: {} };
@@ -381,6 +419,7 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
     const compact: Record<string, unknown> = {};
     if (context.last_intent) compact.last_intent = context.last_intent;
     if (context.last_person) compact.last_person = context.last_person;
+    if (context.last_period) compact.last_period = context.last_period;
     if (context.last_meeting?.attendees?.length) {
       compact.last_meeting = {
         attendees: context.last_meeting.attendees,
@@ -1203,14 +1242,17 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   if (intent === "list_meetings") {
     const denied = needCalendarConsent();
     if (denied) return denied;
-    const period = (params.period as string) || "upcoming";
+    const period = resolvePeriodParam(text, params, context, "upcoming");
     const day = params.date ? resolveDay(String(params.date)) : params.weekday ? resolveWeekday(String(params.weekday)) : null;
     const after = parseHHMM(params.after);
     const before = parseHHMM(params.before);
     const at = parseHHMM(params.at);
 
     const { name: person, info: personInfo } = await continuedPerson(text, context);
-    if (person) return personBusyResponse(userUpn, person, day, period, after, before, at, personInfo);
+    if (person) {
+      const busy = await personBusyResponse(userUpn, person, day, period, after, before, at, personInfo);
+      return { ...busy, period: day ? undefined : period };
+    }
 
     let { start, end, label } = day || periodRange(period);
     let events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
@@ -1232,10 +1274,10 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       });
       const atLabel = `${label} ตอน ${fmtHHMM(at)}`;
       if (!overlapping.length) {
-        return { intent, reply: `✅ ${label} ตอน ${fmtHHMM(at)} ว่างครับ — ไม่มีนัด`, data: [] };
+        return { intent, reply: `✅ ${label} ตอน ${fmtHHMM(at)} ว่างครับ — ไม่มีนัด`, data: [], period };
       }
       const reply = lite ? formatEventsSimple(overlapping, atLabel) : await buildForEvents(userUpn, overlapping, atLabel);
-      return { intent, reply, data: overlapping };
+      return { intent, reply, data: overlapping, period };
     }
 
     if (after !== null || before !== null) {
@@ -1257,16 +1299,17 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
           "  • นัดประชุมใหม่ — พิมพ์ “นัดประชุมกับ...”\n" +
           "  • เพิ่มงานเตือนความจำ — พิมพ์ “เพิ่มงาน: ...”",
         data: [],
+        period,
       };
     }
     const reply = lite ? formatEventsSimple(events, label) : await buildForEvents(userUpn, events, label);
-    return { intent, reply, data: events };
+    return { intent, reply, data: events, period };
   }
 
   if (intent === "my_availability") {
     const denied = needCalendarConsent();
     if (denied) return denied;
-    const period = (params.period as string) || "week";
+    const period = resolvePeriodParam(text, params, context, "week");
     const dayRange = params.weekday ? resolveWeekday(String(params.weekday)) : params.date ? resolveDay(String(params.date)) : null;
     const range = dayRange || periodRange(period);
     // token the disambiguation buttons carry so they reuse the same day/period
@@ -1283,24 +1326,32 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
           intent: "choose_person",
           reply: `เจอหลายคนที่ตรงกับ “${det}” เลือกคนที่ต้องการดูตารางครับ 👇`,
           choices: cands.map((c) => ({ mail: c.mail, displayName: c.displayName, period, date: dayIso, lunch })),
+          period,
         };
       }
       if (cands.length === 1) {
-        return availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || det, range, lunch);
+        const res = await availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || det, range, lunch);
+        return { ...res, period };
       }
       // name didn't resolve → fall through to the ongoing subject
     }
     if (!mentionsSelf(text)) {
       const lastMail = context?.last_person_mail;
       const lastName = context?.last_person;
-      if (lastMail) return availabilityResponse(userUpn, lastMail, lastName || lastMail, range, lunch);
+      if (lastMail) {
+        const res = await availabilityResponse(userUpn, lastMail, lastName || lastMail, range, lunch);
+        return { ...res, period };
+      }
       if (lastName) {
         const cands = await searchUsers(lastName);
-        if (cands.length === 1) return availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || lastName, range, lunch);
+        if (cands.length === 1) {
+          const res = await availabilityResponse(userUpn, cands[0].mail, cands[0].displayName || lastName, range, lunch);
+          return { ...res, period };
+        }
       }
     }
     const ranges = await freeRanges(userUpn, range.start, range.end, userUpn, lunch);
-    return { intent, reply: formatFree(ranges, range.label) };
+    return { intent, reply: formatFree(ranges, range.label), period };
   }
 
   if (intent === "set_work_location" || intent === "set_home_location") {
