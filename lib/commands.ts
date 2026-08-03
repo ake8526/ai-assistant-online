@@ -2,6 +2,13 @@
 // The web / LINE sends free text; the LLM classifies it into an intent + params
 // and we execute. Booking asks for confirmation first (choose_slot) per requirement.
 import { buildForEvents, buildMorningAgenda, buildMeetingPrep, resolveAgendaEventId } from "@/lib/brief";
+import {
+  handleLinkMeetingFile,
+  handleLinkMeetingUrl,
+  handleListMeetingMaterials,
+  handleUnlinkMeetingMaterial,
+  quickLinkMeetingIntent,
+} from "@/lib/meetingLink";
 import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
 import { trace } from "@/lib/trace";
 import { normalizeDue, resolveResponsible } from "@/lib/followup";
@@ -124,7 +131,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
 
 {
-  "intent": "<หนึ่งใน: get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | unknown>",
+  "intent": "<หนึ่งใน: get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
   "params": { ... }
 }
 
@@ -143,8 +150,13 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - summarize_file = อ่านหรือสรุปเนื้อหาในไฟล์ที่ค้นพบ หรือไฟล์ที่ผู้ใช้อ้างถึง (เช่น "อ่านและสรุป", "สรุปไฟล์นี้", "อ่านอันแรก", "สรุปให้ฟัง")
 - search_files = ค้นหาไฟล์ใน OneDrive
 - find_duplicate_nicknames = หาว่าในองค์กรมีคนชื่อเล่นซ้ำกันกี่คน/ใครบ้าง (จากชื่อที่แสดงในไดเรกทอรี) — เช่น "ชื่อเล่นซ้ำกี่คน", "ในองค์กรมีคนชื่อเล่นซ้ำกันไหม", "ใครชื่อเล่นซ้ำบ้าง"
+- link_meeting_file = ผูกไฟล์ OneDrive กับนัดที่มีอยู่แล้ว (ยังไม่ได้อยู่ในปฏิทินแนบ) — เช่น "ผูกไฟล์นัด 1", "แนบอัน 2 กับนัด 1", "ผูกไฟล์นี้กับนัด Weekly"
+- link_meeting_url = ผูกลิงก์กับนัด — เช่น "แนบลิงก์นัด 2 https://..."
+- list_meeting_materials = ดูไฟล์/ลิงก์ที่ผูกกับนัด — เช่น "เอกสารนัด 1"
+- unlink_meeting_material = เลิกผูกไฟล์/ลิงก์ออกจากนัด — เช่น "เลิกแนบนัด 1 ไฟล์ 2"
 
 สำคัญ: หากบริบทก่อนหน้าเพิ่งมีการค้นหาไฟล์ (search_files หรือ file_results) แล้วผู้ใช้พิมพ์ว่า "อ่านและสรุป", "สรุปให้ฟัง", "อ่านไฟล์" ให้เลือก intent เป็น "summarize_file" เสมอ (ห้ามเลือก get_brief)!
+ถ้าเพิ่งค้นไฟล์แล้วผู้ใช้พูดว่า "ผูกกับนัด 1" / "แนบให้นัด 2" ให้ใช้ link_meeting_file
 
 ความต่อเนื่องของบทสนทนา (สำคัญมาก — ห้ามเริ่มคิดใหม่เอง):
 ระบบจะแนบ [ประวัติการสนทนาก่อนหน้า] และ [บริบทล่าสุด] (มี last_person / last_meeting / summary) มาให้ ให้ถือว่าบทสนทนาต่อเนื่องกันเสมอ:
@@ -189,6 +201,10 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "ติดตามอะไรบ้าง" -> {"intent":"list_feeds","params":{}}
 "มีข่าวอะไรบ้าง" -> {"intent":"get_news","params":{}}
 "ในองค์กรมีคนชื่อเล่นซ้ำกันกี่คน ใครบ้าง" -> {"intent":"find_duplicate_nicknames","params":{}}
+"ผูกไฟล์นัด 1" -> {"intent":"link_meeting_file","params":{"meeting_index":1}}
+"แนบอัน 2 กับนัด 1" -> {"intent":"link_meeting_file","params":{"file_index":2,"meeting_index":1}}
+"แนบลิงก์นัด 2 https://example.com/deck" -> {"intent":"link_meeting_url","params":{"meeting_index":2,"url":"https://example.com/deck"}}
+"เอกสารนัด 1" -> {"intent":"list_meeting_materials","params":{"meeting_index":1}}
 "เพิ่มแหล่งข่าว https://www.extreme.co.th/feed" -> {"intent":"add_feed","params":{"url":"https://www.extreme.co.th/feed","kind":"rss"}}
 "ติดตามเพจ https://www.facebook.com/ExtremeIT ชื่อ Extreme" -> {"intent":"add_feed","params":{"url":"https://www.facebook.com/ExtremeIT","kind":"facebook","label":"Extreme"}}
 "เพิ่ม RSS https://example.com/rss.xml ชื่อข่าวไอที" -> {"intent":"add_feed","params":{"url":"https://example.com/rss.xml","kind":"rss","label":"ข่าวไอที"}}
@@ -450,6 +466,9 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   ) {
     return { intent: "find_duplicate_nicknames", params: {} };
   }
+
+  const linkQ = quickLinkMeetingIntent(t);
+  if (linkQ) return linkQ;
 
   if (/^(ล้าง|ลบ|เคลียร์|clear)(ความจำ|แชท|บริบท|chat)?(ai|เอไอ)?$|^(เริ่มใหม่|เริ่มแชทใหม่|reset chat)$/i.test(t)) {
     return { intent: "clear_memory", params: {} };
@@ -1633,6 +1652,27 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     return { intent: "find_duplicate_nicknames", reply: lines.join("\n") };
   }
 
+  if (intent === "link_meeting_file") {
+    const denied = needCalendarConsent();
+    if (denied) return denied;
+    return handleLinkMeetingFile(userUpn, params, context);
+  }
+  if (intent === "link_meeting_url") {
+    const denied = needCalendarConsent();
+    if (denied) return denied;
+    return handleLinkMeetingUrl(userUpn, params);
+  }
+  if (intent === "list_meeting_materials") {
+    const denied = needCalendarConsent();
+    if (denied) return denied;
+    return handleListMeetingMaterials(userUpn, params);
+  }
+  if (intent === "unlink_meeting_material") {
+    const denied = needCalendarConsent();
+    if (denied) return denied;
+    return handleUnlinkMeetingMaterial(userUpn, params);
+  }
+
   if (intent === "summarize_file") {
     const files = context?.files || [];
     let target: (typeof files)[number] | null = null;
@@ -2142,7 +2182,10 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     const label = q || `.${ft}`;
     return {
       intent: "file_results",
-      reply: `เจอ ${files.length} ไฟล์ที่ตรงกับ “${label}” ครับ 👇`,
+      reply:
+        `เจอ ${files.length} ไฟล์ที่ตรงกับ “${label}” ครับ 👇\n\n` +
+        `จะผูกกับนัดวันนี้ พิมพ์ เช่น “ผูกไฟล์นัด 1” หรือ “แนบอัน 2 กับนัด 1”\n` +
+        `ผูกลิงก์: “แนบลิงก์นัด 1 https://…”`,
       files: files.map((f) => ({
         id: f.id,
         name: f.name,
@@ -2150,6 +2193,11 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         is_folder: !!(f as { folder?: unknown }).folder,
         modified: f.lastModifiedDateTime,
       })),
+      suggestions: [
+        { label: "ผูกไฟล์นัด 1", text: "ผูกไฟล์นัด 1" },
+        { label: "ตารางวันนี้", text: "ตารางวันนี้" },
+        { label: "อ่านและสรุป", text: "อ่านและสรุป" },
+      ],
     };
   }
 

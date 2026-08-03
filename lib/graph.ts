@@ -186,6 +186,19 @@ export async function downloadDriveText(userUpn: string, itemId: string, maxChar
   }
 }
 
+/** True if this user's Graph token can see the OneDrive item (permission check). */
+export async function canAccessDriveItem(userUpn: string, itemId: string): Promise<boolean> {
+  try {
+    const r = await graphFetch(
+      `/users/${encodeURIComponent(userUpn)}/drive/items/${encodeURIComponent(itemId)}`,
+      { params: { $select: "id,name" } }
+    );
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Users / directory
 // ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import {
 import { chat } from "@/lib/llm";
 import { getLineId, pushLineMessages } from "@/lib/line";
 import { fetchArticle } from "@/lib/rss";
+import { getMeetingMaterials } from "@/lib/meetingMaterials";
 import { getSetting, setSetting } from "@/lib/store";
 import { endOfDay, fmtHHMM, minutesOfDay, nowWall, parseWall, startOfDay, wallIso } from "@/lib/time";
 
@@ -184,6 +185,7 @@ const PREP_SYSTEM = `คุณคือผู้ช่วยเตรียม�
 
 กติกา:
 - ใช้เฉพาะข้อมูลที่มีในอินพุต ห้ามแต่งเอกสารที่ไม่มี
+- ส่วน user_linked_materials คือเอกสาร/ลิงก์ที่ผู้ใช้ผูกกับนัดนี้เอง — ให้น้ำหนักสูงเมื่อสรุปและแนะนำ
 - ถ้าเนื้อหาเอกสารน้อย ให้แนะนำจากหัวข้อ + รายละเอียดอีเมล + ผู้เข้าร่วมเท่าที่มี
 - วันที่ใช้ DD/MM/YYYY เวลา HH:MM (24 ชม.)`;
 
@@ -226,6 +228,48 @@ export async function buildMeetingPrep(userUpn: string, eventId: string): Promis
     fileNotes.push(note);
   }
 
+  // User-linked materials (attached later via LINE/chat — not necessarily on the calendar event)
+  const linked = await getMeetingMaterials(userUpn, eventId);
+  const userLinked: {
+    type: string;
+    name?: string;
+    url: string;
+    excerpt?: string;
+    access_note?: string;
+  }[] = [];
+  for (const m of linked.slice(0, 8)) {
+    const row: {
+      type: string;
+      name?: string;
+      url: string;
+      excerpt?: string;
+      access_note?: string;
+    } = { type: m.type, name: m.name, url: m.url };
+    if (m.type === "file" && m.id) {
+      const n = (m.name || m.url || "").toLowerCase();
+      if (/\.(txt|md|csv|json|html?|xml|log)$/i.test(n)) {
+        try {
+          const excerpt = await downloadDriveText(userUpn, m.id);
+          if (excerpt) row.excerpt = excerpt.slice(0, 5000);
+          else row.access_note = "อ่านเนื้อหาไฟล์ไม่ได้ (อาจไม่มีสิทธิ์หรือไม่ใช่ไฟล์ข้อความ)";
+        } catch {
+          row.access_note = "ไม่มีสิทธิ์เข้าถึงไฟล์นี้ใน OneDrive ของผู้ใช้";
+        }
+      } else {
+        row.access_note = "ไฟล์ชนิดนี้ยังอ่านเนื้อหาอัตโนมัติไม่ได้ — แนะนำจากชื่อไฟล์/ลิงก์";
+      }
+    } else if (m.type === "link" && /^https?:\/\//i.test(m.url)) {
+      try {
+        const text = await fetchArticle(m.url);
+        row.excerpt = text.slice(0, 5000) || undefined;
+        if (!row.excerpt) row.access_note = "ดึงเนื้อหาลิงก์ไม่ได้";
+      } catch {
+        row.access_note = "ดึงเนื้อหาลิงก์ไม่ได้";
+      }
+    }
+    userLinked.push(row);
+  }
+
   const payload = {
     meeting: {
       subject: ev.subject,
@@ -241,6 +285,7 @@ export async function buildMeetingPrep(userUpn: string, eventId: string): Promis
     attachments: attachmentNotes,
     linked_pages: linkNotes,
     related_onedrive_files: fileNotes,
+    user_linked_materials: userLinked,
   };
 
   return chat(PREP_SYSTEM, "ข้อมูลนัดประชุมและเอกสารที่เกี่ยวข้อง:\n" + JSON.stringify(payload, null, 2), {

@@ -170,6 +170,18 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
       const p = new URLSearchParams({ a: "prep", i: String(c.index) });
       add(c.index, p.toString(), `เตรียม ${c.index}) ${c.label || ""}`);
     }
+  } else if (res.intent === "choose_link_meeting" && Array.isArray(res.choices)) {
+    for (const c of res.choices as Choice[]) {
+      if (!c.index) continue;
+      items.push({
+        type: "action",
+        action: {
+          type: "message",
+          label: truncate(`ผูกนัด ${c.index}`, 20),
+          text: `ผูกไฟล์นัด ${c.index}`,
+        },
+      });
+    }
   }
 
   // Follow-up suggestions (message taps) when no selection buttons above
@@ -221,6 +233,12 @@ function detailText(res: CommandResult): string {
     lines = (res.choices as Choice[]).filter((c) => c.feed_id).map((c, i) => `${i + 1}) ${c.label || ""}`);
   } else if (res.intent === "choose_prep" && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).map((c, i) => `${c.index || i + 1}) ${c.label || ""}`);
+  } else if (res.intent === "choose_link_meeting" && Array.isArray(res.choices)) {
+    lines = (res.choices as Choice[]).map((c, i) => `${c.index || i + 1}) ${c.label || ""}`);
+  } else if (res.intent === "file_results" && Array.isArray(res.files)) {
+    lines = (res.files as { name?: string; url?: string }[]).map(
+      (f, i) => `${i + 1}) ${(f.name || f.url || "ไฟล์").trim()}`
+    );
   }
   return lines.length ? "\n\n" + lines.join("\n") : "";
 }
@@ -256,6 +274,7 @@ async function loadCtx(upn: string): Promise<CommandContext | undefined> {
       last_person_mail: c.last_person_mail,
       last_period: c.last_period,
       last_meeting: c.last_meeting,
+      files: Array.isArray(c.files) ? c.files : undefined,
       history: pruned.history,
       summary: pruned.summary,
     };
@@ -295,6 +314,12 @@ async function saveCtx(upn: string, prev: CommandContext | undefined, res: Comma
   }
   if (res.meeting?.attendees?.length) {
     next.last_meeting = res.meeting;
+  }
+  if (res.files?.length) {
+    next.files = res.files;
+  } else if (prev?.files?.length && res.intent !== "clear_memory") {
+    // Keep last file search so “ผูกไฟล์นัด 1” works after listing files
+    next.files = prev.files;
   }
   try {
     await setSetting(upn, CTX_KEY, JSON.stringify(next));
