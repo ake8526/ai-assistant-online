@@ -105,6 +105,20 @@ function ChatContent() {
   const applyResult = (res: ApiResult) => {
     const ctx = ctxRef.current;
     const now = Date.now();
+    if (res.intent === "clear_memory") {
+      ctx.history = [];
+      ctx.summary = undefined;
+      ctx.last_intent = undefined;
+      ctx.last_person = undefined;
+      ctx.last_person_mail = undefined;
+      ctx.last_meeting = undefined;
+      ctx.meeting = undefined;
+      ctx.files = undefined;
+      ctx.selected = undefined;
+      ctx.last_activity_ts = now;
+      addMsg({ role: "bot", text: res.reply || "ล้างความจำการสนทนาแล้วครับ — เริ่มเรื่องใหม่ได้เลย 🧹" });
+      return;
+    }
     ctx.last_intent = res.intent;
     ctx.last_activity_ts = now;
     if (res.person?.mail) {
