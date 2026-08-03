@@ -621,6 +621,11 @@ export async function previewBriefNotifySetup(upn: string): Promise<void> {
   ]);
 }
 
+/** Push the post-setup summary card (for preview). */
+export async function pushSetupCompleteSummary(upn: string): Promise<void> {
+  await send("push", upn, [await onboardingDoneMessage(upn)]);
+}
+
 /** Start or resume first-time onboarding. */
 export async function startNewsOnboarding(upn: string, via: "push" | "reply", replyToken?: string): Promise<void> {
   const prefs = await getNewsPrefs(upn);
