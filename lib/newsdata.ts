@@ -29,6 +29,7 @@ export async function fetchNewsByTopic(topicQuery: string, limit = 5): Promise<F
   const r = await fetch(`${API}?${params.toString()}`, {
     headers: { Accept: "application/json", "X-ACCESS-KEY": key },
     cache: "no-store",
+    signal: AbortSignal.timeout(12000),
   });
   const text = await r.text();
   let data: { status?: string; results?: Record<string, unknown>[]; message?: string };

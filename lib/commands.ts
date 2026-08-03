@@ -2,7 +2,8 @@
 // The web / LINE sends free text; the LLM classifies it into an intent + params
 // and we execute. Booking asks for confirmation first (choose_slot) per requirement.
 import { buildForEvents, buildMorningAgenda, buildMeetingPrep, resolveAgendaEventId } from "@/lib/brief";
-import { buildDigest, formatStoriesText, rememberDeliveredStories } from "@/lib/digest";
+import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
+import { trace } from "@/lib/trace";
 import { normalizeDue, resolveResponsible } from "@/lib/followup";
 import { createHash } from "crypto";
 import {
@@ -19,7 +20,6 @@ import {
 } from "@/lib/graph";
 import { getUserGraphToken } from "@/lib/graphAuth";
 import { chat } from "@/lib/llm";
-import { trace } from "@/lib/trace";
 import { listRecentOnline } from "@/lib/meetings";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
@@ -1674,9 +1674,31 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   }
 
   if (intent === "get_news") {
-    const { stories, skipped, note } = await buildDigest(userUpn);
+    trace("fetch", "ดึงข่าวจากแหล่งที่ติดตาม", "start");
+    const DIGEST_BUDGET_MS = 40_000;
+    const timedOut: DigestResult = {
+      stories: [],
+      skipped: ["หมดเวลารอสรุปข่าว"],
+      note: "สรุปข่าวใช้เวลานานเกินไปครับ — ลองพิมพ์ “ข่าววันนี้” อีกครั้ง หรือ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ",
+    };
+    let digest: DigestResult;
+    try {
+      digest = await Promise.race([
+        buildDigest(userUpn),
+        new Promise<DigestResult>((resolve) => setTimeout(() => resolve(timedOut), DIGEST_BUDGET_MS)),
+      ]);
+    } catch (e) {
+      digest = {
+        stories: [],
+        skipped: [String(e).slice(0, 80)],
+        note: "ดึงข่าวไม่สำเร็จครับ ลองใหม่อีกครั้งได้เลย",
+      };
+    }
+    trace("fetch", digest.stories.length ? `ได้ข่าว ${digest.stories.length} เรื่อง` : "ไม่มีข่าวใหม่");
+    const { stories, skipped, note } = digest;
     if (!stories.length) {
       const extra = skipped.length ? `\n(ข้าม: ${skipped.join(", ")})` : "";
+      trace("compose", "แจ้งผลสรุปข่าว");
       return {
         intent,
         reply:
@@ -1687,6 +1709,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     }
     const extra = skipped.length ? `\n\n(ข้ามบางแหล่ง: ${skipped.join(", ")})` : "";
     await rememberDeliveredStories(userUpn, stories);
+    trace("compose", "สรุปข่าวภาษาไทย");
     return { intent, reply: formatStoriesText(stories) + extra, data: stories };
   }
 

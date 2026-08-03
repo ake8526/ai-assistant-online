@@ -77,7 +77,10 @@ async function accessToken(refresh: string): Promise<string> {
 
 async function api(path: string, token: string, params: Record<string, string>) {
   const url = `${API}/${path}?${new URLSearchParams(params).toString()}`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15000),
+  });
   if (!res.ok) {
     let reason = "";
     try {

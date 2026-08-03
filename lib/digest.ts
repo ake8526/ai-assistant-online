@@ -177,22 +177,29 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
       try {
         const { isNewsDataConfigured, fetchNewsByTopic } = await import("@/lib/newsdata");
         if (isNewsDataConfigured()) {
-          for (const topic of prefs.topics.slice(0, 6)) {
-            try {
-              const entries = await fetchNewsByTopic(topicQuery(topic), 5);
-              if (!entries.length) skipped.push(`หัวข้อ “${topic}” (ไม่มีข่าวจาก NewsData)`);
-              entries.forEach((e) =>
-                items.push({
-                  ...e,
-                  kind: "rss",
-                  feedLabel: `หัวข้อ · ${topic}`,
-                  fromTopic: true,
-                  summary: e.summary || e.title,
-                })
-              );
-            } catch (e) {
-              skipped.push(`หัวข้อ “${topic}” (${String(e).slice(0, 60)})`);
-            }
+          const topicResults = await Promise.all(
+            prefs.topics.slice(0, 6).map(async (topic) => {
+              try {
+                const entries = await fetchNewsByTopic(topicQuery(topic), 5);
+                if (!entries.length) return { skipped: `หัวข้อ “${topic}” (ไม่มีข่าวจาก NewsData)`, entries: [] as FeedEntry[] };
+                return {
+                  skipped: null as string | null,
+                  entries: entries.map((e) => ({
+                    ...e,
+                    kind: "rss",
+                    feedLabel: `หัวข้อ · ${topic}`,
+                    fromTopic: true as const,
+                    summary: e.summary || e.title,
+                  })),
+                };
+              } catch (e) {
+                return { skipped: `หัวข้อ “${topic}” (${String(e).slice(0, 60)})`, entries: [] as FeedEntry[] };
+              }
+            })
+          );
+          for (const r of topicResults) {
+            if (r.skipped) skipped.push(r.skipped);
+            for (const e of r.entries) items.push(e as DigestItem);
           }
         } else {
           skipped.push("หัวข้อข่าว (ยังไม่ได้ตั้ง NEWSDATA_API_KEY บนเซิร์ฟเวอร์)");
@@ -329,7 +336,7 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
         `เลือกข่าวเด่น ${Math.min(highlightN, pool.length)} อัน ตอบ JSON เท่านั้น {"highlights":[index...]}\n` +
           `สำคัญ: ให้ความสำคัญกับรายการที่มีแท็ก [หัวข้อ] ก่อน — YouTube เลือกได้ไม่เกิน ${ytCap} อัน`,
         listing,
-        { json: true, temperature: 0 }
+        { json: true, temperature: 0, timeoutMs: 12000, fast: true }
       );
       const d = JSON.parse(raw);
       picks = [...(d.highlights || [])].filter(
@@ -360,10 +367,12 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   }
 
   // 4) fetch article text + stage 2 — natural briefing (not title-only / not "no details")
-  const chosen = picks.map((i) => pool[i]);
+  const chosen = picks.map((i) => pool[i]).slice(0, Math.min(highlightN, 5));
   const withText = await Promise.all(
     chosen.map(async (it) => {
-      const scraped = await fetchArticle(it.link);
+      // Prefer existing summary for topics (already has body); scrape only when thin.
+      const thin = !(it.summary || "").trim() || (it.summary || "").trim().length < 80;
+      const scraped = thin && it.kind !== "youtube" ? await fetchArticle(it.link) : "";
       const full = bestArticleBody(it.title, it.summary || "", scraped);
       return { ...it, full };
     })
@@ -396,7 +405,7 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
           "- ข้อมูลน้อย → blurb สั้นๆ จากที่มี แล้วจบ อย่าเติมประโยคว่างเปล่า\n" +
           "- ห้ามแต่งตัวเลข/เหตุการณ์ที่ไม่มีในเนื้อหา",
         writerInput,
-        { json: true, temperature: 0.35 }
+        { json: true, temperature: 0.35, timeoutMs: 18000, fast: true }
       );
       const parsed = JSON.parse(raw) as Record<
         string,
