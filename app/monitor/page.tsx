@@ -267,20 +267,20 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const courierReply = useCallback(async (intent: string) => {
     setAgent(4, "work");
     setCap(`<b>DASH</b> (REPLY) — เดินเอาคำตอบไปส่งกลับผู้ใช้`);
-    // Pick up from the last desk that finished (e.g. RUNNER bottom-left when
-    // only receive+fetch ran; SCRIBE bottom-right on a full pipeline).
+    // Pick up from the last desk that finished — stand beside it (aisle side),
+    // never walk through the desk body (desk spans dx±24).
     let last = 3;
     for (let i = 3; i >= 0; i--) {
       if (statusRef.current[i] === "done" || statusRef.current[i] === "work") { last = i; break; }
     }
     const left = last % 2 === 0;
-    const ax = left ? 70 : 250;
-    const ay = last < 2 ? 130 : 178;
-    // Blue (aisle) → green (last working PC) → pick up → orange (mailbox).
-    await walkPath([[ax, 150], [ax, ay]]);
+    const sideX = left ? 102 : 218;
+    const ay = last < 2 ? 108 : 178;
+    // Aisle → beside last working PC → pick up → aisle → mailbox.
+    await walkPath([[160, ay], [sideX, ay]]);
     dashRef.current.carry = true;
     await sleep(250);
-    await walkPath([[ax, 206], [160, 206], [160, 198]]);
+    await walkPath([[160, ay], [160, 198]]);
     dashRef.current.carry = false;
     mailFlashRef.current = 60;
     log(`  ส่งคำตอบกลับแล้ว ✓ (${intent})`, "g");
