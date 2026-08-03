@@ -30,7 +30,7 @@ export type NewsPrefs = {
 };
 
 export type NewsOnboardingDraft = {
-  step: "ask" | "topics" | "count";
+  step: "ask" | "topics" | "count" | "manage" | "delete";
   topics: string[];
   ts: number;
 };

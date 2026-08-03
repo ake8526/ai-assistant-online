@@ -1,8 +1,9 @@
-// LINE news onboarding: ask → pick topics → set daily count.
+// LINE news onboarding + later “ตั้งค่าข่าว” manage menu.
 import { clampNewsCount, saveNotifyKind } from "@/lib/notify";
 import {
   NEWS_TOPIC_PRESETS,
   clearNewsDraft,
+  getNewsPrefs,
   loadNewsDraft,
   presetById,
   saveNewsDraft,
@@ -10,20 +11,42 @@ import {
   setNewsOnboardingDone,
   setNewsTopics,
 } from "@/lib/newsPrefs";
+import { listManagedFeeds } from "@/lib/feeds";
 import { getLineId, pushLineMessages, replyLine, replyLineMessages } from "@/lib/line";
 
-function qr(items: { label: string; data: string; displayText?: string }[]) {
+const APP_BASE = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/$/, "");
+const SETTINGS_URL = `${APP_BASE}/consents`;
+
+function qr(items: { label: string; data?: string; uri?: string; displayText?: string }[]) {
   return {
-    items: items.slice(0, 13).map((it) => ({
-      type: "action",
-      action: {
-        type: "postback",
-        label: it.label.slice(0, 20),
-        data: it.data,
-        displayText: (it.displayText || it.label).slice(0, 60),
-      },
-    })),
+    items: items.slice(0, 13).map((it) => {
+      if (it.uri) {
+        return {
+          type: "action",
+          action: { type: "uri", label: it.label.slice(0, 20), uri: it.uri },
+        };
+      }
+      return {
+        type: "action",
+        action: {
+          type: "postback",
+          label: it.label.slice(0, 20),
+          data: it.data || "",
+          displayText: (it.displayText || it.label).slice(0, 60),
+        },
+      };
+    }),
   };
+}
+
+async function send(via: "push" | "reply", upn: string, messages: object[], replyToken?: string) {
+  if (via === "reply" && replyToken) {
+    await replyLineMessages(replyToken, messages);
+    return;
+  }
+  const lineId = await getLineId(upn);
+  if (!lineId) throw new Error("ยังไม่ได้เชื่อม LINE");
+  await pushLineMessages(lineId, messages);
 }
 
 export function askInterestedMessage(): object {
@@ -60,7 +83,6 @@ function topicsPrompt(selected: string[]): object {
       displayText: "เลือกหัวข้อเสร็จแล้ว",
     });
   }
-  // Only show unselected topics as buttons
   for (const p of remaining) {
     actions.push({
       label: p.label.slice(0, 20),
@@ -102,26 +124,114 @@ function countPrompt(): object {
   };
 }
 
-/** Start or resume onboarding for a user. */
+function countLabel(n: number): string {
+  return n === 0 ? "ทั้งหมดที่เกี่ยวข้องวันนี้" : `วันละ ${n} เรื่อง`;
+}
+
+async function buildFollowListText(upn: string): Promise<string> {
+  const prefs = await getNewsPrefs(upn);
+  const feeds = await listManagedFeeds(upn).catch(() => []);
+  const lines = ["📰 รายการที่คุณติดตามอยู่ตอนนี้", ""];
+
+  if (!prefs.interested) {
+    lines.push("สถานะ: ปิดการติดตามข่าวอัตโนมัติ");
+  } else {
+    lines.push(`สถานะ: เปิดติดตาม · อัปเดต ${countLabel(prefs.count)}`);
+  }
+  lines.push("");
+
+  if (prefs.topics.length) {
+    lines.push("หัวข้อข่าว:");
+    prefs.topics.forEach((t, i) => lines.push(`  ${i + 1}. ${t}`));
+  } else {
+    lines.push("หัวข้อข่าว: (ยังไม่มี)");
+  }
+  lines.push("");
+
+  if (feeds.length) {
+    lines.push("แหล่ง RSS / Facebook:");
+    feeds.forEach((f, i) => {
+      const kind = f.kind === "facebook" ? "FB" : "RSS";
+      lines.push(`  ${i + 1}. [${kind}] ${(f.label || "").trim() || f.ref}`);
+    });
+  } else {
+    lines.push("แหล่ง RSS / Facebook: (ยังไม่มี — เพิ่มได้ที่หน้าตั้งค่า)");
+  }
+
+  lines.push("");
+  lines.push("ต้องการทำอะไรต่อครับ?");
+  return lines.join("\n");
+}
+
+function manageMenuMessage(listText: string): object {
+  return {
+    type: "text",
+    text: listText,
+    quickReply: qr([
+      { label: "➕ เพิ่มหัวข้อ", data: "a=newsadd", displayText: "เพิ่มหัวข้อข่าว" },
+      { label: "🗑 ลบหัวข้อ", data: "a=newsdel", displayText: "ลบหัวข้อข่าว" },
+      { label: "✏️ กำหนดเอง", data: "a=newscustom", displayText: "พิมพ์หัวข้อเอง" },
+      { label: "🔢 จำนวนข่าว/วัน", data: "a=newseditcount", displayText: "เปลี่ยนจำนวนข่าวต่อวัน" },
+      { label: "🌐 หน้าตั้งค่า", uri: SETTINGS_URL },
+    ]),
+  };
+}
+
+function deletePrompt(topics: string[]): object {
+  if (!topics.length) {
+    return {
+      type: "text",
+      text: "ยังไม่มีหัวข้อให้ลบครับ",
+      quickReply: qr([{ label: "กลับเมนู", data: "a=newsmenu", displayText: "ตั้งค่าข่าว" }]),
+    };
+  }
+  const lines = topics.map((t, i) => `${i + 1}) ${t}`).join("\n");
+  return {
+    type: "text",
+    text: `เลือกหัวข้อที่ต้องการลบครับ\n\n${lines}`,
+    quickReply: qr([
+      ...topics.slice(0, 10).map((t, i) => ({
+        label: `${i + 1}`,
+        data: `a=newsdeli&i=${i + 1}`,
+        displayText: `ลบ ${t}`,
+      })),
+      { label: "🔙 กลับ", data: "a=newsmenu", displayText: "กลับเมนูตั้งค่าข่าว" },
+    ]),
+  };
+}
+
+/** Manage menu for users who already finished onboarding. */
+export async function openNewsSettings(upn: string, via: "push" | "reply", replyToken?: string): Promise<void> {
+  const prefs = await getNewsPrefs(upn);
+  await saveNewsDraft(upn, { step: "manage", topics: prefs.topics, ts: Date.now() });
+  const listText = await buildFollowListText(upn);
+  await send(via, upn, [manageMenuMessage(listText)], replyToken);
+}
+
+/** Start or resume first-time onboarding. */
 export async function startNewsOnboarding(upn: string, via: "push" | "reply", replyToken?: string): Promise<void> {
+  const prefs = await getNewsPrefs(upn);
+  // Already set up → show manage menu instead of welcome again
+  if (prefs.onboardingDone) {
+    await openNewsSettings(upn, via, replyToken);
+    return;
+  }
+
   const existing = await loadNewsDraft(upn);
   let msg: object;
   if (existing?.step === "topics") {
     msg = topicsPrompt(existing.topics || []);
   } else if (existing?.step === "count") {
     msg = countPrompt();
+  } else if (existing?.step === "delete" || existing?.step === "manage") {
+    await openNewsSettings(upn, via, replyToken);
+    return;
   } else {
     await saveNewsDraft(upn, { step: "ask", topics: existing?.topics || [], ts: Date.now() });
     await setNewsOnboardingDone(upn, false);
     msg = askInterestedMessage();
   }
-  if (via === "reply" && replyToken) {
-    await replyLineMessages(replyToken, [msg]);
-    return;
-  }
-  const lineId = await getLineId(upn);
-  if (!lineId) throw new Error("ยังไม่ได้เชื่อม LINE");
-  await pushLineMessages(lineId, [msg]);
+  await send(via, upn, [msg], replyToken);
 }
 
 export async function handleNewsOnboardingText(
@@ -132,22 +242,36 @@ export async function handleNewsOnboardingText(
   const draft = await loadNewsDraft(upn);
   if (!draft) return false;
 
-  if (draft.step === "topics") {
-    const custom = text.trim().replace(/^สนใจ\s*/i, "").slice(0, 60);
+  if (draft.step === "topics" || draft.step === "manage") {
+    // Only treat as custom topic when mid topics-pick, or manage after "กำหนดเอง"
+    if (draft.step === "manage") return false;
+    const custom = text.trim().replace(/^(สนใจ|เพิ่ม)\s*/i, "").slice(0, 60);
     if (!custom) {
       await replyLine(replyToken, "พิมพ์หัวข้อที่อยากติดตามมาได้เลยครับ เช่น “เซมิคอนดักเตอร์”");
       return true;
     }
     if (!draft.topics.includes(custom)) draft.topics.push(custom);
     await saveNewsDraft(upn, { ...draft, step: "topics" });
-    await replyLineMessages(replyToken, [
-      topicsPrompt(draft.topics),
-    ]);
+    await replyLineMessages(replyToken, [topicsPrompt(draft.topics)]);
     return true;
   }
 
   return false;
 }
+
+const NEWS_ACTIONS = new Set([
+  "newsyes",
+  "newsno",
+  "newstopic",
+  "newscustom",
+  "newstopicsdone",
+  "newscount",
+  "newsadd",
+  "newsdel",
+  "newsdeli",
+  "newseditcount",
+  "newsmenu",
+]);
 
 export async function handleNewsOnboardingPostback(
   upn: string,
@@ -155,16 +279,68 @@ export async function handleNewsOnboardingPostback(
   replyToken: string
 ): Promise<boolean> {
   const a = data.get("a") || "";
-  if (!["newsyes", "newsno", "newstopic", "newscustom", "newstopicsdone", "newscount"].includes(a)) {
-    return false;
-  }
+  if (!NEWS_ACTIONS.has(a)) return false;
 
   let draft = await loadNewsDraft(upn);
+  const prefs = await getNewsPrefs(upn);
+
+  if (a === "newsmenu") {
+    await openNewsSettings(upn, "reply", replyToken);
+    return true;
+  }
+
+  if (a === "newsadd") {
+    const topics = draft?.topics?.length ? draft.topics : prefs.topics;
+    await saveNewsDraft(upn, { step: "topics", topics: [...topics], ts: Date.now() });
+    await replyLineMessages(replyToken, [topicsPrompt(topics)]);
+    return true;
+  }
+
+  if (a === "newsdel") {
+    const topics = prefs.topics;
+    await saveNewsDraft(upn, { step: "delete", topics: [...topics], ts: Date.now() });
+    await replyLineMessages(replyToken, [deletePrompt(topics)]);
+    return true;
+  }
+
+  if (a === "newsdeli") {
+    const idx = Number(data.get("i") || 0);
+    const topics = [...(prefs.topics || [])];
+    if (idx >= 1 && idx <= topics.length) {
+      const removed = topics.splice(idx - 1, 1)[0];
+      await setNewsTopics(upn, topics);
+      await saveNewsDraft(upn, { step: "manage", topics, ts: Date.now() });
+      await replyLineMessages(replyToken, [
+        {
+          type: "text",
+          text: `✅ ลบหัวข้อแล้ว: ${removed}`,
+        },
+        manageMenuMessage(await buildFollowListText(upn)),
+      ]);
+    } else {
+      await replyLineMessages(replyToken, [deletePrompt(topics)]);
+    }
+    return true;
+  }
+
+  if (a === "newseditcount") {
+    await saveNewsDraft(upn, {
+      step: "count",
+      topics: prefs.topics,
+      ts: Date.now(),
+    });
+    await replyLineMessages(replyToken, [countPrompt()]);
+    return true;
+  }
+
   if (!draft && (a === "newsyes" || a === "newsno")) {
     draft = { step: "ask", topics: [], ts: Date.now() };
   }
+  if (!draft && ["newstopic", "newscustom", "newstopicsdone", "newscount"].includes(a)) {
+    draft = { step: "topics", topics: [...prefs.topics], ts: Date.now() };
+  }
   if (!draft) {
-    await replyLine(replyToken, "เริ่มตั้งค่าข่าวใหม่ได้ด้วยการพิมพ์ “ตั้งค่าข่าว” ครับ");
+    await openNewsSettings(upn, "reply", replyToken);
     return true;
   }
 
@@ -222,6 +398,13 @@ export async function handleNewsOnboardingPostback(
       return true;
     }
     await setNewsTopics(upn, draft.topics);
+    // If already onboarded, skip count and return to manage menu
+    if (prefs.onboardingDone) {
+      await setNewsInterested(upn, true);
+      await clearNewsDraft(upn);
+      await openNewsSettings(upn, "reply", replyToken);
+      return true;
+    }
     draft.step = "count";
     await saveNewsDraft(upn, draft);
     await replyLineMessages(replyToken, [countPrompt()]);
@@ -231,18 +414,22 @@ export async function handleNewsOnboardingPostback(
   if (a === "newscount") {
     const n = clampNewsCount(data.get("n"));
     await saveNotifyKind(upn, "news", { enabled: true, count: n });
-    await setNewsTopics(upn, draft.topics);
+    await setNewsTopics(upn, draft.topics.length ? draft.topics : prefs.topics);
     await setNewsInterested(upn, true);
     await setNewsOnboardingDone(upn, true);
     await clearNewsDraft(upn);
-    const countLabel = n === 0 ? "ทั้งหมดที่เกี่ยวข้องวันนี้" : `วันละ ${n} เรื่อง`;
+    if (prefs.onboardingDone) {
+      await openNewsSettings(upn, "reply", replyToken);
+      return true;
+    }
     await replyLine(
       replyToken,
       "✅ ตั้งค่าข่าวเรียบร้อยครับ\n\n" +
-        `หัวข้อ: ${draft.topics.join(", ")}\n` +
-        `อัปเดต: ${countLabel}\n\n` +
+        `หัวข้อ: ${(draft.topics.length ? draft.topics : prefs.topics).join(", ") || "-"}\n` +
+        `อัปเดต: ${countLabel(n)}\n\n` +
         "ตอนเช้าจะสรุปข่าวตามหัวข้อเหล่านี้ให้ และถาม “มีข่าวอะไรบ้าง” ได้ตลอดครับ\n" +
-        "เปลี่ยนหัวข้อภายหลัง พิมพ์ “ตั้งค่าข่าว” ได้เลย"
+        "เปลี่ยนภายหลัง พิมพ์ “ตั้งค่าข่าว” ได้เลย\n" +
+        `หรือเปิดหน้าตั้งค่า: ${SETTINGS_URL}`
     );
     return true;
   }
@@ -251,5 +438,5 @@ export async function handleNewsOnboardingPostback(
 }
 
 export function isNewsOnboardingAction(a: string): boolean {
-  return ["newsyes", "newsno", "newstopic", "newscustom", "newstopicsdone", "newscount"].includes(a);
+  return NEWS_ACTIONS.has(a);
 }

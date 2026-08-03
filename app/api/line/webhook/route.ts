@@ -6,6 +6,7 @@ import {
   handleNewsOnboardingPostback,
   handleNewsOnboardingText,
   isNewsOnboardingAction,
+  openNewsSettings,
   startNewsOnboarding,
 } from "@/lib/newsOnboarding";
 import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
@@ -402,7 +403,12 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     // News onboarding (custom topic text / resume)
     if (await handleNewsOnboardingText(upn, text, ev.replyToken)) return;
     if (/^(ตั้งค่าข่าว|ตั้งค่าติดตามข่าว|เริ่มติดตามข่าว)$/i.test(text)) {
-      await startNewsOnboarding(upn, "reply", ev.replyToken);
+      const prefs = await getNewsPrefs(upn);
+      if (prefs.onboardingDone) {
+        await openNewsSettings(upn, "reply", ev.replyToken);
+      } else {
+        await startNewsOnboarding(upn, "reply", ev.replyToken);
+      }
       return;
     }
     // First-time linked user → news onboarding before normal chat
