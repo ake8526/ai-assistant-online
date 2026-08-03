@@ -25,27 +25,50 @@ async function getYouTubeFollowStatus(upn: string): Promise<{
   channel: string | null;
   granted: boolean;
 }> {
-  const [{ data: tok }, { data: cons }] = await Promise.all([
-    admin
-      .from("oauth_tokens")
-      .select("refresh_token, account_email, account_name, account_channel")
-      .eq("owner_upn", upn)
-      .eq("provider", "google")
-      .maybeSingle(),
-    admin
+  const owner = upn.toLowerCase().trim();
+
+  // Match /api/oauth/google/status: only require refresh_token first.
+  // account_* columns may be missing on older DBs — never treat that as "not linked".
+  const { data: tok, error: tokErr } = await admin
+    .from("oauth_tokens")
+    .select("refresh_token")
+    .eq("owner_upn", owner)
+    .eq("provider", "google")
+    .maybeSingle();
+  if (tokErr) console.error("yt status token", tokErr.message);
+  const linked = !!tok?.refresh_token;
+
+  let email: string | null = null;
+  let channel: string | null = null;
+  if (linked) {
+    try {
+      const { data: cached } = await admin
+        .from("oauth_tokens")
+        .select("account_email, account_name, account_channel")
+        .eq("owner_upn", owner)
+        .eq("provider", "google")
+        .maybeSingle();
+      email = cached?.account_email || null;
+      channel = cached?.account_channel || null;
+    } catch {
+      /* optional columns */
+    }
+  }
+
+  let granted = linked;
+  try {
+    const { data: cons } = await admin
       .from("consents")
       .select("granted")
-      .eq("owner_upn", upn)
+      .eq("owner_upn", owner)
       .eq("capability", "src_youtube")
-      .maybeSingle(),
-  ]);
-  const linked = !!tok?.refresh_token;
-  return {
-    linked,
-    email: (tok as { account_email?: string } | null)?.account_email || null,
-    channel: (tok as { account_channel?: string } | null)?.account_channel || null,
-    granted: cons?.granted !== false && linked, // default on when linked
-  };
+      .maybeSingle();
+    if (cons && cons.granted === false) granted = false;
+  } catch {
+    /* ignore */
+  }
+
+  return { linked, email, channel, granted };
 }
 
 function qr(items: { label: string; data?: string; uri?: string; displayText?: string }[]) {
