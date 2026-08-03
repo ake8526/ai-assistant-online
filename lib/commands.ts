@@ -162,6 +162,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - add_task: { "title": "...", "responsible": "...", "due": "YYYY-MM-DD HH:MM หรือ null" }
 - complete_task: { "task_id": <number> }
 - find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "weekday": "mon|tue|… (ถ้าพูดชื่อวัน เช่น วันจันทร์นี้)", "date": "YYYY-MM-DD หรือ 31 (ถ้าเจาะจงวันที่)", "period": "today|tomorrow|week (ถ้าไม่ได้เจาะจงวัน)", "after": "HH:MM (เช้า/บ่าย/เย็น หรือหลัง…)", "before": "HH:MM", "note": "..." }
+- cancel_meeting: { "person": "ชื่อ/อีเมลคนในนัด ถ้าผู้ใช้ระบุ เช่น ยกเลิกนัดกับเบส (ถ้าไม่ระบุ = โชว์รายการทั้งหมด)" }
 - get_brief / get_news / list_tasks / summarize_meetings / list_feeds: {}
 - prep_meeting: { "meeting_index": 1 }  หรือ { "subject": "ชื่อนัดถ้าพิมพ์ชื่อ" }
 - add_feed: { "url": "ลิงก์เพจหรือ RSS", "kind": "rss|facebook (ถ้าชัดเจน)", "label": "ชื่อย่อ (ถ้ามี)" }
@@ -226,6 +227,8 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 (หมายเหตุ: ถ้าผู้ใช้ระบุวัน เช่น "วันจันทร์นี้/เสาร์หน้า/วันที่ 5" ต้องใส่ weekday หรือ date ด้วยเสมอ ห้ามปล่อยให้ค้นทั้งสัปดาห์)
 (หมายเหตุ: follow-up เรื่องเช้า/บ่าย/เย็น หลัง find_meeting_time ต้องคง intent เป็น find_meeting_time ห้ามสลับไป my_availability ของคนเดียว)
 "ยกเลิกนัด" -> {"intent":"cancel_meeting","params":{}}
+"ยกเลิกนัดกับเบส" -> {"intent":"cancel_meeting","params":{"person":"เบส"}}
+"ยกเลิกประชุมพี่นนท์" -> {"intent":"cancel_meeting","params":{"person":"พี่นนท์"}}
 "เปิดแผนที่ไปที่ทำงาน" -> {"intent":"open_map","params":{}}
 "วางแผนเดินทางไปทำงานพรุ่งนี้" -> {"intent":"plan_commute","params":{"place":"work","period":"tomorrow"}}
 "พรุ่งนี้ควรออกจากบ้านกี่โมง" -> {"intent":"plan_commute","params":{"place":"work","period":"tomorrow"}}
@@ -436,11 +439,28 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     };
   }
 
+  // "ยกเลิกนัด" / "ยกเลิกนัดกับเบส"
+  const cancel = quickCancelIntent(t);
+  if (cancel) return cancel;
+
   // "นัดเบสวันนี้ 10นาทีตอน 13:50 เรื่อง X" → book/find meeting (not add_task)
   const book = quickBookIntent(t);
   if (book) return book;
 
   return null;
+}
+
+/** Deterministic cancel — keeps person filter when user says “ยกเลิกนัดกับเบส”. */
+function quickCancelIntent(text: string): { intent: string; params: Record<string, unknown> } | null {
+  const t = text.trim().replace(/\s+/g, " ");
+  if (!t) return null;
+  if (!/^(?:ยกเลิก|ลบ|เลิก)(?:นัด|ประชุม)/i.test(t)) return null;
+  const m = t.match(/^(?:ยกเลิก|ลบ|เลิก)(?:นัด|ประชุม)?(?:กับ|ของ)?\s*(.*)$/i);
+  let rest = (m?.[1] || "").trim().replace(/\s*(หน่อย|ครับ|ค่ะ|คะ|นะ)$/u, "").trim();
+  if (!rest || /^(วันนี้|พรุ่งนี้|ทั้งหมด|นี้)$/i.test(rest)) {
+    return { intent: "cancel_meeting", params: {} };
+  }
+  return { intent: "cancel_meeting", params: { person: rest } };
 }
 
 /** Deterministic parse for “นัด/จอง + ชื่อคน (+ วัน/เวลา/เรื่อง)” — avoids LLM mistaking เรื่อง… as add_task. */
@@ -875,6 +895,53 @@ function attendeeFromToken(raw: string, userUpn: string): MtAttendee {
   }
   return { name: s };
 }
+
+async function resolveCancelPersonMails(hint: string, userUpn: string): Promise<string[]> {
+  const a = attendeeFromToken(hint, userUpn);
+  if (a.mail) return [a.mail.toLowerCase()];
+  try {
+    const cands = await searchUsers(hint);
+    return cands.map((c) => (c.mail || "").toLowerCase()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function eventTouchesPerson(ev: GraphEvent, hint: string, mails: string[]): boolean {
+  const h = hint.trim().toLowerCase();
+  const parts: string[] = [ev.subject || ""];
+  for (const a of ev.attendees || []) {
+    parts.push(a.emailAddress?.name || "", a.emailAddress?.address || "");
+  }
+  const org = ev.organizer;
+  if (org?.emailAddress) {
+    parts.push(org.emailAddress.name || "", org.emailAddress.address || "");
+  }
+  const blob = parts.join(" ").toLowerCase();
+  if (h && blob.includes(h)) return true;
+  for (const m of mails) {
+    if (!m) continue;
+    if (blob.includes(m)) return true;
+    const local = m.split("@")[0];
+    if (local && blob.includes(local)) return true;
+  }
+  return false;
+}
+
+function cancelEventLabel(ev: GraphEvent): string {
+  const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+  const when = sd ? fmtDateTime(sd) : "?";
+  const subj = ev.subject || "(ไม่มีหัวข้อ)";
+  const others = (ev.attendees || [])
+    .map((a) => a.emailAddress?.name || a.emailAddress?.address || "")
+    .filter(Boolean)
+    .map((s) => (s.includes("@") ? s.split("@")[0]! : s))
+    .filter((s, i, arr) => arr.findIndex((x) => x.toLowerCase() === s.toLowerCase()) === i)
+    .slice(0, 3);
+  const who = others.length ? ` · ${others.join(", ")}` : "";
+  return `${when} — ${subj}${who}`;
+}
+
 type MtWindow = { start: Date; end: Date; label: string };
 
 /** Extract a day hint from free text even if the LLM missed weekday/date params. */
@@ -1756,13 +1823,29 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     const denied = needCalendarConsent();
     if (denied) return denied;
     const { start, end } = periodRange("upcoming");
-    const events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
+    let events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
     if (!events.length) return { intent, reply: "ไม่มีนัดที่จะยกเลิกในช่วง 2 สัปดาห์ข้างหน้าครับ" };
-    const choices = events.map((ev) => {
-      const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
-      return { event_id: ev.id, label: `${sd ? fmtDateTime(sd) : "?"} — ${ev.subject || "(ไม่มีหัวข้อ)"}` };
-    });
-    return { intent: "choose_cancel", reply: "เลือกนัดที่ต้องการยกเลิกครับ 👇", choices };
+
+    const personHint = String(params.person || "").trim();
+    if (personHint) {
+      const mails = await resolveCancelPersonMails(personHint, userUpn);
+      const filtered = events.filter((ev) => eventTouchesPerson(ev, personHint, mails));
+      if (!filtered.length) {
+        const choices = events.map((ev) => ({ event_id: ev.id!, label: cancelEventLabel(ev) }));
+        return {
+          intent: "choose_cancel",
+          reply: `ไม่พบนัดที่เกี่ยวกับ “${personHint}” ครับ — เลือกรายการทั้งหมดได้ด้านล่าง 👇`,
+          choices,
+        };
+      }
+      events = filtered;
+    }
+
+    const choices = events.map((ev) => ({ event_id: ev.id!, label: cancelEventLabel(ev) }));
+    const reply = personHint
+      ? `เจอนัดที่เกี่ยวกับ “${personHint}” ${choices.length} รายการ — เลือกที่ยกเลิกครับ 👇`
+      : "เลือกนัดที่ต้องการยกเลิกครับ 👇";
+    return { intent: "choose_cancel", reply, choices };
   }
 
   if (intent === "list_tasks") {
