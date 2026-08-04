@@ -12,9 +12,8 @@ const GRAPH_SCOPE = [
   "People.Read",
   "Calendars.Read",
   "Calendars.ReadWrite",
-  "Files.Read.All",
 ].join(" ");
-/** Fallback when stored token predates People.Read / Files.Read.All — keep calendar working. */
+/** Fallback when stored token predates People.Read — keep calendar working. */
 const GRAPH_SCOPE_CALENDAR = [
   "openid",
   "profile",
