@@ -640,11 +640,6 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
 
   let body = t;
   let note: string | undefined;
-  const subjM = body.match(/\sเรื่อง\s+(.+)$/i);
-  if (subjM) {
-    note = subjM[1].trim();
-    body = body.slice(0, subjM.index).trim();
-  }
 
   let duration_min = 30;
   const durHr = body.match(/(\d+)\s*(?:ชม\.?|ชั่วโมง|hr|hour)/i);
@@ -659,12 +654,26 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
 
   let after: string | undefined;
   let at: string | undefined;
-  const timeM =
-    body.match(/(?:ตอน|เวลา|ที่)\s*(\d{1,2}:\d{2})/i) || body.match(/\b(\d{1,2}:\d{2})\b/);
-  if (timeM) {
-    at = timeM[1].length === 4 ? `0${timeM[1]}` : timeM[1].padStart(5, "0");
-    after = at; // also keep after for fallback suggestions after the asked time
-    body = body.replace(timeM[0], " ").replace(/\s+/g, " ").trim();
+  // Range first: "17:30-18:00" / "17.30–18.00" → exact start + duration
+  const rangeM = body.match(/(\d{1,2})[:.](\d{2})\s*(?:[-–—]|ถึง)\s*(\d{1,2})[:.](\d{2})/);
+  if (rangeM) {
+    const sh = Number(rangeM[1]);
+    const sm = Number(rangeM[2]);
+    const eh = Number(rangeM[3]);
+    const em = Number(rangeM[4]);
+    at = `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}`;
+    const mins = eh * 60 + em - (sh * 60 + sm);
+    if (mins >= 5 && mins <= 8 * 60) duration_min = mins;
+    after = at;
+    body = body.replace(rangeM[0], " ").replace(/\s+/g, " ").trim();
+  } else {
+    const timeM =
+      body.match(/(?:ตอน|เวลา|ที่)\s*(\d{1,2}:\d{2})/i) || body.match(/\b(\d{1,2}:\d{2})\b/);
+    if (timeM) {
+      at = timeM[1].length === 4 ? `0${timeM[1]}` : timeM[1].padStart(5, "0");
+      after = at;
+      body = body.replace(timeM[0], " ").replace(/\s+/g, " ").trim();
+    }
   }
 
   let period: string | undefined;
@@ -679,6 +688,13 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
     body = body.replace(/มะรืน(นี้)?/g, " ");
   }
   body = body.replace(/\s+/g, " ").trim();
+
+  // Subject after peeling day/time so “เรื่อง test วันนี้ 17:30-18:00” → note=test
+  const subjM = body.match(/\sเรื่อง\s+(.+)$/i);
+  if (subjM) {
+    note = subjM[1].trim().replace(/[.,]+$/g, "").trim();
+    body = body.slice(0, subjM.index).trim();
+  }
 
   body = body
     .replace(/^(?:ส่งนัดหา|ส่งนัด|นัดหา|เชิญ|invite)\s*/i, "")
@@ -1511,6 +1527,42 @@ export async function runFindMeeting(
         ? `ส่งคำขอนัดแล้ว — รออีกฝั่งยืนยัน ⏳\n${subject} — ${s.label}`
         : `จองให้เลยตามที่ตั้งค่าไว้ ✅\n${subject} — ${s.label}`;
     return { intent: "find_meeting_time", reply: head + held.note };
+  }
+
+  // User already named an exact clock time (e.g. 17:30-18:00) and it's free → book it, don't ask again.
+  if (resolvedAt != null && !opts?.showMore) {
+    const exact = result.slots.find((s) => {
+      const start = parseWall(s.start);
+      if (!start) return false;
+      return start.getUTCHours() * 60 + start.getUTCMinutes() === resolvedAt;
+    });
+    if (exact) {
+      const held = await bookMeetingWithLineHold({
+        organizerUpn: userUpn,
+        subject,
+        startIso: exact.start,
+        endIso: exact.end,
+        attendees: resolved,
+        create: () => createEvent(userUpn, subject, exact.start, exact.end, resolved),
+      });
+      const whoLine = who.includes("\n") ? `👤 ${who}\n` : `👤 ${who}\n`;
+      const head =
+        held.mode === "proposed"
+          ? `ส่งคำขอนัดตามเวลาที่ระบุแล้ว — รออีกฝั่งยืนยัน ⏳\n${subject} — ${exact.label}`
+          : `ส่งนัดตามเวลาที่ระบุแล้ว ✅\n${subject} — ${exact.label}`;
+      return {
+        intent: "find_meeting_time",
+        reply: head + `\n${whoLine}` + held.note,
+        meeting: {
+          attendees: resolved,
+          duration,
+          subject,
+          window: window
+            ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
+            : undefined,
+        },
+      };
+    }
   }
 
   const afterHoursNote = pageHasAfterHours
@@ -2652,12 +2704,32 @@ async function handleParsed(
     if (!attendees.length) {
       return { intent: "find_meeting_time", reply: "ยังไม่ทราบว่าจะนัดกับใครครับ ลองระบุชื่อคนที่ต้องการดูตารางด้วยนะครับ" };
     }
-    const subject = String(params.note || params.subject || "ประชุม").trim() || "ประชุม";
-    const atMin = parseHHMM(params.at);
+    let subject = String(params.note || params.subject || "ประชุม").trim() || "ประชุม";
+    let atMin = parseHHMM(params.at);
+    let meetDuration = duration;
+
+    // Recover exact range from text when LLM/subject swallowed “17:30-18:00”
+    const rangeHit = text.match(/(\d{1,2})[:.](\d{2})\s*(?:[-–—]|ถึง)\s*(\d{1,2})[:.](\d{2})/);
+    if (rangeHit) {
+      const startMin = Number(rangeHit[1]) * 60 + Number(rangeHit[2]);
+      const endMin = Number(rangeHit[3]) * 60 + Number(rangeHit[4]);
+      if (atMin == null) atMin = startMin;
+      const span = endMin - startMin;
+      if (span >= 5 && span <= 8 * 60) meetDuration = span;
+      subject = subject
+        .replace(rangeHit[0], " ")
+        .replace(/\bวันนี้\b|\bพรุ่งนี้\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim() || "ประชุม";
+    } else if (atMin == null) {
+      const single = text.match(/(?:ตอน|เวลา|ที่)\s*(\d{1,2}:\d{2})/i) || text.match(/\b(\d{1,2}:\d{2})\b/);
+      if (single) atMin = parseHHMM(single[1]);
+    }
+
     return runFindMeeting(
       userUpn,
       attendees,
-      duration,
+      meetDuration,
       window,
       band,
       wantsLunchIncluded(text),
