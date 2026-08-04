@@ -27,7 +27,7 @@ export const graphCalendarRequest: PopupRequest = {
     "User.Read",
     "People.Read",
     "Calendars.Read",
-    "Calendars.Read.Shared",
     "Calendars.ReadWrite",
+    "Files.Read.All",
   ],
 };
