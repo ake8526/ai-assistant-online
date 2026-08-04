@@ -157,15 +157,21 @@ export async function chat(
     throw new Error("No LLM provider configured (set QWEN_API_KEY, GROQ_API_KEY, and/or GEMINI_API_KEY)");
   }
 
+  const stage = opts?.json ? "parse" : "compose";
   const errors: string[] = [];
   for (let i = 0; i < chain.length; i++) {
     const provider = chain[i];
+    const cfg = settings(provider)!;
+    const tag = `${provider.toUpperCase()} · ${cfg.model}`;
     try {
+      // Monitor Agent Room: show which API key/provider is actively calling.
+      trace(stage, `LLM ${tag}`, "start");
       const out = await callProvider(provider, system, user, opts);
-      // Monitor: non-JSON calls are natural-language generation → "compose" stage.
-      // JSON calls (intent parsing / extraction) are traced explicitly at their
-      // call sites, so skip them here to avoid double-counting.
-      if (!opts?.json) trace("compose", `เขียนคำตอบ (${provider})`);
+      if (opts?.json) {
+        trace("parse", `LLM ${tag} ✓`);
+      } else {
+        trace("compose", `เขียนคำตอบ (${provider} · ${cfg.model})`);
+      }
       return out;
     } catch (e) {
       const short =
@@ -173,10 +179,36 @@ export async function chat(
           ? `${e.provider} ${e.status}`
           : String(e).slice(0, 120);
       errors.push(short);
+      trace(stage, `LLM ${tag} ล้มเหลว (${short})`, "error");
       if (i + 1 < chain.length) {
         console.warn(`[llm] ${provider} failed; trying ${chain[i + 1]} next — ${short}`);
+        trace(stage, `fallback → ${chain[i + 1]}`, "start");
       }
     }
   }
   throw new Error(`All LLM providers failed — ${errors.join(" | ")}`);
+}
+
+/** Safe (no secrets) LLM status for /monitor — which keys are configured + chain order. */
+export function llmMonitorInfo(): {
+  chain: string[];
+  ready: { id: string; model: string; keyEnv: string }[];
+} {
+  const known: Provider[] = ["qwen", "groq", "gemini"];
+  const raw = (process.env.LLM_PROVIDER || "qwen,groq,gemini").toLowerCase();
+  const chain = raw.split(",").map((s) => s.trim()).filter((p) => known.includes(p as Provider));
+  const order = chain.length ? chain : known;
+  const keyEnv: Record<Provider, string> = {
+    qwen: process.env.QWEN_API_KEY ? "QWEN_API_KEY" : process.env.DASHSCOPE_API_KEY ? "DASHSCOPE_API_KEY" : "QWEN_API_KEY",
+    groq: "GROQ_API_KEY",
+    gemini: process.env.GEMINI_API_KEY ? "GEMINI_API_KEY" : process.env.GOOGLE_API_KEY ? "GOOGLE_API_KEY" : "GEMINI_API_KEY",
+  };
+  const ready = (order as Provider[])
+    .map((id) => {
+      const s = settings(id);
+      if (!s) return null;
+      return { id, model: s.model, keyEnv: keyEnv[id] };
+    })
+    .filter(Boolean) as { id: string; model: string; keyEnv: string }[];
+  return { chain: order, ready };
 }

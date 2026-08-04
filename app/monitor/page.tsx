@@ -49,6 +49,9 @@ const CSS = `
 .mon header .tag{font-size:19px;color:var(--dim);margin-top:2px}
 .mon header .spacer{flex:1}
 .mon .badge{font-size:16px;color:var(--dim);border:1px solid var(--hair);padding:3px 8px}.mon .badge b{color:var(--green)}
+.mon .badge.llm b{color:var(--amber)}
+.mon .badge.llm.hot b{color:#fff;animation:monpulse .7s steps(1) infinite}
+.mon .badges{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .mon .panel{border:2px solid var(--hair);background:var(--panel);margin-bottom:12px}
 .mon .ph{font-family:'Press Start 2P';font-size:9px;color:var(--dim);padding:9px 11px;border-bottom:2px solid var(--hair);background:var(--panel2);display:flex;justify-content:space-between}
 .mon .ph .live{color:var(--red)}
@@ -95,6 +98,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const logRef = useRef<HTMLDivElement | null>(null);
   const capRef = useRef<HTMLDivElement | null>(null);
   const hudRef = useRef<HTMLElement | null>(null);
+  const llmHudRef = useRef<HTMLElement | null>(null);
   const badgesRef = useRef<HTMLDivElement[]>([]);
 
   const statusRef = useRef<string[]>(AGENTS.map(() => "idle"));
@@ -108,6 +112,30 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const busyRef = useRef(false);
   const primedRef = useRef(false);
   const [status, setStatus] = useState("IDLE");
+  const [llmLabel, setLlmLabel] = useState("—");
+  const [llmHot, setLlmHot] = useState(false);
+  const [llmChain, setLlmChain] = useState("");
+  const lastLlmRef = useRef("—");
+
+  const parseLlm = (label: string): string | null => {
+    const m =
+      label.match(/LLM\s+([A-Z]+)\s*·\s*([^\s✓]+)/i) ||
+      label.match(/\(([a-z]+)\s*·\s*([^)]+)\)/i) ||
+      label.match(/\b(qwen|groq|gemini)\b/i);
+    if (!m) return null;
+    if (m[2]) return `${m[1].toUpperCase()} · ${m[2]}`;
+    return m[1].toUpperCase();
+  };
+
+  const setLlmHud = useCallback((text: string, hot = false) => {
+    lastLlmRef.current = text;
+    setLlmLabel(text);
+    setLlmHot(hot);
+    if (llmHudRef.current) {
+      llmHudRef.current.textContent = text;
+      llmHudRef.current.style.color = hot ? "#fff" : "var(--amber)";
+    }
+  }, []);
 
   const log = useCallback((m: string, c = "t") => {
     const el = logRef.current;
@@ -308,11 +336,27 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       log(`> คำขอใหม่จาก ${e.user} (${e.channel})`, "b");
       setHud("WORKING", "var(--amber)");
     }
+
+    const llmFromLabel = parseLlm(e.label);
+    if (llmFromLabel) {
+      if (e.status === "start" || /fallback/i.test(e.label)) {
+        setLlmHud(llmFromLabel, true);
+        log(`  API KEY → ${llmFromLabel}`, "a");
+      } else if (e.status === "error") {
+        setLlmHud(`${llmFromLabel} ✗`, false);
+        log(`  API KEY fail: ${e.label}`, "r");
+      } else {
+        setLlmHud(llmFromLabel, false);
+      }
+    }
+
     const step = e.step as StageId | "error";
     if (step === "error") {
       const i = STEP_TO_INDEX[(e.label.split(" ")[0] as StageId)] ?? 4;
       setAgent(i, "idle");
-      setHud("ERROR", "var(--red)");
+      // Keep showing which LLM failed; don't wipe to idle yet
+      if (!llmFromLabel) setHud("ERROR", "var(--red)");
+      else setHud("ERROR", "var(--red)");
       log(`  ! ${e.label}`, "r");
       return;
     }
@@ -324,7 +368,8 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       for (let i = 0; i < 4; i++) if (statusRef.current[i] === "work") setAgent(i, "done");
       await courierReply(intent);
       setHud("DELIVERED", "var(--green)");
-      setCap(`<b>เสร็จ</b> — ส่งคำตอบให้ ${e.user} แล้ว`);
+      setLlmHud(lastLlmRef.current === "—" ? "—" : lastLlmRef.current, false);
+      setCap(`<b>เสร็จ</b> — ส่งคำตอบให้ ${e.user} แล้ว` + (lastLlmRef.current !== "—" ? ` · LLM ${lastLlmRef.current}` : ""));
       return;
     }
 
@@ -332,17 +377,19 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     const a = AGENTS[idx];
     if (e.status === "start") {
       setAgent(idx, "work");
-      setCap(`<b>${a.name}</b> (${a.role}) — ${a.cap}`);
+      const capExtra = llmFromLabel ? ` · <b style="color:#f0b429">${llmFromLabel}</b>` : "";
+      setCap(`<b>${a.name}</b> (${a.role}) — ${a.cap}${capExtra}`);
       log(`[${a.name}] ${e.label}`, "a");
       await sleep(220);
     } else {
       setAgent(idx, "work");
-      setCap(`<b>${a.name}</b> (${a.role}) — ${a.cap}`);
+      const capExtra = llmFromLabel ? ` · <b style="color:#f0b429">${llmFromLabel}</b>` : "";
+      setCap(`<b>${a.name}</b> (${a.role}) — ${a.cap}${capExtra}`);
       log(`  ${a.role}: ${e.label}`, step === "fetch" ? "t" : "g");
       await sleep(step === "fetch" ? 160 : 360);
       if (step !== "fetch") setAgent(idx, "done");
     }
-  }, [courierReply, log, resetRoom, setAgent, setCap, setHud]);
+  }, [courierReply, log, resetRoom, setAgent, setCap, setHud, setLlmHud]);
 
   // ---- player: drains the queue in order with animation timing ----
   useEffect(() => {
@@ -379,6 +426,16 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
           });
           if (r.ok) {
             const d = await r.json();
+            if (d.llm?.ready?.length) {
+              const chain = d.llm.ready
+                .map((p: { id: string; model: string; keyEnv: string }) => `${p.id.toUpperCase()}(${p.keyEnv})`)
+                .join(" → ");
+              setLlmChain(chain);
+              if (lastLlmRef.current === "—" && d.llm.ready[0]) {
+                const first = d.llm.ready[0];
+                setLlmHud(`${first.id.toUpperCase()} · ${first.model}`, false);
+              }
+            }
             // Setup not done yet (table missing) → tell the user instead of a blank room.
             if (d.note && capRef.current && !queueRef.current.length) {
               capRef.current.innerHTML = '<b style="color:#f0b429">ยังไม่พร้อม</b> — รัน supabase/migration_agent_traces.sql ใน Supabase ก่อน แล้วรีเฟรช';
@@ -389,7 +446,10 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
               if (typeof d.cursor === "number") cursorRef.current = d.cursor;
               setHud("IDLE", "var(--dim)");
               if (capRef.current) {
-                capRef.current.innerHTML = "<b>พร้อม</b> — รอคำขอใหม่จาก LINE / Web";
+                const chainNote = d.llm?.ready?.length
+                  ? ` · API: ${d.llm.ready.map((p: { id: string }) => p.id.toUpperCase()).join(" → ")}`
+                  : "";
+                capRef.current.innerHTML = `<b>พร้อม</b> — รอคำขอใหม่จาก LINE / Web${chainNote}`;
               }
             } else if (Array.isArray(d.events) && d.events.length) {
               if (queueRef.current.length < 400) queueRef.current.push(...d.events);
@@ -420,7 +480,12 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
             <div className="tag">ดูงานจริงแบบสด — แสดงเฉพาะคำขอใหม่หลังเปิดหน้านี้ (ไม่เล่นซ้ำตอนรีเฟรช)</div>
           </div>
           <div className="spacer" />
-          <div className="badge">STATUS <b ref={(el) => { hudRef.current = el; }}>{status}</b></div>
+          <div className="badges">
+            <div className={`badge llm${llmHot ? " hot" : ""}`} title={llmChain || "AI API provider"}>
+              LLM <b ref={(el) => { llmHudRef.current = el; }}>{llmLabel}</b>
+            </div>
+            <div className="badge">STATUS <b ref={(el) => { hudRef.current = el; }}>{status}</b></div>
+          </div>
         </header>
 
         <div className="panel">
@@ -454,6 +519,15 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                   <span><span className="rl">{a.role}</span> <span className="rc">— {a.cap}</span></span>
                 </div>
               ))}
+              {llmChain ? (
+                <div className="row" style={{ marginTop: 10, alignItems: "flex-start" }}>
+                  <span className="sw" style={{ background: "#f0b429" }} />
+                  <span>
+                    <span className="rl">LLM KEYS</span>{" "}
+                    <span className="rc">— {llmChain}</span>
+                  </span>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

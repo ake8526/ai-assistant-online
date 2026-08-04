@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser, AuthError } from "@/lib/auth";
+import { llmMonitorInfo } from "@/lib/llm";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
 // Monitor feed for the /monitor "AI at work" view.
@@ -73,12 +74,13 @@ export async function GET(req: Request) {
           events: [],
           cursor: 0,
           note: "agent_traces table not found — run supabase/migration_agent_traces.sql",
+          llm: llmMonitorInfo(),
         });
       }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     const tip = ((data as { id: number }[]) || [])[0]?.id || 0;
-    return NextResponse.json({ events: [], cursor: tip, seeded: true });
+    return NextResponse.json({ events: [], cursor: tip, seeded: true, llm: llmMonitorInfo() });
   }
 
   let query = admin
@@ -106,7 +108,12 @@ export async function GET(req: Request) {
     const code = (error as { code?: string }).code || "";
     const missing = code === "42P01" || code === "PGRST205" || /could not find the table|schema cache|does not exist/i.test(error.message || "");
     if (missing) {
-      return NextResponse.json({ events: [], cursor: sinceId, note: "agent_traces table not found — run supabase/migration_agent_traces.sql" });
+      return NextResponse.json({
+        events: [],
+        cursor: sinceId,
+        note: "agent_traces table not found — run supabase/migration_agent_traces.sql",
+        llm: llmMonitorInfo(),
+      });
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -128,5 +135,5 @@ export async function GET(req: Request) {
   }));
 
   const cursor = events.length ? events[events.length - 1].id : sinceId;
-  return NextResponse.json({ events, cursor });
+  return NextResponse.json({ events, cursor, llm: llmMonitorInfo() });
 }
