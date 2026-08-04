@@ -18,6 +18,7 @@ import {
   UserInfo,
   createEvent,
   deleteEvent,
+  downloadDriveText,
   findDuplicateNicknames,
   getEventsRange,
   nowLocal,
@@ -1880,7 +1881,8 @@ async function handleParsed(
         return {
           intent,
           reply:
-            `ยังไม่ได้เลือกไฟล์ครับ พิมพ์เลขจากรายการ เช่น “สรุปอัน 1” หรือ “อ่านอัน 3” ได้เลย`,
+            `ยังไม่ได้เลือกไฟล์ครับ พิมพ์เลขจากรายการ เช่น “สรุปอัน 1” หรือ “อ่านอัน 3” ได้เลย\n` +
+            `(อ่านได้: Word / Excel / PowerPoint / ข้อความ — รูปภาพและไฟล์ .ai อ่านเป็นข้อความไม่ได้)`,
           suggestions: [
             { label: "สรุปอัน 1", text: "สรุปอัน 1" },
             { label: "สรุปอัน 2", text: "สรุปอัน 2" },
@@ -1892,24 +1894,80 @@ async function handleParsed(
     if (!target) {
       return { intent, reply: "ไม่พบไฟล์ที่ต้องการให้อ่านและสรุปครับ ลองพิมพ์ค้นหาไฟล์ก่อน เช่น “หาไฟล์ ...”" };
     }
+
     const fileName = target.name || "เอกสาร";
+    const fileUrl = target.url || "";
+    const linkLine = fileUrl ? `\n🔗 ${fileUrl}` : "";
+    const low = fileName.toLowerCase();
+
     if (target.is_folder) {
       return {
         intent,
-        reply: `📁 **โฟลเดอร์:** ${fileName}\n\n(เป็นโฟลเดอร์จัดเก็บเอกสาร สามารถคลิกเพื่อดูไฟล์ฉบับเต็มด้านในบน OneDrive ได้ครับ)`,
+        reply: `📁 **โฟลเดอร์:** ${fileName}${linkLine}\n\nเป็นโฟลเดอร์จัดเก็บเอกสาร — เปิดดูไฟล์ด้านในบน OneDrive ได้จากลิงก์ครับ`,
       };
     }
-    if ([".jpg", ".jpeg", ".png", ".gif"].some((ext) => fileName.toLowerCase().endsWith(ext))) {
+    if (/\.(jpg|jpeg|png|gif|webp|bmp|tiff?|svg)$/i.test(low)) {
       return {
         intent,
-        reply: `🖼️ **ไฟล์รูปภาพ:** ${fileName}\n\n(ไฟล์นี้เป็นรูปภาพ สามารถคลิกเปิดดูรูปภาพฉบับเต็มบน OneDrive ได้จากลิงก์ด้านบนครับ)`,
+        reply: `🖼️ **ไฟล์รูปภาพ:** ${fileName}${linkLine}\n\nเป็นรูปภาพ อ่านเป็นข้อความสรุปไม่ได้ครับ — เปิดดูรูปบน OneDrive ได้จากลิงก์`,
       };
     }
-    // Text extraction from Office ZIPs isn't ported yet — summarize what we can fetch as text.
-    return {
-      intent,
-      reply: `📄 **ไฟล์:** ${fileName}\n\n(สามารถคลิกเปิดดูไฟล์บน OneDrive ได้จากลิงก์ด้านบนครับ)`,
-    };
+    if (/\.(ai|psd|eps|indd)$/i.test(low)) {
+      return {
+        intent,
+        reply: `🎨 **ไฟล์ออกแบบ:** ${fileName}${linkLine}\n\nไฟล์ประเภทนี้ (เช่น Illustrator .ai) อ่านเป็นข้อความไม่ได้ครับ — เปิดดูบน OneDrive ได้จากลิงก์`,
+      };
+    }
+    if (/\.pdf$/i.test(low)) {
+      return {
+        intent,
+        reply: `📄 **ไฟล์ PDF:** ${fileName}${linkLine}\n\nยังสรุปเนื้อหา PDF อัตโนมัติไม่ได้ในตอนนี้ครับ — เปิดอ่านบน OneDrive ได้จากลิงก์`,
+      };
+    }
+
+    if (!target.id) {
+      return {
+        intent,
+        reply: `📄 **ไฟล์:** ${fileName}${linkLine}\n\nหาเนื้อหาไฟล์ไม่เจอครับ — ลองเปิดจากลิงก์ OneDrive`,
+      };
+    }
+
+    trace("compose", `อ่านไฟล์ ${fileName}`);
+    let body = "";
+    try {
+      body = await downloadDriveText(userUpn, target.id, 12000);
+    } catch {
+      body = "";
+    }
+    if (!body.trim()) {
+      return {
+        intent,
+        reply:
+          `📄 **ไฟล์:** ${fileName}${linkLine}\n\n` +
+          `ดึงข้อความจากไฟล์นี้ไม่สำเร็จครับ (อาจเป็นไฟล์ไบนารี/ล็อกสิทธิ์)\n` +
+          `รองรับสรุปอัตโนมัติ: .docx .xlsx .pptx .txt .md .csv .html`,
+      };
+    }
+
+    try {
+      const summary = await chat(
+        "คุณเป็นผู้ช่วยสรุปเอกสารสั้นๆ เป็นภาษาไทย อ่านเนื้อหาที่ให้แล้วสรุปประเด็นสำคัญ 3–8 ข้อ กระชับ ชัดเจน ห้ามแต่งข้อมูลที่ไม่มีในไฟล์",
+        `ชื่อไฟล์: ${fileName}\n\nเนื้อหา:\n${body.slice(0, 10000)}`,
+        { temperature: 0.2, timeoutMs: 25000 }
+      );
+      return {
+        intent,
+        reply: `📄 **สรุป: ${fileName}**${linkLine}\n\n${summary.trim()}`,
+      };
+    } catch (e) {
+      return {
+        intent,
+        reply:
+          `📄 **ไฟล์:** ${fileName}${linkLine}\n\n` +
+          `อ่านไฟล์ได้บางส่วน แต่สรุปด้วย AI ไม่สำเร็จ: ${llmUserErrorMessage(e)}\n\n` +
+          `ข้อความต้นทาง (ตัดสั้น):\n${body.slice(0, 1200)}`,
+      };
+    }
   }
 
   if (intent === "get_brief") {

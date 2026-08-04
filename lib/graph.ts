@@ -3,6 +3,7 @@
 // - Interactive (chat/LINE): when a delegated user token is in graphAuth ALS,
 //   calls run as that user so calendar visibility matches Microsoft 365 /
 //   Outlook sharing & free-busy permissions.
+import { inflateRawSync } from "zlib";
 import { getUserGraphToken, runAsAppOnly } from "@/lib/graphAuth";
 import { trace } from "@/lib/trace";
 
@@ -177,21 +178,156 @@ export async function getEventAttachments(userUpn: string, eventId: string): Pro
   }
 }
 
-/** Download a drive file as text (best-effort for .txt/.md/.csv/.html). */
-export async function downloadDriveText(userUpn: string, itemId: string, maxChars = 8000): Promise<string> {
-  try {
-    const r = await graphFetch(`/users/${encodeURIComponent(userUpn)}/drive/items/${encodeURIComponent(itemId)}/content`);
-    if (!r.ok) return "";
-    const ct = (r.headers.get("content-type") || "").toLowerCase();
-    if (ct.includes("pdf") || ct.includes("image") || ct.includes("octet-stream")) {
-      // binary — skip full parse
-      if (!ct.includes("text") && !ct.includes("json") && !ct.includes("xml")) return "";
+/** Download a drive file as readable text (txt/md/html + Office Open XML). */
+export async function downloadDriveText(userUpn: string, itemId: string, maxChars = 12000): Promise<string> {
+  const once = async (): Promise<string> => {
+    try {
+      const metaR = await graphFetch(
+        `/users/${encodeURIComponent(userUpn)}/drive/items/${encodeURIComponent(itemId)}`,
+        { params: { $select: "id,name,size,file" } }
+      );
+      const meta = metaR.ok ? await metaR.json() : {};
+      const filename = String(meta.name || "");
+
+      const r = await graphFetch(
+        `/users/${encodeURIComponent(userUpn)}/drive/items/${encodeURIComponent(itemId)}/content`
+      );
+      if (!r.ok) return "";
+      const ct = (r.headers.get("content-type") || "").toLowerCase();
+      const buf = Buffer.from(await r.arrayBuffer());
+      const nameLow = filename.toLowerCase();
+
+      if (ct.includes("image/") || /\.(jpg|jpeg|png|gif|webp|bmp|tiff?|ai|psd|svg)$/i.test(nameLow)) {
+        return "";
+      }
+      if (ct.includes("pdf") || nameLow.endsWith(".pdf")) {
+        return ""; // PDF text extract not available in this runtime
+      }
+
+      if (
+        /\.(txt|md|csv|json|html?|xml|log|tsv|rtf)$/i.test(nameLow) ||
+        ct.includes("text/") ||
+        ct.includes("json") ||
+        ct.includes("xml") ||
+        ct.includes("csv")
+      ) {
+        return buf.toString("utf8").replace(/\u0000/g, "").replace(/\s+/g, " ").trim().slice(0, maxChars);
+      }
+
+      const office = extractOfficeZipText(buf, filename);
+      if (office) return office.slice(0, maxChars);
+
+      // Last resort: try UTF-8 if it looks like text
+      const asText = buf.toString("utf8");
+      if (asText && !/[\u0000-\u0008]/.test(asText.slice(0, 200))) {
+        return asText.replace(/\s+/g, " ").trim().slice(0, maxChars);
+      }
+      return "";
+    } catch {
+      return "";
     }
-    const text = await r.text();
-    return text.replace(/\s+/g, " ").trim().slice(0, maxChars);
+  };
+
+  const first = await once();
+  if (first) return first;
+  // Delegated token may lack Files.Read — retry app-only.
+  if (getUserGraphToken()) return runAsAppOnly(once);
+  return "";
+}
+
+function cleanXmlText(s: string): string {
+  return s
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+function xmlTextNodes(xml: string): string[] {
+  const out: string[] = [];
+  const re = /<(?:[a-z0-9]+:)?t\b[^>]*>([^<]*)<\/(?:[a-z0-9]+:)?t>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml))) {
+    const t = cleanXmlText(m[1] || "");
+    if (t) out.push(t);
+  }
+  return out;
+}
+
+/** Minimal ZIP reader for Office Open XML (docx / xlsx / pptx). */
+function zipInflateEntries(buf: Buffer): Map<string, string> {
+  const out = new Map<string, string>();
+  let offset = 0;
+  while (offset + 30 < buf.length) {
+    if (buf.readUInt32LE(offset) !== 0x04034b50) break;
+    const method = buf.readUInt16LE(offset + 8);
+    const flags = buf.readUInt16LE(offset + 6);
+    const compSize = buf.readUInt32LE(offset + 18);
+    const nameLen = buf.readUInt16LE(offset + 26);
+    const extraLen = buf.readUInt16LE(offset + 28);
+    const name = buf.slice(offset + 30, offset + 30 + nameLen).toString("utf8");
+    const dataStart = offset + 30 + nameLen + extraLen;
+    // Skip data-descriptor entries (bit 3) — uncommon in Office packages for XML parts
+    if (flags & 0x08) break;
+    const data = buf.slice(dataStart, dataStart + compSize);
+    offset = dataStart + compSize;
+    if (!name || name.endsWith("/")) continue;
+    try {
+      const raw = method === 0 ? data : method === 8 ? inflateRawSync(data) : null;
+      if (raw) out.set(name, raw.toString("utf8"));
+    } catch {
+      /* skip bad entry */
+    }
+  }
+  return out;
+}
+
+function extractOfficeZipText(buf: Buffer, filename: string): string {
+  if (buf.length < 4 || buf.readUInt32LE(0) !== 0x04034b50) return "";
+  const nameLow = (filename || "").toLowerCase();
+  let entries: Map<string, string>;
+  try {
+    entries = zipInflateEntries(buf);
   } catch {
     return "";
   }
+  if (!entries.size) return "";
+
+  if (nameLow.endsWith(".docx")) {
+    const xml = entries.get("word/document.xml") || "";
+    const texts = xmlTextNodes(xml);
+    if (!texts.length) return "";
+    return `เนื้อหาเอกสาร Word (${filename}):\n` + texts.slice(0, 500).join("\n");
+  }
+
+  if (nameLow.endsWith(".xlsx")) {
+    const xml = entries.get("xl/sharedStrings.xml") || "";
+    const texts = xmlTextNodes(xml);
+    const uniq: string[] = [];
+    for (const t of texts) {
+      if (!uniq.includes(t)) uniq.push(t);
+      if (uniq.length >= 300) break;
+    }
+    if (!uniq.length) return "";
+    return `ข้อมูลตาราง Excel (พบ ${uniq.length} รายการข้อความ):\n` + uniq.map((s) => `• ${s}`).join("\n");
+  }
+
+  if (nameLow.endsWith(".pptx")) {
+    const texts: string[] = [];
+    const slides = [...entries.keys()]
+      .filter((k) => /^ppt\/slides\/slide\d+\.xml$/i.test(k))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    for (const key of slides) {
+      texts.push(...xmlTextNodes(entries.get(key) || ""));
+    }
+    if (!texts.length) return "";
+    return `เนื้อหาสไลด์ PowerPoint (${filename}):\n` + texts.slice(0, 500).join("\n");
+  }
+
+  return "";
 }
 
 /** True if this user's Graph token can see the OneDrive item (permission check). */
