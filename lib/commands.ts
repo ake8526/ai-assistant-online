@@ -1752,7 +1752,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   {
     const quick = quickFeedIntent(text);
     if (quick?.intent === "list_meetings" || quick?.intent === "get_brief") {
-      trace("parse", `intent=${quick.intent} · ไม่ใช้ LLM (กฎตายตัว)`);
+      trace("parse", `★ AI:NONE · intent=${quick.intent} (กฎตายตัว ไม่เรียก API)`);
       return await handleParsed(userUpn, text, context, lite, quick.intent, quick.params);
     }
   }
@@ -1767,7 +1767,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   if (context?.last_meeting?.attendees?.length && isTimeFollowUp(text)) {
     const band = timeBandFromText(text);
     const window = windowFromStored(context.last_meeting) || dayHintFromText(text);
-    trace("parse", `intent=find_meeting_time · ไม่ใช้ LLM (ติดตามเวลา)`);
+    trace("parse", `★ AI:NONE · intent=find_meeting_time (ติดตามเวลา ไม่เรียก API)`);
     return runFindMeeting(
       userUpn,
       context.last_meeting.attendees.map((mail) => ({ mail })),
@@ -1781,9 +1781,9 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   trace("parse", "แยกเจตนา (intent)", "start");
   const { intent, params, source } = await parseIntent(text, context);
   if (source === "quick") {
-    trace("parse", `intent=${intent} · ไม่ใช้ LLM (กฎตายตัว)`);
+    trace("parse", `★ AI:NONE · intent=${intent} (กฎตายตัว ไม่เรียก API)`);
   } else {
-    trace("parse", `intent=${intent} · ใช้ LLM แล้ว`);
+    trace("parse", `★ AI:ใช้แล้ว · intent=${intent}`);
   }
   return await handleParsed(userUpn, text, context, lite, intent, params);
 }

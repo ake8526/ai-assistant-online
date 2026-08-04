@@ -162,15 +162,14 @@ export async function chat(
   for (let i = 0; i < chain.length; i++) {
     const provider = chain[i];
     const cfg = settings(provider)!;
-    const tag = `${provider.toUpperCase()} · ${cfg.model}`;
     try {
       // Monitor Agent Room: show which API key/provider is actively calling.
-      trace(stage, `LLM ${tag}`, "start");
+      trace(stage, `★ AI:${provider.toUpperCase()} · ${cfg.model}`, "start");
       const out = await callProvider(provider, system, user, opts);
       if (opts?.json) {
-        trace("parse", `LLM ${tag} ✓`);
+        trace("parse", `★ AI:${provider.toUpperCase()} · ${cfg.model} ✓`);
       } else {
-        trace("compose", `เขียนคำตอบ (${provider} · ${cfg.model})`);
+        trace("compose", `★ AI:${provider.toUpperCase()} · ${cfg.model} · เขียนคำตอบ`);
       }
       return out;
     } catch (e) {
@@ -179,10 +178,10 @@ export async function chat(
           ? `${e.provider} ${e.status}`
           : String(e).slice(0, 120);
       errors.push(short);
-      trace(stage, `LLM ${tag} ล้มเหลว (${short})`, "error");
+      trace(stage, `★ AI:${provider.toUpperCase()} · ${cfg.model} ✗ (${short})`, "error");
       if (i + 1 < chain.length) {
         console.warn(`[llm] ${provider} failed; trying ${chain[i + 1]} next — ${short}`);
-        trace(stage, `fallback → ${chain[i + 1]}`, "start");
+        trace(stage, `★ AI:fallback → ${chain[i + 1]!.toUpperCase()}`, "start");
       }
     }
   }

@@ -118,7 +118,13 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const lastLlmRef = useRef("—");
 
   const parseLlm = (label: string): string | null => {
-    if (/ไม่ใช้\s*LLM|กฎตายตัว|ติดตามเวลา/i.test(label)) return "NONE · กฎ";
+    if (/AI:NONE|ไม่ใช้\s*LLM|กฎตายตัว|ติดตามเวลา|ไม่เรียก API/i.test(label)) return "NONE · กฎ";
+    const star =
+      label.match(/★\s*AI:([A-Z]+)\s*·\s*([^\s✓✗·]+)/i) ||
+      label.match(/AI:([A-Z]+)\s*·\s*([^\s✓✗·]+)/i);
+    if (star) return `${star[1].toUpperCase()} · ${star[2]}`;
+    const fb = label.match(/AI:fallback\s*→\s*([A-Z]+)/i);
+    if (fb) return fb[1].toUpperCase();
     const m =
       label.match(/LLM\s+([A-Z]+)\s*·\s*([^\s✓]+)/i) ||
       label.match(/\(([a-z]+)\s*·\s*([^)]+)\)/i) ||
@@ -334,6 +340,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     if (e.traceId !== curTraceRef.current) {
       curTraceRef.current = e.traceId;
       resetRoom();
+      setLlmHud("—", false);
       log(`> คำขอใหม่จาก ${e.user} (${e.channel})`, "b");
       setHud("WORKING", "var(--amber)");
     }
@@ -341,19 +348,17 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     const llmFromLabel = parseLlm(e.label);
     if (llmFromLabel) {
       if (llmFromLabel.startsWith("NONE")) {
-        setLlmHud(llmFromLabel, false);
-        log(`  AI → ไม่ใช้ LLM (กฎตายตัว)`, "t");
+        setLlmHud("NONE · กฎ", false);
+        log(`  ★ AI: ไม่ใช้ LLM (กฎตายตัว)`, "a");
+      } else if (e.status === "error" || /✗/.test(e.label)) {
+        setLlmHud(`${llmFromLabel} ✗`, false);
+        log(`  ★ AI: ${llmFromLabel} ล้มเหลว`, "r");
       } else if (e.status === "start" || /fallback/i.test(e.label)) {
         setLlmHud(llmFromLabel, true);
-        log(`  AI → ${llmFromLabel}`, "a");
-      } else if (e.status === "error") {
-        setLlmHud(`${llmFromLabel} ✗`, false);
-        log(`  AI fail: ${e.label}`, "r");
+        log(`  ★ AI: กำลังใช้ ${llmFromLabel}`, "a");
       } else {
         setLlmHud(llmFromLabel, false);
-        if (/LLM\s+/i.test(e.label) || /เขียนคำตอบ/i.test(e.label)) {
-          log(`  AI ✓ ${llmFromLabel}`, "g");
-        }
+        log(`  ★ AI: ${llmFromLabel}`, "g");
       }
     }
 
@@ -361,9 +366,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     if (step === "error") {
       const i = STEP_TO_INDEX[(e.label.split(" ")[0] as StageId)] ?? 4;
       setAgent(i, "idle");
-      // Keep showing which LLM failed; don't wipe to idle yet
-      if (!llmFromLabel) setHud("ERROR", "var(--red)");
-      else setHud("ERROR", "var(--red)");
+      setHud("ERROR", "var(--red)");
       log(`  ! ${e.label}`, "r");
       return;
     }
@@ -375,8 +378,16 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       for (let i = 0; i < 4; i++) if (statusRef.current[i] === "work") setAgent(i, "done");
       await courierReply(intent);
       setHud("DELIVERED", "var(--green)");
-      setLlmHud(lastLlmRef.current === "—" ? "—" : lastLlmRef.current, false);
-      setCap(`<b>เสร็จ</b> — ส่งคำตอบให้ ${e.user} แล้ว` + (lastLlmRef.current !== "—" ? ` · LLM ${lastLlmRef.current}` : ""));
+      const used = lastLlmRef.current;
+      const aiBit =
+        !used || used === "—"
+          ? " · AI: ไม่ได้เรียกในรอบนี้"
+          : used.startsWith("NONE")
+            ? " · AI: ไม่ใช้ LLM"
+            : ` · AI: ${used}`;
+      setLlmHud(used === "—" ? "NONE · รอบนี้" : used, false);
+      setCap(`<b>เสร็จ</b> — ส่งคำตอบให้ ${e.user} แล้ว${aiBit}`);
+      log(`  ★ สรุป AI รอบนี้: ${used === "—" ? "ไม่ได้เรียก LLM" : used}`, used.startsWith("NONE") || used === "—" ? "t" : "g");
       return;
     }
 
