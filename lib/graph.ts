@@ -265,6 +265,20 @@ export type UserInfo = { mail: string; displayName?: string };
 
 const resolveCache = new Map<string, UserInfo | null>();
 
+function normalizeDisplayName(displayName: string, mail: string): string {
+  const raw = (displayName || "").trim();
+  if (!raw) return mail;
+  // Some directory entries are stored in all-lowercase roman letters.
+  // Normalize to title case for user-facing disambiguation lists.
+  if (/^[a-z][a-z\s.'-]{2,}$/.test(raw) && raw.includes(" ")) {
+    return raw
+      .split(/\s+/)
+      .map((w) => (w ? w[0]!.toUpperCase() + w.slice(1) : w))
+      .join(" ");
+  }
+  return raw;
+}
+
 /** Look up displayName for a known mail/UPN via app-only Graph (directory read). */
 async function lookupUserByMail(mailOrUpn: string): Promise<UserInfo | null> {
   const raw = mailOrUpn.trim();
@@ -354,6 +368,8 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
     new Set([q, raw, stripHonorific(raw), ...nickExpand(q), ...nickExpand(raw)].map((s) => s.trim()).filter(Boolean))
   );
 
+  const wideTop = Math.max(top, 25);
+
   const merge = (
     results: UserInfo[],
     items: { mail?: string; userPrincipalName?: string; displayName?: string; scoredEmailAddresses?: { address?: string }[] }[]
@@ -367,8 +383,8 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
         "";
       if (!mail || seen.has(mail.toLowerCase())) continue;
       seen.add(mail.toLowerCase());
-      results.push({ mail, displayName: it.displayName || mail });
-      if (results.length >= top) break;
+      results.push({ mail, displayName: normalizeDisplayName(it.displayName || "", mail) });
+      if (results.length >= wideTop) break;
     }
     return results;
   };
@@ -382,11 +398,10 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
       try {
         const data = await graphGet("/me/people", {
           $search: v,
-          $top: String(top),
+          $top: String(wideTop),
           $select: "displayName,scoredEmailAddresses",
         });
         results = merge(results, data.value || []);
-        if (results.length) return results.slice(0, top);
       } catch {
         /* People.Read may be missing — fall through */
       }
@@ -409,7 +424,7 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
         params: {
           $filter: `startswith(displayName,'${esc}') or startswith(givenName,'${esc}') or startswith(surname,'${esc}') or startswith(mail,'${esc}') or startswith(userPrincipalName,'${esc}')`,
           $select: sel,
-          $top: String(top),
+          $top: String(wideTop),
         },
       },
     ];
@@ -417,7 +432,6 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
       try {
         const data = await graphGet("/users", a.params, a.headers);
         results = merge(results, data.value || []);
-        if (results.length) return results.slice(0, top);
       } catch {
         /* try next */
       }
@@ -459,15 +473,65 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
         for (const a of ev.attendees || []) {
           consider(a.emailAddress?.name, a.emailAddress?.address);
         }
-        if (hits.length >= top) break;
+        if (hits.length >= wideTop) break;
       }
-      if (hits.length) return hits.slice(0, top);
+      if (hits.length) results = merge(results, hits);
     } catch {
       /* ignore */
     }
   }
+  const vset = Array.from(new Set(variants.map((v) => v.toLowerCase())));
+  const qLow = q.toLowerCase();
+  const shortQuery = q.length <= 4 && !q.includes(" ");
+  const score = (u: UserInfo): number => {
+    const mail = (u.mail || "").toLowerCase();
+    const local = mail.split("@")[0] || "";
+    const dn = (u.displayName || "").toLowerCase();
+    const rawDn = u.displayName || "";
+    const toks = dn.split(/[\s._\-()/]+/).filter(Boolean);
+    const firstTok = toks[0] || "";
+    const surnameToks = toks.slice(1);
+    let best = 99;
+    const checks = [qLow, ...vset].filter(Boolean);
+    for (const v of checks) {
+      if (!v) continue;
+      const localAlias = local.startsWith(v + ".") || local.startsWith(v + "_") || local.startsWith(v + "-");
+      const firstPrefix = firstTok.startsWith(v);
+      const localPrefix = local.startsWith(v);
+      const surnameOnly =
+        !firstPrefix &&
+        !localPrefix &&
+        !localAlias &&
+        surnameToks.some((t) => t.startsWith(v));
+      const parenNick = rawDn.match(/\(([^)]+)\)/);
+      const nickMatch = parenNick
+        ? parenNick[1].toLowerCase().split(/\s+/).some((t) => t === v || t.startsWith(v))
+        : false;
 
-  return results.slice(0, top);
+      if (local === v || firstTok === v || toks.includes(v)) best = Math.min(best, 0);
+      else if (localAlias || nickMatch) best = Math.min(best, 1);
+      else if (firstPrefix || dn.startsWith(v)) best = Math.min(best, 2);
+      else if (localPrefix) best = Math.min(best, 3);
+      else if (surnameOnly) best = Math.min(best, shortQuery ? 7 : 4);
+      // No substring-in-middle matches (e.g. deesarap**an**).
+    }
+    if (!u.displayName || (u.displayName || "").includes("@")) best += 3;
+    if (isServiceNick(local)) best += 2;
+    return best;
+  };
+
+  const ranked = dedupePeople(results).sort((a, b) => {
+    const sa = score(a);
+    const sb = score(b);
+    if (sa !== sb) return sa - sb;
+    const al = (a.mail || "").toLowerCase().split("@")[0] || "";
+    const bl = (b.mail || "").toLowerCase().split("@")[0] || "";
+    return al.localeCompare(bl);
+  });
+  // Drop surname-only / weak matches when we already have first-name or email hits.
+  const hasStrong = ranked.some((u) => score(u) <= 3);
+  const filtered = hasStrong ? ranked.filter((u) => score(u) <= 3) : ranked;
+  return filtered.slice(0, top);
 }
 
 function isServiceNick(s: string): boolean {
