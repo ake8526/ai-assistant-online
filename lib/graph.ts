@@ -369,6 +369,7 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   );
 
   const wideTop = Math.max(top, 25);
+  const shortQuery = q.length <= 4 && !q.includes(" ");
 
   const merge = (
     results: UserInfo[],
@@ -384,15 +385,65 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
       if (!mail || seen.has(mail.toLowerCase())) continue;
       seen.add(mail.toLowerCase());
       results.push({ mail, displayName: normalizeDisplayName(it.displayName || "", mail) });
-      if (results.length >= wideTop) break;
     }
     return results;
+  };
+
+  const directorySearch = async (params: Record<string, string>, headers?: Record<string, string>) => {
+    try {
+      const data = await runAsAppOnly(() => graphGet("/users", params, headers));
+      return (data.value || []) as {
+        mail?: string;
+        userPrincipalName?: string;
+        displayName?: string;
+      }[];
+    } catch {
+      return [];
+    }
   };
 
   let results: UserInfo[] = [];
   const sel = "mail,userPrincipalName,displayName";
 
-  // 1) People the signed-in user already knows (best for Thai nicknames like “นนท์”)
+  // 1) Email-prefix directory hits first (pan → pan.s@, panom.p@) — most reliable for nicknames.
+  if (shortQuery) {
+    for (const v of variants) {
+      const esc = v.replace(/'/g, "''");
+      const prefixHits = await directorySearch({
+        $filter: `startswith(mail,'${esc}.') or startswith(userPrincipalName,'${esc}.') or startswith(mail,'${esc}') or startswith(userPrincipalName,'${esc}')`,
+        $select: sel,
+        $top: String(wideTop),
+      });
+      results = merge(results, prefixHits);
+    }
+  }
+
+  // 2) Directory startswith on names + mail
+  for (const v of variants) {
+    const esc = v.replace(/'/g, "''");
+    const attempts: { params: Record<string, string>; headers?: Record<string, string> }[] = [
+      {
+        params: { $search: `"displayName:${v}"`, $select: sel, $top: String(wideTop) },
+        headers: { ConsistencyLevel: "eventual" },
+      },
+      {
+        params: { $search: `"${v}"`, $select: sel, $top: String(wideTop) },
+        headers: { ConsistencyLevel: "eventual" },
+      },
+      {
+        params: {
+          $filter: `startswith(displayName,'${esc}') or startswith(givenName,'${esc}') or startswith(surname,'${esc}') or startswith(mail,'${esc}') or startswith(userPrincipalName,'${esc}')`,
+          $select: sel,
+          $top: String(wideTop),
+        },
+      },
+    ];
+    for (const a of attempts) {
+      results = merge(results, await directorySearch(a.params, a.headers));
+    }
+  }
+
+  // 3) People the signed-in user already knows (Thai nicknames like “นนท์”)
   if (getUserGraphToken()) {
     for (const v of variants) {
       try {
@@ -408,37 +459,7 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
     }
   }
 
-  // 2) Directory search (broader $search, then startswith)
-  for (const v of variants) {
-    const esc = v.replace(/'/g, "''");
-    const attempts: { params: Record<string, string>; headers?: Record<string, string> }[] = [
-      {
-        params: { $search: `"displayName:${v}"`, $select: sel, $top: String(top) },
-        headers: { ConsistencyLevel: "eventual" },
-      },
-      {
-        params: { $search: `"${v}"`, $select: sel, $top: String(top) },
-        headers: { ConsistencyLevel: "eventual" },
-      },
-      {
-        params: {
-          $filter: `startswith(displayName,'${esc}') or startswith(givenName,'${esc}') or startswith(surname,'${esc}') or startswith(mail,'${esc}') or startswith(userPrincipalName,'${esc}')`,
-          $select: sel,
-          $top: String(wideTop),
-        },
-      },
-    ];
-    for (const a of attempts) {
-      try {
-        const data = await graphGet("/users", a.params, a.headers);
-        results = merge(results, data.value || []);
-      } catch {
-        /* try next */
-      }
-    }
-  }
-
-  // 3) Fuzzy match against recent calendar attendees (nicknames often appear only there)
+  // 4) Fuzzy match against recent calendar attendees (nicknames often appear only there)
   if (getUserGraphToken() && q.length >= 2) {
     try {
       const now = new Date();
@@ -482,7 +503,6 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   }
   const vset = Array.from(new Set(variants.map((v) => v.toLowerCase())));
   const qLow = q.toLowerCase();
-  const shortQuery = q.length <= 4 && !q.includes(" ");
   const score = (u: UserInfo): number => {
     const mail = (u.mail || "").toLowerCase();
     const local = mail.split("@")[0] || "";
@@ -530,7 +550,8 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   });
   // Drop surname-only / weak matches when we already have first-name or email hits.
   const hasStrong = ranked.some((u) => score(u) <= 3);
-  const filtered = hasStrong ? ranked.filter((u) => score(u) <= 3) : ranked;
+  let filtered = ranked.filter((u) => score(u) < 99);
+  if (hasStrong) filtered = filtered.filter((u) => score(u) <= 3);
   return filtered.slice(0, top);
 }
 
