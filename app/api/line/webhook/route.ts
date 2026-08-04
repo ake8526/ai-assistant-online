@@ -442,6 +442,7 @@ function confirmCardMessage(d: Draft, prefix = ""): object {
     quickReply: {
       items: [
         { type: "action", action: { type: "postback", label: "✅ ยืนยันส่งคำขอ", data: "a=confirmbook", displayText: "ยืนยันส่งคำขอนัด" } },
+        { type: "action", action: { type: "postback", label: "🕐 เวลา", data: "a=settime", displayText: "แก้วันเวลา" } },
         { type: "action", action: { type: "postback", label: "✏️ หัวข้อ", data: "a=setsubj", displayText: "ตั้งหัวข้อประชุม" } },
         { type: "action", action: { type: "postback", label: "📝 รายละเอียด", data: "a=setdetail", displayText: "ใส่รายละเอียด" } },
         { type: "action", action: { type: "postback", label: "➕ เพิ่มคน", data: "a=addppl", displayText: "เพิ่มคนเข้าประชุม" } },
@@ -451,7 +452,7 @@ function confirmCardMessage(d: Draft, prefix = ""): object {
   };
 }
 
-const BOOKING_ACTIONS = new Set(["book", "bookcustom", "confirmbook", "setsubj", "setdetail", "addppl", "canceldraft"]);
+const BOOKING_ACTIONS = new Set(["book", "bookcustom", "confirmbook", "setsubj", "setdetail", "settime", "addppl", "canceldraft"]);
 const MEETING_RSVP_ACTIONS = new Set([
   "mtaccept",
   "mtdecline",
@@ -578,6 +579,27 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
     await saveDraft(upn, draft);
     await replyLineMessages(replyToken, [
       textWithDraftEscape("พิมพ์หัวข้อประชุมมาได้เลยครับ (เช่น “อัปเดตงาน IT”)"),
+    ]);
+    return;
+  }
+  if (act === "settime") {
+    const s = parseWall(draft.start);
+    const e = parseWall(draft.end);
+    const dur =
+      s && e
+        ? Math.max(5, Math.round((e.getTime() - s.getTime()) / 60_000))
+        : draft.durationMin || 30;
+    draft.durationMin = dur;
+    draft.await = "custom_time";
+    await saveDraft(upn, draft);
+    await replyLineMessages(replyToken, [
+      textWithDraftEscape(
+        "พิมพ์วันและเวลาใหม่ได้เลยครับ เช่น\n" +
+          "• วันนี้ 18:00-18:30\n" +
+          "• พรุ่งนี้ 10:00-11:00\n" +
+          "• 10:00-11:00\n\n" +
+          "หรือกด /ล้างความจำ · /ยกเลิก ด้านล่างได้ครับ"
+      ),
     ]);
     return;
   }

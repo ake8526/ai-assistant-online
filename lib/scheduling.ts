@@ -2,7 +2,7 @@
 // availabilityView: one char per interval: '0'=free, '1'=tentative, '2'=busy,
 // '3'=out-of-office, '4'=working-elsewhere. A slot is bookable only if everyone is '0'.
 import { getSchedule } from "@/lib/graph";
-import { addDays, addMinutes, fmtDate, fmtDateTime, fmtTime, nowWall, startOfDay, wallIso } from "@/lib/time";
+import { addDays, addMinutes, fmtDate, fmtDateTime, fmtTime, nowWall, startOfDay, endOfDay, wallIso } from "@/lib/time";
 
 const INTERVAL = 30; // minutes per availability slot
 
@@ -38,17 +38,16 @@ function searchWindow(
     let start = override.start;
     let end = override.end;
     const exact = opts?.exactStart;
-    // Exact clock time (e.g. 13:50) — don't bump the window past that slot.
+    // Exact clock time on a named day (วันนี้/พรุ่งนี้) — stay on that day; don't roll to tomorrow.
     if (exact && exact.getTime() <= override.end.getTime()) {
-      if (exact.getTime() > now.getTime() - 2 * 60_000) {
-        // Align to availability interval so Graph buckets stay on :00/:30
-        const bucket = new Date(exact);
-        bucket.setUTCMinutes(Math.floor(bucket.getUTCMinutes() / INTERVAL) * INTERVAL, 0, 0);
-        const nowBucket = new Date(now);
-        nowBucket.setUTCMinutes(Math.floor(nowBucket.getUTCMinutes() / INTERVAL) * INTERVAL, 0, 0);
-        start = bucket < nowBucket ? nowBucket : bucket;
-        if (start > override.end) start = override.end;
-        return { start, end: override.end };
+      const dayEnd = endOfDay(override.start);
+      // Align search start to the exact bucket (or "now" if exact already passed a bit)
+      const bucket = new Date(exact);
+      bucket.setUTCMinutes(Math.floor(bucket.getUTCMinutes() / INTERVAL) * INTERVAL, 0, 0);
+      if (bucket.getTime() >= now.getTime() - 90 * 60_000) {
+        start = startOfDay(override.start);
+        end = dayEnd.getTime() > override.end.getTime() ? dayEnd : override.end;
+        return { start, end };
       }
     }
     // If the window includes "now", don't offer slots in the past.
@@ -194,7 +193,25 @@ export async function findCommonSlots(
     const now = nowWall();
     let slotStart = atMinuteOfDay(window.start, resolvedAt);
     const slotEnd = addMinutes(slotStart, durationMin);
-    if (slotEnd > now && slotStart < end) {
+    // Same-day exact ask: keep today's date even if start is a bit past (user typed วันนี้).
+    const sameDayAsk = fmtDate(slotStart) === fmtDate(window.start);
+    const stillUseful = slotEnd.getTime() > now.getTime() - 5 * 60_000;
+    const withinGrace = slotStart.getTime() >= now.getTime() - 90 * 60_000;
+    if (sameDayAsk && stillUseful && withinGrace && slotStart < end) {
+      const allFree = views.every((v) => !v.length || rangeIsFree(v, start, slotStart, slotEnd));
+      const startMin = resolvedAt;
+      const endMin = startMin + durationMin;
+      const lunchOk = includeLunch || !overlapsLunch(startMin, endMin);
+      const dow = slotStart.getUTCDay();
+      const inHours = dow >= 1 && dow <= 5 && endMin <= workEnd * 60 + 30;
+      if (allFree && lunchOk && inHours) {
+        slots.push({
+          start: wallIso(slotStart),
+          end: wallIso(slotEnd),
+          label: `${fmtDateTime(slotStart)}-${fmtTime(slotEnd)}`,
+        });
+      }
+    } else if (slotEnd > now && slotStart < end) {
       const graceStart = slotStart.getTime() < now.getTime() - 2 * 60_000 ? null : slotStart;
       if (graceStart) {
         const allFree = views.every((v) => rangeIsFree(v, start, slotStart, slotEnd));
@@ -216,7 +233,7 @@ export async function findCommonSlots(
     if (slots.length) {
       return { slots, busy: collectBusy(data, start), ranges: [...slots] };
     }
-    // Exact miss → suggest later starts the same day (after the requested time)
+    // Exact miss on a single-day window → suggest later starts the SAME day only (not tomorrow).
     afterMin = resolvedAt;
   }
 

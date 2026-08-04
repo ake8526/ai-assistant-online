@@ -1529,34 +1529,56 @@ export async function runFindMeeting(
     return { intent: "find_meeting_time", reply: head + held.note };
   }
 
-  // User already named an exact clock time (e.g. 17:30-18:00) and it's free →
-  // show summary + confirm first (do NOT send Outlook invite yet).
+  // User already named an exact clock time (e.g. 17:30-18:00) →
+  // keep THAT calendar day (วันนี้/พรุ่งนี้) — never silently roll to the next day.
+  // Show summary + confirm first (do NOT send Outlook invite yet).
   if (resolvedAt != null && !opts?.showMore) {
-    const exact = result.slots.find((s) => {
+    const dayAnchor = window?.start || nowWall();
+    const slotStart = new Date(startOfDay(dayAnchor));
+    slotStart.setUTCHours(Math.floor(resolvedAt / 60), resolvedAt % 60, 0, 0);
+    const slotEnd = addMinutes(slotStart, duration);
+    const dayKey = fmtDate(slotStart);
+    const exactFromResult = result.slots.find((s) => {
       const start = parseWall(s.start);
       if (!start) return false;
-      return start.getUTCHours() * 60 + start.getUTCMinutes() === resolvedAt;
+      return (
+        fmtDate(start) === dayKey &&
+        start.getUTCHours() * 60 + start.getUTCMinutes() === resolvedAt
+      );
     });
-    if (exact) {
-      return {
-        intent: "confirm_meeting",
-        reply:
-          `สรุปนัดก่อนส่งครับ — กดยืนยันถ้าถูกต้อง\n` +
-          `👤 ${who}\n` +
-          `📌 ${subject}\n` +
-          `🕐 ${exact.label}` +
-          note,
-        slots: [exact],
-        meeting: {
-          attendees: resolved,
-          duration,
-          subject,
-          window: window
-            ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
-            : undefined,
-        },
-      };
-    }
+    const exact =
+      exactFromResult ||
+      ({
+        start: wallIso(slotStart),
+        end: wallIso(slotEnd),
+        label: `${fmtDateTime(slotStart)}-${fmtTime(slotEnd)}`,
+      } as (typeof result.slots)[number]);
+    const now = nowWall();
+    const pastNote =
+      slotEnd.getTime() <= now.getTime()
+        ? "\n⚠️ ช่วงเวลานี้ผ่านไปแล้ว — กด “🕐 เวลา” เพื่อแก้ หรือยืนยันถ้าต้องการสร้างตามที่ระบุ"
+        : slotStart.getTime() < now.getTime() - 2 * 60_000
+          ? "\n⚠️ เวลาเริ่มผ่านไปแล้วเล็กน้อย — กด “🕐 เวลา” ถ้าต้องการเลื่อน"
+          : "";
+    return {
+      intent: "confirm_meeting",
+      reply:
+        `สรุปนัดก่อนส่งครับ — กดยืนยันถ้าถูกต้อง\n` +
+        `👤 ${who}\n` +
+        `📌 ${subject}\n` +
+        `🕐 ${exact.label}` +
+        pastNote +
+        note,
+      slots: [exact],
+      meeting: {
+        attendees: resolved,
+        duration,
+        subject,
+        window: window
+          ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
+          : undefined,
+      },
+    };
   }
 
   const afterHoursNote = pageHasAfterHours
