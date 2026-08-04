@@ -163,7 +163,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - list_meeting_materials = ดูไฟล์/ลิงก์ที่ผูกกับนัด — เช่น "เอกสารนัด 1"
 - unlink_meeting_material = เลิกผูกไฟล์/ลิงก์ออกจากนัด — เช่น "เลิกแนบนัด 1 ไฟล์ 2"
 
-สำคัญ: หากบริบทก่อนหน้าเพิ่งมีการค้นหาไฟล์ (search_files หรือ file_results) แล้วผู้ใช้พิมพ์ว่า "อ่านและสรุป", "สรุปให้ฟัง", "อ่านไฟล์" ให้เลือก intent เป็น "summarize_file" เสมอ (ห้ามเลือก get_brief)!
+สำคัญ: หากบริบทก่อนหน้าเพิ่งมีการค้นหาไฟล์ (search_files หรือ file_results) แล้วผู้ใช้พิมพ์ว่า "อ่านและสรุป", "สรุปให้ฟัง", "อ่านไฟล์", "สรุปอัน 1" ให้เลือก intent เป็น "summarize_file" เสมอ (ห้ามเลือก get_brief)! ถ้ายังไม่ระบุเลขไฟล์ ให้ params ว่าง (อย่าเดา file_index) — ระบบจะถามให้เลือกเอง
 ถ้าเพิ่งค้นไฟล์แล้วผู้ใช้พูดว่า "ผูกกับนัด 1" / "แนบให้นัด 2" ให้ใช้ link_meeting_file
 ถ้าผู้ใช้บอกชื่อไฟล์มาเลยพร้อมหมายเลขนัด (เช่น "อันแรกผูกกับ รายงาน.pdf") ให้ใช้ link_meeting_file พร้อม meeting_index และ file_query=ชื่อไฟล์ — ห้ามตอบให้ไปค้นเองก่อน
 
@@ -744,9 +744,19 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
   }
 
   // Fast deterministic rule after a file search
-  if (context?.last_intent === "file_results") {
-    if (["อ่านและสรุป", "สรุปให้ฟัง", "อ่านสรุป", "สรุปไฟล์", "อ่านไฟล์", "อ่านอันแรก", "สรุปอันแรก"].some((kw) => textLower.includes(kw))) {
-      return { intent: "summarize_file", params: { file_index: 0 } };
+  if (context?.last_intent === "file_results" || (context?.files?.length && /อ่าน|สรุป/.test(textClean))) {
+    const idxHit =
+      textClean.match(/(?:อัน|ข้อ|ไฟล์)\s*(?:ที่\s*)?(\d{1,2})\b/) ||
+      textClean.match(/^(\d{1,2})$/);
+    if (idxHit) {
+      return { intent: "summarize_file", params: { file_index: Number(idxHit[1]) } };
+    }
+    if (/อ่านอันแรก|สรุปอันแรก|ไฟล์แรก/.test(textClean)) {
+      return { intent: "summarize_file", params: { file_index: 1 } };
+    }
+    if (["อ่านและสรุป", "สรุปให้ฟัง", "อ่านสรุป", "สรุปไฟล์", "อ่านไฟล์"].some((kw) => textLower.includes(kw))) {
+      // No number yet — ask which file; do not auto-pick.
+      return { intent: "summarize_file", params: {} };
     }
   }
 
@@ -1819,22 +1829,54 @@ async function handleParsed(
   if (intent === "summarize_file") {
     const files = context?.files || [];
     let target: (typeof files)[number] | null = null;
-    if (files.length) {
+    const rawIdx = Number(params.file_index ?? 0);
+    const idxFromText =
+      text.match(/(?:อัน|ข้อ|ไฟล์)\s*(?:ที่\s*)?(\d{1,2})\b/) ||
+      (/อ่านอันแรก|สรุปอันแรก|ไฟล์แรก/.test(text) ? ["", "1"] : null);
+    const fileIndex = rawIdx > 0 ? rawIdx : idxFromText ? Number(idxFromText[1]) : 0;
+
+    if (files.length && fileIndex > 0) {
+      target = files[fileIndex - 1] || null;
+      if (!target) {
+        return {
+          intent: "file_results",
+          reply: `ไม่มีไฟล์ข้อ ${fileIndex} ในรายการครับ (มี ${files.length} ไฟล์) — ลองพิมพ์ “สรุปอัน 1” ถึง “สรุปอัน ${files.length}”`,
+          files,
+          suggestions: [
+            { label: "สรุปอัน 1", text: "สรุปอัน 1" },
+            { label: "สรุปอัน 2", text: "สรุปอัน 2" },
+            { label: "สรุปอัน 3", text: "สรุปอัน 3" },
+          ],
+        };
+      }
+    } else if (files.length) {
+      // Match an explicit file name in the message (not short generic phrases).
       const textLower = text.toLowerCase();
       const sorted = [...files].sort((a, b) => (b.name || "").length - (a.name || "").length);
-      target = sorted.find((f) => f.name && textLower.includes(f.name.toLowerCase())) || null;
+      target =
+        sorted.find((f) => {
+          const name = (f.name || "").toLowerCase();
+          return name.length >= 5 && textLower.includes(name);
+        }) || null;
       if (!target) {
         target =
           sorted.find((f) => {
             const noExt = (f.name || "").toLowerCase().replace(/\.[^.]+$/, "");
-            return noExt.length > 3 && textLower.includes(noExt);
+            return noExt.length >= 5 && textLower.includes(noExt);
           }) || null;
       }
-      if (!target) target = files.find((f) => !f.is_folder) || files[0];
-    }
-    if (!target) {
-      const res = await searchFiles(userUpn, text);
-      if (res.length) target = { id: res[0].id, name: res[0].name, url: res[0].webUrl };
+      if (!target) {
+        return {
+          intent,
+          reply:
+            `ยังไม่ได้เลือกไฟล์ครับ พิมพ์เลขจากรายการ เช่น “สรุปอัน 1” หรือ “อ่านอัน 3” ได้เลย`,
+          suggestions: [
+            { label: "สรุปอัน 1", text: "สรุปอัน 1" },
+            { label: "สรุปอัน 2", text: "สรุปอัน 2" },
+            { label: "สรุปอัน 3", text: "สรุปอัน 3" },
+          ],
+        };
+      }
     }
     if (!target) {
       return { intent, reply: "ไม่พบไฟล์ที่ต้องการให้อ่านและสรุปครับ ลองพิมพ์ค้นหาไฟล์ก่อน เช่น “หาไฟล์ ...”" };
@@ -2418,9 +2460,9 @@ async function handleParsed(
         modified: f.lastModifiedDateTime,
       })),
       suggestions: [
+        { label: "สรุปอัน 1", text: "สรุปอัน 1" },
+        { label: "สรุปอัน 2", text: "สรุปอัน 2" },
         { label: "ผูกไฟล์นัด 1", text: "ผูกไฟล์นัด 1" },
-        { label: "ตารางวันนี้", text: "ตารางวันนี้" },
-        { label: "อ่านและสรุป", text: "อ่านและสรุป" },
       ],
     };
   }
