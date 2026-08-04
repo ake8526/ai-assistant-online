@@ -741,7 +741,10 @@ function historyLines(context?: CommandContext): string[] {
   return lines.slice(-12);
 }
 
-async function parseIntent(text: string, context?: CommandContext): Promise<{ intent: string; params: Record<string, unknown> }> {
+async function parseIntent(
+  text: string,
+  context?: CommandContext
+): Promise<{ intent: string; params: Record<string, unknown>; source: "quick" | "llm" }> {
   // LINE often wraps long SharePoint URLs across lines — collapse before matching.
   let textClean = text.trim();
   const collapsedUrl = textClean.replace(/\s+/g, "");
@@ -752,7 +755,7 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
 
   // Fast deterministic shortcuts — skip LLM so LINE replies before the reply-token expires.
   const quick = quickFeedIntent(textClean);
-  if (quick) return quick;
+  if (quick) return { ...quick, source: "quick" };
 
   // Bare OneDrive/SharePoint URL after a link attempt → attach to last/first meeting
   if (/^https?:\/\/\S*(sharepoint\.com|onedrive\.live\.com|1drv\.ms)\S*$/i.test(textClean)) {
@@ -760,6 +763,7 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
     return {
       intent: "link_meeting_file",
       params: { meeting_index: mi, file_query: textClean },
+      source: "quick",
     };
   }
 
@@ -769,7 +773,7 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
       textClean.replace(/\s+/g, " ").trim()
     );
   if (context?.last_intent === "find_duplicate_nicknames" && moreNick) {
-    return { intent: "find_duplicate_nicknames", params: { more: true } };
+    return { intent: "find_duplicate_nicknames", params: { more: true }, source: "quick" };
   }
 
   // Fast deterministic rule after a file search
@@ -778,14 +782,14 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
       textClean.match(/(?:อัน|ข้อ|ไฟล์)\s*(?:ที่\s*)?(\d{1,2})\b/) ||
       textClean.match(/^(\d{1,2})$/);
     if (idxHit) {
-      return { intent: "summarize_file", params: { file_index: Number(idxHit[1]) } };
+      return { intent: "summarize_file", params: { file_index: Number(idxHit[1]) }, source: "quick" };
     }
     if (/อ่านอันแรก|สรุปอันแรก|ไฟล์แรก/.test(textClean)) {
-      return { intent: "summarize_file", params: { file_index: 1 } };
+      return { intent: "summarize_file", params: { file_index: 1 }, source: "quick" };
     }
     if (["อ่านและสรุป", "สรุปให้ฟัง", "อ่านสรุป", "สรุปไฟล์", "อ่านไฟล์"].some((kw) => textLower.includes(kw))) {
       // No number yet — ask which file; do not auto-pick.
-      return { intent: "summarize_file", params: {} };
+      return { intent: "summarize_file", params: {}, source: "quick" };
     }
   }
 
@@ -822,9 +826,9 @@ async function parseIntent(text: string, context?: CommandContext): Promise<{ in
   const raw = await chat(INTENT_SYSTEM, prompt, { temperature: 0, json: true, fast: true });
   try {
     const parsed = JSON.parse(raw);
-    return { intent: parsed.intent || "unknown", params: parsed.params || {} };
+    return { intent: parsed.intent || "unknown", params: parsed.params || {}, source: "llm" };
   } catch {
-    return { intent: "unknown", params: {} };
+    return { intent: "unknown", params: {}, source: "llm" };
   }
 }
 
@@ -1748,7 +1752,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   {
     const quick = quickFeedIntent(text);
     if (quick?.intent === "list_meetings" || quick?.intent === "get_brief") {
-      trace("parse", `intent=${quick.intent} (quick)`);
+      trace("parse", `intent=${quick.intent} · ไม่ใช้ LLM (กฎตายตัว)`);
       return await handleParsed(userUpn, text, context, lite, quick.intent, quick.params);
     }
   }
@@ -1763,6 +1767,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   if (context?.last_meeting?.attendees?.length && isTimeFollowUp(text)) {
     const band = timeBandFromText(text);
     const window = windowFromStored(context.last_meeting) || dayHintFromText(text);
+    trace("parse", `intent=find_meeting_time · ไม่ใช้ LLM (ติดตามเวลา)`);
     return runFindMeeting(
       userUpn,
       context.last_meeting.attendees.map((mail) => ({ mail })),
@@ -1774,8 +1779,12 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   }
 
   trace("parse", "แยกเจตนา (intent)", "start");
-  const { intent, params } = await parseIntent(text, context);
-  trace("parse", `intent=${intent}`);
+  const { intent, params, source } = await parseIntent(text, context);
+  if (source === "quick") {
+    trace("parse", `intent=${intent} · ไม่ใช้ LLM (กฎตายตัว)`);
+  } else {
+    trace("parse", `intent=${intent} · ใช้ LLM แล้ว`);
+  }
   return await handleParsed(userUpn, text, context, lite, intent, params);
 }
 

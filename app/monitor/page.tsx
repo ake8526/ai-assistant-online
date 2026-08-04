@@ -118,6 +118,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const lastLlmRef = useRef("—");
 
   const parseLlm = (label: string): string | null => {
+    if (/ไม่ใช้\s*LLM|กฎตายตัว|ติดตามเวลา/i.test(label)) return "NONE · กฎ";
     const m =
       label.match(/LLM\s+([A-Z]+)\s*·\s*([^\s✓]+)/i) ||
       label.match(/\(([a-z]+)\s*·\s*([^)]+)\)/i) ||
@@ -339,14 +340,20 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
     const llmFromLabel = parseLlm(e.label);
     if (llmFromLabel) {
-      if (e.status === "start" || /fallback/i.test(e.label)) {
+      if (llmFromLabel.startsWith("NONE")) {
+        setLlmHud(llmFromLabel, false);
+        log(`  AI → ไม่ใช้ LLM (กฎตายตัว)`, "t");
+      } else if (e.status === "start" || /fallback/i.test(e.label)) {
         setLlmHud(llmFromLabel, true);
-        log(`  API KEY → ${llmFromLabel}`, "a");
+        log(`  AI → ${llmFromLabel}`, "a");
       } else if (e.status === "error") {
         setLlmHud(`${llmFromLabel} ✗`, false);
-        log(`  API KEY fail: ${e.label}`, "r");
+        log(`  AI fail: ${e.label}`, "r");
       } else {
         setLlmHud(llmFromLabel, false);
+        if (/LLM\s+/i.test(e.label) || /เขียนคำตอบ/i.test(e.label)) {
+          log(`  AI ✓ ${llmFromLabel}`, "g");
+        }
       }
     }
 
