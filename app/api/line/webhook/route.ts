@@ -436,23 +436,43 @@ function confirmCardMessage(d: Draft, prefix = ""): object {
     (d.detail ? `📝 รายละเอียด: ${d.detail}\n` : "") +
     `👤 ผู้เข้าร่วม: ${d.attendees.length ? d.attendees.join(", ") : "(ยังไม่มี)"}\n\n` +
     `ยืนยันเพื่อส่งคำขอนัด (รออีกฝั่งยืนยันก่อนเข้า Outlook) หรือแก้ไขก่อนได้ครับ 👇`;
+  const items: object[] = [
+    { type: "action", action: { type: "postback", label: "✅ ยืนยันส่งคำขอ", data: "a=confirmbook", displayText: "ยืนยันส่งคำขอนัด" } },
+    { type: "action", action: { type: "postback", label: "🕐 เวลา", data: "a=settime", displayText: "แก้วันเวลา" } },
+    { type: "action", action: { type: "postback", label: "✏️ หัวข้อ", data: "a=setsubj", displayText: "ตั้งหัวข้อประชุม" } },
+    { type: "action", action: { type: "postback", label: "📝 รายละเอียด", data: "a=setdetail", displayText: "ใส่รายละเอียด" } },
+    { type: "action", action: { type: "postback", label: "➕ เพิ่มคน", data: "a=addppl", displayText: "เพิ่มคนเข้าประชุม" } },
+  ];
+  if (d.attendees.length > 0) {
+    items.push({
+      type: "action",
+      action: { type: "postback", label: "➖ ลบคน", data: "a=rmppl", displayText: "ลบคนออกจากนัด" },
+    });
+  }
+  items.push({
+    type: "action",
+    action: { type: "postback", label: "❌ ยกเลิก", data: "a=canceldraft", displayText: "ยกเลิกการนัด" },
+  });
   return {
     type: "text",
     text,
-    quickReply: {
-      items: [
-        { type: "action", action: { type: "postback", label: "✅ ยืนยันส่งคำขอ", data: "a=confirmbook", displayText: "ยืนยันส่งคำขอนัด" } },
-        { type: "action", action: { type: "postback", label: "🕐 เวลา", data: "a=settime", displayText: "แก้วันเวลา" } },
-        { type: "action", action: { type: "postback", label: "✏️ หัวข้อ", data: "a=setsubj", displayText: "ตั้งหัวข้อประชุม" } },
-        { type: "action", action: { type: "postback", label: "📝 รายละเอียด", data: "a=setdetail", displayText: "ใส่รายละเอียด" } },
-        { type: "action", action: { type: "postback", label: "➕ เพิ่มคน", data: "a=addppl", displayText: "เพิ่มคนเข้าประชุม" } },
-        { type: "action", action: { type: "postback", label: "❌ ยกเลิก", data: "a=canceldraft", displayText: "ยกเลิกการนัด" } },
-      ],
-    },
+    quickReply: { items: items.slice(0, 13) },
   };
 }
 
-const BOOKING_ACTIONS = new Set(["book", "bookcustom", "confirmbook", "setsubj", "setdetail", "settime", "addppl", "canceldraft"]);
+const BOOKING_ACTIONS = new Set([
+  "book",
+  "bookcustom",
+  "confirmbook",
+  "setsubj",
+  "setdetail",
+  "settime",
+  "addppl",
+  "rmppl",
+  "pickrm",
+  "backdraft",
+  "canceldraft",
+]);
 const MEETING_RSVP_ACTIONS = new Set([
   "mtaccept",
   "mtdecline",
@@ -617,6 +637,65 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
     await replyLineMessages(replyToken, [
       textWithDraftEscape("พิมพ์ชื่อคนที่จะเพิ่มเข้าประชุมครับ (หลายคนคั่นด้วย , หรือขึ้นบรรทัดใหม่)"),
     ]);
+    return;
+  }
+  if (act === "rmppl") {
+    if (!draft.attendees.length) {
+      await replyLineMessages(replyToken, [confirmCardMessage(draft, "ยังไม่มีผู้เข้าร่วมให้ลบครับ\n\n")]);
+      return;
+    }
+    if (draft.attendees.length === 1) {
+      const removed = draft.attendees[0];
+      draft.attendees = [];
+      await saveDraft(upn, draft);
+      await replyLineMessages(replyToken, [
+        confirmCardMessage(draft, `ลบออกแล้ว: ${removed}\n(ยังไม่มีผู้เข้าร่วม — เพิ่มคนก่อนยืนยันได้ครับ)\n\n`),
+      ]);
+      return;
+    }
+    const lines = draft.attendees.map((a, i) => `${i + 1}) ${a}`);
+    await replyLineMessages(replyToken, [
+      {
+        type: "text",
+        text: `เลือกคนที่จะลบออกครับ 👇\n${lines.join("\n")}`,
+        quickReply: {
+          items: [
+            ...draft.attendees.slice(0, 11).map((a, i) => {
+              const local = (a.split("@")[0] || a).slice(0, 12);
+              return {
+                type: "action",
+                action: {
+                  type: "postback",
+                  label: truncate(`${i + 1}) ${local}`, 20),
+                  data: `a=pickrm&i=${i}`,
+                  displayText: `ลบ ${i + 1}) ${a}`,
+                },
+              };
+            }),
+            {
+              type: "action",
+              action: { type: "postback", label: "↩ กลับ", data: "a=backdraft", displayText: "กลับไปหน้ายืนยัน" },
+            },
+          ],
+        },
+      },
+    ]);
+    return;
+  }
+  if (act === "pickrm") {
+    const idx = Number(params.get("i"));
+    if (!Number.isFinite(idx) || idx < 0 || idx >= draft.attendees.length) {
+      await replyLineMessages(replyToken, [confirmCardMessage(draft, "เลือกไม่ถูกต้องครับ\n\n")]);
+      return;
+    }
+    const removed = draft.attendees[idx];
+    draft.attendees = draft.attendees.filter((_, i) => i !== idx);
+    await saveDraft(upn, draft);
+    await replyLineMessages(replyToken, [confirmCardMessage(draft, `ลบออกแล้ว: ${removed}\n\n`)]);
+    return;
+  }
+  if (act === "backdraft") {
+    await replyLineMessages(replyToken, [confirmCardMessage(draft)]);
     return;
   }
   if (act === "canceldraft") {
