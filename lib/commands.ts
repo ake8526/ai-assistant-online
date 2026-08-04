@@ -1529,7 +1529,8 @@ export async function runFindMeeting(
     return { intent: "find_meeting_time", reply: head + held.note };
   }
 
-  // User already named an exact clock time (e.g. 17:30-18:00) and it's free → book it, don't ask again.
+  // User already named an exact clock time (e.g. 17:30-18:00) and it's free →
+  // show summary + confirm first (do NOT send Outlook invite yet).
   if (resolvedAt != null && !opts?.showMore) {
     const exact = result.slots.find((s) => {
       const start = parseWall(s.start);
@@ -1537,22 +1538,15 @@ export async function runFindMeeting(
       return start.getUTCHours() * 60 + start.getUTCMinutes() === resolvedAt;
     });
     if (exact) {
-      const held = await bookMeetingWithLineHold({
-        organizerUpn: userUpn,
-        subject,
-        startIso: exact.start,
-        endIso: exact.end,
-        attendees: resolved,
-        create: () => createEvent(userUpn, subject, exact.start, exact.end, resolved),
-      });
-      const whoLine = who.includes("\n") ? `👤 ${who}\n` : `👤 ${who}\n`;
-      const head =
-        held.mode === "proposed"
-          ? `ส่งคำขอนัดตามเวลาที่ระบุแล้ว — รออีกฝั่งยืนยัน ⏳\n${subject} — ${exact.label}`
-          : `ส่งนัดตามเวลาที่ระบุแล้ว ✅\n${subject} — ${exact.label}`;
       return {
-        intent: "find_meeting_time",
-        reply: head + `\n${whoLine}` + held.note,
+        intent: "confirm_meeting",
+        reply:
+          `สรุปนัดก่อนส่งครับ — กดยืนยันถ้าถูกต้อง\n` +
+          `👤 ${who}\n` +
+          `📌 ${subject}\n` +
+          `🕐 ${exact.label}` +
+          note,
+        slots: [exact],
         meeting: {
           attendees: resolved,
           duration,

@@ -244,9 +244,9 @@ function ChatContent() {
   const pickSlot = async (slot: Slot, intent?: string) => {
     if (busy) return;
     const ctx = ctxRef.current;
-    if (intent === "choose_slot" && ctx.meeting) {
+    if ((intent === "choose_slot" || intent === "confirm_meeting") && ctx.meeting) {
       setBusy(true);
-      addMsg({ role: "me", text: `เลือกช่วง ${slot.label}` });
+      addMsg({ role: "me", text: intent === "confirm_meeting" ? `ยืนยันส่งนัด ${slot.label}` : `เลือกช่วง ${slot.label}` });
       try {
         const res = await api("/api/meetings/book", {
           subject: ctx.meeting.subject,
@@ -258,7 +258,7 @@ function ChatContent() {
           role: "bot",
           text: res.error
             ? `⚠️ จองไม่สำเร็จ: ${res.error}`
-            : `✅ จองประชุมแล้ว!\n📌 ${ctx.meeting.subject}\n🕐 ${slot.label}`,
+            : `✅ ส่งนัดแล้ว!\n📌 ${ctx.meeting.subject}\n🕐 ${slot.label}`,
         });
       } catch (e) {
         addMsg({ role: "bot", text: `⚠️ ${(e as Error).message}` });
@@ -398,7 +398,7 @@ function ChatContent() {
                       onClick={() => pickSlot(s, m.intent)}
                       className="text-[11px] px-2.5 py-1.5 rounded-lg bg-sky-700/60 hover:bg-sky-600 border border-sky-600/50"
                     >
-                      {s.label}
+                      {m.intent === "confirm_meeting" ? `✅ ยืนยัน ${s.label}` : s.label}
                     </button>
                   ))}
                 </div>

@@ -341,7 +341,24 @@ async function saveCtx(upn: string, prev: CommandContext | undefined, res: Comma
 }
 
 // Send a reply, attaching quick-reply buttons when the result needs a choice.
-async function sendResult(replyToken: string, res: CommandResult): Promise<void> {
+async function sendResult(replyToken: string, res: CommandResult, upn?: string): Promise<void> {
+  // Exact-time booking: jump straight to the confirm draft (no slot list, no auto-send).
+  if (res.intent === "confirm_meeting" && upn && Array.isArray(res.slots) && res.slots[0]) {
+    const s = res.slots[0] as Slot;
+    const meeting = (res.meeting as { attendees?: string[]; subject?: string }) || {};
+    const draft: Draft = {
+      start: s.start,
+      end: s.end,
+      attendees: meeting.attendees || [],
+      subject: meeting.subject || "ประชุม",
+      detail: "",
+      ts: Date.now(),
+    };
+    await saveDraft(upn, draft);
+    await replyLineMessages(replyToken, [confirmCardMessage(draft)]);
+    return;
+  }
+
   let reply = res.reply || "รับทราบครับ";
   if (res.map_url) reply += `\n🗺️ ${res.map_url}`;
   reply += detailText(res);
@@ -850,11 +867,26 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     const ctx = await loadCtx(upn);
     const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
     try {
-      await sendResult(ev.replyToken, res);
+      await sendResult(ev.replyToken, res, upn);
       trace("reply", `ตอบกลับ (${res.intent})`);
     } catch (replyErr) {
       console.warn("[line] reply failed, pushing:", String(replyErr).slice(0, 120));
-      await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
+      if (res.intent === "confirm_meeting" && Array.isArray(res.slots) && res.slots[0]) {
+        const s = res.slots[0] as Slot;
+        const meeting = (res.meeting as { attendees?: string[]; subject?: string }) || {};
+        const draft: Draft = {
+          start: s.start,
+          end: s.end,
+          attendees: meeting.attendees || [],
+          subject: meeting.subject || "ประชุม",
+          detail: "",
+          ts: Date.now(),
+        };
+        await saveDraft(upn, draft);
+        await pushLineToId(userId, (confirmCardMessage(draft) as { text: string }).text);
+      } else {
+        await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
+      }
       trace("reply", `push fallback (${res.intent})`, "error");
     }
     if (res.intent === "clear_memory") {
@@ -926,7 +958,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     }
     const { result: res } = await withDelegatedGraph(upn, () => handleSelection(upn, data));
     try {
-      await sendResult(ev.replyToken, res);
+      await sendResult(ev.replyToken, res, upn);
       trace("reply", `ตอบกลับ (${res.intent})`);
     } catch (replyErr) {
       console.warn("[line] postback reply failed, pushing:", String(replyErr).slice(0, 120));
