@@ -482,14 +482,22 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
           <div className="spacer" />
           <div className="badges">
             <div className={`badge llm${llmHot ? " hot" : ""}`} title={llmChain || "AI API provider"}>
-              LLM <b ref={(el) => { llmHudRef.current = el; }}>{llmLabel}</b>
+              LLM <b>{llmLabel}</b>
             </div>
             <div className="badge">STATUS <b ref={(el) => { hudRef.current = el; }}>{status}</b></div>
           </div>
         </header>
 
         <div className="panel">
-          <div className="ph"><span>THE OFFICE</span><span className="live">● LIVE</span></div>
+          <div className="ph">
+            <span>THE OFFICE</span>
+            <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <span className={`badge llm${llmHot ? " hot" : ""}`} style={{ fontSize: 14, padding: "2px 6px" }} title={llmChain || "AI API provider"}>
+                LLM <b ref={(el) => { llmHudRef.current = el; }}>{llmLabel}</b>
+              </span>
+              <span className="live">● LIVE</span>
+            </span>
+          </div>
           <div className="room-stage" ref={stageRef}>
             <div className="room-frame">
               <canvas id="room" ref={canvasRef} width={320} height={240} />
