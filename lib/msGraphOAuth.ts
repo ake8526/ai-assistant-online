@@ -52,9 +52,9 @@ export function buildMicrosoftAuthUrl(state: string): string {
     response_mode: "query",
     scope: GRAPH_SCOPE,
     state,
-    // Azure AD allows only ONE prompt value (unlike Google).
-    // "consent" forces the calendar permission screen + refresh token.
-    prompt: "consent",
+    // Do not force consent every time; with tenant-wide admin consent this can
+    // still bounce normal users to "need admin approval" in strict tenants.
+    prompt: "select_account",
   });
   return `${AUTH_URL}/${tenant()}/oauth2/v2.0/authorize?${p.toString()}`;
 }
