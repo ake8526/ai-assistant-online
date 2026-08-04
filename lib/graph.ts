@@ -504,6 +504,7 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   const vset = Array.from(new Set(variants.map((v) => v.toLowerCase())));
   const qLow = q.toLowerCase();
   const score = (u: UserInfo): number => {
+    if (isNonPersonAccount(u)) return 99;
     const mail = (u.mail || "").toLowerCase();
     const local = mail.split("@")[0] || "";
     const dn = (u.displayName || "").toLowerCase();
@@ -523,24 +524,24 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
         !localPrefix &&
         !localAlias &&
         surnameToks.some((t) => t.startsWith(v));
-      const parenNick = rawDn.match(/\(([^)]+)\)/);
-      const nickMatch = parenNick
-        ? parenNick[1].toLowerCase().split(/\s+/).some((t) => t === v || t.startsWith(v))
-        : false;
+      // Only treat paren text as a personal nickname (เบรฟ / Base), not "Vacuum Pan Department".
+      const nickMatch = isPersonalParenNick(rawDn, v);
 
-      if (local === v || firstTok === v || toks.includes(v)) best = Math.min(best, 0);
+      // Exact: mail local or first given name only — never any mid-title token.
+      if (local === v || firstTok === v) best = Math.min(best, 0);
       else if (localAlias || nickMatch) best = Math.min(best, 1);
       else if (firstPrefix || dn.startsWith(v)) best = Math.min(best, 2);
       else if (localPrefix) best = Math.min(best, 3);
       else if (surnameOnly) best = Math.min(best, shortQuery ? 7 : 4);
-      // No substring-in-middle matches (e.g. deesarap**an**).
+      // No substring-in-middle matches (e.g. deesarap**an**, vacuum **pan**).
     }
     if (!u.displayName || (u.displayName || "").includes("@")) best += 3;
     if (isServiceNick(local)) best += 2;
     return best;
   };
 
-  const ranked = dedupePeople(results).sort((a, b) => {
+  const peopleOnly = dedupePeople(results).filter((u) => !isNonPersonAccount(u));
+  const ranked = peopleOnly.sort((a, b) => {
     const sa = score(a);
     const sb = score(b);
     if (sa !== sb) return sa - sb;
@@ -555,8 +556,37 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   return filtered.slice(0, top);
 }
 
+/** Shared / org mailboxes that must never appear in “pick a person” lists. */
+function isNonPersonAccount(u: UserInfo): boolean {
+  const dn = (u.displayName || "").trim();
+  const local = ((u.mail || "").split("@")[0] || "").toLowerCase();
+  if (
+    /(department|factory|company|\bco\.?\s*,?\s*ltd\b|\bteam\b|shared\s*mailbox|noreply|no-?reply|vacuum\s+pan)/i.test(
+      dn
+    )
+  ) {
+    return true;
+  }
+  if (isServiceNick(local)) return true;
+  if (/^(tissugar|sugar|factory|dept|department|team|group|shared|room)\b/i.test(local)) return true;
+  return false;
+}
+
+/** Paren nick like "(เบรฟ …)" — not organizational titles like "(Vacuum Pan Department)". */
+function isPersonalParenNick(displayName: string, v: string): boolean {
+  const m = displayName.match(/\(([^)]+)\)/);
+  if (!m?.[1]) return false;
+  const inside = m[1].trim();
+  if (/(department|factory|company|team|group|dept|vacuum|mailbox)/i.test(inside)) return false;
+  const parts = inside.toLowerCase().split(/[\s._\-]+/).filter(Boolean);
+  // Personal nicks are short; org titles are long English phrases.
+  const englishWords = parts.filter((t) => /^[a-z]+$/.test(t));
+  if (englishWords.length >= 3) return false;
+  return parts.some((t) => t === v || (v.length >= 2 && t.startsWith(v) && t.length <= v.length + 4));
+}
+
 function isServiceNick(s: string): boolean {
-  return /^(acc|admin|collector|ktis|room|noreply|no-reply|service|system|test|tmp|temp)(_|$)/i.test(
+  return /^(acc|admin|collector|ktis|room|noreply|no-reply|service|system|test|tmp|temp|tissugar|sugar)(_|$|\.)/i.test(
     s.trim()
   );
 }
