@@ -254,6 +254,8 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "ตอนเย็นว่างไหม" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"16:00"}}
 "แล้วบ่ายล่ะ" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"12:00","before":"16:00"}}
 "ช่วงเช้าว่างไหม" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"09:00","before":"12:00"}}
+"ส่งนัดหา ake@gmail.com" -> {"intent":"find_meeting_time","params":{"attendees":["ake@gmail.com"]}}
+(หมายเหตุ: “ส่งนัดหา/นัดหา/เชิญ” + อีเมล = นัดกับอีเมลนั้นเท่านั้น ห้ามดึงคนจาก last_meeting มาผสม)
 "นัดประชุมกับสมชายและสมหญิง 30 นาที" -> {"intent":"find_meeting_time","params":{"attendees":["สมชาย","สมหญิง"],"duration_min":30}}
 "นัดเบสวันนี้ 10นาทีตอน 13:50 เรื่อง test meeting" -> {"intent":"find_meeting_time","params":{"attendees":["เบส"],"duration_min":10,"period":"today","at":"13:50","note":"test meeting"}}
 "นัดพี่นนท์พรุ่งนี้ 30 นาที เรื่อง sync" -> {"intent":"find_meeting_time","params":{"attendees":["พี่นนท์"],"duration_min":30,"period":"tomorrow","note":"sync"}}
@@ -628,7 +630,7 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
   if (/^(วันนี้|พรุ่งนี้)มี(นัด|ประชุม)/i.test(t)) return null;
 
   if (
-    !/^(?:นัด|จอง)(?:ประชุม)?(?:กับ)?/.test(t) &&
+    !/^(?:ส่งนัดหา|ส่งนัด|นัดหา|เชิญ|invite\b|นัด|จอง)(?:ประชุม)?(?:กับ|หา)?/i.test(t) &&
     !/^หาเวลา(?:ว่าง)?(?:ตรงกัน)?(?:กับ)?/.test(t) &&
     !/^ขอ(?:นัด|จอง)(?:ประชุม)?(?:กับ)?/.test(t)
   ) {
@@ -678,16 +680,21 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
   body = body.replace(/\s+/g, " ").trim();
 
   body = body
-    .replace(/^(?:นัด|จอง)(?:ประชุม)?(?:กับ)?/i, "")
+    .replace(/^(?:ส่งนัดหา|ส่งนัด|นัดหา|เชิญ|invite)\s*/i, "")
+    .replace(/^(?:นัด|จอง)(?:ประชุม)?(?:กับ|หา)?/i, "")
     .replace(/^หาเวลา(?:ว่าง)?(?:ตรงกัน)?(?:กับ)?/i, "")
     .replace(/^ขอ(?:นัด|จอง)(?:ประชุม)?(?:กับ)?/i, "")
     .replace(/\s+/g, " ")
     .trim();
 
-  const attendees = body
-    .split(/\s*(?:กับ|และ|,)\s*/)
-    .map((s) => stripHonorificPublic(s).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
-    .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง)$/i.test(s));
+  // Prefer explicit emails in the message (external Gmail etc.) over leftover words.
+  const emails = extractEmails(body);
+  const attendees = emails.length
+    ? emails
+    : body
+        .split(/\s*(?:กับ|และ|,)\s*/)
+        .map((s) => stripHonorificPublic(s).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
+        .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง|หา|ส่ง)$/i.test(s));
 
   if (!attendees.length) return null;
 
@@ -697,6 +704,11 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
   else if (after) params.after = after;
   if (note) params.note = note;
   return { intent: "find_meeting_time", params };
+}
+
+function extractEmails(text: string): string[] {
+  const found = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) || [];
+  return Array.from(new Set(found.map((e) => e.toLowerCase())));
 }
 
 function historyLines(context?: CommandContext): string[] {
@@ -1839,9 +1851,8 @@ async function handleParsed(
       target = files[fileIndex - 1] || null;
       if (!target) {
         return {
-          intent: "file_results",
+          intent,
           reply: `ไม่มีไฟล์ข้อ ${fileIndex} ในรายการครับ (มี ${files.length} ไฟล์) — ลองพิมพ์ “สรุปอัน 1” ถึง “สรุปอัน ${files.length}”`,
-          files,
           suggestions: [
             { label: "สรุปอัน 1", text: "สรุปอัน 1" },
             { label: "สรุปอัน 2", text: "สรุปอัน 2" },
@@ -2570,9 +2581,15 @@ async function handleParsed(
       ? bandFromParams
       : timeBandFromText(text);
 
-    const attendees: MtAttendee[] = attendeesRaw.length
-      ? attendeesRaw.map((token) => attendeeFromToken(String(token), userUpn))
-      : (context?.last_meeting?.attendees || []).map((mail) => ({ mail }));
+    // Fresh invite with explicit email(s) in this message → never drag in last_meeting crowd.
+    const emailsInText = extractEmails(text);
+    const freshInvite =
+      emailsInText.length > 0 && /ส่งนัด|นัดหา|เชิญ|invite\b|นัด\s|จอง\s/i.test(text);
+    const attendees: MtAttendee[] = freshInvite
+      ? emailsInText.map((mail) => ({ mail }))
+      : attendeesRaw.length
+        ? attendeesRaw.map((token) => attendeeFromToken(String(token), userUpn))
+        : (context?.last_meeting?.attendees || []).map((mail) => ({ mail }));
 
     if (!attendees.length) {
       return { intent: "find_meeting_time", reply: "ยังไม่ทราบว่าจะนัดกับใครครับ ลองระบุชื่อคนที่ต้องการดูตารางด้วยนะครับ" };

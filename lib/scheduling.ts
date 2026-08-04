@@ -138,8 +138,27 @@ export async function findCommonSlots(
     throw new Error(`ไม่มีสิทธิ์ดูตารางตาม Microsoft 365: ${msg}`);
   }
 
-  const views = data.map((d) => d.availabilityView || "");
-  const n = views.length ? Math.min(...views.map((v) => v.length)) : 0;
+  const orgDomain = (organizerUpn.split("@")[1] || "").toLowerCase();
+  const isExternalish = (email: string) => {
+    const d = (email.split("@")[1] || "").toLowerCase();
+    return !d || !orgDomain || d !== orgDomain;
+  };
+
+  // Use organizer (or longest) view as the grid length. External Gmail etc. often return
+  // empty availabilityView — treat those as always-free so they don't zero out all slots.
+  const orgRow =
+    data.find((d) => (d.scheduleId || "").toLowerCase() === organizerUpn.toLowerCase()) ||
+    data.find((d) => (d.availabilityView || "").length > 0);
+  const refLen = (orgRow?.availabilityView || "").length || Math.max(0, ...data.map((d) => (d.availabilityView || "").length));
+  const views = data.map((d) => {
+    const v = d.availabilityView || "";
+    const id = (d.scheduleId || "").toLowerCase();
+    if (v.length >= refLen && refLen > 0) return v.slice(0, refLen);
+    if (!refLen) return "";
+    if (!v.length || d.error?.message || isExternalish(id)) return "0".repeat(refLen);
+    return v.padEnd(refLen, "0");
+  });
+  const n = refLen;
   const need = Math.max(1, Math.ceil(durationMin / INTERVAL));
   let afterMin = opts?.afterMin ?? null;
   let beforeMin = opts?.beforeMin ?? null;
