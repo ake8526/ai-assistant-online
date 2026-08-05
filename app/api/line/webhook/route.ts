@@ -17,6 +17,7 @@ import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphO
 import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold, findLinkedLineAttendees } from "@/lib/meetingInvite";
 import { addMeetingMaterial } from "@/lib/meetingMaterials";
 import { attachLineImageToMeeting, clearMeetingPhotoContext, clearPendingLinePhoto, loadPendingLinePhoto, saveLastBookedEvent, savePendingLinePhoto } from "@/lib/meetingLink";
+import { buildShortFileOpenUrl } from "@/lib/fileOpenLink";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -74,7 +75,7 @@ function truncate(s: string, n: number): string {
 // Turn a CommandResult that needs a choice (people / time slots / meetings to
 // cancel) into LINE quick-reply buttons. Each tap sends a postback that
 // handleSelection() completes. Returns null when nothing to pick.
-function quickReplyFor(res: CommandResult): { items: object[] } | null {
+function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | null {
   const items: object[] = [];
   // Button label is just the number (matches the numbered list in the message
   // body) so the full name/time is always readable above; the postback carries
@@ -185,6 +186,35 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
         },
       });
     }
+  } else if (res.intent === "file_results" && Array.isArray(res.files)) {
+    const files = res.files as { id?: string; name?: string; url?: string }[];
+    files.forEach((f, i) => {
+      if (items.length >= 13) return;
+      const openUri =
+        upn && f.id
+          ? buildShortFileOpenUrl(upn, f.id)
+          : f.url && f.url.length <= 1000
+            ? f.url
+            : "";
+      if (!openUri) return;
+      items.push({
+        type: "action",
+        action: {
+          type: "uri",
+          label: truncate(`🔗 เปิด ${i + 1}`, 20),
+          uri: openUri,
+        },
+      });
+    });
+    if (items.length < 13 && Array.isArray(res.suggestions)) {
+      for (const s of res.suggestions) {
+        if (!s?.label || !s?.text || items.length >= 13) break;
+        items.push({
+          type: "action",
+          action: { type: "message", label: truncate(s.label, 20), text: s.text.slice(0, 300) },
+        });
+      }
+    }
   }
 
   // Follow-up suggestions (message taps) when no selection buttons above
@@ -240,13 +270,16 @@ function detailText(res: CommandResult): string {
     lines = (res.choices as Choice[]).map((c, i) => `${c.index || i + 1}) ${c.label || ""}`);
   } else if (res.intent === "file_results" && Array.isArray(res.files)) {
     const showPath = !!(res as CommandResult).show_file_location;
-    lines = (res.files as { name?: string; url?: string; path?: string }[]).map((f, i) => {
+    const fileList = res.files as { name?: string; url?: string; path?: string; id?: string }[];
+    lines = fileList.map((f, i) => {
       const name = (f.name || f.url || "ไฟล์").trim();
       const path =
         showPath && f.path && f.path !== "OneDrive" ? `\n   📂 ${f.path}` : "";
-      const link = f.url ? `\n   🔗 ${f.url}` : "";
-      return `${i + 1}) ${name}${path}${link}`;
+      return `${i + 1}) ${name}${path}`;
     });
+    if (fileList.some((f) => f.url || f.id)) {
+      lines.push("🔗 เปิดไฟล์ได้จากปุ่มด้านล่าง");
+    }
   }
   return lines.length ? "\n\n" + lines.join("\n") : "";
 }
@@ -378,7 +411,7 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
   let reply = res.reply || "รับทราบครับ";
   if (res.map_url) reply += `\n🗺️ ${res.map_url}`;
   reply += detailText(res);
-  const qr = quickReplyFor(res);
+  const qr = quickReplyFor(res, upn);
   if (qr) {
     await replyLineMessages(replyToken, [{ type: "text", text: reply.slice(0, 4900), quickReply: qr }]);
   } else {

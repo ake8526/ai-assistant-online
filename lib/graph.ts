@@ -749,6 +749,24 @@ export async function canAccessDriveItem(userUpn: string, itemId: string): Promi
   return false;
 }
 
+/** Resolve OneDrive webUrl for redirect links (app-only fallback). */
+export async function getDriveItemWebUrl(userUpn: string, itemId: string): Promise<string | null> {
+  const once = async (): Promise<string | null> => {
+    try {
+      const data = await graphGet(
+        `/users/${encodeURIComponent(userUpn)}/drive/items/${encodeURIComponent(itemId)}`,
+        { $select: "webUrl" }
+      );
+      return typeof data?.webUrl === "string" ? data.webUrl : null;
+    } catch {
+      return null;
+    }
+  };
+  const direct = await once();
+  if (direct) return direct;
+  return runAsAppOnly(once);
+}
+
 // ---------------------------------------------------------------------------
 // Users / directory
 // ---------------------------------------------------------------------------
