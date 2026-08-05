@@ -278,6 +278,8 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 (หมายเหตุ: ถ้าผู้ใช้ระบุวัน เช่น "วันจันทร์นี้/เสาร์หน้า/วันที่ 5" ต้องใส่ weekday หรือ date ด้วยเสมอ ห้ามปล่อยให้ค้นทั้งสัปดาห์)
 (หมายเหตุ: follow-up เรื่องเช้า/บ่าย/เย็น หลัง find_meeting_time ต้องคง intent เป็น find_meeting_time ห้ามสลับไป my_availability ของคนเดียว)
 "ยกเลิกนัด" -> {"intent":"cancel_meeting","params":{}}
+"ยกเลิกนัดพรุ่งนี้" -> {"intent":"cancel_meeting","params":{"period":"tomorrow"}}
+"ยกเลิกนัดวันนี้" -> {"intent":"cancel_meeting","params":{"period":"today"}}
 "ยกเลิกนัดกับเบส" -> {"intent":"cancel_meeting","params":{"person":"เบส"}}
 "ยกเลิกประชุมพี่นนท์" -> {"intent":"cancel_meeting","params":{"person":"พี่นนท์"}}
 "เปิดแผนที่ไปที่ทำงาน" -> {"intent":"open_map","params":{}}
@@ -689,16 +691,33 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
 }
 
 /** Deterministic cancel — keeps person filter when user says “ยกเลิกนัดกับเบส”. */
+function cancelPeriodFromText(text: string): string | undefined {
+  if (/พรุ่งนี้|มะรืน/.test(text)) return "tomorrow";
+  if (/วันนี้/.test(text)) return "today";
+  if (/สัปดาห์นี้|อาทิตย์นี้/.test(text)) return "week";
+  return undefined;
+}
+
 function quickCancelIntent(text: string): { intent: string; params: Record<string, unknown> } | null {
   const t = text.trim().replace(/\s+/g, " ");
   if (!t) return null;
   if (!/^(?:ยกเลิก|ลบ|เลิก)(?:นัด|ประชุม)/i.test(t)) return null;
+
+  const period = cancelPeriodFromText(t);
   const m = t.match(/^(?:ยกเลิก|ลบ|เลิก)(?:นัด|ประชุม)?(?:กับ|ของ)?\s*(.*)$/i);
-  const rest = (m?.[1] || "").trim().replace(/\s*(หน่อย|ครับ|ค่ะ|คะ|นะ)$/u, "").trim();
-  if (!rest || /^(วันนี้|พรุ่งนี้|ทั้งหมด|นี้)$/i.test(rest)) {
-    return { intent: "cancel_meeting", params: {} };
-  }
-  return { intent: "cancel_meeting", params: { person: rest } };
+  let rest = (m?.[1] || "")
+    .trim()
+    .replace(/\s*(หน่อย|ครับ|ค่ะ|คะ|นะ)$/u, "")
+    .trim();
+  rest = rest
+    .replace(/^(?:วันนี้|พรุ่งนี้|มะรืนนี้|มะรืน|สัปดาห์นี้|อาทิตย์นี้|ทั้งหมด|นี้)\s*/i, "")
+    .replace(/\s+(?:วันนี้|พรุ่งนี้|มะรืนนี้|มะรืน|สัปดาห์นี้|อาทิตย์นี้)\s*$/i, "")
+    .trim();
+
+  const params: Record<string, unknown> = {};
+  if (period) params.period = period;
+  if (rest && !/^(วันนี้|พรุ่งนี้|มะรืน|ทั้งหมด|นี้)$/i.test(rest)) params.person = rest;
+  return { intent: "cancel_meeting", params };
 }
 
 /** Deterministic parse for “นัด/จอง + ชื่อคน (+ วัน/เวลา/เรื่อง)” — avoids LLM mistaking เรื่อง… as add_task. */
@@ -967,6 +986,19 @@ async function parseIntent(
     const extFilter = parseFileExtensionFilter(textClean);
     if (extFilter) {
       return { intent: "filter_file_results", params: { filetype: extFilter }, source: "quick" };
+    }
+  }
+
+  // Refine cancel list — "พรุ่งนี้ ไม่ใช่วันนี้"
+  if (context?.last_intent === "choose_cancel") {
+    if (/พรุ่งนี้/.test(textClean) && (/ไม่ใช่|ไม่เอา/.test(textClean) || /วันนี้/.test(textClean))) {
+      return { intent: "cancel_meeting", params: { period: "tomorrow" }, source: "quick" };
+    }
+    if (/^วันนี้(?:\s*เท่านั้น)?$/i.test(textClean.trim())) {
+      return { intent: "cancel_meeting", params: { period: "today" }, source: "quick" };
+    }
+    if (/^พรุ่งนี้(?:\s*เท่านั้น)?$/i.test(textClean.trim())) {
+      return { intent: "cancel_meeting", params: { period: "tomorrow" }, source: "quick" };
     }
   }
 
@@ -1438,6 +1470,35 @@ function cancelEventLabel(ev: GraphEvent, now: Date = nowWall()): string {
   const who = others.length ? ` · ${others.join(", ")}` : "";
   const live = sd && ed && now >= sd && now < ed ? "🔴 กำลังประชุม — " : "";
   return `${live}${when} — ${subj}${who}`;
+}
+
+/** Short label for LINE cancel buttons — date + time + subject (distinguish same-time duplicates). */
+function cancelButtonLabel(ev: GraphEvent, now: Date = nowWall(), dup = 1): string {
+  const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+  const ed = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
+  const live = !!(sd && ed && now >= sd && now < ed);
+  const dd = sd ? String(sd.getUTCDate()).padStart(2, "0") : "??";
+  const mm = sd ? String(sd.getUTCMonth() + 1).padStart(2, "0") : "??";
+  const time = sd ? fmtTime(sd) : "??:??";
+  const subj = (ev.subject || "นัด").replace(/\s+/g, " ").trim().slice(0, 9);
+  const tag = dup > 1 ? `#${dup}` : "";
+  return `${live ? "🔴" : "❌"}${dd}/${mm} ${time} ${subj}${tag}`;
+}
+
+function buildCancelChoices(events: GraphEvent[], now: Date = nowWall()) {
+  const sorted = sortCancelEvents(events, now);
+  const keyCount = new Map<string, number>();
+  return sorted.map((ev) => {
+    const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+    const key = `${sd ? fmtDateTime(sd) : "?"}|${ev.subject || ""}`;
+    const n = (keyCount.get(key) || 0) + 1;
+    keyCount.set(key, n);
+    return {
+      event_id: ev.id!,
+      label: cancelEventLabel(ev, now),
+      short_label: cancelButtonLabel(ev, now, n),
+    };
+  });
 }
 
 function sortCancelEvents(events: GraphEvent[], now: Date = nowWall()): GraphEvent[] {
@@ -3013,7 +3074,8 @@ async function handleParsed(
   if (intent === "cancel_meeting") {
     const denied = needCalendarConsent();
     if (denied) return denied;
-    const { start, end } = periodRange("upcoming");
+    const period = String(params.period || "upcoming");
+    const { start, end, label: periodLabel } = periodRange(period);
     let events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
     // Still cancellable until end time (in-progress included)
     const now = nowWall();
@@ -3021,39 +3083,52 @@ async function handleParsed(
       const ed = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
       return !ed || ed > now;
     });
-    if (!events.length) return { intent, reply: "ไม่มีนัดที่จะยกเลิกในช่วง 2 สัปดาห์ข้างหน้าครับ" };
+    // Keep only events that start within the requested day/range
+    events = events.filter((ev) => {
+      const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+      if (!sd) return true;
+      return sd >= start && sd <= end;
+    });
+    if (!events.length) {
+      return {
+        intent,
+        reply: `ไม่มีนัดที่จะยกเลิก${period !== "upcoming" ? ` ${periodLabel}` : " ในช่วง 2 สัปดาห์ข้างหน้า"}ครับ`,
+        period,
+      };
+    }
 
     const personHint = String(params.person || "").trim();
     if (personHint) {
       const mails = await resolveCancelPersonMails(personHint, userUpn);
       const filtered = events.filter((ev) => eventTouchesPerson(ev, personHint, mails));
       if (!filtered.length) {
-        const choices = sortCancelEvents(events, now).map((ev) => ({
-          event_id: ev.id!,
-          label: cancelEventLabel(ev, now),
-        }));
+        const choices = buildCancelChoices(events, now);
         return {
           intent: "choose_cancel",
-          reply: `ไม่พบนัดที่เกี่ยวกับ “${personHint}” ครับ — เลือกรายการทั้งหมดได้ด้านล่าง 👇`,
+          reply: `ไม่พบนัด${period !== "upcoming" ? periodLabel : ""} ที่เกี่ยวกับ “${personHint}” ครับ — เลือกรายการทั้งหมดได้ด้านล่าง 👇`,
           choices,
+          period,
         };
       }
       events = filtered;
     }
 
-    events = sortCancelEvents(events, now);
-    const choices = events.map((ev) => ({ event_id: ev.id!, label: cancelEventLabel(ev, now) }));
+    const choices = buildCancelChoices(events, now);
     const liveCount = choices.filter((c) => c.label.startsWith("🔴")).length;
+    const scope = period !== "upcoming" ? periodLabel : "";
     let reply = personHint
-      ? `เจอนัดที่เกี่ยวกับ “${personHint}” ${choices.length} รายการ — เลือกที่ยกเลิกครับ 👇`
-      : "เลือกนัดที่ต้องการยกเลิกครับ 👇";
+      ? `เจอนัด${scope ? ` ${scope}` : ""} ที่เกี่ยวกับ “${personHint}” ${choices.length} รายการ — เลือกที่ยกเลิกครับ 👇`
+      : scope
+        ? `เลือกนัด ${scope} ที่ต้องการยกเลิกครับ 👇`
+        : "เลือกนัดที่ต้องการยกเลิกครับ 👇";
     if (liveCount) {
       reply =
         `นัดที่ยังไม่หมดเวลา/กำลังประชุม ยกเลิกได้ครับ\n` +
+        (scope ? `(${scope}) ` : "") +
         (personHint ? `กรอง “${personHint}” แล้ว ` : "") +
         `เลือกด้านล่าง 👇`;
     }
-    return { intent: "choose_cancel", reply, choices };
+    return { intent: "choose_cancel", reply, choices, period };
   }
 
   if (intent === "list_tasks") {

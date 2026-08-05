@@ -61,6 +61,7 @@ type Choice = {
   feed_id?: string;
   index?: number;
   label?: string;
+  short_label?: string;
   data?: string;
   lunch?: boolean;
 };
@@ -147,13 +148,12 @@ function quickReplyFor(res: CommandResult): { items: object[] } | null {
       const p = new URLSearchParams({ a: "cancel", id: c.event_id });
       const data = p.toString();
       if (data.length > 300) continue;
-      const timeBit = (c.label || "").match(/(\d{1,2}:\d{2})/)?.[1] || String(n);
-      const live = (c.label || "").includes("กำลังประชุม");
+      const btn = (c.short_label || c.label || String(n)).trim();
       items.push({
         type: "action",
         action: {
           type: "postback",
-          label: truncate(live ? `🔴${timeBit}` : `❌${timeBit}`, 20),
+          label: truncate(btn, 20),
           data,
           displayText: truncate(`ยกเลิก ${n}) ${c.label || ""}`, 60),
         },
