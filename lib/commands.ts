@@ -1594,7 +1594,7 @@ export async function runFindMeeting(
 
   // User already named an exact clock time (e.g. 17:30-18:00) →
   // keep THAT calendar day (วันนี้/พรุ่งนี้) — never silently roll to the next day.
-  // Show summary + confirm first (do NOT send Outlook invite yet).
+  // Show organizer confirm card first (do NOT send yet).
   if (resolvedAt != null && !opts?.showMore) {
     const dayAnchor = window?.start || nowWall();
     const slotStart = new Date(startOfDay(dayAnchor));

@@ -14,7 +14,7 @@ import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { createEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
-import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold } from "@/lib/meetingInvite";
+import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold, findLinkedLineAttendees } from "@/lib/meetingInvite";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -342,7 +342,8 @@ async function saveCtx(upn: string, prev: CommandContext | undefined, res: Comma
 
 // Send a reply, attaching quick-reply buttons when the result needs a choice.
 async function sendResult(replyToken: string, res: CommandResult, upn?: string): Promise<void> {
-  // Exact-time booking: jump straight to the confirm draft (no slot list, no auto-send).
+  // Exact-time booking: always show organizer confirm card first.
+  // After confirm: LINE-linked attendees → hold until they accept; otherwise Outlook immediately.
   if (res.intent === "confirm_meeting" && upn && Array.isArray(res.slots) && res.slots[0]) {
     const s = res.slots[0] as Slot;
     const meeting = (res.meeting as { attendees?: string[]; subject?: string }) || {};
@@ -355,7 +356,7 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
       ts: Date.now(),
     };
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [confirmCardMessage(draft)]);
+    await replyLineMessages(replyToken, [await confirmCardMessage(draft, "", upn)]);
     return;
   }
 
@@ -428,17 +429,32 @@ function draftWhen(d: Draft): string {
 }
 
 // A text message that shows the draft and offers confirm/edit quick replies.
-function confirmCardMessage(d: Draft, prefix = ""): object {
+// Organizer always confirms first. LINE-linked attendees → wait for their accept;
+// no LINE in system → Outlook invite goes out right after organizer confirms
+// (omit “รออีกฝั่งยืนยัน…” from the card in that case).
+async function confirmCardMessage(d: Draft, prefix = "", organizerUpn?: string): Promise<object> {
+  const linked = await findLinkedLineAttendees(d.attendees, organizerUpn);
+  const lineHold = linked.length > 0;
+  const hint = lineHold
+    ? "ยืนยันเพื่อส่งคำขอนัด (รออีกฝั่งยืนยันก่อนเข้า Outlook)\nหรือตั้งหัวข้อ / รายละเอียด / เพิ่มคน ก่อนได้ครับ 👇"
+    : "ยืนยันเพื่อส่งนัดประชุม\nหรือตั้งหัวข้อ / รายละเอียด / เพิ่มคน ก่อนได้ครับ 👇";
   const text =
     `${prefix}📋 ตรวจสอบก่อนส่งนัดประชุม\n` +
     `🕐 ${draftWhen(d)}\n` +
     `📌 หัวข้อ: ${d.subject}\n` +
     (d.detail ? `📝 รายละเอียด: ${d.detail}\n` : "") +
     `👤 ผู้เข้าร่วม: ${d.attendees.length ? d.attendees.join(", ") : "(ยังไม่มี)"}\n\n` +
-    `ยืนยันเพื่อส่งคำขอนัด (รออีกฝั่งยืนยันก่อนเข้า Outlook)\n` +
-    `หรือตั้งหัวข้อ / รายละเอียด / เพิ่มคน ก่อนได้ครับ 👇`;
+    hint;
   const items: object[] = [
-    { type: "action", action: { type: "postback", label: "✅ ยืนยันส่งคำขอ", data: "a=confirmbook", displayText: "ยืนยันส่งคำขอนัด" } },
+    {
+      type: "action",
+      action: {
+        type: "postback",
+        label: lineHold ? "✅ ยืนยันส่งคำขอ" : "✅ ยืนยันส่งนัด",
+        data: "a=confirmbook",
+        displayText: lineHold ? "ยืนยันส่งคำขอนัด" : "ยืนยันส่งนัด Outlook",
+      },
+    },
     { type: "action", action: { type: "postback", label: "🕐 เวลา", data: "a=settime", displayText: "แก้วันเวลา" } },
     { type: "action", action: { type: "postback", label: "✏️ หัวข้อ", data: "a=setsubj", displayText: "ตั้งหัวข้อประชุม" } },
     { type: "action", action: { type: "postback", label: "📝 รายละเอียด", data: "a=setdetail", displayText: "ใส่รายละเอียด" } },
@@ -559,7 +575,7 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       ts: Date.now(),
     };
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [confirmCardMessage(draft)]);
+    await replyLineMessages(replyToken, [await confirmCardMessage(draft, "", upn)]);
     return;
   }
 
@@ -642,7 +658,7 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
   }
   if (act === "rmppl") {
     if (!draft.attendees.length) {
-      await replyLineMessages(replyToken, [confirmCardMessage(draft, "ยังไม่มีผู้เข้าร่วมให้ลบครับ\n\n")]);
+      await replyLineMessages(replyToken, [await confirmCardMessage(draft, "ยังไม่มีผู้เข้าร่วมให้ลบครับ\n\n", upn)]);
       return;
     }
     if (draft.attendees.length === 1) {
@@ -650,7 +666,7 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       draft.attendees = [];
       await saveDraft(upn, draft);
       await replyLineMessages(replyToken, [
-        confirmCardMessage(draft, `ลบออกแล้ว: ${removed}\n(ยังไม่มีผู้เข้าร่วม — เพิ่มคนก่อนยืนยันได้ครับ)\n\n`),
+        await confirmCardMessage(draft, `ลบออกแล้ว: ${removed}\n(ยังไม่มีผู้เข้าร่วม — เพิ่มคนก่อนยืนยันได้ครับ)\n\n`, upn),
       ]);
       return;
     }
@@ -686,17 +702,17 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
   if (act === "pickrm") {
     const idx = Number(params.get("i"));
     if (!Number.isFinite(idx) || idx < 0 || idx >= draft.attendees.length) {
-      await replyLineMessages(replyToken, [confirmCardMessage(draft, "เลือกไม่ถูกต้องครับ\n\n")]);
+      await replyLineMessages(replyToken, [await confirmCardMessage(draft, "เลือกไม่ถูกต้องครับ\n\n", upn)]);
       return;
     }
     const removed = draft.attendees[idx];
     draft.attendees = draft.attendees.filter((_, i) => i !== idx);
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [confirmCardMessage(draft, `ลบออกแล้ว: ${removed}\n\n`)]);
+    await replyLineMessages(replyToken, [await confirmCardMessage(draft, `ลบออกแล้ว: ${removed}\n\n`, upn)]);
     return;
   }
   if (act === "backdraft") {
-    await replyLineMessages(replyToken, [confirmCardMessage(draft)]);
+    await replyLineMessages(replyToken, [await confirmCardMessage(draft, "", upn)]);
     return;
   }
   if (act === "canceldraft") {
@@ -772,7 +788,7 @@ async function handleDraftInput(upn: string, text: string, replyToken: string): 
     draft.end = parsed.end;
     draft.await = undefined;
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [confirmCardMessage(draft, "ตั้งเวลาเองแล้ว ✅\n\n")]);
+    await replyLineMessages(replyToken, [await confirmCardMessage(draft, "ตั้งเวลาเองแล้ว ✅\n\n", upn)]);
     return true;
   }
 
@@ -780,7 +796,7 @@ async function handleDraftInput(upn: string, text: string, replyToken: string): 
     draft.subject = text.trim().slice(0, 200) || "ประชุม";
     draft.await = undefined;
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [confirmCardMessage(draft, "ตั้งหัวข้อแล้ว ✅\n\n")]);
+    await replyLineMessages(replyToken, [await confirmCardMessage(draft, "ตั้งหัวข้อแล้ว ✅\n\n", upn)]);
     return true;
   }
 
@@ -788,7 +804,7 @@ async function handleDraftInput(upn: string, text: string, replyToken: string): 
     draft.detail = text.trim().slice(0, 1000);
     draft.await = undefined;
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [confirmCardMessage(draft, "ใส่รายละเอียดแล้ว ✅\n\n")]);
+    await replyLineMessages(replyToken, [await confirmCardMessage(draft, "ใส่รายละเอียดแล้ว ✅\n\n", upn)]);
     return true;
   }
 
@@ -806,7 +822,7 @@ async function handleDraftInput(upn: string, text: string, replyToken: string): 
   draft.await = undefined;
   await saveDraft(upn, draft);
   const extra = notFound.length ? `(หาไม่เจอ: ${notFound.join(", ")})\n\n` : "";
-  await replyLineMessages(replyToken, [confirmCardMessage(draft, `เพิ่มคนแล้ว ✅ ${extra}`)]);
+  await replyLineMessages(replyToken, [await confirmCardMessage(draft, `เพิ่มคนแล้ว ✅ ${extra}`, upn)]);
   return true;
 }
 
@@ -985,7 +1001,8 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
           ts: Date.now(),
         };
         await saveDraft(upn, draft);
-        await pushLineToId(userId, (confirmCardMessage(draft) as { text: string }).text);
+        const card = (await confirmCardMessage(draft, "", upn)) as { text: string };
+        await pushLineToId(userId, card.text);
       } else {
         await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
       }
