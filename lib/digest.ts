@@ -12,6 +12,9 @@ import { loadSeenNewsKeys, newsStoryKey } from "@/lib/store";
 import { trace } from "@/lib/trace";
 import * as youtube from "@/lib/youtube";
 
+/** Trial: force Gemini for news pick + summarize. Set null to restore default chain. */
+const NEWS_LLM_PREFER: "gemini" | "qwen" | "groq" | null = "gemini";
+
 export interface Story {
   id: string;
   title: string;
@@ -393,7 +396,7 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
           `เลือกเรื่องที่มีประเด็นชัด มีผลกระทบ มีตัวเลข/เหตุการณ์เด่น หรือน่าติดตาม — ไม่ใช่แค่หัวข้อทั่วไป\n` +
           `ให้ความสำคัญกับรายการที่มีแท็ก [หัวข้อ] ก่อน — YouTube เลือกได้ไม่เกิน ${ytCap} อัน`,
         listing,
-        { json: true, temperature: 0, timeoutMs: 12000, fast: true, traceStep: "fetch", tracePrefix: "📰 เลือกเด่น" }
+        { json: true, temperature: 0, timeoutMs: 15000, prefer: NEWS_LLM_PREFER || undefined, traceStep: "fetch", tracePrefix: "📰 เลือกเด่น" }
       );
       const d = JSON.parse(raw);
       picks = [...(d.highlights || [])].filter(
@@ -489,8 +492,7 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
           json: true,
           temperature: 0.25,
           timeoutMs: 28000,
-          // Quality path — prefer configured LLM order (usually Qwen), not Groq-fast.
-          fast: false,
+          prefer: NEWS_LLM_PREFER || undefined,
           traceStep: "compose",
           tracePrefix: "📰 สรุปประเด็น",
         }

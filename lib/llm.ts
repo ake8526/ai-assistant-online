@@ -160,13 +160,18 @@ export async function chat(
     temperature?: number;
     fast?: boolean;
     timeoutMs?: number;
+    /** Force this provider first (others remain as fallback). */
+    prefer?: Provider;
     /** Override pipeline stage for /monitor (e.g. news picker → fetch). */
     traceStep?: TraceStep;
     /** Prefix for monitor labels — use "📰 …" for the news room. */
     tracePrefix?: string;
   }
 ): Promise<string> {
-  const chain = providerChain(opts?.fast).filter((p) => settings(p));
+  let chain = providerChain(opts?.fast).filter((p) => settings(p));
+  if (opts?.prefer && settings(opts.prefer)) {
+    chain = [opts.prefer, ...chain.filter((p) => p !== opts.prefer)];
+  }
   if (!chain.length) {
     throw new Error("No LLM provider configured (set QWEN_API_KEY, GROQ_API_KEY, and/or GEMINI_API_KEY)");
   }
