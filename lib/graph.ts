@@ -249,6 +249,123 @@ function outlookEventPath(userUpn: string, eventId: string): string {
 
 const OUTLOOK_FILE_ATTACH_MAX = 2.5 * 1024 * 1024; // stay under Graph JSON attachment ~3MB limit
 
+type TeamsInviteFields = {
+  joinUrl: string;
+  meetingId?: string;
+  passcode?: string;
+  helpUrl?: string;
+  systemRefUrl?: string;
+  meetingOptionsUrl?: string;
+};
+
+function htmlEscape(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function htmlDecode(s: string): string {
+  return s
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function bodyPlainLines(html: string): string {
+  return htmlDecode(
+    html
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\r/g, "")
+  );
+}
+
+/** Pull join / ID / passcode from Graph-generated Teams invite HTML. */
+function parseTeamsInviteFromBody(raw: string, fallbackJoinUrl?: string): TeamsInviteFields | null {
+  const html = raw || "";
+  const plain = bodyPlainLines(html);
+
+  const urlIn = (re: RegExp) => html.match(re)?.[0] || plain.match(re)?.[0];
+
+  const joinUrl =
+    urlIn(/https:\/\/teams\.microsoft\.com\/meet\/[^\s"'<>]+/i) ||
+    fallbackJoinUrl ||
+    urlIn(/https:\/\/teams\.microsoft\.com\/l\/meetup-join\/[^\s"'<>]+/i);
+  if (!joinUrl) return null;
+
+  const meetingId =
+    plain.match(/Meeting ID[:\s]*([0-9][0-9\s]{8,})/i)?.[1]?.trim() ||
+    plain.match(/(?:รหัส(?:การ)?ประชุม|Meeting ID)[:\s]*([0-9][0-9\s]+)/i)?.[1]?.trim();
+
+  const passcode =
+    plain.match(/Passcode[:\s]*([A-Za-z0-9]+)/i)?.[1] ||
+    plain.match(/(?:รหัส(?:ผ่าน)?|Passcode)[:\s]*([A-Za-z0-9]+)/i)?.[1];
+
+  const helpUrl =
+    urlIn(/https:\/\/aka\.ms\/JoinTeamsMeeting[^\s"'<>]*/i) || "https://aka.ms/JoinTeamsMeeting?omkt=en-US";
+
+  const systemRefUrl =
+    urlIn(/https:\/\/teams\.microsoft\.com\/l\/meetup-join\/[^\s"'<>]+/i) ||
+    (joinUrl.includes("/l/meetup-join/") ? joinUrl : undefined);
+
+  const meetingOptionsUrl = urlIn(/https:\/\/teams\.microsoft\.com\/meetingOptions\/[^\s"'<>]+/i);
+
+  return { joinUrl, meetingId, passcode, helpUrl, systemRefUrl, meetingOptionsUrl };
+}
+
+/** Compact Teams block like Outlook default — link labels only, no long URL paragraphs. */
+function buildCleanTeamsInviteHtml(fields: TeamsInviteFields, userDetail?: string): string {
+  const join = htmlEscape(fields.joinUrl);
+  const help = htmlEscape(fields.helpUrl || "https://aka.ms/JoinTeamsMeeting?omkt=en-US");
+  const parts = [
+    `<div>`,
+    `<p><strong>Microsoft Teams meeting</strong></p>`,
+    `<p><strong>Join:</strong> <a href="${join}">${join}</a></p>`,
+  ];
+  if (fields.meetingId) parts.push(`<p>Meeting ID: ${htmlEscape(fields.meetingId)}</p>`);
+  if (fields.passcode) parts.push(`<p>Passcode: ${htmlEscape(fields.passcode)}</p>`);
+  parts.push(`<hr/>`);
+  if (fields.systemRefUrl) {
+    const sys = htmlEscape(fields.systemRefUrl);
+    parts.push(`<p><a href="${help}">Need help?</a> | <a href="${sys}">System reference</a></p>`);
+  } else {
+    parts.push(`<p><a href="${help}">Need help?</a></p>`);
+  }
+  if (fields.meetingOptionsUrl) {
+    parts.push(
+      `<p>For organisers: <a href="${htmlEscape(fields.meetingOptionsUrl)}">Meeting options</a></p>`
+    );
+  }
+  if (userDetail?.trim()) {
+    parts.push(`<hr/><p>${htmlEscape(userDetail.trim()).replace(/\n/g, "<br/>")}</p>`);
+  }
+  parts.push(`</div>`);
+  return parts.join("\n");
+}
+
+async function replaceTeamsInviteBody(
+  userUpn: string,
+  eventId: string,
+  rawBody: string,
+  joinUrl?: string,
+  userDetail?: string
+): Promise<void> {
+  const fields =
+    parseTeamsInviteFromBody(rawBody, joinUrl) ||
+    (joinUrl ? { joinUrl, helpUrl: "https://aka.ms/JoinTeamsMeeting?omkt=en-US" } : null);
+  if (!fields?.joinUrl) return;
+  const clean = buildCleanTeamsInviteHtml(fields, userDetail);
+  const patchR = await graphFetch(outlookEventPath(userUpn, eventId), {
+    method: "PATCH",
+    body: { body: { contentType: "HTML", content: clean } },
+  });
+  if (!patchR.ok) {
+    console.warn("[graph] clean Teams body PATCH", patchR.status, (await patchR.text()).slice(0, 120));
+  }
+}
+
 /**
  * Push a file/link into the real Outlook event: append HTML link in body,
  * and for small OneDrive files also add a fileAttachment attendees can open.
@@ -1399,7 +1516,6 @@ export async function createEvent(
       timeoutMs: teamsTimeout,
       body: {
         subject,
-        ...(description ? { body: { contentType: "text", content: description } } : {}),
         start: { dateTime: startIso, timeZone: TIMEZONE },
         end: { dateTime: endIso, timeZone: TIMEZONE },
         attendees: attendeeEmails.map((a) => ({ emailAddress: { address: a }, type: "required" })),
@@ -1454,6 +1570,25 @@ export async function createEvent(
   if (!ev.onlineMeeting?.joinUrl) {
     console.warn("[graph] createEvent succeeded but Teams joinUrl still missing", ev.id);
   }
+
+  // Graph/Outlook sometimes dumps full meetup-join + meetingOptions URLs as plain text.
+  // Replace with the compact Teams template (Join + ID + Passcode + labelled links).
+  if (ev.id) {
+    try {
+      await new Promise((r) => setTimeout(r, 500));
+      const full = await getEvent(organizerUpn, ev.id);
+      await replaceTeamsInviteBody(
+        organizerUpn,
+        ev.id,
+        String(full.body?.content || ""),
+        ev.onlineMeeting?.joinUrl || full.onlineMeeting?.joinUrl,
+        description
+      );
+    } catch (e) {
+      console.warn("[graph] clean Teams invite body failed:", String(e).slice(0, 120));
+    }
+  }
+
   return ev;
 }
 
