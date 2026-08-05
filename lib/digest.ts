@@ -62,9 +62,13 @@ function storyBullets(s: Story): string[] {
 function isHollowBullet(b: string): boolean {
   const t = b.trim();
   if (t.length < 8) return true;
-  return /ไม่มี(รายละเอียด|ข้อมูล|เนื้อหา)|ไม่ระบุ|ไม่ได้ระบุ|ไม่ได้อธิบาย|ไม่ทราบรายละเอียด|เนื้อหาไม่พอ|เนื้อหาสั้น|No further|ไม่พบข้อมูลเพิ่ม/i.test(
+  return /ไม่มี(รายละเอียด|ข้อมูล|เนื้อหา)|ไม่ระบุ|ไม่ได้ระบุ|ไม่ได้อธิบาย|ไม่ทราบรายละเอียด|เนื้อหาไม่พอ|เนื้อหาสั้น|No further|ไม่พบข้อมูลเพิ่ม|ONLY AVAILABLE IN PAID PLANS/i.test(
     t
   );
+}
+
+function isPaywalledSnippet(s: string): boolean {
+  return /ONLY AVAILABLE IN PAID PLANS/i.test(s || "");
 }
 
 /** Merge RSS/NewsData snippet + scraped article; keep the most useful text. */
@@ -123,31 +127,45 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
 
   const newsCount = await getNewsCount(upn);
 
-  // 2a) manually-added feeds (RSS + Facebook pages)
-  for (const f of feeds) {
-    if (!granted.has(CAP_BY_KIND[f.kind])) {
-      skipped.push(`${f.label || f.kind} (ไม่ได้อนุญาตแหล่งชนิด ${f.kind})`);
-      continue;
-    }
-    if (f.kind === "rss") {
-      // Facebook share URLs mis-saved as RSS won't parse — skip with a hint
-      if (/facebook\.com/i.test(f.ref || "")) {
-        skipped.push(`${f.label || "RSS"} (ลิงก์เป็น Facebook — เพิ่มเป็นแหล่ง Facebook หรือเปิดสิทธิ์ Facebook)`);
-        continue;
+  // 2a) manually-added feeds (RSS + Facebook pages) — fetch in parallel
+  const feedResults = await Promise.all(
+    feeds.map(async (f) => {
+      if (!granted.has(CAP_BY_KIND[f.kind])) {
+        return { skip: `${f.label || f.kind} (ไม่ได้อนุญาตแหล่งชนิด ${f.kind})`, entries: [] as DigestItem[] };
       }
-      const entries = await fetchFeed(f.ref);
-      entries.forEach((e) => items.push({ ...e, kind: f.kind, feedLabel: f.label || e.source }));
-    } else if (f.kind === "facebook") {
-      try {
-        const entries = await facebookPosts(f.ref, 8);
-        if (!entries.length) skipped.push(`${f.label || "Facebook"} (ดึงโพสต์ไม่ได้ — ตรวจ App / สิทธิ์เพจ)`);
-        entries.forEach((e) => items.push({ ...e, kind: f.kind, feedLabel: f.label || e.source }));
-      } catch (e) {
-        skipped.push(`${f.label || "Facebook"} (${String(e).slice(0, 60)})`);
+      if (f.kind === "rss") {
+        if (/facebook\.com/i.test(f.ref || "")) {
+          return {
+            skip: `${f.label || "RSS"} (ลิงก์เป็น Facebook — เพิ่มเป็นแหล่ง Facebook หรือเปิดสิทธิ์ Facebook)`,
+            entries: [] as DigestItem[],
+          };
+        }
+        const entries = await fetchFeed(f.ref);
+        return {
+          skip: null as string | null,
+          entries: entries.map((e) => ({ ...e, kind: f.kind, feedLabel: f.label || e.source })),
+        };
       }
-    } else if (f.kind !== "youtube") {
-      skipped.push(`${f.label || f.kind} (${f.kind} ยังไม่รองรับบน Vercel)`);
-    }
+      if (f.kind === "facebook") {
+        try {
+          const entries = await facebookPosts(f.ref, 8);
+          return {
+            skip: entries.length ? null : `${f.label || "Facebook"} (ดึงโพสต์ไม่ได้ — ตรวจ App / สิทธิ์เพจ)`,
+            entries: entries.map((e) => ({ ...e, kind: f.kind, feedLabel: f.label || e.source })),
+          };
+        } catch (e) {
+          return { skip: `${f.label || "Facebook"} (${String(e).slice(0, 60)})`, entries: [] as DigestItem[] };
+        }
+      }
+      if (f.kind !== "youtube") {
+        return { skip: `${f.label || f.kind} (${f.kind} ยังไม่รองรับบน Vercel)`, entries: [] as DigestItem[] };
+      }
+      return { skip: null as string | null, entries: [] as DigestItem[] };
+    })
+  );
+  for (const r of feedResults) {
+    if (r.skip) skipped.push(r.skip);
+    items.push(...r.entries);
   }
 
   // 2b) YouTube — pull uploads; hard-cap to 2 newest in digest (never flood)
@@ -370,10 +388,12 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   const chosen = picks.map((i) => pool[i]).slice(0, Math.min(highlightN, 5));
   const withText = await Promise.all(
     chosen.map(async (it) => {
-      // Prefer existing summary for topics (already has body); scrape only when thin.
-      const thin = !(it.summary || "").trim() || (it.summary || "").trim().length < 80;
+      // Prefer existing summary for topics (already has body); scrape only when thin / paywalled.
+      const sum = (it.summary || "").trim();
+      const thin = !sum || sum.length < 80 || isPaywalledSnippet(sum);
       const scraped = thin && it.kind !== "youtube" ? await fetchArticle(it.link) : "";
-      const full = bestArticleBody(it.title, it.summary || "", scraped);
+      let full = bestArticleBody(it.title, isPaywalledSnippet(sum) ? "" : sum, scraped);
+      if (isPaywalledSnippet(full)) full = (it.title || "").trim();
       return { ...it, full };
     })
   );

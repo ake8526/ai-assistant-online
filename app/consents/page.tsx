@@ -562,7 +562,7 @@ function ConsentsContent() {
         <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
           <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2"><CalendarClock className="w-4 h-4" /> เวลาที่ AI ส่งให้อัตโนมัติ (ทาง LINE)</h2>
           <p className="text-[11px] text-slate-500 leading-relaxed -mt-1">
-            ตั้งเวลาส่งเข้า LINE · ระบบเช็คทุก ~5 นาที จะส่งใกล้เวลาที่ระบุ · เช้านี้ส่ง<b>สรุปข่าวก่อน</b> แล้วตามด้วยสรุปตารางทันที · ปิด/เปิดแยกกันได้
+            ตั้งเวลาส่งเข้า LINE · <b>สรุปตารางเช้า</b> ส่งก่อน (เร็ว) แล้วตามด้วยสรุปข่าว · ระบบยิงรอบเช้าบ่อยเพื่อให้ใกล้เวลาที่ตั้ง · ปิด/เปิดแยกกันได้
           </p>
 
           {notify ? (
@@ -582,11 +582,11 @@ function ConsentsContent() {
                 onChange={(patch) => saveNotify("brief", patch)}
               />
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                ค่าเริ่มต้น: ข่าวแล้วตามด้วยตาราง จ–ศ 07:00 ·{" "}
+                ค่าเริ่มต้น: ตารางเช้าแล้วตามด้วยข่าว จ–ศ 07:00 ·{" "}
                 {(notify.news.count ?? 3) === 0
                   ? "ทั้งหมดที่อัปเดตวันนี้"
                   : `${notify.news.count ?? 3} ข่าว/วัน`}{" "}
-                · ส่งตามเวลาที่ตั้ง (เช็คทุก ~5 นาที)
+                · เป้าส่งใกล้เวลาที่ตั้ง (±10 นาที)
               </p>
             </>
           ) : loadFailed || needReauth ? (

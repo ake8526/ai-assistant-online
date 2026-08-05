@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkCronSecret } from "@/lib/auth";
 import { sendLine } from "@/lib/line";
-import { isDueNow, markSent } from "@/lib/notify";
+import { claimSend, clearInflight, isDueNow, markSent } from "@/lib/notify";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { buildDigest, formatStoriesText, rememberDeliveredStories } from "@/lib/digest";
 
@@ -28,13 +28,23 @@ async function run(req: Request) {
         }
         const { stories, note } = await buildDigest(upn);
         if (!stories?.length) {
-          results[upn] = note || "no stories";
+          if (force || (await claimSend(upn, "news"))) {
+            await markSent(upn, "news");
+            results[upn] = note || "no stories";
+          } else {
+            results[upn] = "skip (inflight or sent)";
+          }
           continue;
         }
         // seed_seen=1 — remember current batch as already delivered (no LINE push)
         if (new URL(req.url).searchParams.get("seed_seen") === "1") {
           await rememberDeliveredStories(upn, stories);
+          if (force || (await claimSend(upn, "news"))) await markSent(upn, "news");
           results[upn] = `seeded ${stories.length} seen (no push)`;
+          continue;
+        }
+        if (!force && !(await claimSend(upn, "news"))) {
+          results[upn] = "skip (inflight or sent)";
           continue;
         }
         await sendLine(upn, "", formatStoriesText(stories));
@@ -42,6 +52,7 @@ async function run(req: Request) {
         await markSent(upn, "news");
         results[upn] = `delivered ${stories.length} stories`;
       } catch (e) {
+        await clearInflight(upn, "news").catch(() => {});
         results[upn] = `ERROR: ${String(e).slice(0, 150)}`;
       }
     }

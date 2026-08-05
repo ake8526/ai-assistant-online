@@ -8,7 +8,7 @@ import { nowWall } from "@/lib/time";
 export type NotifyKind = "brief" | "news";
 
 export const NOTIFY_DEFAULTS: Record<NotifyKind, { enabled: boolean; time: string; days: number[] }> = {
-  // days: 0=Sun … 6=Sat — same default time; cron sends news then brief
+  // days: 0=Sun … 6=Sat — cron sends brief first (fast), then news
   brief: { enabled: true, time: "07:00", days: [1, 2, 3, 4, 5] },        // จ–ศ
   news: { enabled: true, time: "07:00", days: [1, 2, 3, 4, 5] },         // จ–ศ เวลาเดียวกับบรีฟ
 };
@@ -97,8 +97,12 @@ function bkkNow(): { min: number; day: number; date: string } {
   };
 }
 
+/** Allow cron that fires a few minutes early (GitHub/Vercel drift) to still
+ *  deliver — better slightly early than ~1h late. */
+export const NOTIFY_EARLY_SLACK_MIN = 5;
+
 /** Is it time to send `kind` to this user right now, and not already sent today?
- *  Due when Bangkok wall-clock is at or past the user's set time (HH:MM).
+ *  Due when Bangkok wall-clock is at/near the user's set time (HH:MM).
  *  Cron should poll often (≈ every 5 min) so delivery stays close to that time. */
 export async function isDueNow(upn: string, kind: NotifyKind): Promise<boolean> {
   const cfg = (await getNotifyConfig(upn))[kind];
@@ -107,12 +111,37 @@ export async function isDueNow(upn: string, kind: NotifyKind): Promise<boolean> 
   if (!cfg.days.includes(day)) return false;
   const [hh, mm] = cfg.time.split(":").map((x) => parseInt(x, 10));
   const dueMin = (hh || 0) * 60 + (mm || 0);
-  if (min < dueMin) return false; // not yet time today
+  if (min < dueMin - NOTIFY_EARLY_SLACK_MIN) return false;
   const last = await getSetting(upn, `${kind}_last_sent`);
   return last !== date; // once per day
+}
+
+const INFLIGHT_TTL_MS = 12 * 60_000;
+
+/** Claim exclusive delivery for today so overlapping Vercel + GitHub crons
+ *  don't double-build. Returns false if already sent or another worker holds the lock. */
+export async function claimSend(upn: string, kind: NotifyKind): Promise<boolean> {
+  if (!(await isDueNow(upn, kind))) return false;
+  const key = `${kind}_inflight`;
+  const lock = await getSetting(upn, key);
+  const now = Date.now();
+  if (lock) {
+    const t = parseInt(lock, 10);
+    if (Number.isFinite(t) && now - t < INFLIGHT_TTL_MS) return false;
+  }
+  await setSetting(upn, key, String(now));
+  // Re-check after write (cheap race guard)
+  const last = await getSetting(upn, `${kind}_last_sent`);
+  if (last === bkkNow().date) return false;
+  return true;
+}
+
+export async function clearInflight(upn: string, kind: NotifyKind): Promise<void> {
+  await setSetting(upn, `${kind}_inflight`, "");
 }
 
 /** Record a successful send so we don't send `kind` again today. */
 export async function markSent(upn: string, kind: NotifyKind): Promise<void> {
   await setSetting(upn, `${kind}_last_sent`, bkkNow().date);
+  await clearInflight(upn, kind);
 }

@@ -1,13 +1,19 @@
-# Scheduled triggers that Vercel Hobby crons can't cover (sub-daily jobs).
-# Requires the repo secret CRON_SECRET (same value as the Vercel env var).
-# Times are UTC (Bangkok = UTC+7). Delivery endpoints honour each user's set
-# HH:MM — poll often so sends stay close to that time.
+# Morning LINE delivery + daytime jobs.
+# Requires repo secret CRON_SECRET (= Vercel CRON_SECRET).
+# Times are UTC (Bangkok = UTC+7).
+#
+# Brief (calendar) is a separate fast call so news scrape/timeout can never
+# swallow the morning agenda. News is its own step (+ digest/push backup).
 name: scheduled-jobs
 
 on:
   schedule:
-    # every 5 min, 00:00–13:55 UTC = 07:00–20:55 BKK (punctual morning + day jobs)
-    - cron: "*/5 0-13 * * *"
+    # Pre-morning Mon–Fri BKK: 06:50 / 06:55 (Sun–Thu 23:50/55 UTC)
+    - cron: "50,55 23 * * 0-4"
+    # 07:00–07:55 BKK every 5 min (Mon–Fri)
+    - cron: "*/5 0 * * 1-5"
+    # 08:00–20:55 BKK every 5 min
+    - cron: "*/5 1-13 * * *"
   workflow_dispatch: {}
 
 env:
@@ -18,21 +24,36 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ vars.CRON_ENABLED != 'false' }}
     steps:
-      - name: Morning news then brief (at each user's set time)
+      # 1) Agenda first — usually <15s; must not share a timeout budget with news
+      - name: Morning brief only (calendar → LINE)
+        run: |
+          curl -sS -m 90 -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "$BASE/api/brief/run?only=brief" | head -c 1500
+
+      # 2) News digest — may take minutes when count=all
+      - name: Morning news only
         run: |
           curl -sS -m 280 -X POST \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            "$BASE/api/brief/run" | head -c 1500
+            "$BASE/api/brief/run?only=news" | head -c 1500
 
-      - name: News digest backup (if main step timed out before news)
+      - name: News digest backup
         run: |
           curl -sS -m 280 -X POST \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             "$BASE/api/digest/push" | head -c 1000
 
+      # Brief retry if step 1 failed / raced before due time
+      - name: Morning brief retry
+        run: |
+          curl -sS -m 90 -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "$BASE/api/brief/run?only=brief" | head -c 1000
+
       - name: Meeting summaries (Mon-Fri, 08:00-19:45 BKK only)
         run: |
-          H=$(date -u +%H); D=$(date -u +%u)   # D: 1=Mon … 7=Sun
+          H=$(date -u +%H); D=$(date -u +%u)
           if [ "$D" -le 5 ] && [ "$H" -ge 1 ] && [ "$H" -le 12 ]; then
             curl -sS -m 280 -X POST \
               -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
