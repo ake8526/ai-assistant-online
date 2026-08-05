@@ -615,7 +615,10 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
     draft.await = "subject";
     await saveDraft(upn, draft);
     await replyLineMessages(replyToken, [
-      textWithDraftEscape("พิมพ์หัวข้อประชุมมาได้เลยครับ (เช่น “อัปเดตงาน IT”)"),
+      textWithDraftEscape(
+        "พิมพ์หัวข้อประชุมมาได้เลยครับ (เช่น “อัปเดตงาน IT”)\n" +
+          "ถ้าอยากใส่รายละเอียดด้วย — ขึ้นบรรทัดใหม่ต่อท้ายได้เลย"
+      ),
     ]);
     return;
   }
@@ -793,10 +796,17 @@ async function handleDraftInput(upn: string, text: string, replyToken: string): 
   }
 
   if (draft.await === "subject") {
-    draft.subject = text.trim().slice(0, 200) || "ประชุม";
+    // First line = subject; any following lines = details (skip blank lines).
+    const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    draft.subject = (lines[0] || "ประชุม").slice(0, 200);
+    if (lines.length > 1) {
+      draft.detail = lines.slice(1).join("\n").slice(0, 1000);
+    }
     draft.await = undefined;
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [await confirmCardMessage(draft, "ตั้งหัวข้อแล้ว ✅\n\n", upn)]);
+    const prefix =
+      lines.length > 1 ? "ตั้งหัวข้อ + รายละเอียดแล้ว ✅\n\n" : "ตั้งหัวข้อแล้ว ✅\n\n";
+    await replyLineMessages(replyToken, [await confirmCardMessage(draft, prefix, upn)]);
     return true;
   }
 
