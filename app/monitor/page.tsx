@@ -31,7 +31,7 @@ const AGENTS = [
   { id: "parse", name: "BRAIN", role: "PARSE", cap: "แยกเจตนา (intent) ด้วย LLM", shirt: "#2f9e44", hair: "#2a2a2a", screen: "filter" },
   { id: "fetch", name: "RUNNER", role: "FETCH", cap: "ดึงข้อมูลจาก Microsoft 365", shirt: "#f0b429", hair: "#caa15a", screen: "search" },
   { id: "compose", name: "SCRIBE", role: "COMPOSE", cap: "เขียนคำตอบภาษาไทย", shirt: "#7048e8", hair: "#7a4a2a", screen: "render" },
-  { id: "courier", name: "DASH", role: "REPLY", cap: "เดินเอาคำตอบไปส่งกลับ", shirt: "#ee1b24", hair: "#141414", screen: "" },
+  { id: "courier", name: "DASH", role: "REPLY", cap: "ใส่ตู้จดหมาย → ส่ง LINE (เร็ว=วิ่ง)", shirt: "#ee1b24", hair: "#141414", screen: "" },
 ] as const;
 
 const NEWS_AGENTS = [
@@ -139,7 +139,12 @@ function parseNewsAi(label: string): string | null {
 const DEV = process.env.NODE_ENV !== "production";
 
 // ----- canvas art (ported, trimmed) -----
-type Dash = { x: number; y: number; tx: number | null; ty: number | null; face: string; moving: boolean; phase: number; carry: boolean; onArrive: (() => void) | null };
+type Dash = {
+  x: number; y: number; tx: number | null; ty: number | null;
+  face: string; moving: boolean; phase: number; carry: boolean;
+  speed: number; running: boolean; visible: boolean;
+  onArrive: (() => void) | null;
+};
 type Postie = { x: number; y: number; tx: number | null; ty: number | null; carry: boolean; visible: boolean; onArrive: (() => void) | null };
 
 function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | null>; account: unknown }) {
@@ -159,8 +164,17 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const doorOpenRef = useRef(false);
 
   const statusRef = useRef<string[]>(AGENTS.map(() => "idle"));
-  const dashRef = useRef<Dash>({ x: 160, y: 150, tx: null, ty: null, face: "down", moving: false, phase: 0, carry: false, onArrive: null });
+  const dashRef = useRef<Dash>({
+    x: 160, y: 150, tx: null, ty: null, face: "down", moving: false, phase: 0,
+    carry: false, speed: 0.9, running: false, visible: true, onArrive: null,
+  });
+  const helperRef = useRef<Dash>({
+    x: 200, y: 120, tx: null, ty: null, face: "down", moving: false, phase: 0,
+    carry: false, speed: 1.1, running: false, visible: false, onArrive: null,
+  });
   const mailFlashRef = useRef(0);
+  const mailHasParcelRef = useRef(false);
+  const traceStartedAtRef = useRef(0);
 
   // event pipeline
   const queueRef = useRef<MonEvent[]>([]);
@@ -437,24 +451,34 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       if (work) { const p = Math.floor(now / 200) % 2; R(sx - 1, y - 25, 2, 2, p ? "#f0b429" : "#5a4410"); }
       if (st === "done") { X.strokeStyle = "#39d353"; X.lineWidth = 2; X.beginPath(); X.moveTo(sx - 3, y - 24); X.lineTo(sx - 1, y - 22); X.lineTo(sx + 3, y - 27); X.stroke(); X.lineWidth = 1; }
     }
-    function drawDash(now: number) {
-      const dash = dashRef.current; const st = statusRef.current[4];
+    function drawCourier(dash: Dash, now: number, shirt: string, hair: string, badgeIdx: number | null) {
+      if (!dash.visible) return;
       const moving = dash.moving; const f = Math.floor(dash.phase) % 2;
-      const bob = moving ? (f ? 0 : -1) : Math.round(Math.sin(now / 500) * 0.5);
+      const bob = moving ? (f ? 0 : (dash.running ? -2 : -1)) : Math.round(Math.sin(now / 500) * 0.5);
       const x = Math.round(dash.x), y = Math.round(dash.y) + bob;
       X.fillStyle = "rgba(0,0,0,0.28)"; X.fillRect(x - 6, y + 1, 12, 2);
-      const l1 = moving ? (f ? 2 : 0) : 0, l2 = moving ? (f ? 0 : 2) : 0;
+      const l1 = moving ? (f ? (dash.running ? 3 : 2) : 0) : 0;
+      const l2 = moving ? (f ? 0 : (dash.running ? 3 : 2)) : 0;
       R(x - 4, y - 4 + l1, 3, 4, "#2b2b3a"); R(x + 1, y - 4 + l2, 3, 4, "#2b2b3a");
-      R(x - 5, y - 12, 10, 8, "#ee1b24"); R(x - 5, y - 12, 10, 2, "#b3121a");
-      R(x - 7, y - 11, 2, 6, "#ee1b24"); R(x + 5, y - 11, 2, 6, "#ee1b24");
+      R(x - 5, y - 12, 10, 8, shirt); R(x - 5, y - 12, 10, 2, shirt === "#ee1b24" ? "#b3121a" : "#c2410c");
+      R(x - 7, y - 11, 2, 6, shirt); R(x + 5, y - 11, 2, 6, shirt);
       if (dash.carry) { R(x - 4, y - 20, 8, 7, "#e8e8e0"); R(x - 4, y - 20, 8, 2, "#39d353"); R(x - 3, y - 16, 6, 1, "#888"); R(x - 3, y - 14, 4, 1, "#888"); }
-      const hy = y - 19, skin = "#f0c090", hair = "#141414";
+      const hy = y - 19, skin = "#f0c090";
       R(x - 5, hy, 10, 9, skin);
       if (dash.face === "up") { R(x - 5, hy - 1, 10, 9, hair); }
       else { R(x - 5, hy - 1, 10, 4, hair); R(x - 5, hy, 1, 5, hair); R(x + 4, hy, 1, 5, hair); if (dash.face === "down") { R(x - 3, hy + 4, 2, 2, "#141414"); R(x + 1, hy + 4, 2, 2, "#141414"); } else if (dash.face === "left") { R(x - 3, hy + 4, 2, 2, "#141414"); } else { R(x + 1, hy + 4, 2, 2, "#141414"); } }
-      if (st === "work" && !dash.carry) { const p = Math.floor(now / 180) % 2; R(x + 6, y - 22, 1, 1, p ? "#fff" : "#000"); }
-      // Courier badge rides on the character's head and moves with it every frame.
-      const b = badgesRef.current[4]; if (b) { b.style.left = (dash.x / 320 * 100) + "%"; b.style.top = ((dash.y - 20) / 240 * 100) + "%"; }
+      if (dash.running && moving) {
+        X.fillStyle = "rgba(255,255,255,0.35)";
+        X.fillRect(x - 12, y - 8, 3, 1); X.fillRect(x - 14, y - 5, 4, 1); X.fillRect(x - 11, y - 2, 2, 1);
+      }
+      if (badgeIdx === 4) {
+        const b = badgesRef.current[4];
+        if (b) { b.style.left = (dash.x / 320 * 100) + "%"; b.style.top = ((dash.y - 20) / 240 * 100) + "%"; }
+      }
+    }
+    function drawDash(now: number) {
+      drawCourier(dashRef.current, now, "#ee1b24", "#141414", 4);
+      drawCourier(helperRef.current, now, "#f97316", "#3a2a1a", null);
     }
     function drawMailbox() {
       const [mx, my] = MAILBOX;
@@ -464,13 +488,19 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       R(mx + 8, my - 12, 1, 6, "#5a3f26"); R(mx + 9, my - 12, 4, 3, mailFlashRef.current > 0 ? "#39d353" : "#8a5a2a");
       if (mailFlashRef.current > 0) { R(mx - 4, my - 22, 10, 8, "#0d0d0d"); X.strokeStyle = "#39d353"; X.strokeRect(mx - 4.5, my - 22.5, 11, 9); X.beginPath(); X.moveTo(mx - 1, my - 18); X.lineTo(mx + 1, my - 16); X.lineTo(mx + 4, my - 20); X.stroke(); mailFlashRef.current--; }
     }
-    function updateDash() {
-      const dash = dashRef.current;
+    function updateOne(dash: Dash) {
       if (dash.tx === null || dash.ty === null) { dash.moving = false; return; }
-      const dx = dash.tx - dash.x, dy = dash.ty - dash.y, d = Math.hypot(dx, dy), sp = 0.9;
+      const dx = dash.tx - dash.x, dy = dash.ty - dash.y, d = Math.hypot(dx, dy);
+      const sp = dash.speed || 0.9;
       if (d < 1.1) { dash.x = dash.tx; dash.y = dash.ty; dash.tx = null; dash.moving = false; const cb = dash.onArrive; dash.onArrive = null; if (cb) cb(); return; }
-      dash.x += dx / d * sp; dash.y += dy / d * sp; dash.phase += 0.18; dash.moving = true;
+      dash.x += dx / d * sp; dash.y += dy / d * sp;
+      dash.phase += dash.running ? 0.32 : 0.18;
+      dash.moving = true;
       dash.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+    }
+    function updateDash() {
+      updateOne(dashRef.current);
+      updateOne(helperRef.current);
     }
 
     let raf = 0;
@@ -595,17 +625,58 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     doorOpenRef.current = open;
     if (doorElRef.current) doorElRef.current.classList.toggle("open", open);
   }, []);
-  const walkPath = useCallback(async (pts: number[][]) => {
+  const walkPath = useCallback(async (pts: number[][], who: "dash" | "helper" = "dash") => {
+    const d = who === "helper" ? helperRef.current : dashRef.current;
     for (const [px, py] of pts) {
-      await new Promise<void>((res) => { const d = dashRef.current; d.tx = px; d.ty = py; d.onArrive = res; });
+      await new Promise<void>((res) => { d.tx = px; d.ty = py; d.onArrive = res; });
     }
   }, []);
 
-  const courierReply = useCallback(async (intent: string) => {
+  const setDashPace = useCallback((d: Dash, run: boolean) => {
+    d.running = run;
+    d.speed = run ? 2.5 : 0.9;
+  }, []);
+
+  const isBackendFast = useCallback((atIso?: string) => {
+    const start = traceStartedAtRef.current;
+    if (!start) return false;
+    const t = atIso ? new Date(atIso).getTime() : Date.now();
+    return Number.isFinite(t) && t - start < 7000;
+  }, []);
+
+  const courierReply = useCallback(async (intent: string, atIso?: string) => {
     setAgent(4, "work");
-    setCap(`<b>DASH</b> (REPLY) — เดินเอาคำตอบไปส่งกลับผู้ใช้`);
-    // Pick up from the last desk that finished — stand beside it (aisle side),
-    // never walk through the desk body (desk spans dx±24).
+    const backlog = queueRef.current.length >= 1;
+    const run = isBackendFast(atIso);
+    setDashPace(dashRef.current, run);
+    const verb = run ? "วิ่ง" : "เดิน";
+
+    // News already in mailbox — DASH just delivers from the box to LINE.
+    if (mailHasParcelRef.current) {
+      setCap(`<b>DASH</b> (REPLY) — ${verb}ส่งข่าวจากตู้จดหมายไป LINE`);
+      log(`  DASH ${verb}ส่งข่าวจากตู้จดหมาย`, "a");
+      await walkPath([[160, 150], [160, 198]]);
+      mailFlashRef.current = 60;
+      mailHasParcelRef.current = false;
+      dashRef.current.carry = false;
+      log(`  ส่งคำตอบกลับแล้ว ✓ (${intent})`, "g");
+      if (backlog) {
+        const h = helperRef.current;
+        h.visible = true; h.x = 210; h.y = 130; h.carry = true;
+        setDashPace(h, true);
+        log("  HOP ช่วยหยิบส่งงานคิวถัดไป", "a");
+        void walkPath([[210, 160], [175, 198], [210, 130]], "helper").then(() => {
+          h.carry = false; h.visible = false; h.running = false; h.speed = 1.1;
+        });
+      }
+      await sleep(run ? 200 : 400);
+      await walkPath([[160, 150]]);
+      setDashPace(dashRef.current, false);
+      setAgent(4, "done");
+      return;
+    }
+
+    setCap(`<b>DASH</b> (REPLY) — ${verb}เอาคำตอบไปส่งกลับผู้ใช้`);
     let last = 3;
     for (let i = 3; i >= 0; i--) {
       if (statusRef.current[i] === "done" || statusRef.current[i] === "work") { last = i; break; }
@@ -613,18 +684,35 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     const left = last % 2 === 0;
     const sideX = left ? 102 : 218;
     const ay = last < 2 ? 108 : 178;
-    // Aisle → beside last working PC → pick up → aisle → mailbox.
+
+    if (backlog) {
+      const h = helperRef.current;
+      h.visible = true; h.x = 200; h.y = 120; h.carry = false;
+      setDashPace(h, run);
+      log("  HOP มาช่วยส่งงานซ้อน", "a");
+      void (async () => {
+        await walkPath([[200, ay], [left ? 218 : 102, ay]], "helper");
+        h.carry = true;
+        await walkPath([[200, ay], [180, 198]], "helper");
+        h.carry = false;
+        mailFlashRef.current = 40;
+        await walkPath([[200, 120]], "helper");
+        h.visible = false; h.running = false; h.speed = 1.1;
+      })();
+    }
+
     await walkPath([[160, ay], [sideX, ay]]);
     dashRef.current.carry = true;
-    await sleep(250);
+    await sleep(run ? 80 : 200);
     await walkPath([[160, ay], [160, 198]]);
     dashRef.current.carry = false;
     mailFlashRef.current = 60;
     log(`  ส่งคำตอบกลับแล้ว ✓ (${intent})`, "g");
-    await sleep(500);
+    await sleep(run ? 200 : 400);
     await walkPath([[160, 150]]);
+    setDashPace(dashRef.current, false);
     setAgent(4, "done");
-  }, [log, setAgent, setCap, walkPath]);
+  }, [isBackendFast, log, setAgent, setCap, setDashPace, walkPath]);
 
   const deliverNewsCourier = useCallback(async () => {
     const p = postieRef.current;
@@ -636,24 +724,46 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — รับสรุปจาก WRITER…";
     log("  POSTIE รับสรุปข่าวจาก WRITER", "a");
     await walkPostie([[74, 50], [66, 56], [53, 56]]);
-    await sleep(200);
+    await sleep(150);
     p.carry = true;
-    if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — เดินผ่านประตูไปตู้จดหมาย…";
-    await walkPostie([[50, 56], [38, 68], [26, 84]]);
+    if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — ส่งต่อที่ประตู…";
+    await walkPostie([[50, 56], [44, 56]]);
+
+    // DASH (red) walks to door, takes parcel, puts it in the mailbox.
+    setAgent(4, "work");
+    setDashPace(dashRef.current, false);
+    setCap("<b>DASH</b> — เดินไปรับข่าวจาก POSTIE แล้วใส่ตู้จดหมาย");
+    log("  DASH เดินไปรับข่าวที่ประตู", "a");
+    await walkPath([[160, 150], [290, 140]]);
     p.carry = false;
+    dashRef.current.carry = true;
+    log("  DASH รับพัสดุข่าวจาก POSTIE", "a");
+    if (capRef.current) capRef.current.innerHTML = "<b>DASH</b> — ใส่ข่าวลงตู้จดหมาย…";
+    await walkPath([[200, 160], [160, 198]]);
+    dashRef.current.carry = false;
     mailFlashRef.current = 60;
-    log("  POSTIE ใส่ข่าวในตู้จดหมาย ✓", "g");
-    if (capRef.current) capRef.current.innerHTML = "<b>ตู้จดหมาย</b> — ได้รับสรุปข่าวแล้ว · รอ DASH ส่ง LINE";
-    await sleep(350);
-    await walkPostie([[50, 56], [66, 50], [74, 48]]);
-    p.visible = false;
-    setDoorOpen(false);
-  }, [log, setDoorOpen, walkPostie]);
+    mailHasParcelRef.current = true;
+    log("  DASH ใส่ข่าวในตู้จดหมาย ✓", "g");
+    if (capRef.current) capRef.current.innerHTML = "<b>ตู้จดหมาย</b> — ได้สรุปข่าวแล้ว · รอส่ง LINE";
+
+    void walkPostie([[50, 56], [66, 50], [74, 48]]).then(() => {
+      p.visible = false;
+      setDoorOpen(false);
+    });
+    await sleep(200);
+    await walkPath([[160, 150]]);
+    setAgent(4, "idle");
+  }, [log, setAgent, setCap, setDashPace, setDoorOpen, walkPath, walkPostie]);
 
   // ---- play one trace's events in sequence ----
   const resetRoom = useCallback(() => {
     AGENTS.forEach((_, i) => setAgent(i, "idle"));
-    const d = dashRef.current; d.x = 160; d.y = 150; d.tx = null; d.ty = null; d.carry = false; d.face = "down";
+    const d = dashRef.current;
+    d.x = 160; d.y = 150; d.tx = null; d.ty = null; d.carry = false; d.face = "down";
+    d.speed = 0.9; d.running = false; d.visible = true;
+    const h = helperRef.current;
+    h.visible = false; h.tx = null; h.ty = null; h.carry = false; h.running = false; h.speed = 1.1;
+    mailHasParcelRef.current = false;
   }, [setAgent]);
 
   const applyEvent = useCallback(async (e: MonEvent) => {
@@ -662,6 +772,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       curTraceRef.current = e.traceId;
       resetRoom();
       resetNewsRoom();
+      traceStartedAtRef.current = e.at ? new Date(e.at).getTime() : Date.now();
       // Placeholder: keep the internal "last LLM used" state,
       // but hide the visible "LLM —" until we actually parse a label.
       lastLlmRef.current = "—";
@@ -708,7 +819,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     if (step === "reply") {
       const intent = e.label.replace(/^ตอบกลับ\s*/, "").replace(/[()]/g, "");
       for (let i = 0; i < 4; i++) if (statusRef.current[i] === "work") setAgent(i, "done");
-      await courierReply(intent);
+      await courierReply(intent, e.at);
       setHud("DELIVERED", "var(--green)");
       const used = lastLlmRef.current;
       const aiBit =
@@ -948,7 +1059,11 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
               ))}
               <div className="row">
                 <span className="sw" style={{ background: "#0ea5e9" }} />
-                <span><span className="rl">POSTIE</span> <span className="rc">— ขนข่าวผ่านประตู → ตู้จดหมาย</span></span>
+                <span><span className="rl">POSTIE</span> <span className="rc">— ขนข่าวถึงประตู ส่งต่อ DASH</span></span>
+              </div>
+              <div className="row">
+                <span className="sw" style={{ background: "#f97316" }} />
+                <span><span className="rl">HOP</span> <span className="rc">— ช่วยส่งเมื่อคิวซ้อน</span></span>
               </div>
               {llmChain ? (
                 <div className="row" style={{ marginTop: 10, alignItems: "flex-start" }}>

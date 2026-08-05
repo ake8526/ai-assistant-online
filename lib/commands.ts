@@ -13,6 +13,7 @@ import {
   quickLinkMeetingIntent,
 } from "@/lib/meetingLink";
 import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
+import { sendLine } from "@/lib/line";
 import { trace } from "@/lib/trace";
 import { normalizeDue, resolveResponsible } from "@/lib/followup";
 import { createHash } from "crypto";
@@ -2584,16 +2585,18 @@ async function handleParsed(
 
   if (intent === "get_news") {
     trace("fetch", "📰 ดึงข่าวจากแหล่งที่ติดตาม", "start");
-    const DIGEST_BUDGET_MS = 40_000;
+    // LINE webhook maxDuration≈60s — leave headroom for reply/push after digest.
+    const DIGEST_BUDGET_MS = 52_000;
     const timedOut: DigestResult = {
       stories: [],
       skipped: ["หมดเวลารอสรุปข่าว"],
       note: "สรุปข่าวใช้เวลานานเกินไปครับ — ลองพิมพ์ “ข่าววันนี้” อีกครั้ง หรือ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ",
     };
+    const digestPromise = buildDigest(userUpn);
     let digest: DigestResult;
     try {
       digest = await Promise.race([
-        buildDigest(userUpn),
+        digestPromise,
         new Promise<DigestResult>((resolve) => setTimeout(() => resolve(timedOut), DIGEST_BUDGET_MS)),
       ]);
     } catch (e) {
@@ -2601,6 +2604,24 @@ async function handleParsed(
         stories: [],
         skipped: [String(e).slice(0, 80)],
         note: "ดึงข่าวไม่สำเร็จครับ ลองใหม่อีกครั้งได้เลย",
+      };
+    }
+    // Timed out waiting for LINE reply — keep building and push when ready.
+    if (!digest.stories.length && digest.skipped.includes("หมดเวลารอสรุปข่าว")) {
+      trace("compose", "สรุปข่าวช้า — จะส่งต่อเมื่อเสร็จ");
+      void digestPromise
+        .then(async (late) => {
+          if (!late.stories?.length) return;
+          await rememberDeliveredStories(userUpn, late.stories);
+          const extra = late.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${late.skipped.join(", ")})` : "";
+          await sendLine(userUpn, "", formatStoriesText(late.stories) + extra);
+          trace("reply", `ตอบกลับ get_news (ส่งช้า ${late.stories.length} เรื่อง)`);
+        })
+        .catch(() => {});
+      return {
+        intent,
+        reply:
+          "กำลังสรุปข่าวต่อหลังบ้านครับ — จะส่งเข้า LINE ให้อัตโนมัติเมื่อเสร็จ (ประมาณ 1–2 นาที)\n\nหรือลองพิมพ์ “ข่าววันนี้” อีกครั้ง / “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ",
       };
     }
     trace("fetch", digest.stories.length ? `ได้ข่าว ${digest.stories.length} เรื่อง` : "ไม่มีข่าวใหม่");
