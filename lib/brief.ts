@@ -165,11 +165,22 @@ export async function buildMorningAgenda(userUpn: string, periodLabel = "วั�
   const now = nowWall();
   const pad = (n: number) => String(n).padStart(2, "0");
   const today = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+  const dayStart = wallIso(startOfDay(now));
+  const dayEnd = wallIso(endOfDay(now));
 
-  let events = await getEventsRange(userUpn, wallIso(startOfDay(now)), wallIso(endOfDay(now)));
+  let events = await getEventsRange(userUpn, dayStart, dayEnd);
   if (!events.length) {
     const { getTodayEvents } = await import("@/lib/graph");
     events = await getTodayEvents(userUpn);
+  }
+  // Delegated /me sometimes returns [] while app-only /users/{upn} still sees the day.
+  if (!events.length) {
+    try {
+      const { runAsAppOnly } = await import("@/lib/graphAuth");
+      events = await runAsAppOnly(() => getEventsRange(userUpn, dayStart, dayEnd));
+    } catch {
+      /* keep empty */
+    }
   }
   // If live calendarView is empty but we already saved today's ids (e.g. false
   // empty pull), reload those events so "กด 1 → แนะนำประชุม" still works.
