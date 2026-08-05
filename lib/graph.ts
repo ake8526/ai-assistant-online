@@ -1744,8 +1744,6 @@ export async function searchFiles(
 
       // Folder walk when exact path/search miss (Graph search is weak on Thai names)
       const folderTries = ["App/AI Assistant", "Documents/App/AI Assistant", "Documents/Documents/App/AI Assistant"];
-      const qLow = raw.toLowerCase();
-      const stemLow = stem.toLowerCase();
       for (const folder of folderTries) {
         const kids = await listFolderChildren(userUpn, folder);
         const matched = kids.filter((k) => {
