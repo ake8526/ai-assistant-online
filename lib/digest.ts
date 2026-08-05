@@ -13,7 +13,7 @@ import { trace } from "@/lib/trace";
 import * as youtube from "@/lib/youtube";
 
 /** Trial: force Gemini for news pick + summarize. Set null to restore default chain. */
-const NEWS_LLM_PREFER: "gemini" | "qwen" | "groq" | null = "gemini";
+const NEWS_LLM_PREFER: "gemini" | "qwen" | "groq" | null = null;
 
 export interface Story {
   id: string;
@@ -491,8 +491,10 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
         {
           json: true,
           temperature: 0.25,
-          timeoutMs: 28000,
+          timeoutMs: 20000,
           prefer: NEWS_LLM_PREFER || undefined,
+          // Prefer Groq-fast when no explicit prefer — LINE digest must finish.
+          fast: !NEWS_LLM_PREFER,
           traceStep: "compose",
           tracePrefix: "📰 สรุปประเด็น",
         }
