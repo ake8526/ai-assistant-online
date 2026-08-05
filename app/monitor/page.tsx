@@ -62,12 +62,21 @@ const CSS = `
 .mon .ph{font-family:'Press Start 2P';font-size:9px;color:var(--dim);padding:9px 11px;border-bottom:2px solid var(--hair);background:var(--panel2);display:flex;justify-content:space-between}
 .mon .ph .live{color:var(--red)}
 .mon .room-stage{background:#1a120a;padding:10px;display:flex;justify-content:center}
-.mon .room-frame{position:relative;width:100%;max-width:none}
-.mon #room,.mon #news-room{width:100%;display:block;image-rendering:pixelated;border:2px solid #3a2a1a;background:#2e2116}
-.mon .rooms-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:12px;align-items:stretch}
-@media(max-width:1100px){.mon .rooms-row{grid-template-columns:minmax(0,1fr)}}
-.mon .room-panel{margin-bottom:0;display:flex;flex-direction:column;min-width:0}
-.mon .room-panel .room-stage{flex:1}
+.mon .room-frame{position:relative;width:100%;aspect-ratio:320/240;flex:none}
+.mon #room,.mon #news-room{width:100%;height:100%;display:block;image-rendering:pixelated;background:#2e2116}
+.mon .building{margin-bottom:12px}
+.mon .building-ph{display:grid;grid-template-columns:1fr 6px 1fr;gap:0;padding:9px 11px}
+.mon .building-ph .room-tag{font-family:'Press Start 2P';font-size:9px;color:var(--dim);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.mon .building-ph .wall-bar{background:#3a2a1a}
+.mon .building-stage{display:grid;grid-template-columns:1fr 6px 1fr;background:#1a120a;padding:0 10px 10px;align-items:start}
+.mon .building-wall{background:linear-gradient(180deg,#2e2116 0%,#2e2116 52px,#5f4527 52px,#6b4a2e 100%);border-left:2px solid #1c140c;border-right:2px solid #1c140c;min-height:100%}
+.mon .building-wing{min-width:0;display:flex;flex-direction:column}
+.mon .building-wing .room-frame{border:2px solid #3a2a1a}
+.mon .office-wing .room-frame{border-right:none;border-top-right-radius:0;border-bottom-right-radius:0}
+.mon .news-wing .room-frame{border-left:none;border-top-left-radius:0;border-bottom-left-radius:0}
+.mon .wing-cap{font-size:17px;color:var(--dim);text-align:center;padding:6px 4px 0;line-height:1.3;min-height:2.4em}
+.mon .wing-cap b{color:var(--red)}
+.mon .news-wing .news-grid{border-top:2px solid var(--hair);margin-top:6px;padding-top:8px}
 .mon .bdg{position:absolute;transform:translate(-50%,-100%);text-align:center;pointer-events:none;background:rgba(10,7,4,.92);border:2px solid var(--hair);padding:2px 4px 1px;white-space:nowrap;line-height:1;transition:left .05s linear,top .05s linear;z-index:2}
 .mon .bdg .nm{font-family:'Press Start 2P';font-size:6px;color:var(--ink);display:block;margin-bottom:2px}
 .mon .bdg .stt{font-family:'Press Start 2P';font-size:6px}
@@ -131,7 +140,6 @@ type Dash = { x: number; y: number; tx: number | null; ty: number | null; face: 
 function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | null>; account: unknown }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const newsCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const stageRef = useRef<HTMLDivElement | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
   const capRef = useRef<HTMLDivElement | null>(null);
   const newsCapRef = useRef<HTMLDivElement | null>(null);
@@ -355,6 +363,8 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     badgesRef.current.forEach((b, i) => {
       if (i < 4) { b.style.left = (DESK[i][0] / 320 * 100) + "%"; b.style.top = ((DESK[i][1] - 7) / 240 * 100) + "%"; }
     });
+    const dashB = badgesRef.current[4];
+    if (dashB) { dashB.style.left = (160 / 320 * 100) + "%"; dashB.style.top = ((150 - 20) / 240 * 100) + "%"; }
 
     function drawFloor() {
       R(0, 52, W, H - 52, "#7a5636");
@@ -743,15 +753,20 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
           </div>
         </header>
 
-        <div className="rooms-row">
-          <div className="panel room-panel">
-            <div className="ph">
+        <div className="panel building">
+          <div className="ph building-ph">
+            <span className="room-tag">
               <span>THE OFFICE</span>
-              <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <span className="live">● LIVE</span>
-              </span>
-            </div>
-            <div className="room-stage" ref={stageRef}>
+              <span className="live">● LIVE</span>
+            </span>
+            <span className="wall-bar" aria-hidden="true" />
+            <span className="room-tag">
+              <span>NEWS ROOM · สรุปข่าว</span>
+              <span className="live">● {newsLive ? "LIVE" : "IDLE"}</span>
+            </span>
+          </div>
+          <div className="building-stage">
+            <div className="building-wing office-wing">
               <div className="room-frame">
                 <canvas id="room" ref={canvasRef} width={320} height={240} />
                 {AGENTS.map((a, i) => (
@@ -765,16 +780,10 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                   </div>
                 ))}
               </div>
+              <div className="wing-cap" ref={capRef}>รอคำขอเข้ามา… (LINE / Web)</div>
             </div>
-            <div className="caption" ref={capRef}>รอคำขอเข้ามา… (คุยกับผู้ช่วยผ่าน LINE แล้วดูที่นี่)</div>
-          </div>
-
-          <div className="panel room-panel">
-            <div className="ph">
-              <span>NEWS ROOM · สรุปข่าว</span>
-              <span className="live">● {newsLive ? "LIVE" : "IDLE"}</span>
-            </div>
-            <div className="room-stage">
+            <div className="building-wall" aria-hidden="true" />
+            <div className="building-wing news-wing">
               <div className="room-frame">
                 <canvas id="news-room" ref={newsCanvasRef} width={320} height={240} />
                 {NEWS_AGENTS.map((a, i) => (
@@ -788,37 +797,37 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                   </div>
                 ))}
               </div>
-            </div>
-            <div className="caption" ref={newsCapRef}>รอคำขอ “ข่าววันนี้” จาก LINE / Web…</div>
-            <div className="news-grid">
-              <div className={`news-desk scout ${newsScoutStatus}`}>
-                <div className="hd">
-                  <span className="nm">SCOUT · ดึงแหล่ง</span>
-                  <span className="st">{newsScoutStatus === "work" ? "WORKING" : newsScoutStatus === "done" ? "DONE" : newsScoutStatus === "error" ? "ERROR" : "IDLE"}</span>
+              <div className="wing-cap" ref={newsCapRef}>รอคำขอ “ข่าววันนี้”…</div>
+              <div className="news-grid">
+                <div className={`news-desk scout ${newsScoutStatus}`}>
+                  <div className="hd">
+                    <span className="nm">SCOUT · ดึงแหล่ง</span>
+                    <span className="st">{newsScoutStatus === "work" ? "WORKING" : newsScoutStatus === "done" ? "DONE" : newsScoutStatus === "error" ? "ERROR" : "IDLE"}</span>
+                  </div>
+                  <ul>
+                    {newsSources.length ? newsSources.map((s) => (
+                      <li key={s.key} className={s.status}>{s.text}</li>
+                    )) : (
+                      <li className="k">RSS · Facebook · YouTube · NewsData</li>
+                    )}
+                  </ul>
                 </div>
-                <ul>
-                  {newsSources.length ? newsSources.map((s) => (
-                    <li key={s.key} className={s.status}>{s.text}</li>
-                  )) : (
-                    <li className="k">RSS · Facebook · YouTube · NewsData</li>
-                  )}
-                </ul>
-              </div>
-              <div className={`news-desk picker ${newsPicker.status}`}>
-                <div className="hd">
-                  <span className="nm">PICKER · AI เลือกเด่น</span>
-                  <span className="st">{newsPicker.status === "work" ? "WORKING" : newsPicker.status === "done" ? "DONE" : newsPicker.status === "error" ? "ERROR" : "IDLE"}</span>
+                <div className={`news-desk picker ${newsPicker.status}`}>
+                  <div className="hd">
+                    <span className="nm">PICKER · AI เลือกเด่น</span>
+                    <span className="st">{newsPicker.status === "work" ? "WORKING" : newsPicker.status === "done" ? "DONE" : newsPicker.status === "error" ? "ERROR" : "IDLE"}</span>
+                  </div>
+                  <div className="ai">{newsPicker.ai}</div>
+                  <div className="cap">{newsPicker.detail}</div>
                 </div>
-                <div className="ai">{newsPicker.ai}</div>
-                <div className="cap">{newsPicker.detail}</div>
-              </div>
-              <div className={`news-desk writer ${newsWriter.status}`}>
-                <div className="hd">
-                  <span className="nm">WRITER · AI สรุปประเด็น</span>
-                  <span className="st">{newsWriter.status === "work" ? "WORKING" : newsWriter.status === "done" ? "DONE" : newsWriter.status === "error" ? "ERROR" : "IDLE"}</span>
+                <div className={`news-desk writer ${newsWriter.status}`}>
+                  <div className="hd">
+                    <span className="nm">WRITER · AI สรุปประเด็น</span>
+                    <span className="st">{newsWriter.status === "work" ? "WORKING" : newsWriter.status === "done" ? "DONE" : newsWriter.status === "error" ? "ERROR" : "IDLE"}</span>
+                  </div>
+                  <div className="ai">{newsWriter.ai}</div>
+                  <div className="cap">{newsWriter.detail}</div>
                 </div>
-                <div className="ai">{newsWriter.ai}</div>
-                <div className="cap">{newsWriter.detail}</div>
               </div>
             </div>
           </div>
