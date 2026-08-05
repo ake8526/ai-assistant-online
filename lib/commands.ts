@@ -777,10 +777,7 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
     .split(/\s*(?:กับ|และ|,)\s*/)
     .map((s) => stripHonorificPublic(s).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
     .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง|หา|ส่ง)$/i.test(s));
-  const attendees: string[] = [...emails];
-  for (const n of names) {
-    if (!attendees.some((a) => a.toLowerCase() === n.toLowerCase())) attendees.push(n);
-  }
+  const attendees = sanitizeAttendeeTokens([...emails, ...names]);
 
   if (!attendees.length) return null;
 
@@ -795,6 +792,52 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
 function extractEmails(text: string): string[] {
   const found = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) || [];
   return Array.from(new Set(found.map((e) => e.toLowerCase())));
+}
+
+/**
+ * Normalize book-line tokens: pull clean emails out of "นัด ake@x.com",
+ * drop command words, dedupe mail/name.
+ */
+function sanitizeAttendeeTokens(tokens: string[]): string[] {
+  const out: string[] = [];
+  const seenMail = new Set<string>();
+  const seenName = new Set<string>();
+  const pushMail = (e: string) => {
+    const m = e.trim().toLowerCase();
+    if (!m.includes("@") || seenMail.has(m)) return;
+    seenMail.add(m);
+    out.push(m);
+  };
+  const pushName = (raw: string) => {
+    let n = stripHonorificPublic(raw).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim();
+    n = n.replace(/^(?:นัด|จอง|เชิญ|invite|กับ|และ|หา)\s+/i, "").trim();
+    if (!n || n.includes("@")) return;
+    if (SELF_WORDS.has(n) || /^(ประชุม|นัด|จอง|หา|ส่ง|ตอน|เวลา|ช่วง|ว่าง|ตรงกัน)$/i.test(n)) return;
+    const key = n.toLowerCase();
+    if (seenName.has(key) || seenMail.has(key)) return;
+    seenName.add(key);
+    out.push(n);
+  };
+
+  for (const raw of tokens) {
+    const s = String(raw || "").trim();
+    if (!s) continue;
+    const emails = extractEmails(s);
+    if (emails.length) {
+      for (const e of emails) pushMail(e);
+      const rest = s
+        .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, " ")
+        .replace(/^(?:นัด|จอง|เชิญ|invite|กับ|และ|หา)\s+/i, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (rest) {
+        for (const part of rest.split(/\s*(?:กับ|และ|,)\s*/)) pushName(part);
+      }
+      continue;
+    }
+    pushName(s);
+  }
+  return out;
 }
 
 /** Nicknames beside emails in a book line: "ake@x.com กับเบส" → ["เบส"]. */
@@ -819,25 +862,11 @@ function nameTokensBesideEmails(text: string): string[] {
     .replace(/\s+/g, " ")
     .trim();
 
-  const out: string[] = [];
-  const push = (raw: string) => {
-    const n = stripHonorificPublic(raw).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim();
-    if (
-      !n ||
-      SELF_WORDS.has(n) ||
-      /^(ประชุม|นัด|จอง|หา|ส่ง|ตอน|เวลา|ช่วง|ว่าง|ตรงกัน)$/i.test(n)
-    ) {
-      return;
-    }
-    if (!out.some((x) => x.toLowerCase() === n.toLowerCase())) out.push(n);
-  };
-
-  for (const n of peopleFromText(body)) push(n);
-  for (const m of body.matchAll(/(?:กับ|และ)\s+(\S+)/g)) {
-    push(m[1]);
-  }
-  for (const part of body.split(/\s*(?:กับ|และ|,)\s*/)) push(part);
-  return out;
+  const raw: string[] = [];
+  for (const n of peopleFromText(body)) raw.push(n);
+  for (const m of body.matchAll(/(?:กับ|และ)\s+(\S+)/g)) raw.push(m[1]);
+  for (const part of body.split(/\s*(?:กับ|และ|,)\s*/)) raw.push(part);
+  return sanitizeAttendeeTokens(raw);
 }
 
 function historyLines(context?: CommandContext): string[] {
@@ -1220,13 +1249,19 @@ type MtAttendee = { name?: string; mail?: string };
 function attendeeFromToken(raw: string, userUpn: string): MtAttendee {
   const s = String(raw || "").trim();
   if (!s) return { name: s };
-  if (s.includes("@")) return { mail: s.toLowerCase() }; // name filled later via Graph
+  const emails = extractEmails(s);
+  if (emails.length) return { mail: emails[0] }; // strip leading “นัด ” etc.
+  if (s.includes("@")) {
+    // Malformed "นัด ake@x.com" already handled; leftover junk with @ → name only
+    const cleaned = s.replace(/^(?:นัด|จอง|เชิญ|กับ|และ)\s+/i, "").trim();
+    return { name: cleaned.replace(/@/g, " ").trim() || cleaned };
+  }
   // Corporate UPN local part: first.last / first.middle.last (from quick-reply “นัดburatsakon.si”)
   if (/^[a-z0-9][a-z0-9._-]{1,80}$/i.test(s) && s.includes(".")) {
     const domain = userUpn.includes("@") ? userUpn.split("@")[1]!.toLowerCase() : "";
     if (domain) return { mail: `${s.toLowerCase()}@${domain}` };
   }
-  return { name: s };
+  return { name: s.replace(/^(?:นัด|จอง|เชิญ|กับ|และ)\s+/i, "").trim() || s };
 }
 
 async function resolveCancelPersonMails(hint: string, userUpn: string): Promise<string[]> {
@@ -1563,10 +1598,21 @@ export async function runFindMeeting(
     }
   }
 
-  const resolved = attendees.filter((a) => a.mail).map((a) => a.mail as string);
+  const resolved = Array.from(
+    new Set(attendees.filter((a) => a.mail).map((a) => (a.mail as string).toLowerCase()))
+  );
   const unresolved = attendees.filter((a) => !a.mail && a.name).map((a) => a.name as string);
   if (!resolved.length) {
     return { intent: "find_meeting_time", reply: "หาคนที่จะดูตารางไม่เจอครับ ลองระบุชื่อ/อีเมลที่ชัดเจนอีกครั้งได้ไหม" };
+  }
+  if (unresolved.length) {
+    return {
+      intent: "find_meeting_time",
+      reply:
+        `หาคนไม่เจอในระบบ: ${unresolved.join(", ")}\n` +
+        `ลองพิมพ์ชื่อเต็มหรืออีเมลของคนนี้ด้วยครับ\n` +
+        `(คนที่เจอแล้ว: ${resolved.join(", ")})`,
+    };
   }
 
   let resolvedAt = atMin;
@@ -2901,18 +2947,13 @@ async function handleParsed(
     const emailsInText = extractEmails(text);
     const freshInvite =
       emailsInText.length > 0 && /ส่งนัด|นัดหา|เชิญ|invite\b|นัด\s|จอง\s/i.test(text);
-    let attendeeTokens: string[] = attendeesRaw.map(String).filter(Boolean);
+    let attendeeTokens: string[] = sanitizeAttendeeTokens(attendeesRaw.map(String));
     if (freshInvite) {
-      for (const mail of emailsInText) {
-        if (!attendeeTokens.some((t) => t.toLowerCase() === mail.toLowerCase())) {
-          attendeeTokens.push(mail);
-        }
-      }
-      for (const n of nameTokensBesideEmails(text)) {
-        if (!attendeeTokens.some((t) => t.toLowerCase() === n.toLowerCase())) {
-          attendeeTokens.push(n);
-        }
-      }
+      attendeeTokens = sanitizeAttendeeTokens([
+        ...attendeeTokens,
+        ...emailsInText,
+        ...nameTokensBesideEmails(text),
+      ]);
       if (!attendeeTokens.length) attendeeTokens = [...emailsInText];
     } else if (!attendeeTokens.length) {
       attendeeTokens = (context?.last_meeting?.attendees || []).map(String);
