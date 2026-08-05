@@ -93,6 +93,12 @@ const CSS = `
 .mon .news-courier .nm{font-family:'Press Start 2P';font-size:6px;color:#38bdf8;display:block}
 .mon .news-courier .body{width:10px;height:10px;background:#38bdf8;margin:2px auto 0;border-top:2px solid #0284c7}
 .mon .news-courier.carry .body::after{content:"📰";font-size:8px;display:block;margin-top:-2px}
+.mon .wall-banner{position:absolute;left:0;top:0;width:100%;height:21.7%;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:4;padding:0 6px;box-sizing:border-box}
+.mon .wall-banner .msg{font-family:'Press Start 2P',monospace;font-size:clamp(9px,1.5vw,12px);color:#f3f4f6;background:rgba(2,6,23,.92);border:2px solid #6b7280;padding:8px 12px;line-height:1.45;text-align:center;letter-spacing:0.4px;white-space:nowrap;max-width:96%;overflow:hidden;text-overflow:ellipsis}
+.mon .wall-banner.live{top:18.3%;height:3.4%;padding:0}
+.mon .wall-banner.live .msg{width:100%;max-width:100%;font-size:clamp(7px,1.15vw,9px);padding:2px 6px;border:none;border-top:2px solid #f87171;border-radius:0;color:#fef08a;background:rgba(2,6,23,.95)}
+.mon .bdg.postie{border-color:#38bdf8;z-index:5}
+.mon .bdg.postie .nm{color:#7dd3fc}
 .mon .bdg{position:absolute;transform:translate(-50%,-100%);text-align:center;pointer-events:none;background:rgba(10,7,4,.92);border:2px solid var(--hair);padding:2px 4px 1px;white-space:nowrap;line-height:1;transition:left .05s linear,top .05s linear;z-index:2}
 .mon .bdg .nm{font-family:'Press Start 2P';font-size:6px;color:var(--ink);display:block;margin-bottom:2px}
 .mon .bdg .stt{font-family:'Press Start 2P';font-size:6px}
@@ -181,6 +187,9 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const llmHudRef = useRef<HTMLElement | null>(null);
   const badgesRef = useRef<HTMLDivElement[]>([]);
   const newsBadgesRef = useRef<HTMLDivElement[]>([]);
+  const postieBadgeRef = useRef<HTMLDivElement | null>(null);
+  const wallBannerRef = useRef<HTMLDivElement | null>(null);
+  const wallBannerMsgRef = useRef<HTMLSpanElement | null>(null);
   const newsStatusRef = useRef<string[]>(NEWS_AGENTS.map(() => "idle"));
   const postieRef = useRef<Postie>({
     x: NEWS_POSTIE_HOME[0], y: NEWS_POSTIE_HOME[1], tx: null, ty: null,
@@ -697,9 +706,17 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
         X.fillStyle = "rgba(255,255,255,0.35)";
         X.fillRect(x - 12, y - 8, 3, 1); X.fillRect(x - 14, y - 5, 4, 1);
       }
-      X.fillStyle = "rgba(10,7,4,0.95)"; X.fillRect(x - 20, y - 36 + bob, 40, 12);
-      X.strokeStyle = "#7dd3fc"; X.lineWidth = 1.5; X.strokeRect(x - 20.5, y - 36.5 + bob, 41, 13);
-      X.fillStyle = "#e0f2fe"; X.font = "bold 10px monospace"; X.fillText("POSTIE", x - 16, y - 27 + bob);
+      // HTML badge (Press Start) — same crisp labels as SCOUT/DASH; avoid canvas fillText blur
+      const b = postieBadgeRef.current;
+      if (b) {
+        b.style.left = (x / W) * 100 + "%";
+        b.style.top = ((y - 18 + bob) / H) * 100 + "%";
+        b.style.visibility = "visible";
+        const st = p.carry ? "work" : moving ? "work" : "idle";
+        b.className = "bdg postie " + st;
+        const w = b.querySelector(".w");
+        if (w) w.textContent = p.carry ? "SEND" : moving ? "RUN" : "IDLE";
+      }
     }
     function drawDoorLeft() {
       const open = doorOpenRef.current;
@@ -740,15 +757,15 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
             const y = pad + row * (cellH + gap);
             R(x, y, cellW, cellH, "#030712");
             R(x + 1, y + 1, cellW - 2, cellH - 2, "#0c0c10");
-            // faint reflection + off LED
             R(x + 2, y + 2, cellW - 4, 1, "#14141a");
             R(x + cellW - 4, y + 2, 2, 2, "#1f2937");
           }
         }
         R(0, 44, W, 8, "#020617");
-        X.fillStyle = "#e5e7eb";
-        X.font = "bold 9px monospace";
-        X.fillText("  WALL OFF  ·  รอคำขอข่าว  ", 4, 50);
+        const wb = wallBannerRef.current;
+        const wm = wallBannerMsgRef.current;
+        if (wb) wb.className = "wall-banner";
+        if (wm) wm.textContent = "WALL OFF · รอคำขอข่าว";
         return;
       }
 
@@ -837,18 +854,19 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
             R(x + 3 + Math.floor((cellW - 5) / 2), y + 2, Math.floor((cellW - 5) / 2), cellH - 6, "#92400e");
             R(x + 3, y + 4, 4, 1, ch.accent);
           }
-          X.fillStyle = "#ffffff";
-          X.font = "bold 8px monospace";
-          X.fillText(ch.tag, x + 2, y + cellH - 2);
+          // Channel chrome only — labels are HTML (wall-banner) so they stay crisp
+          R(x + 2, y + cellH - 4, Math.min(cellW - 4, 10), 2, ch.accent);
         }
       }
       R(0, 44, W, 8, "#020617");
       R(0, 44, W, 1, "#f87171");
-      const tick = " ● BREAKING  ● RSS  ● FACEBOOK  ● YOUTUBE  ● NEWSDATA  ● LIVE  ";
-      const shift = Math.floor(now / 35) % (tick.length * 4);
-      X.fillStyle = "#fef08a";
-      X.font = "bold 9px monospace";
-      X.fillText(tick + tick, 4 - (shift % (tick.length * 4)), 50);
+      const wb = wallBannerRef.current;
+      const wm = wallBannerMsgRef.current;
+      if (wb) wb.className = "wall-banner live";
+      if (wm) {
+        const tick = "● BREAKING  ● RSS  ● FACEBOOK  ● YOUTUBE  ● NEWSDATA  ● LIVE";
+        wm.textContent = tick;
+      }
     }
     function drawBg(now: number) {
       R(0, 0, W, H, "#2e2116");
@@ -1358,6 +1376,9 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
             <div className="building-wing news-wing">
               <div className="room-frame">
                 <canvas id="news-room" ref={newsCanvasRef} width={320} height={240} />
+                <div className="wall-banner" ref={wallBannerRef}>
+                  <span className="msg" ref={wallBannerMsgRef}>WALL OFF · รอคำขอข่าว</span>
+                </div>
                 {NEWS_AGENTS.map((a, i) => (
                   <div
                     key={a.id}
@@ -1368,6 +1389,14 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                     <span className="stt"><span className="dot" /><span className="w">IDLE</span></span>
                   </div>
                 ))}
+                <div
+                  className="bdg postie idle"
+                  ref={(el) => { postieBadgeRef.current = el; }}
+                  style={{ left: "50%", top: "55%", visibility: "hidden" }}
+                >
+                  <span className="nm">POSTIE</span>
+                  <span className="stt"><span className="dot" /><span className="w">IDLE</span></span>
+                </div>
               </div>
               <div className="wing-cap" ref={newsCapRef}>รอคำขอ “ข่าววันนี้”…</div>
             </div>
