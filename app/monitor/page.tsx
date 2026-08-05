@@ -27,18 +27,18 @@ type MonEvent = {
 
 // 4 desks + 1 courier — the courier (reply) walks the parcel to the LINE mailbox.
 const AGENTS = [
-  { id: "receive", name: "GATE", role: "RECEIVE", cap: "รับข้อความเข้าจากผู้ใช้", shirt: "#3a86ff", hair: "#6b4a2e", screen: "search" },
-  { id: "parse", name: "BRAIN", role: "PARSE", cap: "แยกเจตนา (intent) ด้วย LLM", shirt: "#2f9e44", hair: "#2a2a2a", screen: "filter" },
-  { id: "fetch", name: "RUNNER", role: "FETCH", cap: "ดึงข้อมูลจาก Microsoft 365", shirt: "#f0b429", hair: "#caa15a", screen: "search" },
-  { id: "compose", name: "SCRIBE", role: "COMPOSE", cap: "เขียนคำตอบภาษาไทย", shirt: "#7048e8", hair: "#7a4a2a", screen: "render" },
-  { id: "courier", name: "DASH", role: "REPLY", cap: "ใส่ตู้จดหมาย → ส่ง LINE (เร็ว=วิ่ง)", shirt: "#ee1b24", hair: "#141414", screen: "" },
+  { id: "receive", name: "GATE", role: "รับข้อความเข้าจาก LINE / Web", shirt: "#3a86ff", hair: "#6b4a2e", screen: "search" },
+  { id: "parse", name: "BRAIN", role: "แยกเจตนาว่าผู้ใช้ต้องการอะไร (LLM)", shirt: "#2f9e44", hair: "#2a2a2a", screen: "filter" },
+  { id: "fetch", name: "RUNNER", role: "ดึงข้อมูลจาก Microsoft 365", shirt: "#f0b429", hair: "#caa15a", screen: "search" },
+  { id: "compose", name: "SCRIBE", role: "เขียนคำตอบภาษาไทย", shirt: "#7048e8", hair: "#7a4a2a", screen: "render" },
+  { id: "courier", name: "DASH", role: "ส่งคำตอบเข้าตู้จดหมาย → LINE", shirt: "#ee1b24", hair: "#141414", screen: "" },
 ] as const;
 
 const NEWS_AGENTS = [
-  { id: "scout", name: "SCOUT", role: "ดึงแหล่ง", shirt: "#14b8a6", hair: "#0f766e", screen: "search" },
-  { id: "picker", name: "PICKER", role: "เลือกเด่น", shirt: "#b45309", hair: "#78350f", screen: "filter" },
-  { id: "reader", name: "READER", role: "อ่านบทความ", shirt: "#ec4899", hair: "#9d174d", screen: "search" },
-  { id: "writer", name: "WRITER", role: "สรุป", shirt: "#e879f9", hair: "#a21caf", screen: "render" },
+  { id: "scout", name: "SCOUT", role: "ดึงข่าวจาก RSS / Facebook / YouTube / NewsData", shirt: "#14b8a6", hair: "#0f766e", screen: "search" },
+  { id: "picker", name: "PICKER", role: "AI คัดเลือกข่าวที่เด่น", shirt: "#b45309", hair: "#78350f", screen: "filter" },
+  { id: "reader", name: "READER", role: "อ่านเนื้อหาบทความเต็ม", shirt: "#ec4899", hair: "#9d174d", screen: "search" },
+  { id: "writer", name: "WRITER", role: "AI สรุปประเด็นเป็นภาษาไทย", shirt: "#e879f9", hair: "#a21caf", screen: "render" },
 ] as const;
 
 /** WRITER desk (canvas px) — POSTIE picks here via aisle */
@@ -87,7 +87,7 @@ const CSS = `
 .mon .building-wing .room-frame{border:2px solid #3a2a1a;margin:0}
 .mon .office-wing .room-frame{border-right:none}
 .mon .news-wing .room-frame{border-left:none}
-.mon .wing-cap{font-size:14px;color:var(--dim);text-align:center;padding:2px 4px;line-height:1.2;flex-shrink:0;width:100%}
+.mon .wing-cap{font-size:16px;color:var(--dim);text-align:center;padding:4px 6px;line-height:1.3;flex-shrink:0;width:100%}
 .mon .wing-cap b{color:var(--red)}
 .mon .news-courier{position:absolute;transform:translate(-50%,-100%);z-index:8;pointer-events:none;text-align:center;background:rgba(10,7,4,.94);border:2px solid #38bdf8;padding:2px 4px;display:none}
 .mon .news-courier .nm{font-family:'Press Start 2P';font-size:6px;color:#38bdf8;display:block}
@@ -100,45 +100,46 @@ const CSS = `
 .mon .bdg.postie{border-color:#38bdf8;z-index:5}
 .mon .bdg.postie .nm{color:#7dd3fc}
 .mon .bdg{position:absolute;transform:translate(-50%,-100%);text-align:center;pointer-events:none;background:rgba(10,7,4,.92);border:2px solid var(--hair);padding:2px 4px 1px;white-space:nowrap;line-height:1;transition:left .05s linear,top .05s linear;z-index:2}
-.mon .bdg .nm{font-family:'Press Start 2P';font-size:6px;color:var(--ink);display:block;margin-bottom:2px}
-.mon .bdg .stt{font-family:'Press Start 2P';font-size:6px}
-.mon .bdg .dot{display:inline-block;width:4px;height:4px;margin-right:3px;vertical-align:middle;background:var(--dim)}
+.mon .bdg .nm{font-family:'Press Start 2P';font-size:8px;color:var(--ink);display:block;margin-bottom:2px}
+.mon .bdg .stt{font-family:'Press Start 2P';font-size:7px}
+.mon .bdg .dot{display:inline-block;width:5px;height:5px;margin-right:3px;vertical-align:middle;background:var(--dim)}
 .mon .bdg.idle .stt{color:var(--dim)}.mon .bdg.idle .dot{background:var(--dim)}
 .mon .bdg.work{border-color:var(--amber)}.mon .bdg.work .stt{color:var(--amber)}.mon .bdg.work .dot{background:var(--amber);animation:monpulse .55s steps(1) infinite}
 .mon .bdg.done{border-color:var(--green)}.mon .bdg.done .stt{color:var(--green)}.mon .bdg.done .dot{background:var(--green)}
 .mon .bdg.error{border-color:var(--red)}.mon .bdg.error .stt{color:var(--red)}.mon .bdg.error .dot{background:var(--red)}
 @keyframes monpulse{50%{opacity:.2}}
 .mon .caption{font-size:19px;color:var(--dim);text-align:center;padding:9px}.mon .caption b{color:var(--red)}
-.mon .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch;flex-shrink:0;height:clamp(220px,34vh,300px);margin-bottom:0}
-@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:40vh}}
+.mon .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch;flex-shrink:0;height:clamp(240px,36vh,320px);margin-bottom:0}
+@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:42vh}}
 .mon .cols > .panel{min-width:0;max-width:100%;overflow:hidden;margin-bottom:0;display:flex;flex-direction:column}
 .mon .cols > .panel .ph{flex-shrink:0;padding:6px 10px}
-.mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:15px;line-height:1.2;padding:6px 10px}
+.mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:16px;line-height:1.25;padding:6px 10px}
 .mon #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .mon #log .t{color:var(--dim)}.mon #log .g{color:var(--green)}.mon #log .r{color:var(--red)}.mon #log .a{color:var(--amber)}.mon #log .b{color:#3a86ff}
-.mon #legend{flex:1;min-height:0;overflow:auto;padding:8px 10px;font-size:15px;line-height:1.25;display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;align-content:start}
-.mon #legend .leg-col{display:flex;flex-direction:column;gap:3px;min-width:0}
-.mon #legend .leg-h{font-family:'Press Start 2P';font-size:8px;color:var(--dim);margin:0 0 4px;letter-spacing:0.5px}
-.mon #legend .row{display:flex;align-items:center;gap:6px;margin:0;min-width:0;height:22px}
-.mon #legend .row > span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mon #legend .row.span2{grid-column:1 / -1;height:auto;min-height:22px;margin-top:6px;align-items:flex-start}
-.mon #legend .row.span2 > span:last-child{white-space:normal;overflow:visible;text-overflow:unset;line-height:1.35}
-.mon #legend .sw{width:12px;height:12px;flex:none;border:1px solid #000}
-.mon #legend .rl{font-family:'Press Start 2P';font-size:8px;color:var(--ink)}
-.mon #legend .rc{color:var(--dim);font-size:14px}
+.mon #legend{flex:1;min-height:0;overflow:auto;padding:10px 12px;font-size:16px;line-height:1.35;display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;align-content:start}
+.mon #legend .leg-col{display:flex;flex-direction:column;gap:6px;min-width:0}
+.mon #legend .leg-h{font-family:'VT323',monospace;font-size:18px;color:var(--amber);margin:0 0 4px;letter-spacing:1px;border-bottom:1px solid var(--hair);padding-bottom:4px}
+.mon #legend .row{display:flex;align-items:flex-start;gap:8px;margin:0;min-width:0;min-height:28px}
+.mon #legend .row > span:last-child{min-width:0;overflow:visible;text-overflow:unset;white-space:normal;line-height:1.3}
+.mon #legend .row.span2{grid-column:1 / -1;height:auto;min-height:28px;margin-top:8px;align-items:flex-start;padding-top:8px;border-top:1px solid var(--hair)}
+.mon #legend .row.span2 > span:last-child{white-space:normal;overflow:visible;text-overflow:unset;line-height:1.4}
+.mon #legend .sw{width:14px;height:14px;flex:none;border:1px solid #000;margin-top:3px}
+.mon #legend .rl{font-family:'VT323',monospace;font-size:18px;color:var(--ink);font-weight:700}
+.mon #legend .rc{color:#d4d4d4;font-size:16px}
 .mon .foot{display:none}
-.mon .news-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px 8px 6px;border-top:2px solid var(--hair);flex-shrink:0}
+.mon .news-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:8px 10px 10px;border-top:2px solid var(--hair);flex-shrink:0;min-height:120px}
 @media(max-width:1100px){.mon .news-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.mon .news-desk{border:2px solid var(--hair);background:var(--panel2);padding:4px 6px;min-width:0}
-.mon .news-desk .hd{font-family:'Press Start 2P';font-size:6px;display:flex;justify-content:space-between;align-items:center;gap:4px;margin-bottom:3px}
-.mon .news-desk .nm{color:var(--ink)}.mon .news-desk .st{font-size:5px;padding:1px 3px;border:1px solid var(--hair);color:var(--dim)}
+.mon .news-desk{border:2px solid var(--hair);background:var(--panel2);padding:10px 12px;min-width:0;min-height:100px;display:flex;flex-direction:column;gap:4px}
+.mon .news-desk .hd{font-family:'VT323',monospace;font-size:18px;display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:2px}
+.mon .news-desk .nm{color:var(--ink);font-size:18px;letter-spacing:0.5px}.mon .news-desk .st{font-family:'VT323',monospace;font-size:15px;padding:2px 8px;border:1px solid var(--hair);color:var(--dim)}
 .mon .news-desk.work .st{color:var(--amber);border-color:var(--amber);animation:monpulse .55s steps(1) infinite}
 .mon .news-desk.done .st{color:var(--green);border-color:var(--green)}
 .mon .news-desk.error .st{color:var(--red);border-color:var(--red)}
-.mon .news-desk .ai{font-size:13px;color:var(--amber);margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mon .news-desk .cap{font-size:12px;color:var(--dim);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mon .news-desk ul{list-style:none;font-size:12px;color:var(--ink);line-height:1.2;max-height:2.4em;overflow:hidden}
-.mon .news-desk li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px}
+.mon .news-desk .job{font-size:15px;color:#a3a3a3;line-height:1.25;margin-bottom:2px}
+.mon .news-desk .ai{font-size:16px;color:var(--amber);margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mon .news-desk .cap{font-size:15px;color:#d4d4d4;line-height:1.25;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.mon .news-desk ul{list-style:none;font-size:15px;color:var(--ink);line-height:1.3;max-height:3.9em;overflow:hidden;flex:1}
+.mon .news-desk li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
 .mon .news-desk li .k{color:var(--dim)}.mon .news-desk li.work{color:var(--amber)}.mon .news-desk li.done{color:var(--green)}.mon .news-desk li.err{color:var(--red)}
 .mon .btn{font-family:'Press Start 2P';font-size:10px;background:var(--ink);color:#000;border:2px solid var(--ink);padding:10px 16px;cursor:pointer}
 .mon .center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:60vh;text-align:center}
@@ -572,7 +573,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       const hy = y - 19, skin = "#f0c090";
       R(x - 5, hy, 10, 9, skin);
       if (dash.face === "up") { R(x - 5, hy - 1, 10, 9, hair); }
-      else { R(x - 5, hy - 1, 10, 4, hair); R(x - 5, hy, 1, 5, hair); R(x + 4, hy, 1, 5, hair); if (dash.face === "down") { R(x - 3, hy + 4, 2, 2, "#141414"); R(x + 1, hy + 4, 2, 2, "#141414"); } else if (dash.face === "left") { R(x - 3, hy + 4, 2, 2, "#141414"); } else { R(x + 1, hy + 4, 2, 2, "#141414"); } }
+      else { R(x - 5, hy - 1, 10, 4, hair); R(x - 5, hy, 1, 5, hair); R(x + 4, hy, 1, 5, hair); if (dash.face === "down") { R(x - 3, hy + 4, 2, 2, "#ffffff"); R(x + 1, hy + 4, 2, 2, "#ffffff"); R(x - 2, hy + 5, 1, 1, "#141414"); R(x + 2, hy + 5, 1, 1, "#141414"); } else if (dash.face === "left") { R(x - 3, hy + 4, 2, 2, "#ffffff"); R(x - 2, hy + 5, 1, 1, "#141414"); } else { R(x + 1, hy + 4, 2, 2, "#ffffff"); R(x + 2, hy + 5, 1, 1, "#141414"); } }
       if (dash.running && moving) {
         X.fillStyle = "rgba(255,255,255,0.35)";
         X.fillRect(x - 12, y - 8, 3, 1); X.fillRect(x - 14, y - 5, 4, 1); X.fillRect(x - 11, y - 2, 2, 1);
@@ -706,7 +707,8 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       R(x - 5, hy, 10, 9, skin);
       R(x - 5, hy - 1, 10, 4, hair);
       R(x - 5, hy, 1, 5, hair); R(x + 4, hy, 1, 5, hair);
-      R(x - 3, hy + 4, 2, 2, "#141414"); R(x + 1, hy + 4, 2, 2, "#141414");
+      R(x - 3, hy + 4, 2, 2, "#ffffff"); R(x + 1, hy + 4, 2, 2, "#ffffff");
+      R(x - 2, hy + 5, 1, 1, "#141414"); R(x + 2, hy + 5, 1, 1, "#141414");
       if (p.running && moving) {
         X.fillStyle = "rgba(255,255,255,0.35)";
         X.fillRect(x - 12, y - 8, 3, 1); X.fillRect(x - 14, y - 5, 4, 1);
@@ -1225,14 +1227,14 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     if (e.status === "start") {
       setAgent(idx, "work");
       const capExtra = llmFromLabel ? ` · <b style="color:#f0b429">${llmFromLabel}</b>` : "";
-      setCap(`<b>${a.name}</b> (${a.role}) — ${a.cap}${capExtra}`);
+      setCap(`<b>${a.name}</b> — ${a.role}${capExtra}`);
       log(`[${a.name}] ${e.label}`, "a");
       await sleep(220);
     } else {
       setAgent(idx, "work");
       const capExtra = llmFromLabel ? ` · <b style="color:#f0b429">${llmFromLabel}</b>` : "";
-      setCap(`<b>${a.name}</b> (${a.role}) — ${a.cap}${capExtra}`);
-      log(`  ${a.role}: ${e.label}`, step === "fetch" ? "t" : "g");
+      setCap(`<b>${a.name}</b> — ${a.role}${capExtra}`);
+      log(`  ${a.name}: ${e.label}`, step === "fetch" ? "t" : "g");
       await sleep(step === "fetch" ? 160 : 360);
       setAgent(idx, "done");
     }
@@ -1409,9 +1411,10 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
           <div className="news-grid">
             <div className={`news-desk scout ${newsScoutStatus}`}>
               <div className="hd">
-                <span className="nm">SCOUT · ดึงแหล่ง</span>
+                <span className="nm">SCOUT</span>
                 <span className="st">{newsScoutStatus === "work" ? "WORKING" : newsScoutStatus === "done" ? "DONE" : newsScoutStatus === "error" ? "ERROR" : "IDLE"}</span>
               </div>
+              <div className="job">ดึงข่าวจากแหล่งที่ติดตาม</div>
               <ul>
                 {newsSources.length ? newsSources.map((s) => (
                   <li key={s.key} className={s.status}>{s.text}</li>
@@ -1422,25 +1425,28 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
             </div>
             <div className={`news-desk picker ${newsPicker.status}`}>
               <div className="hd">
-                <span className="nm">PICKER · AI เลือกเด่น</span>
+                <span className="nm">PICKER</span>
                 <span className="st">{newsPicker.status === "work" ? "WORKING" : newsPicker.status === "done" ? "DONE" : newsPicker.status === "error" ? "ERROR" : "IDLE"}</span>
               </div>
+              <div className="job">AI คัดเลือกข่าวที่เด่น</div>
               <div className="ai">{newsPicker.ai}</div>
               <div className="cap">{newsPicker.detail}</div>
             </div>
             <div className={`news-desk reader ${newsReader.status}`}>
               <div className="hd">
-                <span className="nm">READER · อ่านบทความ</span>
+                <span className="nm">READER</span>
                 <span className="st">{newsReader.status === "work" ? "WORKING" : newsReader.status === "done" ? "DONE" : newsReader.status === "error" ? "ERROR" : "IDLE"}</span>
               </div>
+              <div className="job">อ่านเนื้อหาบทความเต็ม</div>
               <div className="ai">{newsReader.ai}</div>
               <div className="cap">{newsReader.detail}</div>
             </div>
             <div className={`news-desk writer ${newsWriter.status}`}>
               <div className="hd">
-                <span className="nm">WRITER · AI สรุปประเด็น</span>
+                <span className="nm">WRITER</span>
                 <span className="st">{newsWriter.status === "work" ? "WORKING" : newsWriter.status === "done" ? "DONE" : newsWriter.status === "error" ? "ERROR" : "IDLE"}</span>
               </div>
+              <div className="job">AI สรุปประเด็นเป็นภาษาไทย</div>
               <div className="ai">{newsWriter.ai}</div>
               <div className="cap">{newsWriter.detail}</div>
             </div>
@@ -1462,7 +1468,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                 ))}
                 <div className="row">
                   <span className="sw" style={{ background: "#f97316" }} />
-                  <span><span className="rl">HOP</span> <span className="rc">— ช่วยส่งคิวซ้อน</span></span>
+                  <span><span className="rl">HOP</span> <span className="rc">— ช่วย DASH ส่งคิวซ้อนเมื่องานหนา</span></span>
                 </div>
               </div>
               <div className="leg-col">
@@ -1475,7 +1481,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                 ))}
                 <div className="row">
                   <span className="sw" style={{ background: "#38bdf8" }} />
-                  <span><span className="rl">POSTIE</span> <span className="rc">— ยืนส่งข่าว</span></span>
+                  <span><span className="rl">POSTIE</span> <span className="rc">— รับสรุปจาก WRITER แล้ววิ่งส่งต่อให้ DASH</span></span>
                 </div>
               </div>
               {llmChain ? (
