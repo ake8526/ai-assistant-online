@@ -654,6 +654,7 @@ function teamsNoteForChat(joinUrl?: string): string {
   return "\n\n🔗 ดูลิงก์ Teams ใน Outlook / อีเมลคำเชิญ";
 }
 
+function linkedAwaitList(rec: MeetingInviteRecord): string[] {
   if (rec.awaitLine?.length) return rec.awaitLine.map((a) => a.toLowerCase());
   return (rec.attendees || []).map((a) => a.toLowerCase());
 }
