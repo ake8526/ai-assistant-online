@@ -38,22 +38,44 @@ export async function fetchArticle(url: string): Promise<string> {
   if (!url.startsWith("http")) return "";
   try {
     const r = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; KTIS-AI/1.0)" },
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "th,en;q=0.8",
+      },
       signal: AbortSignal.timeout(15000),
     });
     if (!r.ok) return "";
     let html = await r.text();
+
+    // Prefer og:description / meta description as a clean lead when body scrape is noisy.
+    const metaBits: string[] = [];
+    const og = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i);
+    const md = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+    if (og?.[1]) metaBits.push(og[1]);
+    if (md?.[1] && md[1] !== og?.[1]) metaBits.push(md[1]);
+
     html = html.replace(/<(script|style|noscript|template|svg|header|footer|nav|aside)[^>]*>[\s\S]*?<\/\1>/gi, " ");
-    const m = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+    const m = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i)
+      || html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
     const body = m ? m[1] : html;
-    return body
+    const text = body
       .replace(/<[^>]+>/g, " ")
       .replace(/&nbsp;/gi, " ")
       .replace(/&amp;/gi, "&")
       .replace(/&[a-z#0-9]+;/gi, " ")
       .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 6000);
+      .trim();
+
+    const lead = metaBits.join(" ").replace(/\s+/g, " ").trim();
+    if (lead && text.length < 400) return `${lead} ${text}`.trim().slice(0, 8000);
+    if (lead && !text.includes(lead.slice(0, Math.min(40, lead.length)))) {
+      return `${lead}\n\n${text}`.trim().slice(0, 8000);
+    }
+    return text.slice(0, 8000);
   } catch {
     return "";
   }

@@ -6,6 +6,11 @@ import { trace, type TraceStep } from "@/lib/trace";
 const LANGUAGE_RULE =
   "\n\nกติกาภาษา: ตอบเป็นภาษาไทยเป็นหลักเสมอ ใช้อังกฤษเฉพาะศัพท์เทคนิค/ชื่อเฉพาะ ห้ามตอบภาษาอื่นเด็ดขาด";
 
+/** Always append Thai rule — including JSON mode (digest headlines/points). */
+function withLanguageRule(system: string): string {
+  return system.includes("กติกาภาษา:") ? system : system + LANGUAGE_RULE;
+}
+
 type Provider = "qwen" | "groq" | "gemini";
 
 /** Skip a provider briefly after 429 so the next LINE message hits a healthy one first. */
@@ -101,7 +106,7 @@ async function callProvider(
       model: cfg.model,
       temperature: opts?.temperature ?? 0.3,
       messages: [
-        { role: "system", content: system + (opts?.json ? "" : LANGUAGE_RULE) },
+        { role: "system", content: withLanguageRule(system) },
         { role: "user", content: user },
       ],
     };

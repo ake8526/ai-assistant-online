@@ -72,24 +72,29 @@ function isPaywalledSnippet(s: string): boolean {
   return /ONLY AVAILABLE IN PAID PLANS/i.test(s || "");
 }
 
-/** Merge RSS/NewsData snippet + scraped article; keep the most useful text. */
+/** Merge RSS/NewsData snippet + scraped article; keep the richest useful text. */
 function bestArticleBody(title: string, summary: string, scraped: string): string {
   const t = (title || "").trim();
   const sum = (summary || "").trim();
   const art = (scraped || "").trim();
-  // Scraped pages often return cookie/nav junk — prefer API summary when it's richer relative to noise
   const artUseful =
-    art.length >= 180 &&
-    art.length > sum.length * 0.6 &&
-    !/^(cookie|accept|subscribe|sign in|เข้าสู่ระบบ)/i.test(art.slice(0, 80));
-  if (sum && artUseful) {
-    // Put summary first (cleaner), then extra article text
-    const extra = art.includes(sum.slice(0, 40)) ? art : `${sum}\n\n${art}`;
-    return extra.slice(0, 5500);
+    art.length >= 120 &&
+    !/^(cookie|accept|subscribe|sign in|เข้าสู่ระบบ|javascript)/i.test(art.slice(0, 80));
+
+  // Prefer the longer high-quality body; don't lock onto a short teaser.
+  if (artUseful && art.length >= sum.length) {
+    const merged = sum.length >= 40 && !art.includes(sum.slice(0, Math.min(40, sum.length)))
+      ? `${sum}\n\n${art}`
+      : art;
+    return merged.slice(0, 7000);
   }
-  if (sum.length >= 40) return sum.slice(0, 5500);
-  if (artUseful) return art.slice(0, 5500);
-  return (sum || art || t).slice(0, 5500);
+  if (sum.length >= 40 && artUseful) {
+    const extra = art.includes(sum.slice(0, 40)) ? art : `${sum}\n\n${art}`;
+    return extra.slice(0, 7000);
+  }
+  if (sum.length >= 40) return sum.slice(0, 7000);
+  if (artUseful) return art.slice(0, 7000);
+  return (sum || art || t).slice(0, 7000);
 }
 
 /** Render stories as a natural briefing (for LINE push and chat). */
@@ -103,7 +108,7 @@ export function formatStoriesText(stories: Story[]): string {
     const topic = (s.source || "").replace(/^หัวข้อ\s*·\s*/u, "").trim() || s.source;
     lines.push(`${i + 1}) ${topic}`);
     lines.push(`   ${headline}`);
-    for (const p of points.slice(0, 4)) lines.push(`   • ${p}`);
+    for (const p of points.slice(0, 5)) lines.push(`   • ${p}`);
     if (s.rawLink) lines.push(`   🔗 ${s.rawLink}`);
     lines.push("");
   });
@@ -124,7 +129,12 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   const newestLabel = feeds.length ? (feeds[feeds.length - 1].label || "") : "";
 
   // 2) gather items
-  type DigestItem = FeedEntry & { kind: string; feedLabel: string; fromTopic?: boolean };
+  type DigestItem = FeedEntry & {
+    kind: string;
+    feedLabel: string;
+    fromTopic?: boolean;
+    videoId?: string;
+  };
   const items: DigestItem[] = [];
   const skipped: string[] = [];
 
@@ -190,7 +200,18 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
         vids
           .sort((a, b) => (b.published || "").localeCompare(a.published || ""))
           .slice(0, YT_HARD_CAP)
-          .forEach((v) => items.push({ ...v, kind: "youtube", feedLabel: v.source }));
+          .forEach((v) =>
+            items.push({
+              title: v.title,
+              link: v.link,
+              published: v.published,
+              summary: v.summary,
+              source: v.source,
+              kind: "youtube",
+              feedLabel: v.source,
+              videoId: v.videoId,
+            })
+          );
       } catch (e) {
         skipped.push(`YouTube (ดึงไม่สำเร็จ: ${String(e).slice(0, 60)})`);
       }
@@ -360,15 +381,16 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     const listing = pool
       .map((it, i) => {
         const tag = it.fromTopic ? " [หัวข้อ]" : it.kind === "youtube" ? " [YouTube]" : it.feedLabel === newestLabel ? " [ใหม่]" : "";
-        return `${i}.${tag} [${it.feedLabel}] ${it.title}`;
+        const teaser = (it.summary || "").replace(/\s+/g, " ").trim().slice(0, 120);
+        return `${i}.${tag} [${it.feedLabel}] ${it.title}${teaser ? ` — ${teaser}` : ""}`;
       })
       .join("\n");
     try {
       trace("fetch", `📰 เลือกเด่น · ${Math.min(highlightN, pool.length)} เรื่อง`, "start");
       const raw = await chat(
-        `คุณเป็นบรรณาธิการข่าว — เลือกข่าวที่ "เด่น สำคัญ หรือน่าสนใจที่สุด" ${Math.min(highlightN, pool.length)} อัน\n` +
+        `คุณเป็นบรรณาธิการข่าว — เลือกข่าว/คลิปที่ "เด่น สำคัญ หรือน่าสนใจที่สุด" ${Math.min(highlightN, pool.length)} อัน\n` +
           `ตอบ JSON เท่านั้น {"highlights":[index...]}\n` +
-          `เลือกข่าวที่มีประเด็นชัด มีผลกระทบ มีตัวเลข/เหตุการณ์เด่น หรือน่าติดตาม — ไม่ใช่แค่ข่าวทั่วไป\n` +
+          `เลือกเรื่องที่มีประเด็นชัด มีผลกระทบ มีตัวเลข/เหตุการณ์เด่น หรือน่าติดตาม — ไม่ใช่แค่หัวข้อทั่วไป\n` +
           `ให้ความสำคัญกับรายการที่มีแท็ก [หัวข้อ] ก่อน — YouTube เลือกได้ไม่เกิน ${ytCap} อัน`,
         listing,
         { json: true, temperature: 0, timeoutMs: 12000, fast: true, traceStep: "fetch", tracePrefix: "📰 เลือกเด่น" }
@@ -402,15 +424,23 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     picks = chosenIdx.slice(0, highlightN);
   }
 
-  // 4) fetch article text + stage 2 — pull out interesting key points (not title-only)
+  // 4) fetch article / YouTube captions + stage 2 — write useful Thai key points
   const chosen = picks.map((i) => pool[i]).slice(0, highlightN);
   trace("fetch", `📰 อ่านบทความ · ${chosen.length} เรื่อง`, "start");
   const withText = await Promise.all(
     chosen.map(async (it) => {
-      // Prefer existing summary for topics (already has body); scrape only when thin / paywalled.
+      if (it.kind === "youtube") {
+        const full = await youtube.buildVideoBody({
+          title: it.title,
+          summary: it.summary,
+          videoId: it.videoId,
+          link: it.link,
+        });
+        return { ...it, full };
+      }
+      // Always scrape the article page — RSS/NewsData teasers alone make weak summaries.
       const sum = (it.summary || "").trim();
-      const thin = !sum || sum.length < 80 || isPaywalledSnippet(sum);
-      const scraped = thin && it.kind !== "youtube" ? await fetchArticle(it.link) : "";
+      const scraped = await fetchArticle(it.link);
       let full = bestArticleBody(it.title, isPaywalledSnippet(sum) ? "" : sum, scraped);
       if (isPaywalledSnippet(full)) full = (it.title || "").trim();
       return { ...it, full };
@@ -419,17 +449,22 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   trace("fetch", `📰 อ่านบทความ · ${withText.length} เรื่อง`);
   type StorySummary = { headline?: string; points?: string[]; blurb?: string; bullets?: string[] };
   const summaries: Record<string, StorySummary> = {};
-  const BATCH = 3;
+  // Smaller batches = less detail loss; YouTube alone so captions get full attention.
+  const BATCH = 2;
   for (let offset = 0; offset < withText.length; offset += BATCH) {
     const batch = withText.slice(offset, offset + BATCH);
     const writerInput = batch
       .map((it, j) => {
         const globalIdx = offset + j;
-        const body = (it.full || it.summary || it.title || "").slice(0, 4500);
-        const thin = body.trim().length < 80 || body.trim() === (it.title || "").trim();
+        const body = (it.full || it.summary || it.title || "").slice(0, 6000);
+        const thin = body.trim().length < 120 || body.trim() === (it.title || "").trim();
+        const kindHint =
+          it.kind === "youtube"
+            ? "ชนิด: คลิป YouTube — สรุปจากคำบรรยาย/ซับไตเติลว่าคลิปพูดถึงอะไร จุดเด่นคืออะไร\n"
+            : "ชนิด: ข่าว/บทความ\n";
         return (
-          `#${globalIdx}\nหัวข้อ: ${it.title}\nแหล่ง: ${it.feedLabel}\n` +
-          (thin ? "หมายเหตุ: เนื้อหาสั้นมาก — สรุปจากที่มีอย่างตรงไปตรงมา\n" : "") +
+          `#${globalIdx}\n${kindHint}หัวข้อ: ${it.title}\nแหล่ง: ${it.feedLabel}\n` +
+          (thin ? "หมายเหตุ: เนื้อหาสั้น — สรุปเท่าที่มีอย่างตรงไปตรงมา ห้ามแต่งเติม\n" : "") +
           `เนื้อหา: ${body}`
         );
       })
@@ -437,18 +472,28 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     try {
       trace("compose", `📰 สรุปประเด็น · ${batch.length} เรื่อง`, "start");
       const raw = await chat(
-        "คุณเป็นผู้ช่วยสรุปข่าวให้หัวหน้าอ่านบน LINE — ดึงเฉพาะ 'ประเด็นที่น่าสนใจ' มาให้อ่าน ไม่ต้องเล่าทั้งเรื่องยาว\n" +
+        "คุณเป็นบรรณาธิการสรุปข่าว/คลิปให้หัวหน้าอ่านบน LINE เป็นภาษาไทย\n" +
+          "เป้าหมาย: อ่านแล้วรู้เรื่องทันที — ไม่ใช่พาราเฟรสหัวข้อ และไม่ใช่ประโยคกลางๆ ที่เลื่อนลอย\n" +
           "ตอบ JSON เท่านั้น โดยใช้เลขตาม # ที่ให้มา:\n" +
-          '{"0":{"headline":"1 ประโยค เกิดอะไรและทำไมควรรู้","points":["ประเด็นที่น่าสนใจ 1","ประเด็นที่ 2"]},"1":{...}}\n' +
+          '{"0":{"headline":"...","points":["...","..."]},"1":{...}}\n' +
           "กติกา:\n" +
-          "- headline = 1 ประโยค บอกเหตุการณ์หลักและทำไมเรื่องนี้น่าสนใจ (ห้ามวางหัวข้อข่าวดิบๆ)\n" +
-          "- points = 2–4 ข้อ เอาเฉพาะประเด็นที่น่าสนใจ/มีตัวเลข/มีผลกระทบ/มีมุมที่ควรจับตา\n" +
-          "- แต่ละ point กระชับ 1 ประโยค อ่านแล้วรู้เรื่อง ไม่ต้องซ้ำ headline\n" +
+          "- ทุกฟิลด์ต้องเป็นภาษาไทย (ยกเว้นชื่อเฉพาะ/ตัวเลข/ชื่อช่อง)\n" +
+          "- headline = 1 ประโยค บอกสาระหลักว่าเกิดอะไร + ทำไมควรรู้ (ห้ามคัดลอกหัวข้อดิบ)\n" +
+          "- points = 3–5 ข้อ ดึงข้อเท็จจริง ตัวเลข ผลกระทบ มุมที่ควรจับตา จากเนื้อหา\n" +
+          "- แต่ละ point เป็นประโยคสมบูรณ์ อ่านแล้วได้ข้อมูล ไม่ซ้ำ headline\n" +
+          "- คลิป YouTube: สรุปว่าคลิปพูด/โชว์อะไร ไม่ใช่แค่ชื่อคลิป หรือคำโฆษณาในคำบรรยาย\n" +
           "- ห้ามเขียนว่า “ไม่มีรายละเอียด…” “ไม่ระบุ…” “เนื้อหาไม่ได้บอก…” เด็ดขาด\n" +
-          "- ข้อมูลน้อย → headline สั้นๆ + points 1–2 ข้อจากที่มี\n" +
-          "- ห้ามแต่งตัวเลข/เหตุการณ์ที่ไม่มีในเนื้อหา",
+          "- ข้อมูลน้อย → headline สั้น + points 1–2 ข้อจากที่มี — ห้ามแต่งตัวเลข/เหตุการณ์",
         writerInput,
-        { json: true, temperature: 0.35, timeoutMs: 18000, fast: true, traceStep: "compose", tracePrefix: "📰 สรุปประเด็น" }
+        {
+          json: true,
+          temperature: 0.25,
+          timeoutMs: 28000,
+          // Quality path — prefer configured LLM order (usually Qwen), not Groq-fast.
+          fast: false,
+          traceStep: "compose",
+          tracePrefix: "📰 สรุปประเด็น",
+        }
       );
       const parsed = JSON.parse(raw) as Record<string, StorySummary>;
       Object.assign(summaries, parsed);
@@ -467,7 +512,7 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     const points = (s.points || s.bullets || [])
       .map((b) => String(b || "").trim())
       .filter((b) => b && !isHollowBullet(b));
-    let finalBullets = [headline, ...points].filter((b) => b && !isHollowBullet(b)).slice(0, 5);
+    let finalBullets = [headline, ...points].filter((b) => b && !isHollowBullet(b)).slice(0, 6);
     if (!finalBullets.length) {
       const snip = (it.summary || it.full || "").replace(/\s+/g, " ").trim().slice(0, 220);
       finalBullets = snip && snip !== it.title ? [snip] : [(it.title || "").trim()].filter(Boolean);
