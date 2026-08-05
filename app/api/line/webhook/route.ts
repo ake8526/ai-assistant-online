@@ -271,18 +271,13 @@ function detailText(res: CommandResult, upn?: string): string {
   } else if (res.intent === "file_results" && Array.isArray(res.files)) {
     const showPath = !!(res as CommandResult).show_file_location;
     const fileList = res.files as { name?: string; url?: string; path?: string; id?: string }[];
-    const hasOpenLinks = !!(upn && fileList.some((f) => f.id));
     lines = fileList.map((f, i) => {
       const name = (f.name || f.url || "ไฟล์").trim();
       const pathLine = showPath && f.path && f.path !== "OneDrive" ? `\n   📂 ${f.path}` : "";
       const openUri = upn && f.id ? buildShortFileOpenUrl(upn, f.id) : "";
-      // Keep everything on one line to avoid LINE auto-wrapping URL into multiple lines.
-      // We intentionally do NOT print the URL text (it can still be long).
-      // Opening is provided via quick-reply URI buttons below.
-      const linkLine = openUri ? `\n   🔗 เปิดไฟล์` : "";
+      const linkLine = openUri ? `\n   🔗 ${openUri}` : "";
       return `${i + 1}) ${name}${pathLine}${linkLine}`;
     });
-    if (hasOpenLinks) lines.push("แตะปุ่มด้านล่างเพื่อเปิดไฟล์");
   }
   return lines.length ? "\n\n" + lines.join("\n") : "";
 }
@@ -414,38 +409,6 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
   let reply = res.reply || "รับทราบครับ";
   if (res.map_url) reply += `\n🗺️ ${res.map_url}`;
   reply += detailText(res, upn);
-
-  // Persistable "open file" actions:
-  // quick-reply buttons can disappear after you send another message, so for
-  // file search results we also send a template button (keeps in chat history).
-  if (res.intent === "file_results" && upn && Array.isArray(res.files) && res.files.length > 0 && res.files.length <= 4) {
-    const files = res.files as { id?: string; name?: string }[];
-    const fileText = files
-      .map((f, i) => `${i + 1}) ${(f.name || "ไฟล์").trim()}`)
-      .join("\n");
-    const templateText = `พบไฟล์ ${files.length} รายการ\n${fileText}\nแตะเพื่อเปิดไฟล์`;
-
-    const actions = files
-      .map((f, i) => {
-        if (!f.id) return null;
-        return { type: "uri" as const, label: `🔗 เปิด ${i + 1}`, uri: buildShortFileOpenUrl(upn, f.id) };
-      })
-      .filter(Boolean) as { type: "uri"; label: string; uri: string }[];
-    if (actions.length) {
-      await replyLineMessages(replyToken, [
-        {
-          type: "template",
-          altText: "เปิดไฟล์ใน OneDrive",
-          template: {
-            type: "buttons",
-            text: templateText.slice(0, 450),
-            actions,
-          },
-        } as any,
-      ]);
-      return;
-    }
-  }
 
   const qr = quickReplyFor(res, upn);
   if (qr) {
