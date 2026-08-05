@@ -109,20 +109,20 @@ const CSS = `
 .mon .bdg.error{border-color:var(--red)}.mon .bdg.error .stt{color:var(--red)}.mon .bdg.error .dot{background:var(--red)}
 @keyframes monpulse{50%{opacity:.2}}
 .mon .caption{font-size:19px;color:var(--dim);text-align:center;padding:9px}.mon .caption b{color:var(--red)}
-.mon .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,1.15fr);gap:8px;align-items:stretch;flex-shrink:0;height:clamp(220px,34vh,300px);margin-bottom:0}
+.mon .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch;flex-shrink:0;height:clamp(220px,34vh,300px);margin-bottom:0}
 @media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:40vh}}
 .mon .cols > .panel{min-width:0;max-width:100%;overflow:hidden;margin-bottom:0;display:flex;flex-direction:column}
 .mon .cols > .panel .ph{flex-shrink:0;padding:6px 10px}
 .mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:15px;line-height:1.2;padding:6px 10px}
 .mon #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .mon #log .t{color:var(--dim)}.mon #log .g{color:var(--green)}.mon #log .r{color:var(--red)}.mon #log .a{color:var(--amber)}.mon #log .b{color:#3a86ff}
-.mon #legend{flex:1;min-height:0;overflow:hidden;padding:8px 10px;font-size:15px;line-height:1.25;display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;align-content:start}
+.mon #legend{flex:1;min-height:0;overflow:auto;padding:8px 10px;font-size:15px;line-height:1.25;display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;align-content:start}
 .mon #legend .leg-col{display:flex;flex-direction:column;gap:3px;min-width:0}
 .mon #legend .leg-h{font-family:'Press Start 2P';font-size:8px;color:var(--dim);margin:0 0 4px;letter-spacing:0.5px}
 .mon #legend .row{display:flex;align-items:center;gap:6px;margin:0;min-width:0;height:22px}
 .mon #legend .row > span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mon #legend .row.span2{grid-column:1 / -1;height:auto;min-height:22px;margin-top:4px;align-items:flex-start}
-.mon #legend .row.span2 > span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mon #legend .row.span2{grid-column:1 / -1;height:auto;min-height:22px;margin-top:6px;align-items:flex-start}
+.mon #legend .row.span2 > span:last-child{white-space:normal;overflow:visible;text-overflow:unset;line-height:1.35}
 .mon #legend .sw{width:12px;height:12px;flex:none;border:1px solid #000}
 .mon #legend .rl{font-family:'Press Start 2P';font-size:8px;color:var(--ink)}
 .mon #legend .rc{color:var(--dim);font-size:14px}
@@ -696,12 +696,17 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       const l2 = moving ? (f ? 0 : (p.running ? 3 : 2)) : 0;
       R(x - 4, y - 4 + l1 + bob, 3, 4, "#2b2b3a"); R(x + 1, y - 4 + l2 + bob, 3, 4, "#2b2b3a");
       R(x - 5, y - 12 + bob, 10, 8, "#38bdf8"); R(x - 5, y - 12 + bob, 10, 2, "#0284c7");
+      R(x - 7, y - 11 + bob, 2, 6, "#38bdf8"); R(x + 5, y - 11 + bob, 2, 6, "#38bdf8");
       if (p.carry) {
         R(x - 4, y - 22 + bob, 8, 7, "#e8e8e0"); R(x - 4, y - 22 + bob, 8, 2, "#39d353");
         R(x - 3, y - 18 + bob, 6, 1, "#888");
       }
-      R(x - 5, y - 20 + bob, 10, 8, "#f0c090");
-      R(x - 5, y - 21 + bob, 10, 4, "#0c4a6e");
+      // Face match DASH (down): hair + eyes on skin
+      const hy = y - 19 + bob, skin = "#f0c090", hair = "#141414";
+      R(x - 5, hy, 10, 9, skin);
+      R(x - 5, hy - 1, 10, 4, hair);
+      R(x - 5, hy, 1, 5, hair); R(x + 4, hy, 1, 5, hair);
+      R(x - 3, hy + 4, 2, 2, "#141414"); R(x + 1, hy + 4, 2, 2, "#141414");
       if (p.running && moving) {
         X.fillStyle = "rgba(255,255,255,0.35)";
         X.fillRect(x - 12, y - 8, 3, 1); X.fillRect(x - 14, y - 5, 4, 1);
@@ -1470,7 +1475,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                 ))}
                 <div className="row">
                   <span className="sw" style={{ background: "#38bdf8" }} />
-                  <span><span className="rl">POSTIE</span> <span className="rc">— ยืนส่งข่าว (เหมือน DASH)</span></span>
+                  <span><span className="rl">POSTIE</span> <span className="rc">— ยืนส่งข่าว</span></span>
                 </div>
               </div>
               {llmChain ? (
