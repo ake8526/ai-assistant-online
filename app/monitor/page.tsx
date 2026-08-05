@@ -109,37 +109,37 @@ const CSS = `
 .mon .bdg.error{border-color:var(--red)}.mon .bdg.error .stt{color:var(--red)}.mon .bdg.error .dot{background:var(--red)}
 @keyframes monpulse{50%{opacity:.2}}
 .mon .caption{font-size:19px;color:var(--dim);text-align:center;padding:9px}.mon .caption b{color:var(--red)}
-.mon .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch;flex-shrink:0;height:clamp(240px,36vh,320px);margin-bottom:0}
-@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:42vh}}
+.mon .cols{display:grid;grid-template-columns:1.15fr 0.85fr;gap:6px;align-items:stretch;flex-shrink:0;height:clamp(130px,18vh,170px);margin-bottom:0}
+@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:28vh}}
 .mon .cols > .panel{min-width:0;max-width:100%;overflow:hidden;margin-bottom:0;display:flex;flex-direction:column}
-.mon .cols > .panel .ph{flex-shrink:0;padding:6px 10px}
-.mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:16px;line-height:1.25;padding:6px 10px}
+.mon .cols > .panel .ph{flex-shrink:0;padding:4px 8px;font-size:7px}
+.mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:13px;line-height:1.2;padding:4px 8px}
 .mon #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .mon #log .t{color:var(--dim)}.mon #log .g{color:var(--green)}.mon #log .r{color:var(--red)}.mon #log .a{color:var(--amber)}.mon #log .b{color:#3a86ff}
-.mon #legend{flex:1;min-height:0;overflow:auto;padding:10px 12px;font-size:16px;line-height:1.35;display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;align-content:start}
-.mon #legend .leg-col{display:flex;flex-direction:column;gap:6px;min-width:0}
-.mon #legend .leg-h{font-family:'VT323',monospace;font-size:18px;color:var(--amber);margin:0 0 4px;letter-spacing:1px;border-bottom:1px solid var(--hair);padding-bottom:4px}
-.mon #legend .row{display:flex;align-items:flex-start;gap:8px;margin:0;min-width:0;min-height:28px}
-.mon #legend .row > span:last-child{min-width:0;overflow:visible;text-overflow:unset;white-space:normal;line-height:1.3}
-.mon #legend .row.span2{grid-column:1 / -1;height:auto;min-height:28px;margin-top:8px;align-items:flex-start;padding-top:8px;border-top:1px solid var(--hair)}
-.mon #legend .row.span2 > span:last-child{white-space:normal;overflow:visible;text-overflow:unset;line-height:1.4}
-.mon #legend .sw{width:14px;height:14px;flex:none;border:1px solid #000;margin-top:3px}
-.mon #legend .rl{font-family:'VT323',monospace;font-size:18px;color:var(--ink);font-weight:700}
-.mon #legend .rc{color:#d4d4d4;font-size:16px}
+.mon #legend{flex:1;min-height:0;overflow:auto;padding:6px 8px;font-size:13px;line-height:1.2;display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;align-content:start}
+.mon #legend .leg-col{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mon #legend .leg-h{font-family:'VT323',monospace;font-size:14px;color:var(--amber);margin:0 0 2px;letter-spacing:1px;border-bottom:1px solid var(--hair);padding-bottom:2px}
+.mon #legend .row{display:flex;align-items:flex-start;gap:6px;margin:0;min-width:0;min-height:18px}
+.mon #legend .row > span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.2}
+.mon #legend .row.span2{grid-column:1 / -1;height:auto;min-height:18px;margin-top:4px;align-items:flex-start;padding-top:4px;border-top:1px solid var(--hair)}
+.mon #legend .row.span2 > span:last-child{white-space:normal;overflow:visible;text-overflow:unset;line-height:1.25}
+.mon #legend .sw{width:10px;height:10px;flex:none;border:1px solid #000;margin-top:3px}
+.mon #legend .rl{font-family:'VT323',monospace;font-size:14px;color:var(--ink);font-weight:700}
+.mon #legend .rc{color:#d4d4d4;font-size:13px}
 .mon .foot{display:none}
-.mon .news-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:8px 10px 10px;border-top:2px solid var(--hair);flex-shrink:0;min-height:120px}
+.mon .news-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:6px 8px 8px;border-top:2px solid var(--hair);flex-shrink:0;min-height:0}
 @media(max-width:1100px){.mon .news-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.mon .news-desk{border:2px solid var(--hair);background:var(--panel2);padding:10px 12px;min-width:0;min-height:100px;display:flex;flex-direction:column;gap:4px}
-.mon .news-desk .hd{font-family:'VT323',monospace;font-size:18px;display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:2px}
-.mon .news-desk .nm{color:var(--ink);font-size:18px;letter-spacing:0.5px}.mon .news-desk .st{font-family:'VT323',monospace;font-size:15px;padding:2px 8px;border:1px solid var(--hair);color:var(--dim)}
+.mon .news-desk{border:2px solid var(--hair);background:var(--panel2);padding:6px 8px;min-width:0;min-height:0;display:flex;flex-direction:column;gap:2px}
+.mon .news-desk .hd{font-family:'VT323',monospace;font-size:15px;display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:0}
+.mon .news-desk .nm{color:var(--ink);font-size:15px;letter-spacing:0.5px}.mon .news-desk .st{font-family:'VT323',monospace;font-size:13px;padding:1px 6px;border:1px solid var(--hair);color:var(--dim)}
 .mon .news-desk.work .st{color:var(--amber);border-color:var(--amber);animation:monpulse .55s steps(1) infinite}
 .mon .news-desk.done .st{color:var(--green);border-color:var(--green)}
 .mon .news-desk.error .st{color:var(--red);border-color:var(--red)}
-.mon .news-desk .job{font-size:15px;color:#a3a3a3;line-height:1.25;margin-bottom:2px}
-.mon .news-desk .ai{font-size:16px;color:var(--amber);margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mon .news-desk .cap{font-size:15px;color:#d4d4d4;line-height:1.25;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.mon .news-desk ul{list-style:none;font-size:15px;color:var(--ink);line-height:1.3;max-height:3.9em;overflow:hidden;flex:1}
-.mon .news-desk li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+.mon .news-desk .job{font-size:13px;color:#a3a3a3;line-height:1.2;margin-bottom:0}
+.mon .news-desk .ai{font-size:14px;color:var(--amber);margin:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mon .news-desk .cap{font-size:13px;color:#d4d4d4;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mon .news-desk ul{list-style:none;font-size:13px;color:var(--ink);line-height:1.25;max-height:2.6em;overflow:hidden;flex:1}
+.mon .news-desk li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px}
 .mon .news-desk li .k{color:var(--dim)}.mon .news-desk li.work{color:var(--amber)}.mon .news-desk li.done{color:var(--green)}.mon .news-desk li.err{color:var(--red)}
 .mon .btn{font-family:'Press Start 2P';font-size:10px;background:var(--ink);color:#000;border:2px solid var(--ink);padding:10px 16px;cursor:pointer}
 .mon .center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:60vh;text-align:center}
@@ -1484,15 +1484,15 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                   <span><span className="rl">POSTIE</span> <span className="rc">— รับสรุปจาก WRITER แล้ววิ่งส่งต่อให้ DASH</span></span>
                 </div>
               </div>
-              {llmChain ? (
-                <div className="row span2">
+              <div className="row span2">
                   <span className="sw" style={{ background: "#f0b429" }} />
                   <span>
                     <span className="rl">LLM</span>{" "}
-                    <span className="rc">— {llmChain}</span>
+                    <span className="rc">
+                      — {llmChain || (llmLabel ? llmLabel : "รอเรียกใช้ (แสดงที่มุมบนขวาด้วย)")}
+                    </span>
                   </span>
                 </div>
-              ) : null}
             </div>
           </div>
         </div>

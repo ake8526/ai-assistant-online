@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>KTIS AI Assistant</title>
+<title>KTIS X AI Assistant</title>
 <style>
   @import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap");
 
@@ -65,13 +65,14 @@
     color: #1a1205; background: var(--brand); border-color: var(--brand);
   }
 
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px 0; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 0 24px; width: 100%; }
 
-  /* HERO + sections: one full screen per topic */
+  /* HERO + sections: one full screen per topic — content fills the viewport */
   .hero {
-    display: grid; grid-template-columns: 1.05fr .95fr; gap: 28px; align-items: center;
+    display: grid; grid-template-columns: 1.05fr .95fr; gap: 32px; align-items: center;
     min-height: 100dvh; min-height: 100vh;
-    padding: 88px 0 48px;
+    width: 100%;
+    padding: 96px 0 56px;
     box-sizing: border-box;
     scroll-snap-align: start;
     scroll-snap-stop: always;
@@ -81,11 +82,11 @@
     text-transform: uppercase; color: var(--brand); margin-bottom: 14px;
   }
   .hero h1 {
-    font-size: clamp(34px, 5vw, 58px); line-height: 1.08; font-weight: 800;
-    letter-spacing: -.02em; margin-bottom: 16px; max-width: 14ch;
+    font-size: clamp(40px, 6vw, 68px); line-height: 1.06; font-weight: 800;
+    letter-spacing: -.02em; margin-bottom: 18px; max-width: 14ch;
   }
   .hero h1 em { font-style: normal; color: var(--brand2); }
-  .hero .lede { font-size: 18px; color: var(--mute); max-width: 36ch; margin-bottom: 22px; }
+  .hero .lede { font-size: clamp(18px, 2.2vw, 22px); color: var(--mute); max-width: 38ch; margin-bottom: 24px; }
   .cta-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 22px; }
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
@@ -153,12 +154,13 @@
   }
   .float-tag b { display: block; color: var(--brand2); margin-bottom: 2px; }
 
-  /* Sections — full viewport, one topic at a time */
+  /* Sections — full viewport, content fills space */
   section.block {
     min-height: 100dvh; min-height: 100vh;
-    padding: 88px 0 48px;
+    width: 100%;
+    padding: 96px 0 48px;
     box-sizing: border-box;
-    display: flex; flex-direction: column; justify-content: center;
+    display: flex; flex-direction: column; justify-content: flex-start;
     scroll-snap-align: start;
     scroll-snap-stop: always;
     scroll-margin-top: 0;
@@ -168,10 +170,37 @@
   }
   .sec-h {
     display: flex; align-items: end; justify-content: space-between; gap: 16px;
-    margin-bottom: 22px; flex-wrap: wrap; flex-shrink: 0;
+    margin-bottom: 24px; flex-wrap: wrap; flex-shrink: 0;
   }
-  .sec-h h2 { font-size: clamp(26px, 3.2vw, 36px); font-weight: 800; letter-spacing: -.02em; }
-  .sec-h p { color: var(--mute); max-width: 42ch; font-size: 16px; }
+  .sec-h h2 { font-size: clamp(30px, 4vw, 42px); font-weight: 800; letter-spacing: -.02em; }
+  .sec-h p { color: var(--mute); max-width: 48ch; font-size: clamp(16px, 1.8vw, 19px); }
+
+  #can .vis-grid { flex: 0 0 auto; }
+  #can .vis { min-height: 260px; }
+  #can .vis .art { height: 148px; }
+  #can .vis h3 { font-size: 18px; }
+  #can .vis p { font-size: 15px; }
+
+  #office { gap: 12px; }
+  #office .office-panel {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+  }
+  #office .room-stage {
+    flex: 1; min-height: 0; align-items: center;
+  }
+  #office .room-frame {
+    max-width: min(1100px, 96%);
+    width: 100%;
+  }
+  #office #office-room {
+    width: 100%;
+    max-height: calc(100dvh - 220px);
+    object-fit: contain;
+  }
+  #office .live-frame { display: none; }
+  #office details.more { margin-top: 10px; flex-shrink: 0; }
+  #office .legend { flex-shrink: 0; margin-top: 8px; }
+  #office .legend span { font-size: 14px; }
 
   /* QR big */
   .qr-grid {
@@ -623,7 +652,7 @@
 </head>
 <body>
   <div class="top">
-    <div class="logo">KTIS <span>AI Assistant</span></div>
+    <div class="logo">KTIS X <span>AI Assistant</span></div>
     <nav id="top-nav">
       <a href="#see">เห็นภาพ</a>
       <a href="#scan">สแกนเริ่มใช้</a>
@@ -644,7 +673,7 @@
     <!-- HERO: brand + visual -->
     <header class="hero" id="see">
       <div>
-        <div class="eyebrow">สำหรับผู้บริหาร · KTIS</div>
+        <div class="eyebrow">KTIS X · AI Assistant</div>
         <h1>สั่งงานด้วยแชท<br><em>ระบบทำให้เอง</em></h1>
         <p class="lede">ต่อกับ Microsoft 365 ของบริษัท — ดูตาราง จองประชุม สรุปงาน และสรุปข่าว ผ่านเว็บหรือ LINE</p>
         <div class="cta-row">
@@ -902,15 +931,9 @@
 
       <div class="live-frame">
         <div class="bar">
-          <span>หน้าจริงออนไลน์ (ต้องล็อกอิน M365 ถ้ายังไม่เข้าสู่ระบบ)</span>
+          <span>เปิดห้อง LIVE เต็มจอเพื่อดู CONSOLE / STAGES แบบเรียลไทม์</span>
           <a class="btn primary" style="padding:8px 12px;font-size:12px" href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">เปิด /monitor</a>
         </div>
-        <iframe
-          title="AI Assistant Monitor"
-          src="https://ktis-ai-assistant.vercel.app/monitor"
-          loading="lazy"
-          referrerpolicy="no-referrer"
-        ></iframe>
       </div>
 
       <details class="more">
@@ -918,15 +941,15 @@
         <div class="inner">
           <ul>
             <li>ห้องด้านบน = render เดียวกับโค้ดหน้า <code>/monitor</code> (ออฟไลน์ได้)</li>
-            <li>กรอบด้านล่าง = iframe หน้าจริงบน Vercel</li>
-            <li>คู่มือฉบับละเอียด: <code>ฟังก์ชันทั้งระบบ-AI-Assistant.claude-backup.html</code></li>
+            <li>หน้าจริง: <a href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">/monitor</a></li>
+            <li>พรีวิว STAGES ชิดขวาห้อง: <a href="/monitor-stages-right.html" target="_blank" rel="noopener">/monitor-stages-right.html</a></li>
           </ul>
         </div>
       </details>
     </section>
 
     <div class="footer">
-      <div>KTIS · AI Assistant · เอกสารภาพสำหรับผู้บริหาร</div>
+      <div>KTIS X · AI Assistant</div>
       <div>อัปเดต Aug 2026 · เปิดเต็มจอแล้วเลื่อนทีละหัวข้อ</div>
     </div>
   </div>
