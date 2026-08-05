@@ -244,7 +244,8 @@ function detailText(res: CommandResult): string {
       const name = (f.name || f.url || "ไฟล์").trim();
       const path =
         showPath && f.path && f.path !== "OneDrive" ? `\n   📂 ${f.path}` : "";
-      return `${i + 1}) ${name}${path}`;
+      const link = f.url ? `\n   🔗 ${f.url}` : "";
+      return `${i + 1}) ${name}${path}${link}`;
     });
   }
   return lines.length ? "\n\n" + lines.join("\n") : "";

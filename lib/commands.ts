@@ -3107,7 +3107,8 @@ async function handleParsed(
     if (!filtered.length) {
       return { intent, reply: `ในรายการก่อนหน้าไม่มีไฟล์ .${ft} ครับ` };
     }
-    return buildFileResultsResponse(filtered, `.${ft}`);
+    const showLoc = filtered.some((f) => f.path && f.path !== "OneDrive");
+    return buildFileResultsResponse(filtered, `.${ft}`, { showLocation: showLoc });
   }
 
   if (intent === "search_files") {
