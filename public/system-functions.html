@@ -25,10 +25,12 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html {
     scroll-behavior: smooth;
-    scroll-padding-top: 72px; /* sticky top bar */
+    scroll-padding-top: 0;
+    scroll-snap-type: y mandatory;
+    height: 100%;
   }
   @media (prefers-reduced-motion: reduce) {
-    html { scroll-behavior: auto; }
+    html { scroll-behavior: auto; scroll-snap-type: none; }
   }
   body {
     font-family: var(--fd);
@@ -38,6 +40,7 @@
       var(--bg);
     color: var(--ink);
     line-height: 1.45;
+    min-height: 100%;
   }
   a { color: var(--brand2); }
 
@@ -62,12 +65,16 @@
     color: #1a1205; background: var(--brand); border-color: var(--brand);
   }
 
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 20px 80px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px 0; }
 
-  /* HERO */
+  /* HERO + sections: one full screen per topic */
   .hero {
     display: grid; grid-template-columns: 1.05fr .95fr; gap: 28px; align-items: center;
-    min-height: min(78vh, 720px); padding: 24px 0 40px;
+    min-height: 100dvh; min-height: 100vh;
+    padding: 88px 0 48px;
+    box-sizing: border-box;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
   }
   .eyebrow {
     display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .14em;
@@ -146,20 +153,25 @@
   }
   .float-tag b { display: block; color: var(--brand2); margin-bottom: 2px; }
 
-  /* Sections */
+  /* Sections — full viewport, one topic at a time */
   section.block {
-    padding: 56px 0 10px;
-    scroll-margin-top: 72px;
+    min-height: 100dvh; min-height: 100vh;
+    padding: 88px 0 48px;
+    box-sizing: border-box;
+    display: flex; flex-direction: column; justify-content: center;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    scroll-margin-top: 0;
   }
   header.hero {
-    scroll-margin-top: 72px;
+    scroll-margin-top: 0;
   }
   .sec-h {
     display: flex; align-items: end; justify-content: space-between; gap: 16px;
-    margin-bottom: 22px; flex-wrap: wrap;
+    margin-bottom: 22px; flex-wrap: wrap; flex-shrink: 0;
   }
-  .sec-h h2 { font-size: clamp(24px, 3vw, 34px); font-weight: 800; letter-spacing: -.02em; }
-  .sec-h p { color: var(--mute); max-width: 42ch; font-size: 15px; }
+  .sec-h h2 { font-size: clamp(26px, 3.2vw, 36px); font-weight: 800; letter-spacing: -.02em; }
+  .sec-h p { color: var(--mute); max-width: 42ch; font-size: 16px; }
 
   /* QR big */
   .qr-grid {
@@ -739,8 +751,8 @@
             </div>
           </div>
           <div class="body">
-            <h3>ตาราง · จอง · ยกเลิกนัด</h3>
-            <p>ดูนัด หาเวลาว่าง จอง (ยืนยันก่อนลง Outlook) · ยกเลิกตามวัน ปุ่มมีวันที่+หัวข้อ</p>
+            <h3>ตาราง · จอง · ติดตามนัด</h3>
+            <p>ดูนัด หาเวลาว่าง จอง (ยืนยันก่อนลง Outlook) · ถ้าอีกฝั่งยังไม่ตอบ ระบบติดตามทุก 1 ชม. และแจ้งคนส่งเมื่อครบวัน/ใกล้เวลานัด</p>
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
@@ -770,7 +782,7 @@
           </div>
           <div class="body">
             <h3>สรุปข่าวที่ติดตาม</h3>
-            <p>พิมพ์ “ข่าววันนี้” ได้ทั้งแบบถามเอง และตั้งให้ส่งอัตโนมัติเช้าทุกวัน — สรุปประเด็นที่น่าสนใจมาให้อ่าน</p>
+            <p>พิมพ์ “ข่าววันนี้” — สรุปประเด็นแล้วส่งเข้า LINE อัตโนมัติ (ใช้เวลาประมาณ 1–2 นาที) หรือตั้งส่งเช้าทุกวันทำงาน</p>
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
@@ -1622,7 +1634,6 @@
   const topLinks = [...document.querySelectorAll("#top-nav a[href^='#']")];
   const dots = [...document.querySelectorAll("#sec-dots a[href^='#']")];
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const OFFSET = 72;
 
   function setActive(id) {
     const mark = (list) =>
@@ -1631,16 +1642,15 @@
     mark(dots);
   }
 
-  function sectionTop(el) {
-    return el.getBoundingClientRect().top + window.scrollY - OFFSET;
-  }
-
   function currentIndex() {
-    const y = window.scrollY + OFFSET + 8;
+    const mid = window.scrollY + window.innerHeight * 0.35;
     let idx = 0;
-    for (let i = 0; i < sections.length; i++) {
-      if (sectionTop(sections[i]) <= y + 2) idx = i;
-    }
+    let best = Infinity;
+    sections.forEach((el, i) => {
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const d = Math.abs(top - (mid - window.innerHeight * 0.35));
+      if (d < best) { best = d; idx = i; }
+    });
     return idx;
   }
 
@@ -1649,27 +1659,25 @@
   }
 
   let locked = false;
-  let acc = 0;
+  let wheelAcc = 0;
+  let wheelTimer = 0;
 
-  function goToIndex(i) {
+  function goToIndex(i, { instant } = {}) {
     const el = sections[Math.max(0, Math.min(sections.length - 1, i))];
     if (!el) return;
     locked = true;
-    acc = 0;
-    window.scrollTo({ top: Math.max(0, sectionTop(el)), behavior: reduce ? "auto" : "smooth" });
+    wheelAcc = 0;
+    el.scrollIntoView({
+      behavior: reduce || instant ? "auto" : "smooth",
+      block: "start",
+    });
     history.replaceState(null, "", "#" + el.id);
     setActive(el.id);
-    setTimeout(() => { locked = false; acc = 0; }, reduce ? 80 : 750);
+    window.clearTimeout(wheelTimer);
+    wheelTimer = window.setTimeout(() => { locked = false; }, reduce ? 120 : 900);
   }
 
-  function nearTop(el) {
-    return el.getBoundingClientRect().top >= OFFSET - 12;
-  }
-  function nearBottom(el) {
-    return el.getBoundingClientRect().bottom <= window.innerHeight + 48;
-  }
-
-  // ล้อเมาส์ → หัวข้อถัดไป/ก่อนหน้า (หัวข้อยาวเลื่อนในหน้าได้จนถึงขอบ)
+  // Trackpad / mouse wheel → snap to next/prev full page (debounced, smooth)
   window.addEventListener(
     "wheel",
     (e) => {
@@ -1679,30 +1687,18 @@
       }
       if (e.altKey) return;
 
+      // Let tiny trackpad noise settle; then one section jump
+      wheelAcc += e.deltaY;
+      if (locked) {
+        e.preventDefault();
+        return;
+      }
+      if (Math.abs(wheelAcc) < 48) return;
+
       e.preventDefault();
-      if (locked) return;
-
-      acc += e.deltaY;
-      if (Math.abs(acc) < 36) return;
-
-      const dir = acc > 0 ? 1 : -1;
-      const step = acc;
-      acc = 0;
-      const idx = currentIndex();
-      const cur = sections[idx];
-      if (!cur) return;
-
-      const tall = cur.getBoundingClientRect().height > window.innerHeight * 0.95;
-      if (dir > 0 && tall && !nearBottom(cur)) {
-        window.scrollBy({ top: Math.min(Math.abs(step), window.innerHeight * 0.85), left: 0, behavior: "auto" });
-        return;
-      }
-      if (dir < 0 && tall && !nearTop(cur)) {
-        window.scrollBy({ top: -Math.min(Math.abs(step), window.innerHeight * 0.85), left: 0, behavior: "auto" });
-        return;
-      }
-
-      const next = idx + dir;
+      const dir = wheelAcc > 0 ? 1 : -1;
+      wheelAcc = 0;
+      const next = currentIndex() + dir;
       if (next < 0 || next >= sections.length) return;
       goToIndex(next);
     },
@@ -1723,10 +1719,16 @@
     goToIndex(next);
   });
 
+  let scrollRaf = 0;
   window.addEventListener(
     "scroll",
     () => {
-      if (!locked) setActive(nearestId());
+      if (locked) return;
+      if (scrollRaf) return;
+      scrollRaf = requestAnimationFrame(() => {
+        scrollRaf = 0;
+        setActive(nearestId());
+      });
     },
     { passive: true }
   );
@@ -1743,7 +1745,13 @@
     });
   });
 
-  setActive(nearestId());
+  // Deep link / refresh with hash
+  if (location.hash) {
+    const i = ids.indexOf(location.hash.slice(1));
+    if (i >= 0) goToIndex(i, { instant: true });
+  } else {
+    setActive(nearestId());
+  }
 })();
 </script>
 </body>
