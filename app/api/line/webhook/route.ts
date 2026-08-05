@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import crypto from "crypto";
 import { handleCommand, handleSelection, type CommandContext, type CommandResult } from "@/lib/commands";
 import { getUpnByLineId, getLineId, replyLine, replyLineMessages, showLineLoading, pushLineToId } from "@/lib/line";
@@ -777,7 +777,7 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       const pendingAttach = result.mode === "booked" && result.eventId && draft.attachFile?.url;
       await clearDraft(upn);
 
-      // Reply LINE first — file attach can take 10–20s and must not block the reply token.
+      // Reply LINE first — file attach runs in after() so webhook + monitor don't hang.
       await replyLine(
         replyToken,
         headline +
@@ -786,42 +786,47 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
           (pendingAttach ? `\n📎 กำลังแนบไฟล์ ${draft.attachFile!.name || "เอกสาร"}…` : "") +
           result.note
       );
+      trace("reply", pendingAttach ? "ส่งนัดแล้ว · แนบไฟล์ต่อในพื้นหลัง" : "ส่งนัดแล้ว");
 
       if (pendingAttach) {
-        let attachNote = "";
-        try {
-          const pushed = await Promise.race([
-            withDelegatedGraph(upn, () =>
-              pushMaterialToOutlookEvent(upn, result.eventId!, {
-                name: draft.attachFile!.name,
-                url: draft.attachFile!.url!,
-                driveItemId: draft.attachFile!.id,
-              })
-            ),
-            new Promise<never>((_, rej) =>
-              setTimeout(() => rej(new Error("attach timeout")), 20_000)
-            ),
-          ]);
-          const note = pushed.result?.note || "";
-          attachNote = note
-            ? `📎 ${note}`
-            : `📎 แนบไฟล์แล้ว: ${draft.attachFile!.name || "เอกสาร"}`;
-          await addMeetingMaterial(upn, result.eventId!, {
-            type: "file",
-            id: draft.attachFile!.id,
-            name: draft.attachFile!.name || "เอกสาร",
-            url: draft.attachFile!.url!,
-          });
-        } catch (e) {
-          console.warn("[line] attach on book", String(e).slice(0, 120));
-          attachNote = draft.attachFile!.name
-            ? `⚠️ แนบไฟล์ไม่สำเร็จ (${draft.attachFile!.name}) — ลอง “ผูกไฟล์นัด 1” ทีหลังได้ครับ`
-            : "⚠️ แนบไฟล์ไม่สำเร็จ";
-        }
-        const lineId = await getLineId(upn);
-        if (lineId && attachNote) {
-          await pushLineToId(lineId, attachNote);
-        }
+        const eventId = result.eventId!;
+        const file = { ...draft.attachFile! };
+        after(async () => {
+          let attachNote = "";
+          try {
+            const pushed = await Promise.race([
+              withDelegatedGraph(upn, () =>
+                pushMaterialToOutlookEvent(upn, eventId, {
+                  name: file.name,
+                  url: file.url!,
+                  driveItemId: file.id,
+                })
+              ),
+              new Promise<never>((_, rej) =>
+                setTimeout(() => rej(new Error("attach timeout")), 25_000)
+              ),
+            ]);
+            const note = pushed.result?.note || "";
+            attachNote = note
+              ? `📎 ${note}`
+              : `📎 แนบไฟล์แล้ว: ${file.name || "เอกสาร"}`;
+            await addMeetingMaterial(upn, eventId, {
+              type: "file",
+              id: file.id,
+              name: file.name || "เอกสาร",
+              url: file.url!,
+            });
+          } catch (e) {
+            console.warn("[line] attach on book (after)", String(e).slice(0, 120));
+            attachNote = file.name
+              ? `⚠️ แนบไฟล์ไม่สำเร็จ (${file.name}) — ลอง “ผูกไฟล์นัด 1” ทีหลังได้ครับ`
+              : "⚠️ แนบไฟล์ไม่สำเร็จ";
+          }
+          const lineId = await getLineId(upn);
+          if (lineId && attachNote) {
+            await pushLineToId(lineId, attachNote);
+          }
+        });
       }
     } catch (err) {
       await replyLine(replyToken, `⚠️ ส่งนัดไม่สำเร็จ: ${String(err).slice(0, 150)}`);

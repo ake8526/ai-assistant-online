@@ -413,7 +413,7 @@ export async function pushMaterialToOutlookEvent(
         getUserGraphToken()
           ? `/me/drive/items/${encodeURIComponent(material.driveItemId)}`
           : `/users/${encodeURIComponent(userUpn)}/drive/items/${encodeURIComponent(material.driveItemId)}`,
-        { params: { $select: "id,name,size" } }
+        { params: { $select: "id,name,size" }, timeoutMs: 10_000 }
       );
       const meta = metaR.ok ? await metaR.json() : {};
       const size = Number(meta.size || 0);
@@ -422,7 +422,7 @@ export async function pushMaterialToOutlookEvent(
         const contentPath = getUserGraphToken()
           ? `/me/drive/items/${encodeURIComponent(material.driveItemId)}/content`
           : `/users/${encodeURIComponent(userUpn)}/drive/items/${encodeURIComponent(material.driveItemId)}/content`;
-        const contentR = await graphFetch(contentPath);
+        const contentR = await graphFetch(contentPath, { timeoutMs: 15_000 });
         if (contentR.ok) {
           const buf = Buffer.from(await contentR.arrayBuffer());
           const attachR = await graphFetch(`${outlookEventPath(userUpn, eventId)}/attachments`, {
