@@ -161,6 +161,9 @@ const CSS = `
 .mon.stages-right #legend .row.span2{margin-top:6px}
 .mon.stages-right .layout-switch{font-size:12px;color:#7dd3fc;border:1px solid #38bdf8;padding:2px 8px;text-decoration:none}
 .mon.stages-right .layout-switch:hover{background:rgba(56,189,248,.15)}
+html:has(.mon){height:100%}
+body:has(.mon){margin:0;height:100%;overflow:hidden}
+.mon{height:100vh;height:100dvh}
 .mon .layout-switch{font-size:12px;color:var(--dim);border:1px solid var(--hair);padding:2px 8px;text-decoration:none;margin-left:6px}
 .mon .layout-switch:hover{color:var(--ink);border-color:var(--ink)}
 @media(max-width:900px){
@@ -1640,14 +1643,19 @@ function MonitorRoom({
 function Gate() {
   const { account, login, ready, getToken } = useM365Auth();
   const [stagesRight, setStagesRight] = useState(false);
+  const [embed, setEmbed] = useState(false);
   useEffect(() => {
     try {
-      setStagesRight(new URLSearchParams(window.location.search).get("layout") === "right");
+      const q = new URLSearchParams(window.location.search);
+      setStagesRight(q.get("layout") === "right" || q.get("embed") === "1");
+      setEmbed(q.get("embed") === "1");
     } catch { /* ignore */ }
   }, []);
 
-  // Local dev: skip login entirely so the room is watchable while working.
-  if (DEV) return <MonitorRoom getToken={getToken} account={account ?? "dev"} stagesRight={stagesRight} />;
+  // Local dev / marketing embed: skip login so the real room UI is visible.
+  if (DEV || embed) {
+    return <MonitorRoom getToken={getToken} account={account ?? (embed ? "embed" : "dev")} stagesRight={stagesRight} />;
+  }
   if (!ready) {
     return <div className="mon"><style dangerouslySetInnerHTML={{ __html: CSS }} /><div className="center pix" style={{ fontSize: 12 }}>กำลังโหลด…</div></div>;
   }
