@@ -107,6 +107,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
   // event pipeline
   const queueRef = useRef<MonEvent[]>([]);
+  const seenEventIdsRef = useRef<Set<number>>(new Set());
   const cursorRef = useRef(0);
   const curTraceRef = useRef<string | null>(null);
   const busyRef = useRef(false);
@@ -470,7 +471,17 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                 capRef.current.innerHTML = `<b>พร้อม</b> — รอคำขอใหม่จาก LINE / Web${chainNote}`;
               }
             } else if (Array.isArray(d.events) && d.events.length) {
-              if (queueRef.current.length < 400) queueRef.current.push(...d.events);
+              if (queueRef.current.length < 400) {
+                // Dedupe: avoid the same agent_traces row being enqueued/logged twice
+                // (can happen when /monitor is refreshed while the queue drains).
+                for (const ev of d.events as MonEvent[]) {
+                  if (seenEventIdsRef.current.size > 10000) seenEventIdsRef.current.clear();
+                  if (seenEventIdsRef.current.has(ev.id)) continue;
+                  if (queueRef.current.length >= 400) break;
+                  seenEventIdsRef.current.add(ev.id);
+                  queueRef.current.push(ev);
+                }
+              }
               cursorRef.current = d.cursor || cursorRef.current;
             } else if (typeof d.cursor === "number") {
               cursorRef.current = d.cursor;
@@ -495,7 +506,6 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
           </svg>
           <div>
             <h1 className="pix">AI ASSISTANT · <em>AGENT ROOM</em></h1>
-            <div className="tag">ดูงานจริงแบบสด — แสดงเฉพาะคำขอใหม่หลังเปิดหน้านี้ (ไม่เล่นซ้ำตอนรีเฟรช)</div>
           </div>
           <div className="spacer" />
           <div className="badges">
