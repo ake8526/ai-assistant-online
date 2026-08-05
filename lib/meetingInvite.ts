@@ -4,9 +4,11 @@
 import { admin } from "@/lib/supabaseServer";
 import { getLineId, pushLineMessages } from "@/lib/line";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
-import { fmtDateTime, fmtTime, parseWall, parseHHMM, addMinutes, wallIso } from "@/lib/time";
+import { fmtDateTime, fmtTime, parseWall, parseHHMM, addMinutes, wallIso, wallToUtcIso } from "@/lib/time";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Re-ping unanswered LINE invitees this often. */
+const NUDGE_INTERVAL_MS = 60 * 60 * 1000;
 const PENDING_RSVP_KEY = "_mt_rsvp_pending";
 const HOST_EDIT_KEY = "_mt_host_edit";
 
@@ -25,6 +27,8 @@ export type MeetingInviteRecord = {
   /** pending = waiting confirm before Outlook; booked = created; cancelled = declined */
   status?: "pending" | "booked" | "cancelled";
   responses: Record<string, "accept" | "decline">;
+  /** Last nudge timestamp per attendee UPN (ms) — hourly follow-up while unanswered. */
+  nudgeAt?: Record<string, number>;
   /** Attendee-proposed new time (from “เปลี่ยนเวลาเป็น…”) */
   proposedBy?: string;
   proposedHint?: string;
@@ -365,23 +369,31 @@ export async function readInvite(ownerUpn: string, id: string): Promise<MeetingI
   }
 }
 
-function inviteMessage(rec: MeetingInviteRecord): object {
+function inviteMessage(rec: MeetingInviteRecord, opts?: { nudge?: boolean }): object {
   const who = rec.organizerName || rec.organizerUpn;
   const pending = !rec.eventId && rec.status !== "booked";
   const oid = encodeURIComponent(rec.organizerUpn);
-  const text = pending
-    ? "📅 มีคำขอนัดประชุมถึงคุณ\n\n" +
+  const nudge = !!opts?.nudge;
+  const text = nudge
+    ? "⏰ ติดตามคำขอนัด — ยังไม่ได้คำตอบครับ\n\n" +
       `📌 ${rec.subject}\n` +
       `🕐 ${whenLabel(rec.start, rec.end)}\n` +
       `👤 จาก: ${who}` +
       (rec.detail ? `\n📝 ${rec.detail}` : "") +
-      "\n\nยังไม่ได้สร้างใน Outlook — กรุณายืนยันก่อนครับ\n(กดปุ่มด้านล่างได้เลยครับ) 👇"
-    : "📅 คุณถูกเชิญเข้าประชุม\n\n" +
-      `📌 ${rec.subject}\n` +
-      `🕐 ${whenLabel(rec.start, rec.end)}\n` +
-      `👤 จัดโดย: ${who}` +
-      (rec.detail ? `\n📝 ${rec.detail}` : "") +
-      "\n\nกรุณายืนยันการเข้าร่วมนัดนี้ครับ\n(กดปุ่มด้านล่างได้เลยครับ) 👇";
+      "\n\nกรุณายืนยันด้วยครับ (กดปุ่มด้านล่าง) 👇"
+    : pending
+      ? "📅 มีคำขอนัดประชุมถึงคุณ\n\n" +
+        `📌 ${rec.subject}\n` +
+        `🕐 ${whenLabel(rec.start, rec.end)}\n` +
+        `👤 จาก: ${who}` +
+        (rec.detail ? `\n📝 ${rec.detail}` : "") +
+        "\n\nยังไม่ได้สร้างใน Outlook — กรุณายืนยันก่อนครับ\n(กดปุ่มด้านล่างได้เลยครับ) 👇"
+      : "📅 คุณถูกเชิญเข้าประชุม\n\n" +
+        `📌 ${rec.subject}\n` +
+        `🕐 ${whenLabel(rec.start, rec.end)}\n` +
+        `👤 จัดโดย: ${who}` +
+        (rec.detail ? `\n📝 ${rec.detail}` : "") +
+        "\n\nกรุณายืนยันการเข้าร่วมนัดนี้ครับ\n(กดปุ่มด้านล่างได้เลยครับ) 👇";
 
   const accept = `a=mtaccept&oid=${oid}&id=${rec.id}`;
   const decline = `a=mtdecline&oid=${oid}&id=${rec.id}`;
@@ -533,6 +545,10 @@ export async function notifyMeetingInviteOnLine(opts: {
 
   const hold = opts.holdUntilAccept !== false && !opts.eventId;
   const id = shortId();
+  const now = Date.now();
+  const linkedUpns = linked.map((p) => p.upn);
+  const nudgeAt: Record<string, number> = {};
+  for (const u of linkedUpns) nudgeAt[u] = now;
   const rec: MeetingInviteRecord = {
     id,
     organizerUpn: opts.organizerUpn.toLowerCase(),
@@ -543,10 +559,11 @@ export async function notifyMeetingInviteOnLine(opts: {
     eventId: opts.eventId,
     detail: opts.detail,
     attendees: opts.attendees.map((a) => a.toLowerCase()),
-    awaitLine: linked.map((p) => p.upn),
+    awaitLine: linkedUpns,
     status: hold ? "pending" : opts.eventId ? "booked" : "pending",
     responses: {},
-    ts: Date.now(),
+    nudgeAt,
+    ts: now,
   };
   await saveInvite(rec.organizerUpn, rec);
 
@@ -602,7 +619,8 @@ export async function bookMeetingWithLineHold(opts: {
       names: ping.names,
       note:
         `\n\n⏳ ยังไม่สร้างใน Outlook — ส่งคำขอทาง LINE แล้ว ${ping.notified} คน\n` +
-        `จะสร้างนัดให้อัตโนมัติเมื่ออีกฝั่งกดยืนยันครับ`,
+        `จะสร้างนัดให้อัตโนมัติเมื่ออีกฝั่งกดยืนยันครับ\n` +
+        `ถ้ายังไม่ตอบ ระบบจะติดตามทุก 1 ชม. จนกว่าจะได้คำตอบหรือถึงเวลานัดครับ`,
     };
   }
 
@@ -1083,4 +1101,83 @@ export async function tryHandleHostEditText(
       ? `✅ ตั้งเวลาใหม่และสร้างนัดแล้ว\n📌 ${rec.subject}\n🕐 ${when}\n\nแจ้งอีกฝั่งแล้วครับ`
       : `⚠️ สร้างนัดไม่สำเร็จ: ${created.error || "unknown"}`,
   };
+}
+
+/**
+ * Cron: re-ping LINE invitees who have not accepted/declined yet, every ~1 hour,
+ * until they answer or the meeting start time has passed.
+ */
+export async function nudgePendingMeetingInvites(): Promise<{
+  scanned: number;
+  nudged: number;
+  details: { inviteId: string; upn: string }[];
+}> {
+  const now = Date.now();
+  const details: { inviteId: string; upn: string }[] = [];
+  let scanned = 0;
+  let nudged = 0;
+
+  let rows: { owner_upn: string; key: string; value: string }[] = [];
+  try {
+    const { data } = await admin.from("settings").select("owner_upn, key, value").like("key", "_mt_invite_%");
+    rows = (data || []) as typeof rows;
+  } catch (e) {
+    console.warn("[mt-invite] nudge scan failed", String(e).slice(0, 120));
+    return { scanned: 0, nudged: 0, details };
+  }
+
+  for (const row of rows) {
+    let rec: MeetingInviteRecord;
+    try {
+      rec = JSON.parse(row.value) as MeetingInviteRecord;
+    } catch {
+      continue;
+    }
+    if (!rec?.id || !rec.ts) continue;
+    if (now - rec.ts > INVITE_TTL_MS) continue;
+    if (rec.status === "cancelled" || rec.status === "booked") continue;
+    // Only follow up on LINE-hold invites (not yet in Outlook)
+    if (rec.eventId) continue;
+    if (rec.status && rec.status !== "pending") continue;
+
+    const start = parseWall(rec.start);
+    if (start) {
+      const startMs = new Date(wallToUtcIso(start)).getTime();
+      if (startMs <= now) continue; // meeting already started / past
+    }
+
+    scanned++;
+    const awaiting = linkedAwaitList(rec).filter((u) => !rec.responses[u]);
+    if (!awaiting.length) continue;
+
+    rec.nudgeAt = rec.nudgeAt || {};
+    let changed = false;
+    const msg = inviteMessage(rec, { nudge: true });
+
+    for (const upn of awaiting) {
+      const last = rec.nudgeAt[upn] ?? rec.ts;
+      if (now - last < NUDGE_INTERVAL_MS) continue;
+
+      try {
+        const lineId = await getLineId(upn);
+        if (!lineId) continue;
+        await setPendingRsvp(upn, rec);
+        await pushLineMessages(lineId, [msg]);
+        rec.nudgeAt[upn] = now;
+        nudged++;
+        changed = true;
+        details.push({ inviteId: rec.id, upn });
+      } catch (e) {
+        console.warn("[mt-invite] nudge push failed", upn, String(e).slice(0, 120));
+      }
+    }
+
+    if (changed) {
+      await saveInvite(rec.organizerUpn, rec).catch((e) =>
+        console.warn("[mt-invite] save nudgeAt", String(e).slice(0, 80))
+      );
+    }
+  }
+
+  return { scanned, nudged, details };
 }

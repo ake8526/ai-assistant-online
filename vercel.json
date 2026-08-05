@@ -3,6 +3,7 @@
   "buildCommand": "next build",
   "crons": [
     { "path": "/api/digest/push", "schedule": "0 0 * * 1-5" },
-    { "path": "/api/brief/run?only=brief", "schedule": "5 0 * * 1-5" }
+    { "path": "/api/brief/run?only=brief", "schedule": "5 0 * * 1-5" },
+    { "path": "/api/meetings/nudge", "schedule": "0 * * * *" }
   ]
 }
