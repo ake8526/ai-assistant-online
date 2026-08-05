@@ -126,18 +126,55 @@ export async function getEventsRange(userUpn: string, startIso: string, endIso: 
   const path = getUserGraphToken()
     ? `/me/calendarView`
     : `/users/${encodeURIComponent(userUpn)}/calendarView`;
-  const data = await graphGet(
-    path,
-    {
-      startDateTime: startIso,
-      endDateTime: endIso,
-      $select: "id,subject,start,end,location,attendees,onlineMeeting,bodyPreview,organizer,sensitivity,showAs",
-      $orderby: "start/dateTime",
-      $top: "100",
-    },
-    { Prefer: `outlook.timezone="${TIMEZONE}"` }
-  );
-  return data.value || [];
+  const params: Record<string, string> = {
+    startDateTime: startIso,
+    endDateTime: endIso,
+    $select: "id,subject,start,end,location,attendees,onlineMeeting,bodyPreview,organizer,sensitivity,showAs",
+    $top: "100",
+  };
+  const prefer = { Prefer: `outlook.timezone="${TIMEZONE}"` };
+
+  try {
+    const data = await graphGet(path, { ...params, $orderby: "start/dateTime" }, prefer);
+    const rows = (data.value || []) as GraphEvent[];
+    if (rows.length) return rows;
+  } catch (e) {
+    console.warn("[graph] calendarView+orderby failed:", String(e).slice(0, 160));
+  }
+
+  // Retry without $orderby (some tenants return [] or 400 with orderby on calendarView)
+  try {
+    const data = await graphGet(path, params, prefer);
+    const rows = (data.value || []) as GraphEvent[];
+    if (rows.length) {
+      return rows.sort((a, b) =>
+        String(a.start?.dateTime || "").localeCompare(String(b.start?.dateTime || ""))
+      );
+    }
+  } catch (e) {
+    console.warn("[graph] calendarView retry failed:", String(e).slice(0, 160));
+  }
+
+  // Last resort: non-expanded /events filter (misses some series exceptions but better than [])
+  try {
+    const evPath = getUserGraphToken()
+      ? `/me/events`
+      : `/users/${encodeURIComponent(userUpn)}/events`;
+    const data = await graphGet(
+      evPath,
+      {
+        $select: "id,subject,start,end,location,attendees,onlineMeeting,bodyPreview,organizer,sensitivity,showAs",
+        $filter: `start/dateTime ge '${startIso}' and start/dateTime lt '${endIso}'`,
+        $orderby: "start/dateTime",
+        $top: "50",
+      },
+      prefer
+    );
+    return (data.value || []) as GraphEvent[];
+  } catch (e) {
+    console.warn("[graph] events filter failed:", String(e).slice(0, 160));
+    return [];
+  }
 }
 
 /** Now in the configured timezone, as parts. */

@@ -163,12 +163,39 @@ export async function resolveAgendaEventId(upn: string, index1: number): Promise
 /** List today's meetings + ask which one to prep. */
 export async function buildMorningAgenda(userUpn: string, periodLabel = "วันนี้"): Promise<MorningAgenda> {
   const now = nowWall();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const today = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+
   let events = await getEventsRange(userUpn, wallIso(startOfDay(now)), wallIso(endOfDay(now)));
-  // Second chance with Intl-based day bounds (same idea as getTodayEvents)
   if (!events.length) {
     const { getTodayEvents } = await import("@/lib/graph");
     events = await getTodayEvents(userUpn);
   }
+  // If live calendarView is empty but we already saved today's ids (e.g. false
+  // empty pull), reload those events so "กด 1 → แนะนำประชุม" still works.
+  if (!events.length) {
+    const raw = await getSetting(userUpn, AGENDA_KEY);
+    if (raw) {
+      try {
+        const prev = JSON.parse(raw) as { date?: string; ids?: string[] };
+        if (prev.date === today && prev.ids?.length) {
+          const recovered: GraphEvent[] = [];
+          for (const id of prev.ids) {
+            if (!id) continue;
+            try {
+              recovered.push(await getEvent(userUpn, id));
+            } catch {
+              /* skip missing */
+            }
+          }
+          if (recovered.length) events = recovered;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   await saveAgendaIds(userUpn, events);
   const choices: AgendaChoice[] = events
     .filter((e) => e.id)
