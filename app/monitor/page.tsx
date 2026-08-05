@@ -524,9 +524,6 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
           <div className="ph">
             <span>THE OFFICE</span>
             <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <span className={`badge llm${llmHot ? " hot" : ""}`} style={{ fontSize: 14, padding: "2px 6px" }} title={llmChain || "AI API provider"}>
-                LLM <b ref={(el) => { llmHudRef.current = el; }}>{llmLabel}</b>
-              </span>
               <span className="live">● LIVE</span>
             </span>
           </div>
