@@ -73,13 +73,13 @@ const CSS = `
 .mon .room-frame{position:relative;aspect-ratio:320/240;height:100%;width:auto;max-width:100%;margin:0 auto;flex:none}
 .mon #room,.mon #news-room{width:100%;height:100%;display:block;image-rendering:pixelated;background:#2e2116}
 .mon .building{flex:1;min-height:0;display:flex;flex-direction:column;margin-bottom:6px;overflow:hidden}
-.mon .building-ph{display:grid;grid-template-columns:1fr 10px 1fr;gap:0;padding:4px 6px}
+.mon .building-ph{display:grid;grid-template-columns:1fr 6px 1fr;gap:0;padding:4px 6px}
 .mon .building-ph .room-tag{font-family:'Press Start 2P';font-size:8px;color:var(--dim);display:flex;justify-content:space-between;align-items:center;gap:6px}
 .mon .building-ph .wall-bar{background:transparent}
-.mon .building-stage{position:relative;flex:1;min-height:0;display:grid;grid-template-columns:1fr 10px 1fr;background:#1a120a;padding:4px 4px 2px;align-items:center;column-gap:0}
-.mon .building-wall{position:relative;background:linear-gradient(180deg,#2e2116 0%,#2e2116 52px,#5f4527 52px,#6b4a2e 100%);border-left:1px solid #1c140c;border-right:1px solid #1c140c;align-self:stretch;min-height:0;width:10px}
-.mon .building-wall .door{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);width:8px;height:34px;background:#6b4a2e;border:1px solid #3a2a1a;z-index:1}
-.mon .building-wall .door.open{background:#1a120a;border-color:#39d353;box-shadow:0 0 6px #39d35355}
+.mon .building-stage{position:relative;flex:1;min-height:0;display:grid;grid-template-columns:1fr 6px 1fr;background:#1a120a;padding:4px 4px 2px;align-items:center;column-gap:0}
+.mon .building-wall{position:relative;background:linear-gradient(180deg,#2e2116 0%,#2e2116 52px,#5f4527 52px,#6b4a2e 100%);border-left:1px solid #1c140c;border-right:1px solid #1c140c;align-self:stretch;min-height:0;width:6px}
+.mon .building-wall .door{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);width:4px;height:28px;background:#6b4a2e;border:1px solid #3a2a1a;z-index:1}
+.mon .building-wall .door.open{background:#1a120a;border-color:#39d353;box-shadow:0 0 4px #39d35355}
 .mon .building-wing{min-width:0;min-height:0;display:flex;flex-direction:column;justify-content:center;height:100%}
 .mon .office-wing{align-items:flex-end;padding-right:0}
 .mon .news-wing{align-items:flex-start;padding-left:0}
@@ -432,9 +432,9 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
     function drawDoorRight() {
       const open = doorOpenRef.current;
-      R(305, 114, 15, 40, "#5f4527");
-      R(307, 116, 11, 36, open ? "#1a120a" : "#6b4a2e");
-      if (open) { R(307, 116, 3, 36, "#39d353"); R(315, 116, 3, 36, "#39d353"); }
+      R(312, 120, 8, 32, "#5f4527");
+      R(313, 122, 6, 28, open ? "#1a120a" : "#6b4a2e");
+      if (open) { R(313, 122, 2, 28, "#39d353"); R(317, 122, 2, 28, "#39d353"); }
     }
     function drawFloor() {
       R(0, 52, W, H - 52, "#7a5636");
@@ -652,9 +652,9 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     }
     function drawDoorLeft() {
       const open = doorOpenRef.current;
-      R(0, 114, 15, 40, "#5f4527");
-      R(2, 116, 11, 36, open ? "#1a120a" : "#6b4a2e");
-      if (open) { R(2, 116, 3, 36, "#39d353"); R(10, 116, 3, 36, "#39d353"); }
+      R(0, 120, 8, 32, "#5f4527");
+      R(1, 122, 6, 28, open ? "#1a120a" : "#6b4a2e");
+      if (open) { R(1, 122, 2, 28, "#39d353"); R(5, 122, 2, 28, "#39d353"); }
     }
     function drawAisles() {
       // Match THE OFFICE: center aisle + horizontal corridor + desk spurs
