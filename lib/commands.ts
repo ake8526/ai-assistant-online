@@ -1,7 +1,7 @@
 // Natural-language command handling — ported from morning_brief/commands.py.
 // The web / LINE sends free text; the LLM classifies it into an intent + params
 // and we execute. Booking asks for confirmation first (choose_slot) per requirement.
-import { buildForEvents, buildMorningAgenda, buildMeetingPrep, resolveAgendaEventId, saveAgendaIds } from "@/lib/brief";
+import { buildForEvents, buildMorningAgenda, buildMeetingPrep, resolveAgendaEntry, resolveAgendaEventId, saveAgendaIds } from "@/lib/brief";
 import {
   handleLinkMeetingFile,
   handleLinkMeetingUrl,
@@ -1733,12 +1733,18 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
     }
     if (a === "prep") {
       const idx = Number(data.get("i") || "");
-      let eventId = data.get("id") || (idx ? await resolveAgendaEventId(userUpn, idx) : null);
-      // Agenda may have been wiped by a bad empty pull — rebuild and retry by index.
+      let eventId = data.get("id") || "";
+      let fallback: import("@/lib/graph").GraphEvent | undefined;
+      const entry = idx ? await resolveAgendaEntry(userUpn, idx) : null;
+      if (entry) {
+        if (!eventId) eventId = entry.eventId;
+        fallback = entry.event;
+      }
       if (!eventId && idx) {
         const agenda = await buildMorningAgenda(userUpn);
-        eventId = agenda.choices.find((c) => c.index === idx)?.event_id || null;
-        if (!eventId) eventId = await resolveAgendaEventId(userUpn, idx);
+        const choice = agenda.choices.find((c) => c.index === idx);
+        eventId = choice?.event_id || "";
+        fallback = agenda.events.find((e) => e.id === eventId);
       }
       if (!eventId) {
         return {
@@ -1746,7 +1752,7 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
           reply: "ไม่พบนัดที่เลือก — พิมพ์ “สรุปตารางเช้า” เพื่อดูรายการใหม่ แล้วกดเลขเพื่อให้แนะนำประชุมครับ",
         };
       }
-      const reply = await buildMeetingPrep(userUpn, eventId);
+      const reply = await buildMeetingPrep(userUpn, eventId, fallback);
       return { intent: "meeting_prep", reply };
     }
   } catch (e) {
@@ -2078,12 +2084,19 @@ async function handleParsed(
     const denied = needCalendarConsent();
     if (denied) return denied;
     const idx = Number(params.meeting_index ?? params.index ?? 0);
-    let eventId = idx ? await resolveAgendaEventId(userUpn, idx) : null;
+    let eventId = "";
+    let fallback: import("@/lib/graph").GraphEvent | undefined;
+    const entry = idx ? await resolveAgendaEntry(userUpn, idx) : null;
+    if (entry) {
+      eventId = entry.eventId;
+      fallback = entry.event;
+    }
     if (!eventId && params.subject) {
       const agenda = await buildMorningAgenda(userUpn);
       const q = String(params.subject).toLowerCase();
       const hit = agenda.events.find((e) => (e.subject || "").toLowerCase().includes(q));
-      eventId = hit?.id || null;
+      eventId = hit?.id || "";
+      fallback = hit;
     }
     if (!eventId) {
       const agenda = await buildMorningAgenda(userUpn);
@@ -2093,7 +2106,7 @@ async function handleParsed(
         choices: agenda.choices.map((c) => ({ index: c.index, event_id: c.event_id, label: c.label })),
       };
     }
-    const reply = await buildMeetingPrep(userUpn, eventId);
+    const reply = await buildMeetingPrep(userUpn, eventId, fallback);
     return { intent: "meeting_prep", reply };
   }
 

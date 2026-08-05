@@ -25,6 +25,36 @@ export type MorningAgenda = {
   choices: AgendaChoice[];
 };
 
+type AgendaStore = {
+  date: string;
+  ids: string[];
+  /** Full event snapshots so "แนะนำประชุม N" still works if Graph later returns []. */
+  events?: GraphEvent[];
+};
+
+function todayKey(): string {
+  const now = nowWall();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+}
+
+function ensureEventIds(events: GraphEvent[], date: string): GraphEvent[] {
+  return events.map((e, i) => ({
+    ...e,
+    id: e.id || `snap:${date}:${i}`,
+  }));
+}
+
+function agendaChoices(events: GraphEvent[]): AgendaChoice[] {
+  return events
+    .filter((e) => e.id)
+    .map((e, i) => ({
+      index: i + 1,
+      event_id: e.id!,
+      label: `${eventTimeRange(e)} — ${(e.subject || "(ไม่มีหัวข้อ)").trim()}`.slice(0, 80),
+    }));
+}
+
 function keywordsFromSubject(subject: string): string {
   if (!subject) return "";
   const words = subject.match(/[\w\u0E00-\u0E7F]+/g) || [];
@@ -142,34 +172,69 @@ export function formatAgendaList(
 }
 
 export async function saveAgendaIds(upn: string, events: GraphEvent[]): Promise<void> {
-  const now = nowWall();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const date = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
-  const ids = events.map((e) => e.id).filter(Boolean) as string[];
+  const date = todayKey();
+  const stamped = ensureEventIds(events, date);
   // Never wipe a good same-day agenda with an empty pull (false "ไม่มีนัด" would
   // break quick-reply "กด 1" → แนะนำประชุม).
-  if (!ids.length) {
+  if (!stamped.length) {
     const raw = await getSetting(upn, AGENDA_KEY);
     if (raw) {
       try {
-        const prev = JSON.parse(raw) as { date?: string; ids?: string[] };
-        if (prev.date === date && Array.isArray(prev.ids) && prev.ids.length) return;
+        const prev = JSON.parse(raw) as AgendaStore;
+        if (prev.date === date && ((prev.ids?.length || 0) > 0 || (prev.events?.length || 0) > 0)) return;
       } catch {
         /* replace below */
       }
     }
   }
-  await setSetting(upn, AGENDA_KEY, JSON.stringify({ date, ids }));
+  const store: AgendaStore = {
+    date,
+    ids: stamped.map((e) => e.id!).filter(Boolean),
+    events: stamped,
+  };
+  await setSetting(upn, AGENDA_KEY, JSON.stringify(store));
+}
+
+/** Load today's snapshotted events (may include meetings Graph no longer returns). */
+export async function loadAgendaSnapshot(upn: string): Promise<GraphEvent[]> {
+  const raw = await getSetting(upn, AGENDA_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as AgendaStore;
+    if (parsed.date !== todayKey()) return [];
+    if (parsed.events?.length) return ensureEventIds(parsed.events, parsed.date);
+    return [];
+  } catch {
+    return [];
+  }
 }
 
 export async function resolveAgendaEventId(upn: string, index1: number): Promise<string | null> {
+  const entry = await resolveAgendaEntry(upn, index1);
+  return entry?.eventId || null;
+}
+
+/** Resolve agenda row by 1-based index — prefers snapshot so prep works after empty Graph pulls. */
+export async function resolveAgendaEntry(
+  upn: string,
+  index1: number
+): Promise<{ eventId: string; event: GraphEvent } | null> {
+  const snap = await loadAgendaSnapshot(upn);
+  if (index1 >= 1 && index1 <= snap.length) {
+    const event = snap[index1 - 1];
+    if (event?.id) return { eventId: event.id, event };
+  }
   const raw = await getSetting(upn, AGENDA_KEY);
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as { date?: string; ids?: string[] };
+    const parsed = JSON.parse(raw) as AgendaStore;
+    if (parsed.date !== todayKey()) return null;
     const ids = parsed.ids || [];
     if (index1 < 1 || index1 > ids.length) return null;
-    return ids[index1 - 1] || null;
+    const eventId = ids[index1 - 1];
+    if (!eventId) return null;
+    const event = snap.find((e) => e.id === eventId) || ({ id: eventId } as GraphEvent);
+    return { eventId, event };
   } catch {
     return null;
   }
@@ -178,8 +243,7 @@ export async function resolveAgendaEventId(upn: string, index1: number): Promise
 /** List today's meetings + ask which one to prep. */
 export async function buildMorningAgenda(userUpn: string, periodLabel = "วันนี้"): Promise<MorningAgenda> {
   const now = nowWall();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const today = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+  const today = todayKey();
   const dayStart = wallIso(startOfDay(now));
   const dayEnd = wallIso(endOfDay(now));
 
@@ -197,43 +261,18 @@ export async function buildMorningAgenda(userUpn: string, periodLabel = "วั�
       /* keep empty */
     }
   }
-  // If live calendarView is empty but we already saved today's ids (e.g. false
-  // empty pull), reload those events so "กด 1 → แนะนำประชุม" still works.
+  // Prefer today's snapshot when live calendar is empty (keeps prep buttons working).
   if (!events.length) {
-    const raw = await getSetting(userUpn, AGENDA_KEY);
-    if (raw) {
-      try {
-        const prev = JSON.parse(raw) as { date?: string; ids?: string[] };
-        if (prev.date === today && prev.ids?.length) {
-          const recovered: GraphEvent[] = [];
-          for (const id of prev.ids) {
-            if (!id) continue;
-            try {
-              recovered.push(await getEvent(userUpn, id));
-            } catch {
-              /* skip missing */
-            }
-          }
-          if (recovered.length) events = recovered;
-        }
-      } catch {
-        /* ignore */
-      }
-    }
+    const snap = await loadAgendaSnapshot(userUpn);
+    if (snap.length) events = snap;
   }
 
+  events = ensureEventIds(events, today);
   await saveAgendaIds(userUpn, events);
-  const choices: AgendaChoice[] = events
-    .filter((e) => e.id)
-    .map((e, i) => ({
-      index: i + 1,
-      event_id: e.id!,
-      label: `${eventTimeRange(e)} — ${(e.subject || "(ไม่มีหัวข้อ)").trim()}`.slice(0, 80),
-    }));
   return {
     text: formatAgendaList(events, periodLabel),
     events,
-    choices,
+    choices: agendaChoices(events),
   };
 }
 
@@ -264,13 +303,28 @@ const PREP_SYSTEM = `คุณคือผู้ช่วยเตรียม�
 - วันที่ใช้ DD/MM/YYYY เวลา HH:MM (24 ชม.)`;
 
 /** Deep prep for one meeting: subject, email body, attachments, links, related files. */
-export async function buildMeetingPrep(userUpn: string, eventId: string): Promise<string> {
-  const ev = await getEvent(userUpn, eventId);
+export async function buildMeetingPrep(userUpn: string, eventId: string, fallback?: GraphEvent): Promise<string> {
+  let ev: GraphEvent | null = null;
+  const isSnap = !eventId || eventId.startsWith("snap:");
+  if (!isSnap) {
+    try {
+      ev = await getEvent(userUpn, eventId);
+    } catch {
+      ev = null;
+    }
+  }
+  if (!ev) {
+    const snap = await loadAgendaSnapshot(userUpn);
+    ev = fallback || snap.find((e) => e.id === eventId) || null;
+  }
+  if (!ev) throw new Error("ไม่พบนัดในปฏิทินหรือรายการสรุปเช้า");
+
   const bodyHtml = ev.body?.content || "";
   const bodyText = stripHtml(bodyHtml).slice(0, 8000) || (ev.bodyPreview || "").trim();
   const urls = extractUrls(bodyHtml + "\n" + bodyText).slice(0, 5);
 
-  const attachments = ev.hasAttachments ? await getEventAttachments(userUpn, eventId) : [];
+  const realId = !isSnap && eventId ? eventId : "";
+  const attachments = realId && ev.hasAttachments ? await getEventAttachments(userUpn, realId) : [];
   const attachmentNotes: { name: string; contentType?: string; excerpt?: string }[] = [];
   for (const att of attachments.slice(0, 8)) {
     if (att.isInline) continue;
@@ -290,7 +344,12 @@ export async function buildMeetingPrep(userUpn: string, eventId: string): Promis
   }
 
   const query = keywordsFromSubject(ev.subject || "");
-  const files = query ? (await searchFiles(userUpn, query)).slice(0, 5) : [];
+  let files: Awaited<ReturnType<typeof searchFiles>> = [];
+  try {
+    files = query ? (await searchFiles(userUpn, query)).slice(0, 5) : [];
+  } catch {
+    files = [];
+  }
   const fileNotes: { name?: string; webUrl?: string; excerpt?: string }[] = [];
   for (const f of files) {
     const note: { name?: string; webUrl?: string; excerpt?: string } = { name: f.name, webUrl: f.webUrl };
@@ -303,7 +362,7 @@ export async function buildMeetingPrep(userUpn: string, eventId: string): Promis
   }
 
   // User-linked materials (attached later via LINE/chat — not necessarily on the calendar event)
-  const linked = await getMeetingMaterials(userUpn, eventId);
+  const linked = realId ? await getMeetingMaterials(userUpn, realId) : [];
   const userLinked: {
     type: string;
     name?: string;
@@ -360,6 +419,9 @@ export async function buildMeetingPrep(userUpn: string, eventId: string): Promis
     linked_pages: linkNotes,
     related_onedrive_files: fileNotes,
     user_linked_materials: userLinked,
+    note: isSnap
+      ? "ข้อมูลจากรายการสรุปตารางเช้า (นัดอาจถูกลบจาก Outlook แล้ว) — แนะนำจากหัวข้อ/ผู้เข้าร่วมที่มี"
+      : undefined,
   };
 
   return chat(PREP_SYSTEM, "ข้อมูลนัดประชุมและเอกสารที่เกี่ยวข้อง:\n" + JSON.stringify(payload, null, 2), {
