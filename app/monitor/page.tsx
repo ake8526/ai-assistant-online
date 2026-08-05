@@ -30,7 +30,7 @@ const AGENTS = [
   { id: "receive", name: "GATE", role: "รับข้อความเข้าจาก LINE / Web", shirt: "#3a86ff", hair: "#6b4a2e", screen: "search" },
   { id: "parse", name: "BRAIN", role: "แยกเจตนาว่าผู้ใช้ต้องการอะไร (LLM)", shirt: "#2f9e44", hair: "#2a2a2a", screen: "filter" },
   { id: "fetch", name: "RUNNER", role: "ดึงข้อมูลจาก Microsoft 365", shirt: "#f0b429", hair: "#caa15a", screen: "search" },
-  { id: "compose", name: "SCRIBE", role: "เรียบเรียงคำตอบจากข้อมูลที่ได้ ก่อนส่ง LINE", shirt: "#7048e8", hair: "#7a4a2a", screen: "render" },
+  { id: "compose", name: "SCRIBE", role: "เอาข้อมูลที่ดึงมา เขียนเป็นข้อความตอบให้ผู้ใช้", shirt: "#7048e8", hair: "#7a4a2a", screen: "render" },
   { id: "courier", name: "DASH", role: "ส่งคำตอบเข้าตู้จดหมาย → LINE", shirt: "#ee1b24", hair: "#141414", screen: "" },
 ] as const;
 
@@ -1096,7 +1096,7 @@ function MonitorRoom({
         const h = helperRef.current;
         h.visible = true; h.x = 200; h.y = 120; h.carry = true;
         setDashPace(h, true);
-        log("  HOP ช่วยส่งคิวถัดไปตามทางเดิน", "a");
+        log("  HOP ช่วยส่งคำสั่งถัดไป (มีงานซ้อน)", "a");
         void walkPath([[OFFICE_AISLE_X, 130], [OFFICE_MAIL[0], OFFICE_MAIL[1]], [200, 120]], "helper").then(() => {
           h.carry = false; h.visible = false; h.running = false; h.speed = 1.1;
         });
@@ -1121,7 +1121,7 @@ function MonitorRoom({
       const h = helperRef.current;
       h.visible = true; h.x = 200; h.y = 120; h.carry = false;
       setDashPace(h, run);
-      log("  HOP มาช่วยส่งเมื่อมีคิวซ้อน", "a");
+      log("  HOP มาช่วยส่ง — มีคำสั่งซ้อนขณะ DASH ยังวิ่ง", "a");
       void (async () => {
         await walkPath([[OFFICE_AISLE_X, ay], [left ? 218 : 102, ay]], "helper");
         h.carry = true;
@@ -1606,7 +1606,7 @@ function MonitorRoom({
                 ))}
                 <div className="row">
                   <span className="sw" style={{ background: "#f97316" }} />
-                  <span><span className="rl">HOP</span> <span className="rc">— ช่วย DASH ส่งเมื่อมีคิวรอ / DASH ยังวิ่งอยู่</span></span>
+                  <span><span className="rl">HOP</span> <span className="rc">— คนช่วยส่งของ DASH โผล่เมื่อมีคำสั่งซ้อนกันหลายอัน</span></span>
                 </div>
               </div>
               <div className="leg-col">
