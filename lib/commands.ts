@@ -2608,14 +2608,14 @@ async function handleParsed(
     }
     // Timed out waiting for LINE reply — keep building and push when ready.
     if (!digest.stories.length && digest.skipped.includes("หมดเวลารอสรุปข่าว")) {
-      trace("compose", "สรุปข่าวช้า — จะส่งต่อเมื่อเสร็จ");
+      trace("compose", "📰 สรุปข่าวช้า — จะส่งต่อเมื่อเสร็จ");
       void digestPromise
         .then(async (late) => {
           if (!late.stories?.length) return;
           await rememberDeliveredStories(userUpn, late.stories);
           const extra = late.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${late.skipped.join(", ")})` : "";
           await sendLine(userUpn, "", formatStoriesText(late.stories) + extra);
-          trace("reply", `ตอบกลับ get_news (ส่งช้า ${late.stories.length} เรื่อง)`);
+          trace("reply", `📰 ตอบกลับ get_news (ส่งช้า ${late.stories.length} เรื่อง)`);
         })
         .catch(() => {});
       return {
@@ -2624,11 +2624,11 @@ async function handleParsed(
           "กำลังสรุปข่าวต่อหลังบ้านครับ — จะส่งเข้า LINE ให้อัตโนมัติเมื่อเสร็จ (ประมาณ 1–2 นาที)\n\nหรือลองพิมพ์ “ข่าววันนี้” อีกครั้ง / “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ",
       };
     }
-    trace("fetch", digest.stories.length ? `ได้ข่าว ${digest.stories.length} เรื่อง` : "ไม่มีข่าวใหม่");
+    trace("fetch", digest.stories.length ? `📰 ได้ข่าว ${digest.stories.length} เรื่อง` : "📰 ไม่มีข่าวใหม่");
     const { stories, skipped, note } = digest;
     if (!stories.length) {
       const extra = skipped.length ? `\n(ข้าม: ${skipped.join(", ")})` : "";
-      trace("compose", "แจ้งผลสรุปข่าว");
+      trace("compose", "📰 แจ้งผลสรุปข่าว");
       return {
         intent,
         reply:
@@ -2639,7 +2639,7 @@ async function handleParsed(
     }
     const extra = skipped.length ? `\n\n(ข้ามบางแหล่ง: ${skipped.join(", ")})` : "";
     await rememberDeliveredStories(userUpn, stories);
-    trace("compose", "สรุปข่าวภาษาไทย");
+    trace("compose", "📰 สรุปข่าวภาษาไทย");
     return { intent, reply: formatStoriesText(stories) + extra, data: stories };
   }
 
