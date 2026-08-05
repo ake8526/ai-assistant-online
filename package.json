@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sync:sf": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-system-functions.ps1"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.5.0",
