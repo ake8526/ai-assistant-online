@@ -1630,55 +1630,50 @@ async function searchDriveOnce(userUpn: string, query: string, top: number): Pro
 
 /**
  * Rank/filter OneDrive hits so short queries like "ai" don't flood with
- * Adobe Illustrator (.ai), Airplay/AirServer substring noise, etc.
- * Lower score = better. Scores ≥ 80 are dropped for short queries.
+ * Adobe Illustrator (.ai), Airplay/AirServer substring noise, or unrelated
+ * Graph “related” files that don't even contain the query in the name.
+ * Lower score = better.
  */
 export function scoreDriveFileHit(name: string, query: string): number {
   const n = (name || "").toLowerCase();
   const q = (query || "").trim().toLowerCase();
-  if (!n || !q) return 50;
+  if (!n || !q) return 99;
   const stem = n.replace(/\.[a-z0-9]{1,8}$/i, "");
   const ext = (n.match(/\.([a-z0-9]{1,8})$/i) || [])[1] || "";
   const tokens = stem.split(/[^a-z0-9\u0e00-\u0e7f]+/i).filter(Boolean);
 
   if (n === q || stem === q) return 0;
   // Explicit AI Assistant / product names
-  if (/\bai[\s_-]*assistant\b/i.test(n) || /ai-assistant/i.test(n)) {
-    return /ai/.test(q) || /assistant|ฟังก์ชัน|assistant/.test(q) ? 1 : 3;
+  if (/ai[\s_-]*assistant/i.test(n)) {
+    return /ai|assistant|ฟังก์ชัน/.test(q) ? 1 : 3;
   }
-  // Adobe Illustrator / Anguilla TLD-style ".ai" files when user asked for "ai"
-  if (q === "ai" && ext === "ai") return 95;
-  // Whole-token match (AI, Assistant, …)
+  // Adobe Illustrator / “something.ai” when user meant AI the product
+  if ((q === "ai" || q === "artificial") && ext === "ai") return 95;
+  // Whole-token match only (blocks AirServer / Imagination mid-syllable)
   if (tokens.some((t) => t === q)) return 2;
-  // Token starts with query (only for q length ≥ 3 to avoid "ai" → "air…")
-  if (q.length >= 3 && tokens.some((t) => t.startsWith(q))) return 4;
-  // Boundary match: not mid-word (blocks Airplay / parking.ai host junk when q=ai)
+  if (q.length >= 4 && tokens.some((t) => t.startsWith(q))) return 4;
+  // Boundary: "…-ai-…" or "… ai …" or starts/ends with query as its own piece
   const boundary = new RegExp(
     `(^|[^a-z0-9])${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`,
     "i"
   );
-  if (boundary.test(stem)) return q.length <= 3 ? 6 : 5;
-  // Weak substring — reject for very short queries
+  if (boundary.test(stem)) return 5;
+  // Hard reject: name does not contain the query characters at all
+  if (!stem.includes(q) && !n.includes(q)) return 99;
+  // Weak mid-word substring (air…, imaginai…) — reject short queries
   if (q.length <= 3) return 90;
   if (n.includes(q) || stem.includes(q)) return 12;
-  return 60;
+  return 99;
 }
 
 export function rankDriveFileHits<T extends { name?: string }>(hits: T[], query: string, top = 25): T[] {
   const q = (query || "").trim();
+  // Short queries: only strong matches (score ≤ 5). Never keep Graph “related” noise.
+  const maxKeep = q.length <= 3 ? 6 : 15;
   const scored = hits
     .map((h) => ({ h, s: scoreDriveFileHit(h.name || "", q) }))
-    .filter((x) => x.s < 80)
+    .filter((x) => x.s <= maxKeep)
     .sort((a, b) => a.s - b.s || (a.h.name || "").localeCompare(b.h.name || "", "th"));
-  // If everything was noise, keep a tiny best-effort list (still sorted)
-  if (!scored.length && hits.length && q.length <= 3) {
-    return [...hits]
-      .sort(
-        (a, b) =>
-          scoreDriveFileHit(a.name || "", q) - scoreDriveFileHit(b.name || "", q)
-      )
-      .slice(0, Math.min(5, top));
-  }
   return scored.slice(0, top).map((x) => x.h);
 }
 
@@ -1755,12 +1750,7 @@ export async function searchFiles(
         const kids = await listFolderChildren(userUpn, folder);
         const matched = kids.filter((k) => {
           if (k.folder) return false;
-          const nm = (k.name || "").toLowerCase();
-          return (
-            nm === qLow ||
-            nm === stemLow ||
-            scoreDriveFileHit(k.name || "", raw) < 80
-          );
+          return scoreDriveFileHit(k.name || "", raw) <= (raw.length <= 3 ? 6 : 15);
         });
         if (matched.length) add(matched);
       }
