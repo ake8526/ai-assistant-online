@@ -301,54 +301,58 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     if (capRef.current) capRef.current.innerHTML = html;
   }, []);
 
-  const clearNewsScoutWatch = useCallback(() => {
+  const clearNewsIdleWatch = useCallback(() => {
     if (newsScoutWatchRef.current) {
       clearTimeout(newsScoutWatchRef.current);
       newsScoutWatchRef.current = null;
     }
   }, []);
 
+  const forceHidePostie = useCallback(() => {
+    const p = postieRef.current;
+    p.visible = false;
+    p.carry = false;
+    p.running = false;
+    p.tx = null;
+    p.ty = null;
+    p.onArrive = null;
+    p.x = NEWS_AISLE_X;
+    p.y = 150;
+    doorOpenRef.current = false;
+    if (doorElRef.current) doorElRef.current.classList.remove("open");
+  }, []);
+
   const idleNewsDesks = useCallback(() => {
-    clearNewsScoutWatch();
+    clearNewsIdleWatch();
     setNewsScoutStatus("idle");
     setNewsSources([]);
     setNewsPicker(NEWS_PICKER_IDLE);
     setNewsReader(NEWS_READER_IDLE);
     setNewsWriter(NEWS_WRITER_IDLE);
     writerHasParcelRef.current = false;
-  }, [clearNewsScoutWatch]);
+  }, [clearNewsIdleWatch]);
 
   const resetNewsRoom = useCallback(() => {
     idleNewsDesks();
     newsJobRef.current = false;
     newsDeliveredRef.current = false;
-    const p = postieRef.current;
-    p.visible = false;
-    p.carry = false;
-    p.tx = null;
-    p.ty = null;
-    p.onArrive = null;
-    doorOpenRef.current = false;
-    if (doorElRef.current) doorElRef.current.classList.remove("open");
-  }, [idleNewsDesks]);
+    forceHidePostie();
+  }, [forceHidePostie, idleNewsDesks]);
 
-  /** SCOUT (teal / เขียวอ่อน) must never bob forever if digest stalls after timeout. */
-  const armNewsScoutWatch = useCallback(() => {
-    clearNewsScoutWatch();
+  /**
+   * Any news-desk activity re-arms a short idle timer.
+   * Prevents SCOUT (เขียวอ่อน) / WRITER (ม่วง) from staying WORK or DONE forever
+   * when digest stalls mid-pipeline (watch used to be cleared at PICKER).
+   */
+  const armNewsIdleWatch = useCallback(() => {
+    clearNewsIdleWatch();
     newsScoutWatchRef.current = setTimeout(() => {
       newsScoutWatchRef.current = null;
-      setNewsScoutStatus((s) => (s === "work" ? "idle" : s));
-      setNewsPicker((p) => (p.status === "work" ? { ...NEWS_PICKER_IDLE } : p));
-      setNewsReader((p) => (p.status === "work" ? { ...NEWS_READER_IDLE } : p));
-      setNewsWriter((p) => (p.status === "work" ? { ...NEWS_WRITER_IDLE } : p));
-      writerHasParcelRef.current = false;
-      const p = postieRef.current;
-      p.visible = false; p.carry = false; p.tx = null; p.ty = null; p.onArrive = null;
-      doorOpenRef.current = false;
-      if (doorElRef.current) doorElRef.current.classList.remove("open");
+      idleNewsDesks();
+      forceHidePostie();
       if (newsCapRef.current) newsCapRef.current.textContent = "รอคำขอ “ข่าววันนี้” จาก LINE / Web…";
-    }, 90_000);
-  }, [clearNewsScoutWatch]);
+    }, 45_000);
+  }, [clearNewsIdleWatch, forceHidePostie, idleNewsDesks]);
 
   const upsertNewsSource = useCallback((key: string, text: string, status: NewsSourceRow["status"]) => {
     setNewsSources((prev) => {
@@ -369,17 +373,16 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     const err = e.status === "error" || /✗/.test(lbl);
 
     if (/📰 สรุปข่าวช้า/.test(lbl)) {
-      // Interim LINE reply — keep SCOUT visible briefly, but auto-clear if digest dies.
-      armNewsScoutWatch();
+      armNewsIdleWatch();
       if (newsCapRef.current) {
-        newsCapRef.current.innerHTML = "<b>SCOUT</b> — สรุปช้า · รอส่งต่อหลังบ้าน…";
+        newsCapRef.current.innerHTML = "<b>NEWS</b> — สรุปช้า · รอส่งต่อหลังบ้าน…";
       }
       return;
     }
 
     if (/📰 RSS ·/.test(lbl) || /📰 Facebook ·/.test(lbl) || /📰 YouTube ·/.test(lbl) || /📰 NewsData ·/.test(lbl) || /📰 ดึงข่าวจากแหล่ง/.test(lbl) || /📰 เริ่มรวบรวมข่าว/.test(lbl)) {
       setNewsScoutStatus(err ? "error" : "work");
-      if (!err) armNewsScoutWatch();
+      armNewsIdleWatch();
       if (/📰 RSS ·/.test(lbl)) {
         const name = lbl.replace(/^📰 RSS · /, "").replace(/ · \d+ รายการ$/, "").replace(/ ✗$/, "");
         const key = `rss:${name}`;
@@ -405,7 +408,6 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
     if (/📰 เลือกเด่น/.test(lbl)) {
       setNewsScoutStatus((s) => (s === "work" ? "done" : s));
-      clearNewsScoutWatch();
       const ai = parseNewsAi(lbl);
       if (e.status === "start" || ai) {
         setNewsPicker((p) => ({
@@ -416,6 +418,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       } else if (/ได้ \d+ เรื่อง/.test(lbl)) {
         setNewsPicker((p) => ({ ...p, status: "done", detail: lbl.replace(/^📰 /, "") }));
       }
+      armNewsIdleWatch();
       return;
     }
 
@@ -426,6 +429,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
         ai: "—",
         detail: lbl.replace(/^📰 /, ""),
       });
+      armNewsIdleWatch();
       return;
     }
 
@@ -437,17 +441,18 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
         ai: ai || p.ai,
         detail: lbl.replace(/^📰 สรุปประเด็น · /, "").replace(/^★ /, ""),
       }));
+      armNewsIdleWatch();
       return;
     }
 
     if (/📰 สรุปเสร็จ|📰 ได้ข่าว|📰 สรุปข่าวภาษาไทย|📰 ตอบกลับ/.test(lbl)) {
-      clearNewsScoutWatch();
       setNewsScoutStatus((s) => (s === "idle" ? s : "done"));
       setNewsPicker((p) => (p.status === "idle" ? p : { ...p, status: "done" }));
       setNewsReader((p) => (p.status === "idle" ? p : { ...p, status: "done" }));
       setNewsWriter((p) => ({ ...p, status: "done", detail: lbl.replace(/^📰 /, "") }));
+      armNewsIdleWatch();
     }
-  }, [armNewsScoutWatch, clearNewsScoutWatch, upsertNewsSource]);
+  }, [armNewsIdleWatch, upsertNewsSource]);
 
   // ---- canvas render loop ----
   useEffect(() => {
@@ -933,11 +938,13 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       await walkPath([[OFFICE_AISLE_X, 150]]);
       setDashPace(dashRef.current, false);
       setAgent(4, "idle");
+      // Parcel delivered — clear SCOUT/WRITER so they don't stay DONE/WORKING.
+      idleNewsDesks();
     } finally {
       hidePostie();
       writerHasParcelRef.current = false;
     }
-  }, [hidePostie, log, setAgent, setCap, setDashPace, setDoorOpen, walkPath, walkPostie]);
+  }, [hidePostie, idleNewsDesks, log, setAgent, setCap, setDashPace, setDoorOpen, walkPath, walkPostie]);
 
   // ---- play one trace's events in sequence ----
   const resetRoom = useCallback(() => {
