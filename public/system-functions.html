@@ -735,11 +735,12 @@
                 <span>9</span><span class="on">10</span><span class="busy">11</span><span class="on">13</span>
                 <span class="on">14</span><span class="busy">15</span><span class="on">16</span><span>17</span>
               </div>
+              <div style="font-size:9px;color:#f87171;margin-top:6px;font-weight:700">❌ ยกเลิกนัด · เลือกวัน</div>
             </div>
           </div>
           <div class="body">
-            <h3>ตาราง · เวลาว่าง · จองประชุม</h3>
-            <p>ดูนัด หาช่วงที่ทุกคนว่าง กดเลือก แล้วให้ระบบขอยืนยันทาง LINE ก่อนลง Outlook</p>
+            <h3>ตาราง · จอง · ยกเลิกนัด</h3>
+            <p>ดูนัด หาเวลาว่าง จอง (ยืนยันก่อนลง Outlook) · ยกเลิกตามวัน ปุ่มมีวันที่+หัวข้อ</p>
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
@@ -825,25 +826,6 @@
           <div class="body">
             <h3>ไฟล์กับนัด · แนบตอนจอง · ผูกทีหลัง</h3>
             <p>ส่งรูป/ไฟล์ตอนจองนัด · ผูก OneDrive กับนัดที่มีแล้ว — ตอนเช้าหรือพิมพ์ “เตรียมนัด …” AI อ่านให้</p>
-            <span class="tap">ดูตัวอย่าง →</span>
-          </div>
-        </button>
-      </div>
-
-      <div class="vis-grid" style="margin-top:14px">
-        <button type="button" class="vis" data-demo="cancelday">
-          <div class="art" style="background:linear-gradient(160deg,#2a1f1f,#0f172a);padding:16px;display:grid;place-items:center">
-            <div style="width:88%;background:#0b1220;border:1px solid #334155;border-radius:12px;padding:10px">
-              <div style="font-size:10px;font-weight:800;color:#f87171;margin-bottom:6px">ยกเลิกนัด · พรุ่งนี้</div>
-              <div style="font-size:10px;color:#94a3b8;margin-bottom:4px">06/08 13:30 test</div>
-              <div style="display:flex;gap:6px;margin-top:8px">
-                <span style="font-size:9px;padding:3px 6px;border-radius:6px;background:#334155;color:#e2e8f0">❌06/08 13:30</span>
-              </div>
-            </div>
-          </div>
-          <div class="body">
-            <h3>ยกเลิกนัด · เลือกวัน</h3>
-            <p>“ยกเลิกนัดพรุ่งนี้” โชว์เฉพาะวันนั้น · ปุ่มมีวันที่+หัวข้อ ไม่สับสนเมื่อเวลาซ้ำ</p>
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
@@ -1062,9 +1044,9 @@
       ],
     },
     cal: {
-      title: "ตาราง · เวลาว่าง · จองประชุม",
+      title: "ตาราง · จอง · ยกเลิกนัด",
       sub: "ตัวอย่างใน LINE",
-      note: "ระบบขอยืนยันก่อนลง Outlook เสมอ",
+      note: "หาเวลาว่าง · ยืนยันก่อนลง Outlook · ยกเลิกตามวัน",
       steps: [
         { t: 0, role: "me", text: "ขอตารางว่างพรุ่งนี้ของเบสกับต้น" },
         { t: 700, role: "typing" },
@@ -1073,6 +1055,19 @@
         { t: 2800, role: "me", text: "13:00–14:00" },
         { t: 3400, role: "bot", text: "จะจองประชุม 13:00–14:00 พรุ่งนี้ กับเบสและต้น — ยืนยันไหมครับ?" },
         { t: 3800, role: "btns", items: ["ยืนยันจอง", "ยกเลิก"] },
+        { t: 4500, role: "me", text: "ยืนยันจอง" },
+        { t: 5100, role: "typing" },
+        { t: 5900, role: "bot", text: "✅ ส่งนัดประชุมแล้ว — พรุ่งนี้ 13:00–14:00 กับเบสและต้น" },
+        { t: 6600, role: "me", text: "ยกเลิกนัดพรุ่งนี้" },
+        { t: 7300, role: "typing" },
+        { t: 8100, role: "bot", text: "เลือกนัด พรุ่งนี้ ที่ต้องการยกเลิกครับ 👇\n\n1) 06/08/2026 13:30 — test · ake.pimton" },
+        { t: 8700, role: "btns", items: ["❌06/08 13:30 test"] },
+        { t: 9400, role: "me", text: "(กดปุ่มยกเลิก)" },
+        { t: 10000, role: "typing" },
+        { t: 10800, role: "bot", text: "✅ ยกเลิกนัดแล้วครับ" },
+        { t: 11400, role: "me", text: "พรุ่งนี้ ไม่ใช่วันนี้" },
+        { t: 12000, role: "typing" },
+        { t: 12800, role: "bot", text: "เลือกนัด พรุ่งนี้ ที่ต้องการยกเลิกครับ 👇\n(ไม่โชว์นัดวันนี้ที่กำลังประชุมอยู่)" },
       ],
     },
     meet: {
@@ -1233,23 +1228,6 @@
         { t: 15400, role: "me", text: "เตรียมนัด 2" },
         { t: 16000, role: "typing" },
         { t: 17200, role: "bot", text: "📌 Weekly Sync — เตรียมตัวครับ\n\n📄 จากไฟล์ที่คุณผูกไว้ (สรุปงบ_Q3.pptx):\n• ไฮไลต์ตัวเลข Q3 ที่ต้องพรีเซนต์\n• สไลด์สรุปความเสี่ยง\n\n✅ ต้องเตรียม: เปิดไฟล์ก่อนเข้าห้อง · ทบทวนตัวเลขหน้า 3–5\n💬 ควรพูด: สถานะเทียบเป้า · จุดที่ขอตัดสินใจ" },
-      ],
-    },
-    cancelday: {
-      title: "ยกเลิกนัด · เลือกวัน",
-      sub: "ตัวอย่างใน LINE",
-      note: "กรองตามวัน · ปุ่มมีวันที่+หัวข้อ ไม่สับสนเมื่อเวลาซ้ำ",
-      steps: [
-        { t: 0, role: "me", text: "ยกเลิกนัดพรุ่งนี้" },
-        { t: 700, role: "typing" },
-        { t: 1600, role: "bot", text: "เลือกนัด พรุ่งนี้ ที่ต้องการยกเลิกครับ 👇\n\n1) 06/08/2026 13:30 — test · ake.pimton" },
-        { t: 2200, role: "btns", items: ["❌06/08 13:30 test"] },
-        { t: 3000, role: "me", text: "(กดปุ่มยกเลิก)" },
-        { t: 3600, role: "typing" },
-        { t: 4400, role: "bot", text: "✅ ยกเลิกนัดแล้วครับ" },
-        { t: 5000, role: "me", text: "พรุ่งนี้ ไม่ใช่วันนี้" },
-        { t: 5600, role: "typing" },
-        { t: 6400, role: "bot", text: "เลือกนัด พรุ่งนี้ ที่ต้องการยกเลิกครับ 👇\n(ไม่โชว์นัดวันนี้ที่กำลังประชุมอยู่)" },
       ],
     },
     privacy: {
