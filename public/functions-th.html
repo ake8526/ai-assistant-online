@@ -1,0 +1,1714 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KTIS AI Assistant</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap");
+
+  :root {
+    --bg: #071018;
+    --bg2: #0d1824;
+    --panel: #122033;
+    --line: rgba(255,255,255,.10);
+    --ink: #f3f6fb;
+    --mute: #9aabbf;
+    --brand: #d7a13a;
+    --brand2: #f0c56a;
+    --blue: #3d8bfd;
+    --green: #3ecf8e;
+    --red: #ef4444;
+    --line-green: #06C755;
+    --fd: "Be Vietnam Pro", "IBM Plex Sans Thai", Tahoma, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 72px; /* sticky top bar */
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
+  body {
+    font-family: var(--fd);
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(215,161,58,.18), transparent 55%),
+      radial-gradient(900px 500px at -10% 20%, rgba(61,139,253,.12), transparent 50%),
+      var(--bg);
+    color: var(--ink);
+    line-height: 1.45;
+  }
+  a { color: var(--brand2); }
+
+  .top {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 14px 28px;
+    background: rgba(7,16,24,.88);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .top .logo { font-weight: 800; letter-spacing: .02em; }
+  .top .logo span { color: var(--brand); }
+  .top nav { display: flex; gap: 8px; flex-wrap: wrap; }
+  .top a {
+    text-decoration: none; color: var(--mute); font-size: 13px; font-weight: 600;
+    padding: 8px 12px; border-radius: 999px; border: 1px solid transparent;
+    transition: color .2s ease, border-color .2s ease, background .2s ease;
+  }
+  .top a:hover { color: var(--ink); border-color: var(--line); background: rgba(255,255,255,.04); }
+  .top a.is-active {
+    color: #1a1205; background: var(--brand); border-color: var(--brand);
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 20px 80px; }
+
+  /* HERO */
+  .hero {
+    display: grid; grid-template-columns: 1.05fr .95fr; gap: 28px; align-items: center;
+    min-height: min(78vh, 720px); padding: 24px 0 40px;
+  }
+  .eyebrow {
+    display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--brand); margin-bottom: 14px;
+  }
+  .hero h1 {
+    font-size: clamp(34px, 5vw, 58px); line-height: 1.08; font-weight: 800;
+    letter-spacing: -.02em; margin-bottom: 16px; max-width: 14ch;
+  }
+  .hero h1 em { font-style: normal; color: var(--brand2); }
+  .hero .lede { font-size: 18px; color: var(--mute); max-width: 36ch; margin-bottom: 22px; }
+  .cta-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 22px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 18px; border-radius: 12px; font-weight: 700; font-size: 14px;
+    text-decoration: none; border: 1px solid transparent; cursor: pointer;
+  }
+  .btn.primary { background: var(--brand); color: #1a1205; }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    font-size: 12px; font-weight: 600; color: var(--mute);
+    border: 1px solid var(--line); background: rgba(255,255,255,.03);
+    padding: 7px 11px; border-radius: 999px;
+  }
+
+  /* Phone mock */
+  .stage { position: relative; }
+  .phone {
+    width: min(100%, 320px); margin: 0 auto;
+    background: #0a0f16; border: 2px solid #243247; border-radius: 28px;
+    padding: 12px 10px 16px; box-shadow: 0 30px 80px rgba(0,0,0,.45);
+    position: relative;
+  }
+  .phone .notch {
+    width: 108px; height: 10px; background: #152033; border-radius: 0 0 10px 10px;
+    margin: 0 auto 10px;
+  }
+  .phone .head {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px 10px;
+    border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 10px;
+  }
+  .phone .av {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(135deg, #06C755, #049a40);
+  }
+  .phone .head b { font-size: 13px; display: block; }
+  .phone .head small { color: var(--mute); font-size: 11px; }
+  .bubble {
+    max-width: 88%; padding: 9px 11px; border-radius: 14px; font-size: 12.5px;
+    margin-bottom: 8px; line-height: 1.4;
+  }
+  .bubble.me {
+    margin-left: auto; background: #06C755; color: #04150a; border-bottom-right-radius: 4px;
+    font-weight: 600;
+  }
+  .bubble.bot {
+    background: #1a2738; color: #e8eef7; border-bottom-left-radius: 4px;
+  }
+  .bubble .meta { display: block; margin-top: 4px; font-size: 10px; opacity: .7; }
+  .typing {
+    display: inline-flex; gap: 4px; padding: 10px 12px; background: #1a2738; border-radius: 14px;
+  }
+  .typing i {
+    width: 6px; height: 6px; border-radius: 50%; background: #7a8fa8;
+    animation: blink 1.1s infinite;
+  }
+  .typing i:nth-child(2) { animation-delay: .15s; background: #3d8bfd; }
+  .typing i:nth-child(3) { animation-delay: .3s; background: #a78bfa; }
+  @keyframes blink { 50% { opacity: .25; transform: translateY(-1px); } }
+  .float-tag {
+    position: absolute; right: -8px; top: 18%;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 12px; font-size: 12px; max-width: 150px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  }
+  .float-tag b { display: block; color: var(--brand2); margin-bottom: 2px; }
+
+  /* Sections */
+  section.block {
+    padding: 56px 0 10px;
+    scroll-margin-top: 72px;
+  }
+  header.hero {
+    scroll-margin-top: 72px;
+  }
+  .sec-h {
+    display: flex; align-items: end; justify-content: space-between; gap: 16px;
+    margin-bottom: 22px; flex-wrap: wrap;
+  }
+  .sec-h h2 { font-size: clamp(24px, 3vw, 34px); font-weight: 800; letter-spacing: -.02em; }
+  .sec-h p { color: var(--mute); max-width: 42ch; font-size: 15px; }
+
+  /* QR big */
+  .qr-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px;
+  }
+  .qr-card {
+    background: linear-gradient(180deg, #16263a, #101c2c);
+    border: 1px solid var(--line); border-radius: 22px; padding: 22px;
+    display: grid; grid-template-columns: 1fr; gap: 14px; text-align: center;
+  }
+  .qr-card .step {
+    font-size: 12px; font-weight: 800; letter-spacing: .12em; color: var(--brand);
+    text-transform: uppercase;
+  }
+  .qr-card h3 { font-size: 22px; font-weight: 800; }
+  .qr-card p { color: var(--mute); font-size: 14px; }
+  .qr-frame {
+    width: min(100%, 240px); margin: 8px auto;
+    background: #fff; border-radius: 18px; padding: 14px;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 18px 40px rgba(0,0,0,.25);
+    cursor: zoom-in; border: 0; display: block; position: relative;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .qr-frame:hover, .qr-frame:focus-visible {
+    transform: scale(1.03);
+    box-shadow: 0 0 0 2px var(--brand), 0 18px 40px rgba(0,0,0,.35);
+    outline: none;
+  }
+  .qr-frame svg { display: block; width: 100%; height: auto; }
+  .qr-card .url {
+    font-size: 12px; color: #cbd5e1; word-break: break-all;
+    background: rgba(0,0,0,.25); border-radius: 10px; padding: 8px 10px;
+  }
+
+  /* QR lightbox — big */
+  .qr-lightbox {
+    position: fixed; inset: 0; z-index: 90;
+    background: rgba(4,8,14,.88); backdrop-filter: blur(8px);
+    display: none; align-items: center; justify-content: center;
+    padding: 16px; flex-direction: column; gap: 14px;
+  }
+  .qr-lightbox.open { display: flex; }
+  .qr-lightbox .ql-card {
+    background: #fff; border-radius: 24px; padding: 22px;
+    width: min(96vw, 90vh, 900px);
+    box-shadow: 0 30px 100px rgba(0,0,0,.55);
+    animation: demoIn .25s ease;
+  }
+  .qr-lightbox .ql-card svg {
+    display: block; width: 100%; height: auto;
+    image-rendering: pixelated;
+  }
+  .qr-lightbox .ql-meta {
+    text-align: center; color: #e8eef7; max-width: 720px;
+  }
+  .qr-lightbox .ql-meta b { display: block; font-size: 18px; margin-bottom: 4px; }
+  .qr-lightbox .ql-meta span { font-size: 13px; color: #9aabbf; word-break: break-all; }
+  .qr-lightbox .ql-close {
+    position: absolute; top: 16px; right: 16px;
+    width: 44px; height: 44px; border-radius: 12px;
+    border: 1px solid var(--line); background: rgba(255,255,255,.08);
+    color: #fff; font-size: 22px; cursor: pointer;
+  }
+  .qr-lightbox .ql-close:hover { background: rgba(255,255,255,.16); }
+
+  /* Capability visual cards */
+  .vis-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+  }
+  .vis {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+    overflow: hidden; min-height: 220px; display: flex; flex-direction: column;
+    cursor: pointer; text-align: left; width: 100%; color: inherit; font: inherit;
+    transition: border-color .2s, transform .2s, box-shadow .2s;
+  }
+  .vis:hover, .vis:focus-visible {
+    border-color: rgba(215,161,58,.55);
+    transform: translateY(-2px);
+    box-shadow: 0 14px 36px rgba(0,0,0,.28);
+    outline: none;
+  }
+  .vis .art {
+    height: 128px; position: relative; overflow: hidden;
+    border-bottom: 1px solid var(--line);
+  }
+  .vis .body { padding: 14px 16px 16px; }
+  .vis h3 { font-size: 16px; font-weight: 750; margin-bottom: 4px; }
+  .vis p { color: var(--mute); font-size: 13px; }
+  .vis .tap {
+    display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 700;
+    color: var(--brand2);
+  }
+
+  /* Demo modal */
+  .demo-backdrop {
+    position: fixed; inset: 0; z-index: 80;
+    background: rgba(4,8,14,.72); backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center; padding: 18px;
+  }
+  .demo-backdrop.open { display: flex; }
+  .demo-modal {
+    width: min(100%, 420px); max-height: min(88vh, 720px);
+    background: #0d1622; border: 1px solid var(--line); border-radius: 22px;
+    overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 30px 80px rgba(0,0,0,.5);
+    animation: demoIn .28s ease;
+  }
+  @keyframes demoIn {
+    from { opacity: 0; transform: translateY(12px) scale(.98); }
+    to { opacity: 1; transform: none; }
+  }
+  .demo-modal .dm-top {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 16px; border-bottom: 1px solid var(--line); background: #122033;
+  }
+  .demo-modal .dm-top h3 { font-size: 15px; font-weight: 800; }
+  .demo-modal .dm-top small { display: block; color: var(--mute); font-size: 12px; font-weight: 500; margin-top: 2px; }
+  .demo-close {
+    width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line);
+    background: transparent; color: var(--ink); font-size: 18px; cursor: pointer; flex: none;
+  }
+  .demo-close:hover { background: rgba(255,255,255,.06); }
+  .demo-phone {
+    flex: 1; overflow: auto; padding: 14px 12px 18px; background: #0a0f16;
+    min-height: 280px;
+  }
+  .demo-phone .bubble { opacity: 0; transform: translateY(8px); }
+  .demo-phone .bubble.show { opacity: 1; transform: none; transition: opacity .35s, transform .35s; }
+  .demo-phone .typing.show { opacity: 1; }
+  .demo-phone .qr-btns {
+    display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; opacity: 0;
+  }
+  .demo-phone .qr-btns.show { opacity: 1; transition: opacity .35s; }
+  .demo-phone .qr-btns span {
+    font-size: 11px; font-weight: 700; padding: 6px 10px; border-radius: 999px;
+    border: 1px solid rgba(6,199,85,.45); color: #b8f5ce; background: rgba(6,199,85,.08);
+  }
+  .demo-phone .qr-btns span[title] {
+    border-color: var(--brand);
+    color: var(--brand2);
+    background: rgba(215,161,58,.12);
+  }
+  .demo-phone .qr-btns span[title]:hover {
+    background: rgba(215,161,58,.22);
+  }
+  .demo-foot {
+    padding: 12px 16px; border-top: 1px solid var(--line); background: #122033;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .demo-foot p { font-size: 12px; color: var(--mute); }
+  .demo-foot .btn { padding: 9px 14px; font-size: 13px; }
+
+  /* Mini arts */
+  .art-cal {
+    background: linear-gradient(160deg, #1a3352, #0f1c2d);
+    display: grid; place-items: center;
+  }
+  .mini-cal {
+    width: 150px; background: #f7fafc; color: #0f172a; border-radius: 12px; padding: 8px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.35);
+  }
+  .mini-cal .d { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .mini-cal .d span {
+    height: 22px; border-radius: 5px; background: #e2e8f0; font-size: 9px;
+    display: grid; place-items: center; font-weight: 700;
+  }
+  .mini-cal .d span.on { background: #d7a13a; color: #1a1205; }
+  .mini-cal .d span.busy { background: #94a3b8; }
+
+  .art-news {
+    background: linear-gradient(160deg, #163028, #0e1a16);
+    padding: 16px; display: flex; flex-direction: column; gap: 6px; justify-content: center;
+  }
+  .news-row {
+    background: rgba(255,255,255,.08); border-radius: 8px; padding: 8px 10px;
+    font-size: 11px; display: flex; gap: 8px; align-items: center;
+  }
+  .news-row i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex: none; }
+
+  .art-meet {
+    background: linear-gradient(160deg, #2a1f3d, #141825);
+    display: grid; place-items: center;
+  }
+  .chips-row { display: flex; gap: 6px; }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%; border: 2px solid #0d1824;
+    display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff;
+  }
+
+  .art-office {
+    background: #1a120a;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 9px, rgba(107,74,46,.35) 9px, rgba(107,74,46,.35) 10px);
+    position: relative;
+  }
+  .desk {
+    position: absolute; width: 44px; height: 22px; background: #6b4a2e; border-radius: 2px;
+  }
+  .worker {
+    position: absolute; width: 14px; height: 18px; border-radius: 2px 2px 0 0;
+  }
+  .aisle {
+    position: absolute; left: 50%; top: 0; bottom: 0; width: 28px; transform: translateX(-50%);
+    background: rgba(148,111,73,.55);
+  }
+  .dash {
+    position: absolute; left: 50%; top: 48%; width: 12px; height: 16px;
+    transform: translate(-50%, -50%); background: #ee1b24; border-radius: 2px;
+    animation: walk 2.8s ease-in-out infinite;
+  }
+  @keyframes walk {
+    0%, 100% { top: 42%; }
+    50% { top: 68%; }
+  }
+  .mail {
+    position: absolute; left: 50%; bottom: 10px; width: 14px; height: 12px;
+    transform: translateX(-50%); background: #b3121a; border-radius: 2px;
+  }
+  .art-label {
+    position: absolute; left: 8px; right: 8px; bottom: 8px;
+    background: rgba(10,7,4,.88); border: 1px solid rgba(215,161,58,.45);
+    color: #f0c56a; font-size: 10px; font-weight: 800; letter-spacing: .04em;
+    text-align: center; padding: 5px 6px; border-radius: 8px;
+  }
+  .art-safe {
+    background: linear-gradient(160deg, #1a2838, #0f1824);
+    display: grid; place-items: center; padding: 14px;
+  }
+  .safe-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 92%; }
+  .safe-box {
+    border-radius: 10px; padding: 10px 8px; text-align: center;
+    border: 1px solid rgba(255,255,255,.12);
+  }
+  .safe-box b { display: block; font-size: 12px; font-weight: 800; margin-bottom: 3px; }
+  .safe-box small { font-size: 10px; color: #9aabbf; line-height: 1.3; }
+  .safe-box.ok { background: rgba(62,207,142,.12); border-color: rgba(62,207,142,.35); }
+  .safe-box.ok b { color: #6ee7b7; }
+  .safe-box.stop { background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.35); }
+  .safe-box.stop b { color: #fca5a5; }
+
+  .art-linkmeet {
+    background: linear-gradient(160deg, #1a2a3a, #0f1824);
+    display: grid; place-items: center; padding: 14px; gap: 8px;
+  }
+  .lm-row { display: flex; align-items: center; gap: 8px; width: 92%; justify-content: center; flex-wrap: wrap; }
+  .lm-box {
+    font-size: 11px; font-weight: 700; padding: 8px 10px; border-radius: 10px;
+    background: rgba(61,139,253,.15); border: 1px solid rgba(61,139,253,.4); color: #bfdbfe;
+  }
+  .lm-box.file {
+    background: rgba(215,161,58,.14); border-color: rgba(215,161,58,.45); color: #f0c56a;
+  }
+  .lm-plus { font-size: 16px; font-weight: 800; color: #9aabbf; }
+  .lm-foot { font-size: 10px; font-weight: 700; color: #9aabbf; text-align: center; }
+
+  /* Story strip */
+  .story {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 8px;
+  }
+  .step-card {
+    background: rgba(255,255,255,.03); border: 1px solid var(--line);
+    border-radius: 16px; padding: 16px; min-height: 140px;
+    cursor: pointer; text-align: left; width: 100%; color: inherit; font: inherit;
+    transition: border-color .2s, transform .2s, box-shadow .2s;
+  }
+  .step-card:hover, .step-card:focus-visible {
+    border-color: rgba(215,161,58,.55);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0,0,0,.28);
+    outline: none;
+  }
+  .step-card .n {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--brand); color: #1a1205;
+    display: grid; place-items: center; font-weight: 800; font-size: 13px; margin-bottom: 10px;
+  }
+  .step-card h3 { font-size: 15px; margin-bottom: 6px; }
+  .step-card p { color: var(--mute); font-size: 13px; }
+  .step-card .tap {
+    display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 700; color: var(--brand2);
+  }
+
+  /* How-to visual panels inside demo modal */
+  .howto-panel {
+    background: #0b1220; border: 1px solid #334155; border-radius: 14px;
+    padding: 12px; margin-bottom: 10px; opacity: 0; transform: translateY(8px);
+  }
+  .howto-panel.show { opacity: 1; transform: none; transition: opacity .35s, transform .35s; }
+  .howto-panel .hp-bar {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
+  }
+  .howto-panel .hp-dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; }
+  .howto-panel .hp-dot.r { background: #ef4444; }
+  .howto-panel .hp-dot.y { background: #f0b429; }
+  .howto-panel .hp-dot.g { background: #3ecf8e; }
+  .howto-panel .hp-url {
+    flex: 1; font-size: 10px; color: #94a3b8; background: #111827; border-radius: 6px;
+    padding: 4px 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .howto-panel .hp-title { font-size: 14px; font-weight: 800; margin-bottom: 6px; }
+  .howto-panel .hp-sub { font-size: 12px; color: #9aabbf; line-height: 1.4; margin-bottom: 10px; }
+  .howto-panel .hp-btn {
+    display: inline-block; font-size: 12px; font-weight: 800; padding: 8px 14px; border-radius: 8px;
+    background: #2f6fed; color: #fff;
+  }
+  .howto-panel .hp-btn.green { background: #06C755; color: #04150a; }
+  .howto-panel .hp-btn.brand { background: var(--brand); color: #1a1205; }
+  .howto-panel .hp-btn.ghost {
+    background: transparent; border: 1px solid #475569; color: #e2e8f0; margin-left: 6px;
+  }
+  .howto-panel .hp-ms {
+    background: #111827; border-radius: 10px; padding: 12px; border: 1px solid #1e293b;
+  }
+  .howto-panel .hp-ms b { display: block; font-size: 13px; margin-bottom: 8px; }
+  .howto-panel .hp-check {
+    display: flex; gap: 8px; align-items: flex-start; font-size: 11px; color: #cbd5e1;
+    margin: 6px 0; line-height: 1.35;
+  }
+  .howto-panel .hp-check i {
+    width: 14px; height: 14px; border-radius: 3px; border: 1px solid #64748b; flex: none; margin-top: 1px;
+  }
+  .howto-panel .hp-check.on i { background: #2f6fed; border-color: #2f6fed; }
+  .howto-panel .hp-phone-mini {
+    background: #0a0f16; border: 2px solid #243247; border-radius: 16px; padding: 10px;
+  }
+  .howto-panel .hp-phone-mini .me {
+    margin-left: auto; background: #06C755; color: #04150a; font-weight: 700;
+    max-width: 80%; padding: 7px 9px; border-radius: 12px; font-size: 11px; margin-bottom: 6px;
+  }
+  .howto-panel .hp-phone-mini .bot {
+    background: #1a2738; max-width: 88%; padding: 7px 9px; border-radius: 12px; font-size: 11px;
+    margin-bottom: 8px;
+  }
+  .howto-panel .hp-cta {
+    display: block; text-align: center; background: #06C755; color: #04150a; font-weight: 800;
+    padding: 9px; border-radius: 10px; font-size: 12px; margin-top: 4px;
+  }
+
+  /* Real THE OFFICE embed (same pixel room as /monitor) */
+  .office-panel {
+    background: #121212; border: 2px solid #262626; border-radius: 14px; overflow: hidden;
+  }
+  .office-panel .ph {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; background: #171717; border-bottom: 2px solid #262626;
+    font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #7c7c7c;
+  }
+  .office-panel .ph .live { color: #ee1b24; }
+  .room-stage {
+    position: relative; background: #1a120a; padding: 12px;
+    display: flex; justify-content: center;
+  }
+  .room-frame { position: relative; width: 100%; max-width: 760px; }
+  #office-room {
+    width: 100%; display: block; image-rendering: pixelated;
+    border: 2px solid #3a2a1a; background: #2e2116;
+  }
+  .bdg {
+    position: absolute; transform: translate(-50%, -100%);
+    text-align: center; pointer-events: none; z-index: 2;
+    background: rgba(10,7,4,.92); border: 2px solid #262626;
+    padding: 2px 5px 1px; white-space: nowrap; line-height: 1.15;
+  }
+  .bdg .nm { display: block; font-size: 9px; font-weight: 800; color: #f5f5f5; margin-bottom: 2px; }
+  .bdg .stt { font-size: 8px; font-weight: 800; color: #7c7c7c; }
+  .bdg.done { border-color: #39d353; }
+  .bdg.done .stt { color: #39d353; }
+  .bdg.idle .stt { color: #7c7c7c; }
+  .office-caption {
+    text-align: center; padding: 10px 12px; color: #9aabbf; font-size: 14px;
+    border-top: 1px solid rgba(255,255,255,.06); background: #0e0e0e;
+  }
+  .office-caption b { color: #ee1b24; }
+  .live-frame {
+    margin-top: 14px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    background: #0a0a0a;
+  }
+  .live-frame .bar {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 10px 14px; background: #121212; border-bottom: 1px solid #262626;
+    font-size: 12px; color: #9aabbf;
+  }
+  .live-frame iframe {
+    width: 100%; height: min(70vh, 640px); border: 0; background: #0a0a0a;
+  }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px;
+  }
+  .legend span {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--mute); font-weight: 600;
+  }
+  .legend i { width: 10px; height: 10px; border-radius: 2px; }
+
+  details.more {
+    margin-top: 28px; background: rgba(255,255,255,.03);
+    border: 1px solid var(--line); border-radius: 14px; padding: 4px 14px;
+  }
+  details.more summary {
+    cursor: pointer; font-weight: 700; padding: 12px 4px; list-style: none;
+  }
+  details.more summary::-webkit-details-marker { display: none; }
+  details.more .inner { padding: 0 4px 14px; color: var(--mute); font-size: 14px; }
+  details.more ul { padding-left: 18px; }
+  details.more li { margin: 6px 0; }
+
+  .footer {
+    margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line);
+    color: var(--mute); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+
+  /* Side dots — กระโดดไปหัวข้อแบบลื่น (คู่กับ scrollbar) */
+  .sec-dots {
+    position: fixed; right: 18px; top: 50%; transform: translateY(-50%);
+    z-index: 15; display: flex; flex-direction: column; gap: 10px;
+    padding: 10px 8px; border-radius: 999px;
+    background: rgba(7,16,24,.55); border: 1px solid var(--line);
+    backdrop-filter: blur(8px);
+  }
+  .sec-dots a {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(255,255,255,.22); border: 1px solid transparent;
+    text-indent: -999px; overflow: hidden; display: block;
+    transition: transform .25s ease, background .25s ease, box-shadow .25s ease;
+  }
+  .sec-dots a:hover,
+  .sec-dots a.is-active {
+    background: var(--brand);
+    transform: scale(1.25);
+    box-shadow: 0 0 0 3px rgba(215,161,58,.25);
+  }
+  .sec-dots a[title]:hover::after {
+    content: attr(title);
+    position: absolute; right: calc(100% + 12px); top: 50%; transform: translateY(-50%);
+    text-indent: 0; white-space: nowrap;
+    font-size: 12px; font-weight: 700; color: var(--ink);
+    background: rgba(18,32,51,.95); border: 1px solid var(--line);
+    padding: 6px 10px; border-radius: 8px; pointer-events: none;
+  }
+  .sec-dots a { position: relative; }
+
+  @media (max-width: 900px) {
+    .hero, .vis-grid, .qr-grid, .story { grid-template-columns: 1fr; }
+    .float-tag { display: none; }
+    .top nav { display: none; }
+    .sec-dots { right: 10px; padding: 8px 6px; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="logo">KTIS <span>AI Assistant</span></div>
+    <nav id="top-nav">
+      <a href="#see">เห็นภาพ</a>
+      <a href="#scan">สแกนเริ่มใช้</a>
+      <a href="#can">ทำอะไรได้</a>
+      <a href="#office">AI ทำงานยังไง</a>
+      <a href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">ห้อง LIVE</a>
+    </nav>
+  </div>
+
+  <nav class="sec-dots" id="sec-dots" aria-label="ไปยังหัวข้อ">
+    <a href="#see" title="เห็นภาพ"></a>
+    <a href="#scan" title="สแกนเริ่มใช้"></a>
+    <a href="#can" title="ทำอะไรได้"></a>
+    <a href="#office" title="AI ทำงานยังไง"></a>
+  </nav>
+
+  <div class="wrap">
+    <!-- HERO: brand + visual -->
+    <header class="hero" id="see">
+      <div>
+        <div class="eyebrow">สำหรับผู้บริหาร · KTIS</div>
+        <h1>สั่งงานด้วยแชท<br><em>ระบบทำให้เอง</em></h1>
+        <p class="lede">ต่อกับ Microsoft 365 ของบริษัท — ดูตาราง จองประชุม สรุปงาน และสรุปข่าว ผ่านเว็บหรือ LINE</p>
+        <div class="cta-row">
+          <a class="btn primary" href="#scan">สแกนเริ่มใช้งาน</a>
+          <a class="btn ghost" href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">ดูห้อง AI แบบ LIVE</a>
+        </div>
+        <div class="pills">
+          <span class="pill">ยินยอมก่อนใช้ข้อมูล</span>
+          <span class="pill">ถามก่อนแก้ปฏิทิน</span>
+          <span class="pill">ตอบภาษาไทย</span>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="phone" aria-label="ตัวอย่างแชท LINE">
+          <div class="notch"></div>
+          <div class="head">
+            <div class="av"></div>
+            <div><b>KTIS X AI Assistant</b><small>ออนไลน์</small></div>
+          </div>
+          <div class="bubble me">ดูตารางเบส</div>
+          <div class="bubble bot">เจอ 2 คนชื่อคล้ายกันครับ เลือกได้เลย<br>1) Tawanrut …<br>2) Buratsakon …<span class="meta">กดปุ่มเลือกได้</span></div>
+          <div class="bubble me">ข่าววันนี้</div>
+          <div class="typing" aria-hidden="true"><i></i><i></i><i></i></div>
+        </div>
+        <div class="float-tag">
+          <b>รอคำตอบแบบนี้</b>
+          ฟองสามจุด = ระบบกำลังทำงาน ไม่ใช่ค้างเงียบ
+        </div>
+      </div>
+    </header>
+
+    <!-- SCAN -->
+    <section class="block" id="scan">
+      <div class="sec-h">
+        <h2>เริ่มใช้ด้วยการสแกน</h2>
+        <p>QR ใหญ่ สแกนด้วยกล้องมือถือได้เลย — ทำตามลำดับ 1 แล้ว 2</p>
+      </div>
+      <div class="qr-grid">
+        <article class="qr-card">
+          <div class="step">ขั้น 1</div>
+          <h3>เปิดเว็บ + ล็อกอิน M365</h3>
+          <p>เข้าสู่ระบบด้วยบัญชีองค์กร แล้วกดอนุญาตปฏิทิน</p>
+          <button type="button" class="qr-frame" data-qr-title="เปิดเว็บ + ล็อกอิน M365" data-qr-url="ktis-ai-assistant.vercel.app" aria-label="ขยาย QR เปิดเว็บ">
+            <svg role="img" aria-label="QR เปิดเว็บ" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31 31" shape-rendering="crispEdges"><path fill="#FFFFFF" d="M0 0h31v31H0z"/><path stroke="#101725" d="M1 1.5h7m1 0h1m1 0h2m2 0h1m3 0h1m3 0h7M1 2.5h1m5 0h1m3 0h2m6 0h3m1 0h1m5 0h1M1 3.5h1m1 0h3m1 0h1m2 0h1m1 0h3m1 0h4m1 0h1m1 0h1m1 0h3m1 0h1M1 4.5h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h1m1 0h2m2 0h1m1 0h1m1 0h1m1 0h3m1 0h1M1 5.5h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h7m3 0h1m1 0h3m1 0h1M1 6.5h1m5 0h1m1 0h1m2 0h4m2 0h1m1 0h1m2 0h1m5 0h1M1 7.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M9 8.5h2m1 0h1m2 0h4m1 0h1M1 9.5h1m3 0h1m1 0h3m1 0h1m2 0h2m1 0h2m1 0h1m1 0h5m2 0h1M1 10.5h3m1 0h1m2 0h1m1 0h1m5 0h2m5 0h1m1 0h5M4 11.5h2m1 0h3m1 0h2m1 0h3m1 0h2m1 0h1m3 0h1m3 0h1M1 12.5h2m2 0h2m1 0h7m1 0h3m4 0h2m1 0h1m1 0h2M2 13.5h3m1 0h2m4 0h3m3 0h2m1 0h2m1 0h1m3 0h1M4 14.5h2m4 0h10m3 0h7M3 15.5h1m1 0h3m2 0h1m1 0h1m3 0h2m1 0h1m1 0h3m2 0h2m1 0h1M5 16.5h1m2 0h3m4 0h1m2 0h1m1 0h1m2 0h3m2 0h2M2 17.5h3m1 0h2m2 0h2m1 0h4m1 0h1m1 0h1m1 0h1m5 0h1M1 18.5h3m2 0h1m1 0h2m2 0h2m2 0h1m6 0h4m1 0h2M4 19.5h1m1 0h2m1 0h1m2 0h1m1 0h4m1 0h1m1 0h2m1 0h1m2 0h1m1 0h1M4 20.5h2m2 0h1m2 0h1m1 0h2m1 0h1m1 0h1m1 0h1m2 0h1m4 0h2M1 21.5h10m2 0h2m1 0h1m1 0h1m1 0h7m2 0h1M9 22.5h9m1 0h1m1 0h1m3 0h1m3 0h1M1 23.5h7m1 0h3m4 0h1m1 0h4m1 0h1m1 0h3m1 0h1M1 24.5h1m5 0h1m4 0h1m2 0h2m1 0h4m3 0h1m2 0h2M1 25.5h1m1 0h3m1 0h1m1 0h2m1 0h1m1 0h2m2 0h1m1 0h7m1 0h1M1 26.5h1m1 0h3m1 0h1m2 0h2m4 0h2m3 0h1m2 0h1m4 0h1M1 27.5h1m1 0h3m1 0h1m2 0h2m2 0h3m5 0h1m3 0h4M1 28.5h1m5 0h1m3 0h1m1 0h2m2 0h2m2 0h1m3 0h2m1 0h2M1 29.5h7m1 0h2m2 0h1m4 0h1m2 0h2m3 0h1m1 0h1"/></svg>
+          </button>
+          <div class="url">ktis-ai-assistant.vercel.app</div>
+        </article>
+        <article class="qr-card">
+          <div class="step">ขั้น 2</div>
+          <h3>เพิ่มเพื่อน LINE OA</h3>
+          <p>บอทจะส่งปุ่ม “ผูกบัญชี” มาให้กดเอง ไม่ต้องหาลิงก์</p>
+          <button type="button" class="qr-frame" data-qr-title="เพิ่มเพื่อน LINE OA" data-qr-url="LINE · @777nxuvm · KTIS X AI Assistant" aria-label="ขยาย QR LINE">
+            <svg role="img" aria-label="QR LINE OA" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31 31" shape-rendering="crispEdges"><path fill="#FFFFFF" d="M0 0h31v31H0z"/><path stroke="#101725" d="M1 1.5h7m2 0h2m2 0h3m1 0h3m2 0h7M1 2.5h1m5 0h1m2 0h1m3 0h5m4 0h1m5 0h1M1 3.5h1m1 0h3m1 0h1m1 0h1m1 0h2m1 0h1m1 0h1m6 0h1m1 0h3m1 0h1M1 4.5h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h1m1 0h2m4 0h1m1 0h1m1 0h3m1 0h1M1 5.5h1m1 0h3m1 0h1m1 0h3m1 0h1m2 0h2m1 0h3m1 0h1m1 0h3m1 0h1M1 6.5h1m5 0h1m1 0h2m1 0h2m5 0h1m1 0h1m1 0h1m5 0h1M1 7.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M9 8.5h3m3 0h1m1 0h1m1 0h3M1 9.5h1m1 0h5m2 0h4m3 0h4m2 0h5M1 10.5h3m7 0h1m2 0h3m3 0h1m1 0h2m1 0h1m3 0h1M1 11.5h4m1 0h3m2 0h2m1 0h5m2 0h1m1 0h3M2 12.5h1m1 0h3m1 0h1m1 0h2m1 0h2m1 0h1m5 0h5m1 0h1M3 13.5h5m4 0h1m2 0h2m1 0h3m5 0h2M1 14.5h6m2 0h3m4 0h2m2 0h6m3 0h1M5 15.5h1m1 0h1m2 0h1m7 0h1m4 0h1m2 0h2M1 16.5h1m2 0h1m1 0h1m1 0h1m3 0h2m1 0h1m1 0h1m3 0h1m2 0h1m3 0h1M3 17.5h1m1 0h3m1 0h4m5 0h2m1 0h1m4 0h2M1 18.5h2m2 0h1m2 0h1m1 0h2m2 0h3m3 0h6m1 0h1m1 0h1M1 19.5h1m1 0h2m2 0h3m1 0h1m1 0h6m2 0h1m2 0h2m1 0h1M1 20.5h1m2 0h3m2 0h3m1 0h2m1 0h2m2 0h2m6 0h1M1 21.5h1m1 0h1m3 0h1m1 0h3m3 0h1m2 0h1m1 0h6m1 0h3M9 22.5h1m1 0h1m1 0h1m3 0h3m1 0h1m3 0h5M1 23.5h7m4 0h2m2 0h1m1 0h1m1 0h2m1 0h1m1 0h3M1 24.5h1m5 0h1m1 0h1m5 0h1m1 0h1m1 0h1m1 0h1m3 0h1m2 0h1M1 25.5h1m1 0h3m1 0h1m1 0h2m2 0h1m2 0h3m2 0h5m1 0h2M1 26.5h1m1 0h3m1 0h1m1 0h2m1 0h4m1 0h2m2 0h2m3 0h4M1 27.5h1m1 0h3m1 0h1m1 0h1m3 0h2m1 0h2m1 0h1m2 0h7M1 28.5h1m5 0h1m3 0h1m1 0h2m1 0h2m1 0h2m2 0h1m1 0h2m1 0h1M1 29.5h7m1 0h6m1 0h3m1 0h1m2 0h2m2 0h1"/></svg>
+          </button>
+          <div class="url">LINE · @777nxuvm · KTIS X AI Assistant</div>
+        </article>
+      </div>
+
+      <div class="story" style="margin-top:18px">
+        <button type="button" class="step-card" data-demo="howto1">
+          <div class="n">1</div>
+          <h3>ล็อกอิน</h3>
+          <p>บัญชี Microsoft 365 ขององค์กร</p>
+          <span class="tap">ดูภาพขั้นตอน →</span>
+        </button>
+        <button type="button" class="step-card" data-demo="howto2">
+          <div class="n">2</div>
+          <h3>อนุญาตปฏิทิน</h3>
+          <p>กด “ยอมรับ” บนหน้า Microsoft</p>
+          <span class="tap">ดูภาพขั้นตอน →</span>
+        </button>
+        <button type="button" class="step-card" data-demo="howto3">
+          <div class="n">3</div>
+          <h3>เพิ่มเพื่อน LINE</h3>
+          <p>สแกน QR ขั้น 2 ด้านบน</p>
+          <span class="tap">ดูภาพขั้นตอน →</span>
+        </button>
+        <button type="button" class="step-card" data-demo="howto4">
+          <div class="n">4</div>
+          <h3>กดผูกบัญชี</h3>
+          <p>บอทส่งปุ่มมาให้ — ใช้ได้ทันที</p>
+          <span class="tap">ดูภาพขั้นตอน →</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- CAPABILITIES as visuals -->
+    <section class="block" id="can">
+      <div class="sec-h">
+        <h2>ทำอะไรได้บ้าง</h2>
+        <p>คลิกการ์ดเพื่อดูตัวอย่างการทำงานใน LINE — พิมพ์ภาษาไทยธรรมดาได้เลย</p>
+      </div>
+      <div class="vis-grid">
+        <button type="button" class="vis" data-demo="cal">
+          <div class="art art-cal">
+            <div class="mini-cal">
+              <div style="font-size:10px;font-weight:800;margin-bottom:6px">ตารางว่าง · พรุ่งนี้</div>
+              <div class="d">
+                <span>9</span><span class="on">10</span><span class="busy">11</span><span class="on">13</span>
+                <span class="on">14</span><span class="busy">15</span><span class="on">16</span><span>17</span>
+              </div>
+            </div>
+          </div>
+          <div class="body">
+            <h3>ตาราง · เวลาว่าง · จองประชุม</h3>
+            <p>ดูนัด หาช่วงที่ทุกคนว่าง กดเลือก แล้วให้ระบบขอยืนยันทาง LINE ก่อนลง Outlook</p>
+            <span class="tap">ดูตัวอย่าง →</span>
+          </div>
+        </button>
+
+        <button type="button" class="vis" data-demo="meet">
+          <div class="art art-meet">
+            <div class="chips-row">
+              <div class="avatar" style="background:#3a86ff">A</div>
+              <div class="avatar" style="background:#2f9e44">B</div>
+              <div class="avatar" style="background:#f0b429">C</div>
+              <div class="avatar" style="background:#7048e8">+</div>
+            </div>
+            <div style="margin-top:10px;font-size:11px;color:#c4b5fd;font-weight:700">สรุปประชุม + งานที่ต้องตาม</div>
+          </div>
+          <div class="body">
+            <h3>สรุปประชุม · มอบหมายงาน</h3>
+            <p>ดึง transcript จาก Teams แล้วสรุปสั้น พร้อมส่งงานถึงผู้รับผิดชอบใน LINE</p>
+            <span class="tap">ดูตัวอย่าง →</span>
+          </div>
+        </button>
+
+        <button type="button" class="vis" data-demo="news">
+          <div class="art art-news">
+            <div class="news-row"><i></i>หัวข้อที่คุณเลือก · 3 เรื่องเด่น</div>
+            <div class="news-row"><i></i>RSS / เพจ / YouTube ที่อนุญาต</div>
+            <div class="news-row"><i></i>ส่งเข้า LINE ตามเวลาที่ตั้ง</div>
+          </div>
+          <div class="body">
+            <h3>สรุปข่าวที่ติดตาม</h3>
+            <p>พิมพ์ “ข่าววันนี้” ได้ทั้งแบบถามเอง และตั้งให้ส่งอัตโนมัติเช้าทุกวัน</p>
+            <span class="tap">ดูตัวอย่าง →</span>
+          </div>
+        </button>
+      </div>
+
+      <div class="vis-grid" style="margin-top:14px">
+        <button type="button" class="vis" data-demo="files">
+          <div class="art" style="background:linear-gradient(160deg,#1e293b,#0f172a);display:grid;place-items:center;padding:16px">
+            <div style="width:86%;background:#0b1220;border:1px solid #334155;border-radius:12px;padding:10px">
+              <div style="height:8px;width:40%;background:#d7a13a;border-radius:4px;margin-bottom:8px"></div>
+              <div style="height:6px;width:90%;background:#334155;border-radius:3px;margin-bottom:5px"></div>
+              <div style="height:6px;width:70%;background:#334155;border-radius:3px;margin-bottom:5px"></div>
+              <div style="height:6px;width:80%;background:#334155;border-radius:3px"></div>
+            </div>
+          </div>
+          <div class="body">
+            <h3>ค้นไฟล์ · วางแผนเดินทาง</h3>
+            <p>ค้น OneDrive แยกชนิดไฟล์ให้ และคำนวณเวลาออกจากบ้านจากนัดแรกของวัน</p>
+            <span class="tap">ดูตัวอย่าง →</span>
+          </div>
+        </button>
+        <button type="button" class="vis" data-demo="privacy">
+          <div class="art art-safe">
+            <div class="safe-row">
+              <div class="safe-box ok">
+                <b>ถามก่อนจอง</b>
+                <small>ไม่ลง Outlook เองเงียบๆ</small>
+              </div>
+              <div class="safe-box stop">
+                <b>ยังไม่อนุญาต</b>
+                <small>= ยังไม่ดึงตาราง</small>
+              </div>
+            </div>
+          </div>
+          <div class="body">
+            <h3>ปลอดภัย · ถามก่อนทำ</h3>
+            <p>จองนัดต้องกดยืนยัน · ดึงปฏิทินได้หลังคุณอนุญาต · เห็นข้อมูลเท่าที่ Outlook ของคุณเปิดให้</p>
+            <span class="tap">ดูตัวอย่าง →</span>
+          </div>
+        </button>
+        <button type="button" class="vis" data-demo="linkmeet">
+          <div class="art art-linkmeet">
+            <div class="lm-row">
+              <div class="lm-box">นัด 2 · Weekly Sync</div>
+              <div class="lm-plus">+</div>
+              <div class="lm-box file">สรุปงบ_Q3.pptx</div>
+            </div>
+            <div class="lm-foot">ผูกทีหลัง → AI อ่านตอนเตรียมเช้า</div>
+          </div>
+          <div class="body">
+            <h3>ผูกไฟล์ · ลิงก์ กับนัดทีหลัง</h3>
+            <p>นัดในปฏิทินยังไม่มีไฟล์นำเสนอ ก็ผูก OneDrive/ลิงก์ทีหลังได้ — ตอนเช้าหรือพิมพ์ “เตรียมนัด …” AI จะอ่านให้</p>
+            <span class="tap">ดูตัวอย่าง →</span>
+          </div>
+        </button>
+      </div>
+    </section>
+
+    <div class="qr-lightbox" id="qr-lightbox" hidden>
+      <button type="button" class="ql-close" id="qr-close" aria-label="ปิด">×</button>
+      <div class="ql-card" id="qr-big"></div>
+      <div class="ql-meta">
+        <b id="qr-big-title"></b>
+        <span id="qr-big-url"></span>
+      </div>
+    </div>
+
+    <div class="demo-backdrop" id="demo-backdrop" role="dialog" aria-modal="true" aria-labelledby="demo-title" hidden>
+      <div class="demo-modal">
+        <div class="dm-top">
+          <div>
+            <h3 id="demo-title">ตัวอย่าง</h3>
+            <small id="demo-sub">จำลองแชท LINE</small>
+          </div>
+          <button type="button" class="demo-close" id="demo-close" aria-label="ปิด">×</button>
+        </div>
+        <div class="demo-phone" id="demo-phone"></div>
+        <div class="demo-foot">
+          <p id="demo-note">ตัวอย่างจำลอง — ไม่ส่งข้อความจริง</p>
+          <button type="button" class="btn primary" id="demo-replay">เล่นอีกครั้ง</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- OFFICE: real pixel room (same as /monitor) + live iframe -->
+    <section class="block" id="office">
+      <div class="sec-h">
+        <h2>AI ทำงานยังไง — หน้าจริง THE OFFICE</h2>
+        <p>เดโมวน 4 แบบ: ใช้ครบ 4 โต๊ะ / แค่ 3 / แค่ 2 / แค่ 1 แล้วส่ง — โต๊ะที่ไม่เกี่ยวจะ IDLE</p>
+      </div>
+
+      <div class="office-panel">
+        <div class="ph"><span>THE OFFICE</span><span class="live">● DEMO</span></div>
+        <div class="room-stage">
+          <div class="room-frame" id="office-frame">
+            <canvas id="office-room" width="320" height="240"></canvas>
+            <div class="bdg done" data-i="0"><span class="nm">GATE</span><span class="stt">DONE</span></div>
+            <div class="bdg done" data-i="1"><span class="nm">BRAIN</span><span class="stt">DONE</span></div>
+            <div class="bdg idle" data-i="2"><span class="nm">RUNNER</span><span class="stt">IDLE</span></div>
+            <div class="bdg idle" data-i="3"><span class="nm">SCRIBE</span><span class="stt">IDLE</span></div>
+            <div class="bdg idle" data-i="4" id="dash-bdg"><span class="nm">DASH</span><span class="stt">IDLE</span></div>
+          </div>
+        </div>
+        <div class="office-caption" id="office-cap"><b>BRAIN</b> (PARSE) — แยกเจตนา (intent) ด้วย LLM</div>
+      </div>
+
+      <div class="legend">
+        <span><i style="background:#3a86ff"></i>GATE รับข้อความ</span>
+        <span><i style="background:#2f9e44"></i>BRAIN แยกเจตนา</span>
+        <span><i style="background:#f0b429"></i>RUNNER ดึง M365</span>
+        <span><i style="background:#7048e8"></i>SCRIBE เขียนคำตอบ</span>
+        <span><i style="background:#ee1b24"></i>DASH ส่งกลับ LINE</span>
+      </div>
+
+      <div class="live-frame">
+        <div class="bar">
+          <span>หน้าจริงออนไลน์ (ต้องล็อกอิน M365 ถ้ายังไม่เข้าสู่ระบบ)</span>
+          <a class="btn primary" style="padding:8px 12px;font-size:12px" href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">เปิด /monitor</a>
+        </div>
+        <iframe
+          title="AI Assistant Monitor"
+          src="https://ktis-ai-assistant.vercel.app/monitor"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+        ></iframe>
+      </div>
+
+      <details class="more">
+        <summary>รายละเอียดสำหรับทีมเทคนิค (พับไว้)</summary>
+        <div class="inner">
+          <ul>
+            <li>ห้องด้านบน = render เดียวกับโค้ดหน้า <code>/monitor</code> (ออฟไลน์ได้)</li>
+            <li>กรอบด้านล่าง = iframe หน้าจริงบน Vercel</li>
+            <li>คู่มือฉบับละเอียด: <code>ฟังก์ชันทั้งระบบ-AI-Assistant.claude-backup.html</code></li>
+          </ul>
+        </div>
+      </details>
+    </section>
+
+    <div class="footer">
+      <div>KTIS · AI Assistant · เอกสารภาพสำหรับผู้บริหาร</div>
+      <div>อัปเดต Aug 2026 · เปิดไฟล์นี้ในเบราว์เซอร์ได้เลย</div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const lb = document.getElementById("qr-lightbox");
+  const big = document.getElementById("qr-big");
+  const title = document.getElementById("qr-big-title");
+  const url = document.getElementById("qr-big-url");
+  const closeBtn = document.getElementById("qr-close");
+  if (!lb || !big) return;
+
+  function openQr(btn) {
+    const svg = btn.querySelector("svg");
+    if (!svg) return;
+    big.innerHTML = svg.outerHTML;
+    title.textContent = btn.getAttribute("data-qr-title") || "QR";
+    url.textContent = btn.getAttribute("data-qr-url") || "";
+    lb.hidden = false;
+    lb.classList.add("open");
+    document.body.style.overflow = "hidden";
+  }
+  function closeQr() {
+    lb.classList.remove("open");
+    lb.hidden = true;
+    big.innerHTML = "";
+    if (!document.getElementById("demo-backdrop")?.classList.contains("open")) {
+      document.body.style.overflow = "";
+    }
+  }
+
+  document.querySelectorAll(".qr-frame[data-qr-title]").forEach((btn) => {
+    btn.addEventListener("click", () => openQr(btn));
+  });
+  closeBtn.addEventListener("click", closeQr);
+  lb.addEventListener("click", (e) => { if (e.target === lb) closeQr(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && lb.classList.contains("open")) closeQr();
+  });
+})();
+</script>
+<script>
+(function () {
+  const DEMOS = {
+    howto1: {
+      title: "ขั้น 1 — ล็อกอิน",
+      sub: "ภาพวิธีทำงาน",
+      note: "ใช้บัญชี Microsoft 365 ขององค์กรเท่านั้น",
+      steps: [
+        { t: 0, role: "panel", html:
+          '<div class="hp-bar"><i class="hp-dot r"></i><i class="hp-dot y"></i><i class="hp-dot g"></i><span class="hp-url">ktis-ai-assistant.vercel.app</span></div>' +
+          '<div class="hp-title">เข้าสู่ระบบ</div>' +
+          '<div class="hp-sub">เปิดเว็บจาก QR ขั้น 1 → กดเข้าสู่ระบบด้วยบัญชีบริษัท</div>' +
+          '<div class="hp-ms"><b>Sign in · Microsoft 365</b><div class="hp-sub" style="margin:0">name@yourcompany.com</div></div>' +
+          '<div style="margin-top:12px"><span class="hp-btn">ถัดไป</span></div>'
+        },
+        { t: 900, role: "bot", text: "เลือกบัญชีองค์กรของคุณ ไม่ใช้บัญชีส่วนตัว (@gmail / @hotmail)" },
+        { t: 1600, role: "btns", items: [
+          { label: "ไปขั้น 2 →", go: "howto2" },
+        ] },
+      ],
+    },
+    howto2: {
+      title: "ขั้น 2 — อนุญาตปฏิทิน",
+      sub: "ภาพวิธีทำงาน",
+      note: "ต้องกด “ยอมรับ” สีน้ำเงิน — ถ้ากดยกเลิก ตารางใช้ไม่ได้",
+      steps: [
+        { t: 0, role: "panel", html:
+          '<div class="hp-bar"><i class="hp-dot r"></i><i class="hp-dot y"></i><i class="hp-dot g"></i><span class="hp-url">login.microsoftonline.com</span></div>' +
+          '<div class="hp-title">Permissions requested</div>' +
+          '<div class="hp-sub">แอปขอสิทธิ์อ่านปฏิทินของคุณ</div>' +
+          '<div class="hp-ms">' +
+            '<div class="hp-check on"><i></i><span>Read your calendars</span></div>' +
+            '<div class="hp-check on"><i></i><span>Read and create calendar events</span></div>' +
+            '<div class="hp-check on"><i></i><span>Sign you in and read profile</span></div>' +
+          '</div>' +
+          '<div style="margin-top:12px"><span class="hp-btn">ยอมรับ</span><span class="hp-btn ghost">ยกเลิก</span></div>'
+        },
+        { t: 1000, role: "bot", text: "กดปุ่มสีน้ำเงิน “ยอมรับ” เท่านั้น\nถ้ากดยกเลิก → คำสั่งเรื่องตาราง/จองประชุมใช้ไม่ได้" },
+        { t: 1800, role: "btns", items: [
+          { label: "← ขั้น 1", go: "howto1" },
+          { label: "ไปขั้น 3 →", go: "howto3" },
+        ] },
+      ],
+    },
+    howto3: {
+      title: "ขั้น 3 — เพิ่มเพื่อน LINE",
+      sub: "ภาพวิธีทำงาน",
+      note: "สแกน QR ขั้น 2 ด้านบนด้วยกล้องมือถือ",
+      steps: [
+        { t: 0, role: "panel", html:
+          '<div class="hp-title">เพิ่มเพื่อน LINE OA</div>' +
+          '<div class="hp-sub">เปิดกล้องมือถือ → สแกน QR ขั้น 2 → กดเพิ่มเพื่อน</div>' +
+          '<div class="hp-phone-mini">' +
+            '<div style="text-align:center;padding:8px 0 12px">' +
+              '<div style="width:96px;height:96px;margin:0 auto;background:#fff;border-radius:12px;display:grid;place-items:center;color:#0f172a;font-size:11px;font-weight:800">QR<br>LINE OA</div>' +
+              '<div style="margin-top:8px;font-size:11px;color:#9aabbf">@777nxuvm</div>' +
+            '</div>' +
+            '<span class="hp-cta">เพิ่มเพื่อน</span>' +
+          '</div>'
+        },
+        { t: 1000, role: "bot", text: "เพิ่มเพื่อนแล้ว บอทจะทักทายและส่งปุ่ม “ผูกบัญชี” มาให้เอง — ไม่ต้องหาลิงก์" },
+        { t: 1800, role: "btns", items: [
+          { label: "← ขั้น 2", go: "howto2" },
+          { label: "ไปขั้น 4 →", go: "howto4" },
+        ] },
+      ],
+    },
+    howto4: {
+      title: "ขั้น 4 — กดผูกบัญชี",
+      sub: "ภาพวิธีทำงาน",
+      note: "ต้องเปิดในแอป LINE แล้วกดปุ่ม — ไม่ผูกอัตโนมัติ",
+      steps: [
+        { t: 0, role: "panel", html:
+          '<div class="hp-phone-mini">' +
+            '<div style="font-size:11px;font-weight:800;margin-bottom:8px;color:#9aabbf">KTIS X AI Assistant</div>' +
+            '<div class="bot">สวัสดีครับ เพิ่มเพื่อนเรียบร้อยแล้ว<br>กดปุ่มด้านล่างเพื่อผูกกับบัญชี Microsoft 365 ของคุณ</div>' +
+            '<span class="hp-cta">🔗 ผูกบัญชี</span>' +
+          '</div>'
+        },
+        { t: 900, role: "bot", text: "กด “ผูกบัญชี” → ยืนยันใน LIFF → เสร็จ\nจากนั้นสั่งงานได้เลย เช่น “ตารางวันนี้” หรือ “ข่าววันนี้”" },
+        { t: 1700, role: "btns", items: [
+          { label: "← ขั้น 3", go: "howto3" },
+          { label: "ดูตัวอย่างคำสั่ง →", go: "cal" },
+        ] },
+      ],
+    },
+    cal: {
+      title: "ตาราง · เวลาว่าง · จองประชุม",
+      sub: "ตัวอย่างใน LINE",
+      note: "ระบบขอยืนยันก่อนลง Outlook เสมอ",
+      steps: [
+        { t: 0, role: "me", text: "ขอตารางว่างพรุ่งนี้ของเบสกับต้น" },
+        { t: 700, role: "typing" },
+        { t: 1600, role: "bot", text: "พบช่วงว่างร่วมกัน พรุ่งนี้ครับ\n• 10:00–11:00\n• 13:00–14:00\n• 16:00–17:00" },
+        { t: 2100, role: "btns", items: ["10:00–11:00", "13:00–14:00", "16:00–17:00"] },
+        { t: 2800, role: "me", text: "13:00–14:00" },
+        { t: 3400, role: "bot", text: "จะจองประชุม 13:00–14:00 พรุ่งนี้ กับเบสและต้น — ยืนยันไหมครับ?" },
+        { t: 3800, role: "btns", items: ["ยืนยันจอง", "ยกเลิก"] },
+      ],
+    },
+    meet: {
+      title: "สรุปประชุม · มอบหมายงาน",
+      sub: "ตัวอย่างใน LINE",
+      note: "ดึง transcript จาก Teams แล้วสรุปให้",
+      steps: [
+        { t: 0, role: "me", text: "สรุปประชุมเมื่อเช้า" },
+        { t: 700, role: "typing" },
+        { t: 1800, role: "bot", text: "สรุปสั้นๆ ครับ\n1) ปิดงบ Q3 ภายในศุกร์\n2) เบสส่งสไลด์ให้ลูกค้า\n3) ต้นอัปเดตสถานะโปรเจกต์\n\nมีงานที่ต้องตาม 2 รายการ" },
+        { t: 2400, role: "btns", items: ["ส่งงานให้เบส", "ดูรายละเอียด"] },
+        { t: 3100, role: "me", text: "ส่งงานให้เบส" },
+        { t: 3700, role: "bot", text: "ส่งงาน “ส่งสไลด์ให้ลูกค้า” ถึงเบสทาง LINE แล้วครับ" },
+      ],
+    },
+    news: {
+      title: "สรุปข่าวที่ติดตาม",
+      sub: "ตัวอย่างใน LINE",
+      note: "ถามเองได้ หรือตั้งส่งเช้าอัตโนมัติ — กด /ตั้งค่าข่าว เพื่อดูเมนู",
+      steps: [
+        { t: 0, role: "me", text: "ข่าววันนี้" },
+        { t: 700, role: "typing" },
+        { t: 1800, role: "bot", text: "ข่าววันนี้ · 3 เรื่องเด่น\n\n1) เศรษฐกิจ — ดอกเบี้ยคงที่…\n2) เทคโนโลยี — AI ในองค์กร…\n3) พลังงาน — ราคาน้ำมัน…\n\nอยากตั้งส่งเช้าอัตโนมัติไหมครับ?" },
+        { t: 2300, role: "btns", items: [
+          { label: "/ตั้งค่าข่าว", go: "news_settings" },
+          "พอแค่นี้",
+        ] },
+      ],
+    },
+    news_settings: {
+      title: "ตั้งค่าข่าว — ตั้งอะไรได้บ้าง",
+      sub: "เมนูจริงใน LINE เมื่อพิมพ์ /ตั้งค่าข่าว",
+      note: "เลือกปุ่มด้านล่างเพื่อแก้ทีละอย่าง",
+      steps: [
+        { t: 0, role: "me", text: "/ตั้งค่าข่าว" },
+        { t: 600, role: "typing" },
+        { t: 1400, role: "bot", text: "📰 สิ่งที่ตั้งค่าได้ครับ\n\n• หัวข้อที่ติดตาม (เช่น เศรษฐกิจ, AI)\n• จำนวนเรื่องต่อวัน (3 / 5 / 10)\n• เวลา + วันที่ส่งข่าวเข้า LINE\n• เวลาบรีฟตารางเช้า\n• แหล่ง RSS / เพจ Facebook / YouTube\n\nตอนนี้ตัวอย่าง:\nหัวข้อ: เศรษฐกิจ, เทคโนโลยี\nส่งข่าว: จ–ศ 07:00 น.\nบรีฟเช้า: จ–ศ 07:00 น." },
+        { t: 2000, role: "btns", items: [
+          { label: "➕ เพิ่มหัวข้อ", go: "news_add" },
+          { label: "⏰ แก้เวลาส่งข่าว", go: "news_time" },
+          { label: "📅 แก้เวลาบรีฟเช้า", go: "news_brief" },
+          { label: "🌐 หน้าตั้งค่า", go: "news_web" },
+        ] },
+      ],
+    },
+    news_add: {
+      title: "เพิ่มหัวข้อข่าว",
+      sub: "ตัวอย่างใน LINE",
+      note: "กดเลือกหลายหัวข้อ หรือพิมพ์เองได้",
+      steps: [
+        { t: 0, role: "me", text: "เพิ่มหัวข้อข่าว" },
+        { t: 500, role: "typing" },
+        { t: 1200, role: "bot", text: "เลือกหัวข้อได้หลายอันครับ 👍\n\n1) เศรษฐกิจไทย\n2) ตลาดหุ้น\n3) เทคโนโลยี / AI\n4) พลังงาน\n5) อสังหาริมทรัพย์\n…\n\nหรือพิมพ์เอง เช่น “เซมิคอนดักเตอร์”" },
+        { t: 1700, role: "btns", items: [
+          "เทคโนโลยี / AI",
+          "พลังงาน",
+          "✅ เสร็จแล้ว",
+          { label: "← กลับเมนู", go: "news_settings" },
+        ] },
+      ],
+    },
+    news_time: {
+      title: "แก้เวลาส่งข่าว",
+      sub: "ตัวอย่างใน LINE",
+      note: "ตั้งเวลา + วันที่ต้องการให้ส่ง",
+      steps: [
+        { t: 0, role: "me", text: "แก้เวลาแจ้งเตือนข่าว" },
+        { t: 500, role: "typing" },
+        { t: 1200, role: "bot", text: "ส่งสรุปข่าวเข้า LINE กี่โมงดีครับ?\n(เวลาไทย 24 ชม.)" },
+        { t: 1600, role: "btns", items: ["06:00", "07:00", "08:00", "09:00"] },
+        { t: 2600, role: "bot", text: "ส่งวันไหนบ้างครับ?" },
+        { t: 3000, role: "btns", items: [
+          "จ–ศ",
+          "ทุกวัน",
+          { label: "← กลับเมนู", go: "news_settings" },
+        ] },
+      ],
+    },
+    news_brief: {
+      title: "แก้เวลาบรีฟเช้า",
+      sub: "ตัวอย่างใน LINE",
+      note: "บรีฟตารางเช้าตั้งแยกจากข่าวได้",
+      steps: [
+        { t: 0, role: "me", text: "แก้เวลาสรุปตารางเช้า" },
+        { t: 500, role: "typing" },
+        { t: 1200, role: "bot", text: "ส่งสรุปนัดวันนี้เข้า LINE กี่โมง?\nค่าเริ่มต้น: จ–ศ 07:00 น." },
+        { t: 1600, role: "btns", items: [
+          "07:00",
+          "08:00",
+          "ค่าเริ่มต้น จ–ศ 07:00",
+          { label: "← กลับเมนู", go: "news_settings" },
+        ] },
+      ],
+    },
+    news_web: {
+      title: "หน้าตั้งค่าบนเว็บ",
+      sub: "เพิ่มแหล่งข่าวละเอียดกว่าใน LINE",
+      note: "RSS · เพจ Facebook · เชื่อม YouTube",
+      steps: [
+        { t: 0, role: "bot", text: "บนหน้าตั้งค่าเว็บ เพิ่มได้อีกครับ:\n\n• วางลิงก์ RSS\n• ใส่ลิงก์เพจ Facebook\n• เชื่อมบัญชี Google เพื่อดึง YouTube ที่ Subscribe\n\nแล้วกลับมาพิมพ์ “ข่าววันนี้” หรือรอส่งเช้าอัตโนมัติได้เลย" },
+        { t: 900, role: "btns", items: [
+          { label: "← กลับเมนูตั้งค่าข่าว", go: "news_settings" },
+        ] },
+      ],
+    },
+    files: {
+      title: "ค้นไฟล์ · วางแผนเดินทาง",
+      sub: "ตัวอย่างใน LINE",
+      note: "ค้น OneDrive + คำนวณเวลาออกบ้าน",
+      steps: [
+        { t: 0, role: "me", text: "หาไฟล์งบประมาณ Q3" },
+        { t: 700, role: "typing" },
+        { t: 1600, role: "bot", text: "เจอ 3 ไฟล์ใน OneDrive ครับ\n1) งบประมาณ_Q3.xlsx\n2) สรุปงบ_Q3.pptx\n3) บันทึกประชุมงบ.pdf" },
+        { t: 2100, role: "btns", items: [
+          { label: "ผูกไฟล์กับนัด →", go: "linkmeet" },
+          "พอแค่นี้",
+        ] },
+        { t: 2800, role: "me", text: "ต้องออกกี่โมงถึงออฟฟิศทันนัดแรก" },
+        { t: 3400, role: "typing" },
+        { t: 4200, role: "bot", text: "นัดแรกวันนี้ 09:30 ที่ออฟฟิศ\nแนะนำออกจากบ้านประมาณ 08:35 (เผื่อรถติด 25 นาที) ครับ" },
+      ],
+    },
+    linkmeet: {
+      title: "ผูกไฟล์ · ลิงก์ กับนัดทีหลัง",
+      sub: "ตัวอย่างใน LINE",
+      note: "ไฟล์ OneDrive ต้องมีสิทธิ์เข้าถึง · AI อ่านตอนเตรียมนัด/บรีฟเช้า",
+      steps: [
+        { t: 0, role: "me", text: "ตารางวันนี้" },
+        { t: 600, role: "typing" },
+        { t: 1400, role: "bot", text: "🌅 ตารางวันนี้ — มี 2 นัด\n\n1) 09:30–10:00 — สแตนด์อัพทีม\n2) 14:00–15:00 — Weekly Sync\n\nอยากให้ช่วยเตรียมนัดไหนดีครับ?" },
+        { t: 2200, role: "me", text: "หาไฟล์ สรุปงบ Q3" },
+        { t: 2800, role: "typing" },
+        { t: 3600, role: "bot", text: "เจอ 2 ไฟล์ครับ\n1) สรุปงบ_Q3.pptx\n2) งบประมาณ_Q3.xlsx\n\nจะผูกกับนัด พิมพ์ เช่น “ผูกไฟล์นัด 2”" },
+        { t: 4300, role: "btns", items: ["ผูกไฟล์นัด 2", "แนบอัน 1 กับนัด 2"] },
+        { t: 5000, role: "me", text: "ผูกไฟล์นัด 2" },
+        { t: 5600, role: "typing" },
+        { t: 6400, role: "bot", text: "✅ ผูกไฟล์กับนัดแล้วครับ\n📌 Weekly Sync\n📎 สรุปงบ_Q3.pptx\n\nพิมพ์ “เตรียมนัด 2” ระบบจะอ่านไฟล์นี้ประกอบคำแนะนำให้ครับ" },
+        { t: 7200, role: "btns", items: ["เตรียมนัด 2", "เอกสารนัด 2"] },
+        { t: 8000, role: "me", text: "เตรียมนัด 2" },
+        { t: 8600, role: "typing" },
+        { t: 9800, role: "bot", text: "📌 Weekly Sync — เตรียมตัวครับ\n\n📄 จากไฟล์ที่คุณผูกไว้ (สรุปงบ_Q3.pptx):\n• ไฮไลต์ตัวเลข Q3 ที่ต้องพรีเซนต์\n• สไลด์สรุปความเสี่ยง\n\n✅ ต้องเตรียม: เปิดไฟล์ก่อนเข้าห้อง · ทบทวนตัวเลขหน้า 3–5\n💬 ควรพูด: สถานะเทียบเป้า · จุดที่ขอตัดสินใจ" },
+      ],
+    },
+    privacy: {
+      title: "ปลอดภัย · ถามก่อนทำ",
+      sub: "ตัวอย่างที่เจอจริงใน LINE",
+      note: "ระบบไม่จอง / ไม่ดึงข้อมูลเองเงียบๆ",
+      steps: [
+        { t: 0, role: "me", text: "จองประชุมพรุ่งนี้นะ กับเบส 10 โมง" },
+        { t: 700, role: "typing" },
+        { t: 1600, role: "bot", text: "จะจอง พรุ่งนี้ 10:00–11:00 กับเบส\nยังไม่ลง Outlook นะครับ — ยืนยันก่อนไหม?" },
+        { t: 2000, role: "btns", items: ["ยืนยันจอง", "ยกเลิก"] },
+        { t: 2900, role: "me", text: "(กรณียังไม่อนุญาตปฏิทิน)" },
+        { t: 3500, role: "bot", text: "ยังดึงตารางไม่ได้ครับ เพราะยังไม่ได้กดอนุญาตปฏิทิน\n\n→ ไม่กดอนุญาต = ไม่ดึงข้อมูล\n→ กดอนุญาตแล้วถึงจะดู/จองนัดได้" },
+      ],
+    },
+  };
+
+  const backdrop = document.getElementById("demo-backdrop");
+  const phone = document.getElementById("demo-phone");
+  const titleEl = document.getElementById("demo-title");
+  const subEl = document.getElementById("demo-sub");
+  const noteEl = document.getElementById("demo-note");
+  const closeBtn = document.getElementById("demo-close");
+  const replayBtn = document.getElementById("demo-replay");
+  if (!backdrop || !phone) return;
+
+  let timers = [];
+  let currentKey = null;
+
+  function clearTimers() {
+    timers.forEach(clearTimeout);
+    timers = [];
+  }
+
+  function closeDemo() {
+    clearTimers();
+    backdrop.classList.remove("open");
+    backdrop.hidden = true;
+    document.body.style.overflow = "";
+  }
+
+  function el(tag, cls, html) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  }
+
+  function playDemo(key) {
+    const demo = DEMOS[key];
+    if (!demo) return;
+    currentKey = key;
+    clearTimers();
+    titleEl.textContent = demo.title;
+    subEl.textContent = demo.sub;
+    noteEl.textContent = demo.note;
+    phone.innerHTML = "";
+    backdrop.hidden = false;
+    backdrop.classList.add("open");
+    document.body.style.overflow = "hidden";
+
+    demo.steps.forEach((step) => {
+      const id = setTimeout(() => {
+        if (step.role === "typing") {
+          const t = el("div", "typing", "<i></i><i></i><i></i>");
+          phone.appendChild(t);
+          requestAnimationFrame(() => t.classList.add("show"));
+          const kill = setTimeout(() => t.remove(), Math.max(400, (demo.steps.find((s) => s.t > step.t)?.t || step.t + 900) - step.t - 50));
+          timers.push(kill);
+        } else if (step.role === "panel") {
+          const p = el("div", "howto-panel", step.html);
+          phone.appendChild(p);
+          requestAnimationFrame(() => p.classList.add("show"));
+        } else if (step.role === "btns") {
+          const row = el("div", "qr-btns");
+          step.items.forEach((item) => {
+            const label = typeof item === "string" ? item : item.label;
+            const go = typeof item === "string" ? null : item.go;
+            const s = el("span", "", label);
+            if (demo.link && /LIVE/i.test(label)) {
+              s.style.cursor = "pointer";
+              s.addEventListener("click", () => window.open(demo.link, "_blank", "noopener"));
+            } else if (go && DEMOS[go]) {
+              s.style.cursor = "pointer";
+              s.title = "คลิกเพื่อดูตัวอย่าง";
+              s.addEventListener("click", () => playDemo(go));
+            }
+            row.appendChild(s);
+          });
+          phone.appendChild(row);
+          requestAnimationFrame(() => row.classList.add("show"));
+        } else {
+          phone.querySelectorAll(".typing").forEach((n) => n.remove());
+          const b = el("div", "bubble " + step.role, step.text.replace(/\n/g, "<br>"));
+          phone.appendChild(b);
+          requestAnimationFrame(() => b.classList.add("show"));
+        }
+        phone.scrollTop = phone.scrollHeight;
+      }, step.t);
+      timers.push(id);
+    });
+  }
+
+  document.querySelectorAll("[data-demo]").forEach((btn) => {
+    btn.addEventListener("click", () => playDemo(btn.getAttribute("data-demo")));
+  });
+  closeBtn.addEventListener("click", closeDemo);
+  replayBtn.addEventListener("click", () => { if (currentKey) playDemo(currentKey); });
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeDemo(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && backdrop.classList.contains("open")) closeDemo();
+  });
+})();
+</script>
+<script>
+(function () {
+  const AGENTS = [
+    { name: "GATE", shirt: "#3a86ff", hair: "#6b4a2e", screen: "search", st: "done" },
+    { name: "BRAIN", shirt: "#2f9e44", hair: "#2a2a2a", screen: "filter", st: "done" },
+    { name: "RUNNER", shirt: "#f0b429", hair: "#caa15a", screen: "search", st: "idle" },
+    { name: "SCRIBE", shirt: "#7048e8", hair: "#7a4a2a", screen: "render", st: "idle" },
+  ];
+  const DESK = [[70, 92], [250, 92], [70, 168], [250, 168]];
+  const SEAT = [[70, 126], [250, 126], [70, 202], [250, 202]];
+  const MAILBOX = [160, 214];
+  const SPINES = ["#c0392b", "#e67e22", "#f1c40f", "#27ae60", "#2980b9", "#8e44ad", "#d35400", "#16a085", "#c0392b", "#2c3e50"];
+  const cv = document.getElementById("office-room");
+  if (!cv) return;
+  const X = cv.getContext("2d");
+  X.imageSmoothingEnabled = false;
+  const W = cv.width, H = cv.height;
+  const R = (x, y, w, h, c) => { X.fillStyle = c; X.fillRect(Math.round(x), Math.round(y), Math.max(1, w | 0), Math.max(1, h | 0)); };
+  const badges = [...document.querySelectorAll("#office-frame .bdg")];
+  badges.forEach((b, i) => {
+    if (i < 4) {
+      b.style.left = (DESK[i][0] / 320 * 100) + "%";
+      b.style.top = ((DESK[i][1] - 7) / 240 * 100) + "%";
+    }
+  });
+  const dash = { x: 160, y: 150, tx: null, ty: null, face: "down", phase: 0, moving: false, carry: false, onArrive: null };
+  const dashBdg = document.getElementById("dash-bdg");
+  const capEl = document.getElementById("office-cap");
+  let mailFlash = 0;
+
+  function setBadge(i, st) {
+    AGENTS[i] && (AGENTS[i].st = st);
+    const b = badges[i];
+    if (!b) return;
+    b.className = "bdg " + st;
+    const s = b.querySelector(".stt");
+    if (s) s.textContent = st === "work" ? "WORKING" : st === "done" ? "DONE" : "IDLE";
+  }
+  function setDashBadge(st) {
+    if (!dashBdg) return;
+    dashBdg.className = "bdg " + st;
+    const s = dashBdg.querySelector(".stt");
+    if (s) s.textContent = st === "work" ? "WORKING" : st === "done" ? "DONE" : "IDLE";
+  }
+  function setCap(html) { if (capEl) capEl.innerHTML = html; }
+
+  function walkTo(px, py) {
+    return new Promise((res) => {
+      dash.tx = px; dash.ty = py; dash.onArrive = res;
+    });
+  }
+  function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+  function resetRoom() {
+    setBadge(0, "idle"); setBadge(1, "idle"); setBadge(2, "idle"); setBadge(3, "idle");
+    setDashBadge("idle"); dash.carry = false; dash.x = 160; dash.y = 150; dash.face = "down";
+  }
+
+  async function runStep(i, html, ms) {
+    setBadge(i, "work");
+    setCap(html);
+    await sleep(ms);
+    setBadge(i, "done");
+  }
+
+  async function deliver(pickupX, pickupY) {
+    const py = pickupY == null ? 178 : pickupY;
+    setDashBadge("work");
+    setCap("<b>DASH</b> (REPLY) — ส่งคำตอบกลับ LINE");
+    await walkTo(160, py);
+    await walkTo(pickupX, py);
+    dash.carry = true;
+    await sleep(240);
+    await walkTo(160, py);
+    await walkTo(160, 198);
+    dash.carry = false;
+    mailFlash = 70;
+    setCap("<b>เสร็จ</b> — ส่งเข้า LINE แล้ว");
+    setDashBadge("done");
+    await sleep(800);
+    await walkTo(160, 150);
+    setDashBadge("idle");
+  }
+
+  async function playLoop() {
+    for (;;) {
+      // —— 4 โต๊ะแล้วส่ง ——
+      resetRoom();
+      setCap("<b>ใช้ครบ 4 โต๊ะ แล้วส่ง</b> — เช่น “ดูตารางเบส”");
+      await sleep(900);
+      await runStep(0, "<b>GATE</b> — รับข้อความ", 700);
+      await runStep(1, "<b>BRAIN</b> — เข้าใจว่าอยากดูตาราง", 900);
+      await runStep(2, "<b>RUNNER</b> — ดึงปฏิทิน M365", 1000);
+      await runStep(3, "<b>SCRIBE</b> — เขียนคำตอบไทย", 900);
+      await deliver(218, 178);
+      await sleep(700);
+
+      // —— 3 โต๊ะแล้วส่ง (ข้าม RUNNER) ——
+      resetRoom();
+      setCap("<b>ใช้แค่ 3 โต๊ะ แล้วส่ง</b> — เช่น “ข่าววันนี้” · ไม่ดึงปฏิทิน → RUNNER ว่าง");
+      await sleep(900);
+      await runStep(0, "<b>GATE</b> — รับข้อความ", 700);
+      await runStep(1, "<b>BRAIN</b> — เข้าใจว่าอยากได้ข่าว", 900);
+      setCap("<b>ข้าม RUNNER</b> — คำสั่งนี้ไม่ต้องดึงปฏิทิน (โต๊ะเหลือง IDLE)");
+      await sleep(800);
+      await runStep(3, "<b>SCRIBE</b> — เรียบเรียงสรุปข่าว", 1000);
+      await deliver(218, 178);
+      await sleep(700);
+
+      // —— 2 โต๊ะแล้วส่ง (ข้าม RUNNER + SCRIBE) ——
+      resetRoom();
+      setCap("<b>ใช้แค่ 2 โต๊ะ แล้วส่ง</b> — เช่น “/ช่วยเหลือ” · ตอบสำเร็จรูป");
+      await sleep(900);
+      await runStep(0, "<b>GATE</b> — รับข้อความ", 700);
+      await runStep(1, "<b>BRAIN</b> — จับทางด่วนได้เลย", 900);
+      setCap("<b>ข้าม RUNNER + SCRIBE</b> — มีข้อความพร้อมส่ง (โต๊ะเหลือง/ม่วง IDLE)");
+      await sleep(900);
+      await deliver(218, 110);
+      await sleep(700);
+
+      // —— 1 โต๊ะแล้วส่ง ——
+      resetRoom();
+      setCap("<b>ใช้แค่ 1 โต๊ะ แล้วส่ง</b> — เช่น “/ยกเลิก” · คำสั่งลัดชัดเจน");
+      await sleep(900);
+      await runStep(0, "<b>GATE</b> — รับ + ยกเลิกงานค้าง", 1000);
+      setCap("<b>ข้าม BRAIN · RUNNER · SCRIBE</b> — ส่งคำตอบสั้นทันที");
+      await sleep(800);
+      await deliver(102, 110);
+      await sleep(1100);
+    }
+  }
+
+  function drawFloor() {
+    R(0, 52, W, H - 52, "#7a5636");
+    for (let y = 52; y < H; y += 10) R(0, y, W, 1, "#6b4a2e");
+    for (let x = 0; x < W; x += 40) R(x, 52, 1, H - 52, "#6e4d30");
+    R(140, 52, 40, H - 52, "#946f49");
+    for (let y = 52; y < H; y += 10) R(140, y, 40, 1, "#845f3d");
+    R(139, 52, 1, H - 52, "#5f4527"); R(180, 52, 1, H - 52, "#5f4527");
+  }
+  function drawWalls() {
+    R(0, 0, W, 52, "#2e2116"); R(0, 50, W, 2, "#1c140c");
+    [[8, 140], [172, 140]].forEach(([bx, bw]) => {
+      R(bx, 8, bw, 40, "#4a3420"); X.strokeStyle = "#5c4228"; X.strokeRect(bx + .5, 8.5, bw - 1, 39);
+      for (let r = 0; r < 3; r++) {
+        const ry = 12 + r * 13; R(bx + 2, ry + 9, bw - 4, 2, "#3a281a");
+        for (let s = 0; s < Math.floor((bw - 6) / 4); s++) R(bx + 3 + s * 4, ry, 3, 9, SPINES[(s + r * 3) % SPINES.length]);
+      }
+    });
+    R(150, 10, 20, 10, "#ee1b24"); R(150, 10, 20, 2, "#b3121a"); R(153, 13, 14, 2, "#0a0a0a"); R(153, 16, 10, 1, "#0a0a0a");
+  }
+  function drawPlant(x, y) {
+    R(x - 3, y - 2, 7, 5, "#8a5a2a"); R(x - 4, y + 3, 9, 3, "#6b4420");
+    R(x - 2, y - 8, 3, 6, "#2f7d32"); R(x - 5, y - 6, 3, 4, "#2f7d32");
+    R(x + 2, y - 6, 3, 4, "#39d353"); R(x - 1, y - 11, 2, 3, "#39d353");
+  }
+  function drawScreen(mx, my, mw, mh, id, st, now) {
+    if (st === "idle") { R(mx + mw - 3, my + mh - 2, 1, 1, Math.floor(now / 500) % 2 ? "#173" : "#000"); return; }
+    if (st === "done") {
+      X.strokeStyle = "#39d353"; X.lineWidth = 1; X.beginPath();
+      X.moveTo(mx + 4, my + 4); X.lineTo(mx + 6, my + 6); X.lineTo(mx + 10, my + 2); X.stroke(); return;
+    }
+    const t = (now / 700) % 1;
+    if (id === "search") {
+      const sx = mx + 1 + t * (mw - 2);
+      R(sx, my + 1, 1, mh - 2, "#39d353");
+      R(mx + 3, my + 2, 1, 1, "#39d353"); R(mx + 8, my + 4, 1, 1, "#39d353");
+    } else if (id === "filter") {
+      const ok = Math.floor(now / 450) % 2 === 0;
+      X.strokeStyle = ok ? "#39d353" : "#ee1b24"; X.beginPath();
+      if (ok) { X.moveTo(mx + 4, my + 4); X.lineTo(mx + 6, my + 6); X.lineTo(mx + 10, my + 2); }
+      else { X.moveTo(mx + 5, my + 2); X.lineTo(mx + 9, my + 6); X.moveTo(mx + 9, my + 2); X.lineTo(mx + 5, my + 6); }
+      X.stroke();
+    } else {
+      R(mx + 2, my + 1, mw - 4, 1, "#ee1b24");
+      const rows = Math.floor(t * 3) + 1;
+      for (let r = 0; r < rows && r < 3; r++) R(mx + 2, my + 3 + r * 2, mw - 4, 1, "#cfcfcf");
+    }
+  }
+  function drawWorker(i, now) {
+    const [sx, sy] = SEAT[i], a = AGENTS[i], st = a.st;
+    const work = st === "work";
+    const bob = work ? Math.round(Math.sin(now / 160) * 1) : 0;
+    const y = sy + bob;
+    const tw = work ? (Math.floor(now / 140) % 2) : 0;
+    R(sx - 8, y - 1, 16, 5, "#3a2a1a"); R(sx - 8, y - 1, 16, 2, "#4e3a28");
+    R(sx - 8, y - 10, 16, 10, a.shirt);
+    R(sx - 10, y - 11 + tw, 4, 8, a.shirt); R(sx + 6, y - 11 + (1 - tw), 4, 8, a.shirt);
+    R(sx - 10, y - 12 + tw, 4, 2, "#f0c090"); R(sx + 6, y - 12 + (1 - tw), 4, 2, "#f0c090");
+    R(sx - 6, y - 19, 12, 11, a.hair);
+    if (work) { const p = Math.floor(now / 200) % 2; R(sx - 1, y - 25, 2, 2, p ? "#f0b429" : "#5a4410"); }
+    if (st === "done") {
+      X.strokeStyle = "#39d353"; X.lineWidth = 2; X.beginPath();
+      X.moveTo(sx - 3, y - 24); X.lineTo(sx - 1, y - 22); X.lineTo(sx + 3, y - 27); X.stroke(); X.lineWidth = 1;
+    }
+  }
+  function drawDesk(i, now) {
+    const [dx, dy] = DESK[i], st = AGENTS[i].st;
+    R(dx - 24, dy - 10, 48, 24, "#6b4a2e"); R(dx - 24, dy - 10, 48, 2, "#835a36"); R(dx - 24, dy + 12, 48, 2, "#4e3420");
+    R(dx - 24, dy - 10, 2, 24, "#5a3f26"); R(dx + 22, dy - 10, 2, 24, "#5a3f26");
+    R(dx - 9, dy - 9, 18, 12, "#141414");
+    const scr = st === "idle" ? "#0a1626" : st === "done" ? "#0c2a14" : "#0a2018";
+    R(dx - 7, dy - 7, 14, 8, scr); R(dx - 2, dy + 3, 4, 2, "#0e0e0e");
+    drawScreen(dx - 7, dy - 7, 14, 8, AGENTS[i].screen, st, now);
+    R(dx - 8, dy + 7, 16, 3, "#4a3a2a"); R(dx + 11, dy + 6, 3, 4, st === "work" ? "#ee1b24" : "#8a5a2a");
+    drawWorker(i, now);
+  }
+  function drawDash(now) {
+    const moving = dash.moving;
+    const f = Math.floor(dash.phase) % 2;
+    const bob = moving ? (f ? 0 : -1) : Math.round(Math.sin(now / 500) * 0.5);
+    const x = Math.round(dash.x), y = Math.round(dash.y) + bob;
+    X.fillStyle = "rgba(0,0,0,0.28)"; X.fillRect(x - 6, y + 1, 12, 2);
+    const l1 = moving ? (f ? 2 : 0) : 0, l2 = moving ? (f ? 0 : 2) : 0;
+    R(x - 4, y - 4 + l1, 3, 4, "#2b2b3a"); R(x + 1, y - 4 + l2, 3, 4, "#2b2b3a");
+    R(x - 5, y - 12, 10, 8, "#ee1b24"); R(x - 5, y - 12, 10, 2, "#b3121a");
+    R(x - 7, y - 11, 2, 6, "#ee1b24"); R(x + 5, y - 11, 2, 6, "#ee1b24");
+    if (dash.carry) {
+      R(x - 4, y - 20, 8, 7, "#e8e8e0"); R(x - 4, y - 20, 8, 2, "#39d353");
+      R(x - 3, y - 16, 6, 1, "#888"); R(x - 3, y - 14, 4, 1, "#888");
+    }
+    const hy = y - 19;
+    R(x - 5, hy, 10, 9, "#f0c090");
+    if (dash.face === "up") { R(x - 5, hy - 1, 10, 9, "#141414"); }
+    else {
+      R(x - 5, hy - 1, 10, 4, "#141414"); R(x - 5, hy, 1, 5, "#141414"); R(x + 4, hy, 1, 5, "#141414");
+      if (dash.face === "down") { R(x - 3, hy + 4, 2, 2, "#141414"); R(x + 1, hy + 4, 2, 2, "#141414"); }
+      else if (dash.face === "left") { R(x - 3, hy + 4, 2, 2, "#141414"); }
+      else { R(x + 1, hy + 4, 2, 2, "#141414"); }
+    }
+    if (dashBdg) {
+      dashBdg.style.left = (dash.x / 320 * 100) + "%";
+      dashBdg.style.top = ((dash.y - 20) / 240 * 100) + "%";
+    }
+  }
+  function drawMailbox() {
+    const [mx, my] = MAILBOX;
+    R(mx - 3, my, 3, 10, "#5a3f26");
+    R(mx - 9, my - 10, 18, 11, "#b3121a"); R(mx - 9, my - 10, 18, 2, "#ee1b24");
+    R(mx - 7, my - 7, 14, 6, "#7a0d10"); R(mx - 2, my - 6, 4, 4, "#39d353");
+    R(mx + 8, my - 12, 1, 6, "#5a3f26"); R(mx + 9, my - 12, 4, 3, mailFlash > 0 ? "#39d353" : "#8a5a2a");
+    if (mailFlash > 0) {
+      R(mx - 4, my - 22, 10, 8, "#0d0d0d");
+      X.strokeStyle = "#39d353"; X.strokeRect(mx - 4.5, my - 22.5, 11, 9);
+      X.beginPath(); X.moveTo(mx - 1, my - 18); X.lineTo(mx + 1, my - 16); X.lineTo(mx + 4, my - 20); X.stroke();
+      mailFlash--;
+    }
+  }
+  function updateDash() {
+    if (dash.tx === null || dash.ty === null) { dash.moving = false; return; }
+    const dx = dash.tx - dash.x, dy = dash.ty - dash.y, d = Math.hypot(dx, dy), sp = 1.05;
+    if (d < 1.1) {
+      dash.x = dash.tx; dash.y = dash.ty; dash.tx = null; dash.moving = false;
+      const cb = dash.onArrive; dash.onArrive = null; if (cb) cb();
+      return;
+    }
+    dash.x += dx / d * sp; dash.y += dy / d * sp; dash.phase += 0.2; dash.moving = true;
+    dash.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+  }
+
+  function loop(now) {
+    requestAnimationFrame(loop);
+    updateDash();
+    drawFloor(); drawWalls();
+    drawPlant(14, H - 14); drawPlant(W - 14, H - 14);
+    drawMailbox();
+    for (let i = 0; i < 4; i++) drawDesk(i, now);
+    drawDash(now);
+  }
+  requestAnimationFrame(loop);
+  playLoop();
+})();
+</script>
+<script>
+(function () {
+  const ids = ["see", "scan", "can", "office"];
+  const sections = ids.map((id) => document.getElementById(id)).filter(Boolean);
+  const topLinks = [...document.querySelectorAll("#top-nav a[href^='#']")];
+  const dots = [...document.querySelectorAll("#sec-dots a[href^='#']")];
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const OFFSET = 72;
+
+  function setActive(id) {
+    const mark = (list) =>
+      list.forEach((a) => a.classList.toggle("is-active", a.getAttribute("href") === "#" + id));
+    mark(topLinks);
+    mark(dots);
+  }
+
+  function sectionTop(el) {
+    return el.getBoundingClientRect().top + window.scrollY - OFFSET;
+  }
+
+  function currentIndex() {
+    const y = window.scrollY + OFFSET + 8;
+    let idx = 0;
+    for (let i = 0; i < sections.length; i++) {
+      if (sectionTop(sections[i]) <= y + 2) idx = i;
+    }
+    return idx;
+  }
+
+  function nearestId() {
+    return sections[currentIndex()]?.id || ids[0];
+  }
+
+  let locked = false;
+  let acc = 0;
+
+  function goToIndex(i) {
+    const el = sections[Math.max(0, Math.min(sections.length - 1, i))];
+    if (!el) return;
+    locked = true;
+    acc = 0;
+    window.scrollTo({ top: Math.max(0, sectionTop(el)), behavior: reduce ? "auto" : "smooth" });
+    history.replaceState(null, "", "#" + el.id);
+    setActive(el.id);
+    setTimeout(() => { locked = false; acc = 0; }, reduce ? 80 : 750);
+  }
+
+  function nearTop(el) {
+    return el.getBoundingClientRect().top >= OFFSET - 12;
+  }
+  function nearBottom(el) {
+    return el.getBoundingClientRect().bottom <= window.innerHeight + 48;
+  }
+
+  // ล้อเมาส์ → หัวข้อถัดไป/ก่อนหน้า (หัวข้อยาวเลื่อนในหน้าได้จนถึงขอบ)
+  window.addEventListener(
+    "wheel",
+    (e) => {
+      if (reduce) return;
+      if (e.target.closest(".demo-backdrop, .qr-lightbox, .demo-phone, details.more, [data-free-scroll]")) {
+        return;
+      }
+      if (e.altKey) return;
+
+      e.preventDefault();
+      if (locked) return;
+
+      acc += e.deltaY;
+      if (Math.abs(acc) < 36) return;
+
+      const dir = acc > 0 ? 1 : -1;
+      const step = acc;
+      acc = 0;
+      const idx = currentIndex();
+      const cur = sections[idx];
+      if (!cur) return;
+
+      const tall = cur.getBoundingClientRect().height > window.innerHeight * 0.95;
+      if (dir > 0 && tall && !nearBottom(cur)) {
+        window.scrollBy({ top: Math.min(Math.abs(step), window.innerHeight * 0.85), left: 0, behavior: "auto" });
+        return;
+      }
+      if (dir < 0 && tall && !nearTop(cur)) {
+        window.scrollBy({ top: -Math.min(Math.abs(step), window.innerHeight * 0.85), left: 0, behavior: "auto" });
+        return;
+      }
+
+      const next = idx + dir;
+      if (next < 0 || next >= sections.length) return;
+      goToIndex(next);
+    },
+    { passive: false }
+  );
+
+  window.addEventListener("keydown", (e) => {
+    if (reduce || locked) return;
+    if (e.target.closest("input, textarea, select, [contenteditable]")) return;
+    let dir = 0;
+    if (e.key === "PageDown" || e.key === "ArrowDown") dir = 1;
+    if (e.key === "PageUp" || e.key === "ArrowUp") dir = -1;
+    if (e.key === " ") dir = e.shiftKey ? -1 : 1;
+    if (!dir) return;
+    const next = currentIndex() + dir;
+    if (next < 0 || next >= sections.length) return;
+    e.preventDefault();
+    goToIndex(next);
+  });
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!locked) setActive(nearestId());
+    },
+    { passive: true }
+  );
+
+  [...topLinks, ...dots].forEach((a) => {
+    a.addEventListener("click", (e) => {
+      const href = a.getAttribute("href") || "";
+      if (!href.startsWith("#")) return;
+      const el = document.querySelector(href);
+      if (!el) return;
+      e.preventDefault();
+      const i = sections.indexOf(el);
+      if (i >= 0) goToIndex(i);
+    });
+  });
+
+  setActive(nearestId());
+})();
+</script>
+</body>
+</html>
