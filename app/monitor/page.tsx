@@ -482,7 +482,9 @@ function MonitorRoom({
 
     if (/📰 เลือกเด่น/.test(lbl)) {
       setNewsScoutStatus((s) => (s === "work" ? "done" : s));
-      if (e.status === "start") fireNewsBeam(0, 1);
+      // Handoff spark only on real desk handoff — not on ★ AI retry/fallback starts.
+      if (e.status === "start" && !/★ AI:/.test(lbl) && !err) fireNewsBeam(0, 1);
+      if (err) newsBeamsRef.current = [];
       const ai = parseNewsAi(lbl);
       if (e.status === "start" || ai) {
         setNewsPicker((p) => ({
@@ -499,7 +501,8 @@ function MonitorRoom({
 
     if (/📰 อ่านบทความ/.test(lbl)) {
       setNewsPicker((p) => (p.status === "work" ? { ...p, status: "done" } : p));
-      if (e.status === "start") fireNewsBeam(1, 2);
+      if (e.status === "start" && !err) fireNewsBeam(1, 2);
+      if (err) newsBeamsRef.current = [];
       setNewsReader({
         status: err ? "error" : e.status === "start" ? "work" : "done",
         ai: "—",
@@ -511,7 +514,8 @@ function MonitorRoom({
 
     if (/📰 สรุปประเด็น/.test(lbl)) {
       setNewsReader((p) => (p.status === "work" ? { ...p, status: "done" } : p));
-      if (e.status === "start") fireNewsBeam(2, 3);
+      if (e.status === "start" && !/★ AI:/.test(lbl) && !err) fireNewsBeam(2, 3);
+      if (err) newsBeamsRef.current = [];
       const ai = parseNewsAi(lbl);
       setNewsWriter((p) => ({
         status: err ? "error" : e.status === "start" || (ai && !/✓/.test(lbl)) ? "work" : "done",
@@ -1346,12 +1350,17 @@ function MonitorRoom({
     // receive / parse / fetch / compose — THE OFFICE only
     const a = AGENTS[idx];
     if (e.status === "start") {
-      if (idx >= 1 && idx <= 3) fireOfficeBeam(idx - 1, idx);
+      if (idx >= 1 && idx <= 3 && !/★ AI:/.test(e.label || "")) fireOfficeBeam(idx - 1, idx);
       setAgent(idx, "work");
       const capExtra = llmFromLabel ? ` · <b style="color:#f0b429">${llmFromLabel}</b>` : "";
       setCap(`<b>${a.name}</b> — ${a.role}${capExtra}`);
       log(`[${a.name}] ${e.label}`, "a");
       await sleep(220);
+    } else if (e.status === "error" || /✗/.test(e.label || "")) {
+      officeBeamsRef.current = [];
+      setAgent(idx, "error");
+      setCap(`<b>${a.name}</b> — ล้มเหลว · ${e.label}`);
+      log(`  ${a.name}: ${e.label}`, "r");
     } else {
       setAgent(idx, "work");
       const capExtra = llmFromLabel ? ` · <b style="color:#f0b429">${llmFromLabel}</b>` : "";

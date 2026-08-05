@@ -16,7 +16,7 @@ type Provider = "qwen" | "groq" | "gemini";
 /** Skip a provider briefly after 429 so the next LINE message hits a healthy one first. */
 const rateLimitedUntil = new Map<Provider, number>();
 
-function markRateLimited(provider: Provider, ms = 60_000) {
+function markRateLimited(provider: Provider, ms = 180_000) {
   rateLimitedUntil.set(provider, Date.now() + ms);
 }
 
@@ -64,7 +64,7 @@ function settings(provider: Provider): { baseUrl: string; key: string; model: st
         process.env.GEMINI_BASE_URL ||
         "https://generativelanguage.googleapis.com/v1beta/openai",
       key,
-      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
     };
   }
   const key = process.env.GROQ_API_KEY || "";
@@ -96,42 +96,67 @@ async function callProvider(
   const cfg = settings(provider);
   if (!cfg) throw new Error(`${provider} not configured`);
 
-  // Hard timeout so a slow/hanging provider aborts and falls back instead of
-  // blocking the whole request (LINE users were waiting ~5s+ on qwen).
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 20000);
-  let res: Response;
-  try {
-    const body: Record<string, unknown> = {
-      model: cfg.model,
-      temperature: opts?.temperature ?? 0.3,
-      messages: [
-        { role: "system", content: withLanguageRule(system) },
-        { role: "user", content: user },
-      ],
-    };
-    if (opts?.json) body.response_format = { type: "json_object" };
-    // Gemini 2.5 Flash can spend tokens on "thinking"; for fast intent JSON keep it light.
-    if (provider === "gemini" && opts?.fast) {
-      body.reasoning_effort = "none";
-    }
+  const models =
+    provider === "gemini"
+      ? Array.from(
+          new Set(
+            [
+              cfg.model,
+              process.env.GEMINI_MODEL_FALLBACK || "",
+              "gemini-2.0-flash",
+              "gemini-flash-latest",
+              "gemini-2.5-flash",
+            ].filter(Boolean)
+          )
+        )
+      : [cfg.model];
 
-    res = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" },
-      signal: controller.signal,
-      body: JSON.stringify(body),
-    });
-  } finally {
-    clearTimeout(timer);
+  let lastErr: ProviderHttpError | null = null;
+  for (const model of models) {
+    // Hard timeout so a slow/hanging provider aborts and falls back instead of
+    // blocking the whole request (LINE users were waiting ~5s+ on qwen).
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 20000);
+    let res: Response;
+    try {
+      const body: Record<string, unknown> = {
+        model,
+        temperature: opts?.temperature ?? 0.3,
+        messages: [
+          { role: "system", content: withLanguageRule(system) },
+          { role: "user", content: user },
+        ],
+      };
+      if (opts?.json) body.response_format = { type: "json_object" };
+      // Gemini 2.5 Flash can spend tokens on "thinking"; for fast intent JSON keep it light.
+      if (provider === "gemini" && opts?.fast) {
+        body.reasoning_effort = "none";
+      }
+
+      res = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify(body),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) {
+      const text = (await res.text()).slice(0, 240);
+      if (res.status === 429) markRateLimited(provider);
+      lastErr = new ProviderHttpError(provider, res.status, text);
+      // Model gone / not found → try next Gemini alias before failing the provider.
+      if (provider === "gemini" && (res.status === 404 || /not found|no longer available/i.test(text))) {
+        console.warn(`[llm] gemini model ${model} → ${res.status}; trying next alias`);
+        continue;
+      }
+      throw lastErr;
+    }
+    const data = await res.json();
+    return (data.choices?.[0]?.message?.content ?? "").trim();
   }
-  if (!res.ok) {
-    const text = (await res.text()).slice(0, 240);
-    if (res.status === 429) markRateLimited(provider);
-    throw new ProviderHttpError(provider, res.status, text);
-  }
-  const data = await res.json();
-  return (data.choices?.[0]?.message?.content ?? "").trim();
+  throw lastErr || new Error(`${provider} failed`);
 }
 
 /** User-facing Thai message — never leak provider JSON / org ids. */
@@ -170,11 +195,20 @@ export async function chat(
 ): Promise<string> {
   let chain = providerChain(opts?.fast).filter((p) => settings(p));
   if (opts?.prefer && settings(opts.prefer)) {
-    chain = [opts.prefer, ...chain.filter((p) => p !== opts.prefer)];
+    // Prefer healthy provider; if preferred is mid-cooldown, put it last.
+    if (!isRateLimited(opts.prefer)) {
+      chain = [opts.prefer, ...chain.filter((p) => p !== opts.prefer)];
+    } else {
+      chain = [...chain.filter((p) => p !== opts.prefer), opts.prefer];
+    }
   }
   if (!chain.length) {
     throw new Error("No LLM provider configured (set QWEN_API_KEY, GROQ_API_KEY, and/or GEMINI_API_KEY)");
   }
+  // Try healthy providers first; still attempt cooling ones only after those fail.
+  const healthy = chain.filter((p) => !isRateLimited(p));
+  const cooling = chain.filter((p) => isRateLimited(p));
+  chain = healthy.length ? [...healthy, ...cooling] : chain;
 
   const stage: TraceStep = opts?.traceStep ?? (opts?.json ? "parse" : "compose");
   const pfx = opts?.tracePrefix ? `${opts.tracePrefix} · ` : "";

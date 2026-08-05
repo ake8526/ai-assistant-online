@@ -539,8 +539,13 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
       const parsed = JSON.parse(raw) as Record<string, StorySummary>;
       Object.assign(summaries, parsed);
       trace("compose", `📰 สรุปประเด็น · ${items.length} เรื่อง ✓`);
-    } catch {
-      /* fallbacks below */
+    } catch (e) {
+      // Still deliver news with title/snippet later — mark WRITER clearly, don't look "alive".
+      trace(
+        "compose",
+        `📰 สรุปประเด็น · AI ล้ม · ใช้ข้อความดิบแทน (${String(e).slice(0, 80)})`,
+        "error"
+      );
     }
   }
 
