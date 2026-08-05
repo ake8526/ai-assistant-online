@@ -4,11 +4,35 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>KTIS X · พรีวิว STAGES ขวา (ห้องจริง)</title>
-<meta http-equiv="refresh" content="0;url=/monitor?layout=right" />
-<script>location.replace("/monitor?layout=right");</script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #0a0a0a; color: #f5f5f5; font-family: system-ui, sans-serif; }
+  .bar {
+    height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 14px;
+    background: #121212; border-bottom: 1px solid #262626; flex-shrink: 0;
+  }
+  .bar b { font-size: 13px; letter-spacing: .02em; }
+  .bar span { color: #7c7c7c; font-size: 12px; }
+  .bar a {
+    margin-left: auto; color: #7dd3fc; text-decoration: none; font-size: 12px;
+    border: 1px solid #38bdf8; padding: 4px 10px; border-radius: 6px;
+  }
+  .bar a:hover { background: rgba(56,189,248,.12); }
+  iframe {
+    display: block; width: 100%; height: calc(100% - 44px); border: 0; background: #0a0a0a;
+  }
+</style>
 </head>
-<body style="background:#0a0a0a;color:#f5f5f5;font-family:system-ui;padding:24px">
-  <p>กำลังเปิดพรีวิวเลย์เอาต์จริง…</p>
-  <p><a href="/monitor?layout=right" style="color:#7dd3fc">/monitor?layout=right</a></p>
+<body>
+  <div class="bar">
+    <b>พรีวิว · STAGES ชิดขวา</b>
+    <span>หน้าจริง /monitor · เลย์เอาต์ทดสอบ</span>
+    <a href="/monitor?layout=right" target="_blank" rel="noopener">เปิดเต็มแท็บ</a>
+  </div>
+  <iframe
+    title="Monitor · STAGES right"
+    src="/monitor?embed=1&layout=right"
+    allow="fullscreen"
+  ></iframe>
 </body>
 </html>

@@ -1470,7 +1470,7 @@ function MonitorRoom({
             {stagesRight ? (
               <a className="layout-switch" href="/monitor">← เลย์เอาต์ปัจจุบัน</a>
             ) : (
-              <a className="layout-switch" href="/monitor?layout=right" title="พรีวิวจริง: STAGES ชิดขวา">พรีวิว STAGES ขวา</a>
+              <a className="layout-switch" href="/monitor-stages-right.html" title="พรีวิวจริง: STAGES ชิดขวา">พรีวิว STAGES ขวา</a>
             )}
           </div>
         </header>

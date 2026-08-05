@@ -26,8 +26,7 @@
   html {
     scroll-behavior: smooth;
     scroll-padding-top: 0;
-    /* proximity = soft snap; ไม่กินล้อเมาส์แบบ mandatory */
-    scroll-snap-type: y proximity;
+    scroll-snap-type: y mandatory;
     height: 100%;
   }
   @media (prefers-reduced-motion: reduce) {
@@ -76,7 +75,7 @@
     padding: 96px 0 56px;
     box-sizing: border-box;
     scroll-snap-align: start;
-    scroll-snap-stop: normal;
+    scroll-snap-stop: always;
   }
   .eyebrow {
     display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .14em;
@@ -163,7 +162,7 @@
     box-sizing: border-box;
     display: flex; flex-direction: column; justify-content: flex-start;
     scroll-snap-align: start;
-    scroll-snap-stop: normal;
+    scroll-snap-stop: always;
     scroll-margin-top: 0;
   }
   header.hero {
@@ -912,7 +911,7 @@
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
         <a class="btn primary" style="padding:8px 14px;font-size:13px" href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">เปิด /monitor เต็มจอ</a>
-        <a class="btn ghost" style="padding:8px 14px;font-size:13px" href="https://ktis-ai-assistant.vercel.app/monitor?layout=right" target="_blank" rel="noopener">พรีวิว STAGES ขวา</a>
+        <a class="btn ghost" style="padding:8px 14px;font-size:13px" href="/monitor-stages-right.html" target="_blank" rel="noopener">พรีวิว STAGES ขวา</a>
         <span style="color:var(--mute);font-size:13px">ด้านล่าง = เดโมวนทดสอบออฟไลน์</span>
       </div>
       <div class="office-panel">
@@ -951,7 +950,7 @@
           <ul>
             <li>ห้องด้านบน = render เดียวกับโค้ดหน้า <code>/monitor</code> (ออฟไลน์ได้)</li>
             <li>หน้าจริง: <a href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">/monitor</a></li>
-            <li>พรีวิว STAGES ชิดขวา (ห้องจริง): <a href="/monitor?layout=right" target="_blank" rel="noopener">/monitor?layout=right</a></li>
+            <li>พรีวิว STAGES ชิดขวา: <a href="/monitor-stages-right.html" target="_blank" rel="noopener">/monitor-stages-right.html</a></li>
           </ul>
         </div>
       </details>
@@ -959,7 +958,7 @@
 
     <div class="footer">
       <div>KTIS X · AI Assistant</div>
-      <div>อัปเดต Aug 2026 · เลื่อนล้อเมาส์ได้ตามปกติ · จุดขวา = กระโดดหัวข้อ</div>
+      <div>อัปเดต Aug 2026 · เลื่อนล้อเมาส์ทีละหัวข้อแบบนิ่ม · จุดขวา = กระโดดหัวข้อ</div>
     </div>
   </div>
 
@@ -1693,17 +1692,55 @@
   function goToIndex(i, { instant } = {}) {
     const el = sections[Math.max(0, Math.min(sections.length - 1, i))];
     if (!el) return;
+    locked = true;
+    wheelAcc = 0;
     el.scrollIntoView({
       behavior: reduce || instant ? "auto" : "smooth",
       block: "start",
     });
     history.replaceState(null, "", "#" + el.id);
     setActive(el.id);
+    window.clearTimeout(wheelTimer);
+    // unlock หลังเลื่อนนิ่มๆ จบ (~0.55s) — ไม่ล็อกนานจนรู้สึกค้าง
+    wheelTimer = window.setTimeout(() => { locked = false; }, reduce || instant ? 80 : 560);
   }
 
-  // Native wheel scroll — dots/nav still jump to sections
+  let locked = false;
+  let wheelAcc = 0;
+  let wheelTimer = 0;
+
+  // ล้อเมาส์ / แทร็กแพด → เลื่อนทีละหัวข้อแบบนิ่ม (ไม่กิน event ตอนสุดขอบ)
+  window.addEventListener(
+    "wheel",
+    (e) => {
+      if (reduce) return;
+      if (e.target.closest(".demo-backdrop, .qr-lightbox, .demo-phone, details.more, [data-free-scroll], iframe")) {
+        return;
+      }
+      if (e.altKey) return;
+
+      wheelAcc += e.deltaY;
+      if (locked) {
+        e.preventDefault();
+        return;
+      }
+      if (Math.abs(wheelAcc) < 36) return;
+
+      const dir = wheelAcc > 0 ? 1 : -1;
+      const next = currentIndex() + dir;
+      wheelAcc = 0;
+
+      // ขอบบน/ล่าง → ปล่อยเลื่อนปกติ (footer ฯลฯ)
+      if (next < 0 || next >= sections.length) return;
+
+      e.preventDefault();
+      goToIndex(next);
+    },
+    { passive: false }
+  );
+
   window.addEventListener("keydown", (e) => {
-    if (reduce) return;
+    if (reduce || locked) return;
     if (e.target.closest("input, textarea, select, [contenteditable]")) return;
     let dir = 0;
     if (e.key === "PageDown" || e.key === "ArrowDown") dir = 1;
@@ -1720,6 +1757,7 @@
   window.addEventListener(
     "scroll",
     () => {
+      if (locked) return;
       if (scrollRaf) return;
       scrollRaf = requestAnimationFrame(() => {
         scrollRaf = 0;
