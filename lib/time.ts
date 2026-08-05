@@ -155,6 +155,81 @@ export function parseHHMM(s: unknown): number | null {
   return h < 24 && mi < 60 ? h * 60 + mi : null;
 }
 
+/**
+ * Parse Thai / casual clock phrases into "HH:MM".
+ * Examples: "ตอน 11 โมง", "11 โมงครึ่ง", "บ่ายสองโมง", "17:30", "ทุ่มหนึ่ง"
+ */
+export function parseThaiClockToHHMM(text: string): string | null {
+  const t = (text || "").trim().replace(/\s+/g, " ");
+  if (!t) return null;
+
+  const colon = t.match(/(?:ตอน|เวลา|ที่)?\s*(\d{1,2})\s*[:.]\s*(\d{2})/);
+  if (colon) {
+    const h = Number(colon[1]);
+    const mi = Number(colon[2]);
+    if (h < 24 && mi < 60) return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+  }
+
+  const wordMap: Record<string, number> = {
+    หนึ่ง: 1,
+    สอง: 2,
+    สาม: 3,
+    สี่: 4,
+    ห้า: 5,
+    หก: 6,
+    เจ็ด: 7,
+    แปด: 8,
+    เก้า: 9,
+    สิบ: 10,
+    สิบเอ็ด: 11,
+    สิบสอง: 12,
+  };
+
+  const bai = t.match(/บ่าย\s*(\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)(?:\s*โมง)?(?:\s*(ครึ่ง))?/);
+  if (bai) {
+    const n = wordMap[bai[1]] ?? Number(bai[1]);
+    if (n >= 1 && n <= 6) {
+      const h = n === 1 ? 13 : n + 12;
+      const mi = bai[2] ? 30 : 0;
+      return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+    }
+  }
+
+  const tum = t.match(/ทุ่ม\s*(\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)?(?:\s*(ครึ่ง))?/);
+  if (tum || /ทุ่ม/.test(t)) {
+    const raw = tum?.[1];
+    const n = raw ? wordMap[raw] ?? Number(raw) : 1;
+    if (n >= 1 && n <= 5) {
+      const h = n === 1 ? 19 : n + 18;
+      const mi = tum?.[2] ? 30 : 0;
+      if (h < 24) return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+    }
+  }
+
+  const mong = t.match(/(?:ตอน|เวลา|ที่)?\s*(\d{1,2})\s*โมง(?:\s*(ครึ่ง|[\d]{1,2})\s*(?:นาที)?)?/);
+  if (mong) {
+    let h = Number(mong[1]);
+    let mi = 0;
+    if (mong[2] === "ครึ่ง") mi = 30;
+    else if (mong[2] && /^\d+$/.test(mong[2])) mi = Math.min(59, Number(mong[2]));
+    // "1–6 โมง" without เช้า/บ่าย → afternoon (common office speak); 7–11 stay morning
+    if (h >= 1 && h <= 6 && !/เช้า/.test(t)) h += 12;
+    if (h >= 0 && h < 24 && mi < 60) return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+  }
+
+  return null;
+}
+
+/** Minutes-of-day from HH:MM or Thai clock phrase. */
+export function parseClockToMinutes(text: unknown): number | null {
+  const s = String(text || "").trim();
+  if (!s) return null;
+  const direct = parseHHMM(s);
+  if (direct != null) return direct;
+  const hh = parseThaiClockToHHMM(s);
+  return hh ? parseHHMM(hh) : null;
+}
+
 export function minutesOfDay(d: Date): number {
   return d.getUTCHours() * 60 + d.getUTCMinutes();
 }

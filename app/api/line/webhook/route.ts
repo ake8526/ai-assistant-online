@@ -435,7 +435,8 @@ function confirmCardMessage(d: Draft, prefix = ""): object {
     `📌 หัวข้อ: ${d.subject}\n` +
     (d.detail ? `📝 รายละเอียด: ${d.detail}\n` : "") +
     `👤 ผู้เข้าร่วม: ${d.attendees.length ? d.attendees.join(", ") : "(ยังไม่มี)"}\n\n` +
-    `ยืนยันเพื่อส่งคำขอนัด (รออีกฝั่งยืนยันก่อนเข้า Outlook) หรือแก้ไขก่อนได้ครับ 👇`;
+    `ยืนยันเพื่อส่งคำขอนัด (รออีกฝั่งยืนยันก่อนเข้า Outlook)\n` +
+    `หรือตั้งหัวข้อ / รายละเอียด / เพิ่มคน ก่อนได้ครับ 👇`;
   const items: object[] = [
     { type: "action", action: { type: "postback", label: "✅ ยืนยันส่งคำขอ", data: "a=confirmbook", displayText: "ยืนยันส่งคำขอนัด" } },
     { type: "action", action: { type: "postback", label: "🕐 เวลา", data: "a=settime", displayText: "แก้วันเวลา" } },

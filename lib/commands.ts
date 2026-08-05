@@ -68,6 +68,8 @@ import {
   minutesOfDay,
   nowWall,
   parseHHMM,
+  parseThaiClockToHHMM,
+  parseClockToMinutes,
   parseWall,
   periodRange,
   resolveDay,
@@ -717,6 +719,19 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
       at = timeM[1].length === 4 ? `0${timeM[1]}` : timeM[1].padStart(5, "0");
       after = at;
       body = body.replace(timeM[0], " ").replace(/\s+/g, " ").trim();
+    } else {
+      // "ตอน 11 โมง" / "บ่ายสองโมง" / "11 โมงครึ่ง"
+      const thaiClock = parseThaiClockToHHMM(body);
+      if (thaiClock) {
+        at = thaiClock;
+        after = thaiClock;
+        body = body
+          .replace(/(?:ตอน|เวลา|ที่)?\s*\d{1,2}\s*โมง(?:\s*(?:ครึ่ง|\d{1,2}\s*นาที))?/g, " ")
+          .replace(/บ่าย\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)(?:\s*โมง)?(?:\s*ครึ่ง)?/g, " ")
+          .replace(/ทุ่ม\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)?(?:\s*ครึ่ง)?/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
     }
   }
 
@@ -2819,6 +2834,7 @@ async function handleParsed(
     } else if (atMin == null) {
       const single = text.match(/(?:ตอน|เวลา|ที่)\s*(\d{1,2}:\d{2})/i) || text.match(/\b(\d{1,2}:\d{2})\b/);
       if (single) atMin = parseHHMM(single[1]);
+      else atMin = parseClockToMinutes(text);
     }
 
     return runFindMeeting(
