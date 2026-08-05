@@ -129,17 +129,17 @@ const CSS = `
 .mon .foot{display:none}
 .mon .news-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:6px 8px 8px;border-top:2px solid var(--hair);flex-shrink:0;min-height:0}
 @media(max-width:1100px){.mon .news-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.mon .news-desk{border:2px solid var(--hair);background:var(--panel2);padding:6px 8px;min-width:0;min-height:0;display:flex;flex-direction:column;gap:2px}
-.mon .news-desk .hd{font-family:'VT323',monospace;font-size:15px;display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:0}
-.mon .news-desk .nm{color:var(--ink);font-size:15px;letter-spacing:0.5px}.mon .news-desk .st{font-family:'VT323',monospace;font-size:13px;padding:1px 6px;border:1px solid var(--hair);color:var(--dim)}
+.mon .news-desk{border:2px solid var(--hair);background:var(--panel2);padding:5px 8px;min-width:0;min-height:0;display:flex;flex-direction:column;gap:2px}
+.mon .news-desk .hd{font-family:'VT323',monospace;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:0;min-width:0}
+.mon .news-desk .nm{color:var(--ink);font-size:14px;letter-spacing:0.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mon .news-desk .nm .role{color:#a3a3a3;font-weight:400}
+.mon .news-desk .st{font-family:'VT323',monospace;font-size:12px;padding:1px 5px;border:1px solid var(--hair);color:var(--dim);flex:none}
 .mon .news-desk.work .st{color:var(--amber);border-color:var(--amber);animation:monpulse .55s steps(1) infinite}
 .mon .news-desk.done .st{color:var(--green);border-color:var(--green)}
 .mon .news-desk.error .st{color:var(--red);border-color:var(--red)}
-.mon .news-desk .job{font-size:13px;color:#a3a3a3;line-height:1.2;margin-bottom:0}
-.mon .news-desk .ai{font-size:14px;color:var(--amber);margin:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mon .news-desk .cap{font-size:13px;color:#d4d4d4;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mon .news-desk ul{list-style:none;font-size:13px;color:var(--ink);line-height:1.25;max-height:2.6em;overflow:hidden;flex:1}
-.mon .news-desk li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px}
+.mon .news-desk .live{font-size:13px;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+.mon .news-desk ul{list-style:none;font-size:12px;color:var(--ink);line-height:1.2;max-height:1.3em;overflow:hidden;flex:1;margin:0}
+.mon .news-desk li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
 .mon .news-desk li .k{color:var(--dim)}.mon .news-desk li.work{color:var(--amber)}.mon .news-desk li.done{color:var(--green)}.mon .news-desk li.err{color:var(--red)}
 .mon .btn{font-family:'Press Start 2P';font-size:10px;background:var(--ink);color:#000;border:2px solid var(--ink);padding:10px 16px;cursor:pointer}
 .mon .center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:60vh;text-align:center}
@@ -150,10 +150,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 type NewsSourceRow = { key: string; text: string; status: "work" | "done" | "error" };
 type NewsDesk = { status: "idle" | "work" | "done" | "error"; ai: string; detail: string };
 
-const NEWS_SCOUT_IDLE: NewsDesk = { status: "idle", ai: "—", detail: "รอคำขอข่าว…" };
-const NEWS_PICKER_IDLE: NewsDesk = { status: "idle", ai: "—", detail: "AI เลือกข่าวเด่น" };
-const NEWS_READER_IDLE: NewsDesk = { status: "idle", ai: "—", detail: "อ่านบทความเต็ม" };
-const NEWS_WRITER_IDLE: NewsDesk = { status: "idle", ai: "—", detail: "AI สรุปประเด็น" };
+const NEWS_SCOUT_IDLE: NewsDesk = { status: "idle", ai: "—", detail: "" };
+const NEWS_PICKER_IDLE: NewsDesk = { status: "idle", ai: "—", detail: "" };
+const NEWS_READER_IDLE: NewsDesk = { status: "idle", ai: "—", detail: "" };
+const NEWS_WRITER_IDLE: NewsDesk = { status: "idle", ai: "—", detail: "" };
 
 function parseNewsAi(label: string): string | null {
   const m = label.match(/★\s*AI:([A-Z]+)\s*·\s*([^\s✓✗·]+)/i) || label.match(/AI:([A-Z]+)\s*·\s*([^\s✓✗·]+)/i);
@@ -1411,10 +1411,9 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
           <div className="news-grid">
             <div className={`news-desk scout ${newsScoutStatus}`}>
               <div className="hd">
-                <span className="nm">SCOUT</span>
+                <span className="nm">SCOUT <span className="role">· ดึงข่าว</span></span>
                 <span className="st">{newsScoutStatus === "work" ? "WORKING" : newsScoutStatus === "done" ? "DONE" : newsScoutStatus === "error" ? "ERROR" : "IDLE"}</span>
               </div>
-              <div className="job">ดึงข่าวจากแหล่งที่ติดตาม</div>
               <ul>
                 {newsSources.length ? newsSources.map((s) => (
                   <li key={s.key} className={s.status}>{s.text}</li>
@@ -1425,30 +1424,42 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
             </div>
             <div className={`news-desk picker ${newsPicker.status}`}>
               <div className="hd">
-                <span className="nm">PICKER</span>
+                <span className="nm">PICKER <span className="role">· AI คัดข่าวเด่น</span></span>
                 <span className="st">{newsPicker.status === "work" ? "WORKING" : newsPicker.status === "done" ? "DONE" : newsPicker.status === "error" ? "ERROR" : "IDLE"}</span>
               </div>
-              <div className="job">AI คัดเลือกข่าวที่เด่น</div>
-              <div className="ai">{newsPicker.ai}</div>
-              <div className="cap">{newsPicker.detail}</div>
+              {newsPicker.status !== "idle" && (newsPicker.ai !== "—" || newsPicker.detail) ? (
+                <div className="live">
+                  {newsPicker.ai !== "—" ? newsPicker.ai : ""}
+                  {newsPicker.ai !== "—" && newsPicker.detail ? " · " : ""}
+                  {newsPicker.detail}
+                </div>
+              ) : null}
             </div>
             <div className={`news-desk reader ${newsReader.status}`}>
               <div className="hd">
-                <span className="nm">READER</span>
+                <span className="nm">READER <span className="role">· อ่านบทความ</span></span>
                 <span className="st">{newsReader.status === "work" ? "WORKING" : newsReader.status === "done" ? "DONE" : newsReader.status === "error" ? "ERROR" : "IDLE"}</span>
               </div>
-              <div className="job">อ่านเนื้อหาบทความเต็ม</div>
-              <div className="ai">{newsReader.ai}</div>
-              <div className="cap">{newsReader.detail}</div>
+              {newsReader.status !== "idle" && (newsReader.ai !== "—" || newsReader.detail) ? (
+                <div className="live">
+                  {newsReader.ai !== "—" ? newsReader.ai : ""}
+                  {newsReader.ai !== "—" && newsReader.detail ? " · " : ""}
+                  {newsReader.detail}
+                </div>
+              ) : null}
             </div>
             <div className={`news-desk writer ${newsWriter.status}`}>
               <div className="hd">
-                <span className="nm">WRITER</span>
+                <span className="nm">WRITER <span className="role">· AI สรุปไทย</span></span>
                 <span className="st">{newsWriter.status === "work" ? "WORKING" : newsWriter.status === "done" ? "DONE" : newsWriter.status === "error" ? "ERROR" : "IDLE"}</span>
               </div>
-              <div className="job">AI สรุปประเด็นเป็นภาษาไทย</div>
-              <div className="ai">{newsWriter.ai}</div>
-              <div className="cap">{newsWriter.detail}</div>
+              {newsWriter.status !== "idle" && (newsWriter.ai !== "—" || newsWriter.detail) ? (
+                <div className="live">
+                  {newsWriter.ai !== "—" ? newsWriter.ai : ""}
+                  {newsWriter.ai !== "—" && newsWriter.detail ? " · " : ""}
+                  {newsWriter.detail}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
