@@ -143,6 +143,25 @@ const CSS = `
 .mon .news-desk li .k{color:var(--dim)}.mon .news-desk li.work{color:var(--amber)}.mon .news-desk li.done{color:var(--green)}.mon .news-desk li.err{color:var(--red)}
 .mon .btn{font-family:'Press Start 2P';font-size:10px;background:var(--ink);color:#000;border:2px solid var(--ink);padding:10px 16px;cursor:pointer}
 .mon .center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:60vh;text-align:center}
+
+/* —— Layout: STAGES on the right of the rooms (real preview) —— */
+.mon.stages-right .wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,280px);grid-template-rows:auto minmax(0,1fr) auto;gap:6px;height:100%;align-content:stretch}
+.mon.stages-right header{grid-column:1/-1;grid-row:1;margin-bottom:0}
+.mon.stages-right .building{grid-column:1;grid-row:2;margin-bottom:0;min-height:0;height:100%}
+.mon.stages-right .cols{display:contents}
+.mon.stages-right .cols > .panel:first-child{grid-column:1;grid-row:3;height:clamp(96px,13vh,130px);margin:0}
+.mon.stages-right .cols > .panel:last-child{grid-column:2;grid-row:2/4;margin:0;height:auto;min-height:0;align-self:stretch}
+.mon.stages-right #legend{grid-template-columns:1fr;gap:2px 0}
+.mon.stages-right #legend .row.span2{margin-top:6px}
+.mon.stages-right .layout-switch{font-size:12px;color:#7dd3fc;border:1px solid #38bdf8;padding:2px 8px;text-decoration:none}
+.mon.stages-right .layout-switch:hover{background:rgba(56,189,248,.15)}
+.mon .layout-switch{font-size:12px;color:var(--dim);border:1px solid var(--hair);padding:2px 8px;text-decoration:none;margin-left:6px}
+.mon .layout-switch:hover{color:var(--ink);border-color:var(--ink)}
+@media(max-width:900px){
+  .mon.stages-right .wrap{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr) auto auto}
+  .mon.stages-right .cols > .panel:last-child{grid-column:1;grid-row:4;max-height:28vh}
+  .mon.stages-right .cols > .panel:first-child{grid-row:3}
+}
 `;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -178,7 +197,15 @@ type Postie = {
   onArrive: (() => void) | null;
 };
 
-function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | null>; account: unknown }) {
+function MonitorRoom({
+  getToken,
+  account,
+  stagesRight = false,
+}: {
+  getToken: () => Promise<string | null>;
+  account: unknown;
+  stagesRight?: boolean;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const newsCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
@@ -1328,7 +1355,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const newsLive = newsScoutStatus !== "idle" || newsPicker.status !== "idle" || newsWriter.status !== "idle";
 
   return (
-    <div className="mon">
+    <div className={`mon${stagesRight ? " stages-right" : ""}`}>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="wrap">
         <header>
@@ -1345,6 +1372,11 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
               LLM <b>{llmLabel}</b>
             </div>
             <div className="badge">STATUS <b ref={(el) => { hudRef.current = el; }}>{status}</b></div>
+            {stagesRight ? (
+              <a className="layout-switch" href="/monitor">← เลย์เอาต์ปัจจุบัน</a>
+            ) : (
+              <a className="layout-switch" href="/monitor?layout=right" title="พรีวิวจริง: STAGES ชิดขวา">พรีวิว STAGES ขวา</a>
+            )}
           </div>
         </header>
 
@@ -1515,8 +1547,15 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
 function Gate() {
   const { account, login, ready, getToken } = useM365Auth();
+  const [stagesRight, setStagesRight] = useState(false);
+  useEffect(() => {
+    try {
+      setStagesRight(new URLSearchParams(window.location.search).get("layout") === "right");
+    } catch { /* ignore */ }
+  }, []);
+
   // Local dev: skip login entirely so the room is watchable while working.
-  if (DEV) return <MonitorRoom getToken={getToken} account={account ?? "dev"} />;
+  if (DEV) return <MonitorRoom getToken={getToken} account={account ?? "dev"} stagesRight={stagesRight} />;
   if (!ready) {
     return <div className="mon"><style dangerouslySetInnerHTML={{ __html: CSS }} /><div className="center pix" style={{ fontSize: 12 }}>กำลังโหลด…</div></div>;
   }
@@ -1532,7 +1571,7 @@ function Gate() {
       </div>
     );
   }
-  return <MonitorRoom getToken={getToken} account={account} />;
+  return <MonitorRoom getToken={getToken} account={account} stagesRight={stagesRight} />;
 }
 
 export default function MonitorPage() {
