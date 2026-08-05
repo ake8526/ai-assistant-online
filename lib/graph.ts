@@ -614,6 +614,18 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
         },
       },
     ];
+    // Short Thai/roman nick often sits in parentheses: "Name Surname (เบส)"
+    if (v.length <= 6) {
+      attempts.push({
+        params: {
+          $filter: `contains(displayName,'${esc}')`,
+          $select: sel,
+          $top: String(wideTop),
+          $count: "true",
+        },
+        headers: { ConsistencyLevel: "eventual" },
+      });
+    }
     for (const a of attempts) {
       results = merge(results, await directorySearch(a.params, a.headers));
     }

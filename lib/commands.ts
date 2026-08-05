@@ -802,6 +802,10 @@ function sanitizeAttendeeTokens(tokens: string[]): string[] {
   const out: string[] = [];
   const seenMail = new Set<string>();
   const seenName = new Set<string>();
+  // Leftover schedule phrases must never become "people"
+  const noise =
+    /วันนี้|พรุ่งนี้|มะรืน|นาที|โมง|ทุ่ม|ตี\s*\d|เรื่อง|ตอน|บ่าย|เช้า|เย็น|เที่ยง|ชั่วโมง|\bmin\b|\bhour\b|\d{1,2}\s*[:.]\s*\d{2}|\d{2,}/i;
+
   const pushMail = (e: string) => {
     const m = e.trim().toLowerCase();
     if (!m.includes("@") || seenMail.has(m)) return;
@@ -812,6 +816,9 @@ function sanitizeAttendeeTokens(tokens: string[]): string[] {
     let n = stripHonorificPublic(raw).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim();
     n = n.replace(/^(?:นัด|จอง|เชิญ|invite|กับ|และ|หา)\s+/i, "").trim();
     if (!n || n.includes("@")) return;
+    if (noise.test(n)) return;
+    if (n.split(/\s+/).length > 2) return;
+    if (n.length > 32) return;
     if (SELF_WORDS.has(n) || /^(ประชุม|นัด|จอง|หา|ส่ง|ตอน|เวลา|ช่วง|ว่าง|ตรงกัน)$/i.test(n)) return;
     const key = n.toLowerCase();
     if (seenName.has(key) || seenMail.has(key)) return;
@@ -830,7 +837,7 @@ function sanitizeAttendeeTokens(tokens: string[]): string[] {
         .replace(/^(?:นัด|จอง|เชิญ|invite|กับ|และ|หา)\s+/i, " ")
         .replace(/\s+/g, " ")
         .trim();
-      if (rest) {
+      if (rest && !noise.test(rest)) {
         for (const part of rest.split(/\s*(?:กับ|และ|,)\s*/)) pushName(part);
       }
       continue;
@@ -840,32 +847,15 @@ function sanitizeAttendeeTokens(tokens: string[]): string[] {
   return out;
 }
 
-/** Nicknames beside emails in a book line: "ake@x.com กับเบส" → ["เบส"]. */
+/** Nicknames beside emails: only explicit กับ/และ/, connectors — not leftover time text. */
 function nameTokensBesideEmails(text: string): string[] {
-  let body = text
-    .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, " ")
-    .replace(/\d+\s*(?:นาที|min|ชม\.?|ชั่วโมง|hr|hour)/gi, " ")
-    .replace(/\sเรื่อง\s+.+$/i, " ")
-    .replace(/\bวันนี้\b|\bพรุ่งนี้\b|\bมะรืน(นี้)?\b/g, " ")
-    .replace(/บ่าน/g, "บ่าย")
-    .replace(/(?:ตอน|เวลา|ที่)?\s*\d{1,2}\s*[:.]\s*\d{2}/g, " ")
-    .replace(/(?:ตอน|เวลา|ที่)?\s*\d{1,2}\s*โมง(?:\s*เย็น)?(?:\s*(?:ครึ่ง|\d{1,2}))?/g, " ")
-    .replace(/บ่าย\s*โมง(?:\s*เย็น)?(?:\s*ครึ่ง)?/g, " ")
-    .replace(/บ่าย\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)(?:\s*โมง)?(?:\s*เย็น)?(?:\s*ครึ่ง)?/g, " ")
-    .replace(/(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)\s*ทุ่ม(?:\s*ครึ่ง)?/g, " ")
-    .replace(/ทุ่ม\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)?(?:\s*ครึ่ง)?/g, " ")
-    .replace(/(?:ตอน|เวลา|ที่)?\s*ตี\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)(?:\s*ครึ่ง)?/g, " ")
-    .replace(/(?:ตอน|เวลา|ที่)?\s*เที่ยงคืน/g, " ")
-    .replace(/(?:ตอน|เวลา|ที่)?\s*เที่ยง(?:วัน|ตรง)?(?:\s*ครึ่ง)?/g, " ")
-    .replace(/^(?:ส่งนัดหา|ส่งนัด|นัดหา|เชิญ|invite)\s*/i, "")
-    .replace(/^(?:นัด|จอง)(?:ประชุม)?(?:กับ|หา)?/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
   const raw: string[] = [];
-  for (const n of peopleFromText(body)) raw.push(n);
-  for (const m of body.matchAll(/(?:กับ|และ)\s+(\S+)/g)) raw.push(m[1]);
-  for (const part of body.split(/\s*(?:กับ|และ|,)\s*/)) raw.push(part);
+  // "…@gmail.com กับเบส วันนี้…" → capture เบส only
+  for (const m of text.matchAll(
+    /(?:กับ|และ|,)\s*([ก-๙A-Za-z][ก-๙A-Za-z.]{0,24})(?=\s*(?:กับ|และ|,|วันนี้|พรุ่งนี้|มะรืน|เรื่อง|ตอน|นาที|\d|$))/gu
+  )) {
+    raw.push(m[1]);
+  }
   return sanitizeAttendeeTokens(raw);
 }
 
@@ -1609,8 +1599,8 @@ export async function runFindMeeting(
     return {
       intent: "find_meeting_time",
       reply:
-        `หาคนไม่เจอในระบบ: ${unresolved.join(", ")}\n` +
-        `ลองพิมพ์ชื่อเต็มหรืออีเมลของคนนี้ด้วยครับ\n` +
+        `หา “${unresolved.join(", ")}” ใน Microsoft 365 ไม่เจอครับ\n` +
+        `ลองพิมพ์อีเมลของคนนี้มาด้วย เช่น “นัด ake@gmail.com กับ base@ktisgroup.com …”\n` +
         `(คนที่เจอแล้ว: ${resolved.join(", ")})`,
     };
   }
