@@ -184,7 +184,6 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const postieRef = useRef<Postie>({
     x: 160, y: 150, tx: null, ty: null, carry: false, visible: false, running: false, phase: 0, onArrive: null,
   });
-  const postieElRef = useRef<HTMLDivElement | null>(null);
   const doorElRef = useRef<HTMLDivElement | null>(null);
   const doorOpenRef = useRef(false);
 
@@ -318,7 +317,6 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     p.onArrive = null;
     doorOpenRef.current = false;
     if (doorElRef.current) doorElRef.current.classList.remove("open");
-    if (postieElRef.current) postieElRef.current.style.display = "none";
   }, []);
 
   const upsertNewsSource = useCallback((key: string, text: string, status: NewsSourceRow["status"]) => {
@@ -692,26 +690,33 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // HTML courier badge hidden — POSTIE is drawn on the news canvas now
-  useEffect(() => {
-    const el = postieElRef.current;
-    if (el) el.style.display = "none";
-  }, []);
-
   // ---- courier walk helpers (touch only stable refs) ----
-  const walkPostie = useCallback(async (pts: number[][]) => {
+  const walkActor = useCallback(async (
+    get: () => { x: number; y: number; tx: number | null; ty: number | null; onArrive: (() => void) | null },
+    pts: number[][],
+    timeoutMs = 4000,
+  ) => {
     for (const [px, py] of pts) {
       await new Promise<void>((res) => {
-        const p = postieRef.current;
-        p.tx = px; p.ty = py; p.onArrive = res;
-        setTimeout(() => {
-          if (p.onArrive === res) {
-            p.x = px; p.y = py; p.tx = null; p.ty = null; p.onArrive = null; res();
-          }
-        }, 5000);
+        const a = get();
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          a.x = px; a.y = py; a.tx = null; a.ty = null; a.onArrive = null;
+          res();
+        };
+        a.tx = px; a.ty = py;
+        a.onArrive = finish;
+        setTimeout(finish, timeoutMs);
       });
     }
   }, []);
+
+  const walkPostie = useCallback(
+    (pts: number[][]) => walkActor(() => postieRef.current, pts, 3500),
+    [walkActor],
+  );
 
   const setDoorOpen = useCallback((open: boolean) => {
     doorOpenRef.current = open;
@@ -726,15 +731,18 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     p.tx = null;
     p.ty = null;
     p.onArrive = null;
-    if (postieElRef.current) postieElRef.current.style.display = "none";
+    p.x = NEWS_AISLE_X;
+    p.y = 150;
     setDoorOpen(false);
   }, [setDoorOpen]);
+
   const walkPath = useCallback(async (pts: number[][], who: "dash" | "helper" = "dash") => {
-    const d = who === "helper" ? helperRef.current : dashRef.current;
-    for (const [px, py] of pts) {
-      await new Promise<void>((res) => { d.tx = px; d.ty = py; d.onArrive = res; });
-    }
-  }, []);
+    await walkActor(
+      () => (who === "helper" ? helperRef.current : dashRef.current),
+      pts,
+      4500,
+    );
+  }, [walkActor]);
 
   const setDashPace = useCallback((d: Dash, run: boolean) => {
     d.running = run;
@@ -758,6 +766,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
     // News → always from mailbox along the aisle. Never walk to BRAIN / office desks.
     if (isNewsJob) {
+      hidePostie();
       setCap(`<b>DASH</b> (REPLY) — ${verb}ตามทางเดินส่งข่าวจากตู้จดหมาย`);
       log(`  DASH ${verb}ตามทางเดิน → ตู้จดหมาย → LINE`, "a");
       await walkPath([
@@ -822,7 +831,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     await walkPath([[OFFICE_AISLE_X, 150]]);
     setDashPace(dashRef.current, false);
     setAgent(4, "done");
-  }, [isBackendFast, log, setAgent, setCap, setDashPace, walkPath]);
+  }, [hidePostie, isBackendFast, log, setAgent, setCap, setDashPace, walkPath]);
 
   const deliverNewsCourier = useCallback(async () => {
     const p = postieRef.current;
@@ -832,7 +841,6 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     p.carry = false;
     p.running = false;
     p.phase = 0;
-    // Start on center aisle
     p.x = NEWS_AISLE_X;
     p.y = 150;
     p.tx = null;
@@ -842,54 +850,43 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     try {
       if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — เดินตามทางไปโต๊ะ WRITER…";
       log("  POSTIE เดินตามทางเดิน → โต๊ะ WRITER", "a");
-      // Aisle down → spur to WRITER (don't cut through desks)
       await walkPostie([
         [NEWS_AISLE_X, 190],
         [NEWS_WRITER_PICKUP[0], NEWS_WRITER_PICKUP[1]],
       ]);
-      await sleep(300);
+      await sleep(200);
       writerHasParcelRef.current = false;
       p.carry = true;
       p.running = true;
-      log("  POSTIE หยิบสรุปแล้ว วิ่งตามทางเดินไปประตู", "a");
+      log("  POSTIE วิ่งตามทางเดินไปประตู", "a");
       if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — วิ่งตามทางเดินไปประตู…";
-      // Spur back → aisle → horizontal corridor → door
       await walkPostie([
         [NEWS_AISLE_X, 190],
         [NEWS_AISLE_X, 140],
         [NEWS_DOOR[0], NEWS_DOOR[1]],
       ]);
 
+      // Hand off now — hide POSTIE immediately so it never stays stuck waiting.
+      p.carry = false;
+      hidePostie();
+      mailHasParcelRef.current = true;
+
       setAgent(4, "work");
       setDashPace(dashRef.current, true);
       setCap("<b>DASH</b> — วิ่งตามทางเดินรับข่าว → ตู้จดหมาย");
-      log("  DASH วิ่งตามทางเดินไปประตู", "a");
-      // Office aisle → horizontal corridor → door
+      log("  DASH รับข่าวที่ประตู แล้ววิ่งไปตู้จดหมาย", "a");
+      dashRef.current.carry = true;
       await walkPath([
         [OFFICE_AISLE_X, 150],
         [OFFICE_AISLE_X, 140],
         [OFFICE_DOOR[0], OFFICE_DOOR[1]],
-      ]);
-      p.carry = false;
-      p.running = false;
-      dashRef.current.carry = true;
-      // Corridor back to aisle → down aisle to mailbox
-      await walkPath([
         [OFFICE_AISLE_X, 140],
         [OFFICE_MAIL[0], OFFICE_MAIL[1]],
       ]);
       dashRef.current.carry = false;
       mailFlashRef.current = 60;
-      mailHasParcelRef.current = true;
       log("  DASH ใส่ข่าวในตู้จดหมาย ✓", "g");
       if (capRef.current) capRef.current.innerHTML = "<b>ตู้จดหมาย</b> — ได้สรุปข่าวแล้ว · รอส่ง LINE";
-
-      // POSTIE jogs back along aisle to hub
-      p.running = true;
-      await walkPostie([
-        [NEWS_AISLE_X, 140],
-        [NEWS_AISLE_X, 150],
-      ]);
       await walkPath([[OFFICE_AISLE_X, 150]]);
       setDashPace(dashRef.current, false);
       setAgent(4, "idle");
@@ -1161,10 +1158,6 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                     <span className="stt"><span className="dot" /><span className="w">IDLE</span></span>
                   </div>
                 ))}
-                <div className="news-courier" ref={postieElRef}>
-                  <span className="nm">POSTIE</span>
-                  <span className="body" />
-                </div>
               </div>
               <div className="wing-cap" ref={newsCapRef}>รอคำขอ “ข่าววันนี้”…</div>
             </div>
