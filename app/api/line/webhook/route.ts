@@ -37,7 +37,7 @@ import {
 import { assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace, setTraceUser, muteTrace } from "@/lib/trace";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // LINE Messaging API webhook.
 // Linked users chat with the assistant (same brain as the web); unlinked users
@@ -1205,7 +1205,11 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
     try {
       await sendResult(ev.replyToken, res, upn);
-      trace("reply", `ตอบกลับ (${res.intent})`);
+      if (res.newsPending) {
+        trace("reply", "📰 รอสรุปข่าว");
+      } else {
+        trace("reply", `ตอบกลับ (${res.intent})`);
+      }
     } catch (replyErr) {
       console.warn("[line] reply failed, pushing:", String(replyErr).slice(0, 120));
       if (res.intent === "confirm_meeting" && Array.isArray(res.slots) && res.slots[0]) {

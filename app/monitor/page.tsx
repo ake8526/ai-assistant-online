@@ -103,23 +103,23 @@ const CSS = `
 .mon .bdg.error{border-color:var(--red)}.mon .bdg.error .stt{color:var(--red)}.mon .bdg.error .dot{background:var(--red)}
 @keyframes monpulse{50%{opacity:.2}}
 .mon .caption{font-size:19px;color:var(--dim);text-align:center;padding:9px}.mon .caption b{color:var(--red)}
-.mon .cols{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,480px);gap:6px;align-items:stretch;flex-shrink:0;height:clamp(150px,24vh,210px);margin-bottom:0}
-@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:32vh}}
+.mon .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,1.15fr);gap:8px;align-items:stretch;flex-shrink:0;height:clamp(220px,34vh,300px);margin-bottom:0}
+@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:40vh}}
 .mon .cols > .panel{min-width:0;max-width:100%;overflow:hidden;margin-bottom:0;display:flex;flex-direction:column}
-.mon .cols > .panel .ph{flex-shrink:0;padding:4px 8px}
-.mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:14px;line-height:1.15;padding:4px 8px}
+.mon .cols > .panel .ph{flex-shrink:0;padding:6px 10px}
+.mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:15px;line-height:1.2;padding:6px 10px}
 .mon #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .mon #log .t{color:var(--dim)}.mon #log .g{color:var(--green)}.mon #log .r{color:var(--red)}.mon #log .a{color:var(--amber)}.mon #log .b{color:#3a86ff}
-.mon #legend{flex:1;min-height:0;overflow:hidden;padding:4px 6px;font-size:12px;line-height:1.15;display:grid;grid-template-columns:1fr 1fr;gap:0 12px;align-content:start}
-.mon #legend .leg-col{display:flex;flex-direction:column;gap:1px;min-width:0}
-.mon #legend .leg-h{font-family:'Press Start 2P';font-size:5px;color:var(--dim);margin:0 0 2px;letter-spacing:0.5px}
-.mon #legend .row{display:flex;align-items:center;gap:4px;margin:0;min-width:0;height:16px}
+.mon #legend{flex:1;min-height:0;overflow:hidden;padding:8px 10px;font-size:15px;line-height:1.25;display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;align-content:start}
+.mon #legend .leg-col{display:flex;flex-direction:column;gap:3px;min-width:0}
+.mon #legend .leg-h{font-family:'Press Start 2P';font-size:8px;color:var(--dim);margin:0 0 4px;letter-spacing:0.5px}
+.mon #legend .row{display:flex;align-items:center;gap:6px;margin:0;min-width:0;height:22px}
 .mon #legend .row > span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mon #legend .row.span2{grid-column:1 / -1;height:auto;min-height:16px;margin-top:3px;align-items:flex-start}
+.mon #legend .row.span2{grid-column:1 / -1;height:auto;min-height:22px;margin-top:4px;align-items:flex-start}
 .mon #legend .row.span2 > span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mon #legend .sw{width:8px;height:8px;flex:none;border:1px solid #000}
-.mon #legend .rl{font-family:'Press Start 2P';font-size:5px;color:var(--ink)}
-.mon #legend .rc{color:var(--dim);font-size:12px}
+.mon #legend .sw{width:12px;height:12px;flex:none;border:1px solid #000}
+.mon #legend .rl{font-family:'Press Start 2P';font-size:8px;color:var(--ink)}
+.mon #legend .rc{color:var(--dim);font-size:14px}
 .mon .foot{display:none}
 .mon .news-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px 8px 6px;border-top:2px solid var(--hair);flex-shrink:0}
 @media(max-width:1100px){.mon .news-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -354,7 +354,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       idleNewsDesks();
       parkPostie();
       if (newsCapRef.current) newsCapRef.current.textContent = "รอคำขอ “ข่าววันนี้” จาก LINE / Web…";
-    }, 45_000);
+    }, 180_000);
   }, [clearNewsIdleWatch, parkPostie, idleNewsDesks]);
 
   const upsertNewsSource = useCallback((key: string, text: string, status: NewsSourceRow["status"]) => {
@@ -697,9 +697,9 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
         X.fillStyle = "rgba(255,255,255,0.35)";
         X.fillRect(x - 12, y - 8, 3, 1); X.fillRect(x - 14, y - 5, 4, 1);
       }
-      X.fillStyle = "rgba(10,7,4,0.92)"; X.fillRect(x - 14, y - 32 + bob, 28, 9);
-      X.strokeStyle = "#38bdf8"; X.strokeRect(x - 14.5, y - 32.5 + bob, 29, 10);
-      X.fillStyle = "#38bdf8"; X.font = "6px monospace"; X.fillText("POSTIE", x - 11, y - 25 + bob);
+      X.fillStyle = "rgba(10,7,4,0.95)"; X.fillRect(x - 20, y - 36 + bob, 40, 12);
+      X.strokeStyle = "#7dd3fc"; X.lineWidth = 1.5; X.strokeRect(x - 20.5, y - 36.5 + bob, 41, 13);
+      X.fillStyle = "#e0f2fe"; X.font = "bold 10px monospace"; X.fillText("POSTIE", x - 16, y - 27 + bob);
     }
     function drawDoorLeft() {
       const open = doorOpenRef.current;
@@ -721,8 +721,9 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       R(46, 176, 28, 18, "#946f49"); R(246, 176, 28, 18, "#946f49");
     }
     function drawNewsWall(now: number) {
-      // Multi-channel video wall — every panel must look different (color + layout).
-      R(0, 0, W, 52, "#111827");
+      // Video wall: OFF when idle; ON only while a news job is running.
+      const live = newsJobRef.current;
+      R(0, 0, W, 52, live ? "#111827" : "#0a0a0c");
       R(0, 50, W, 2, "#030712");
       const cols = 6;
       const rows = 2;
@@ -730,6 +731,27 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       const gap = 2;
       const cellW = Math.floor((W - pad * 2 - gap * (cols - 1)) / cols);
       const cellH = Math.floor((44 - pad * 2 - gap * (rows - 1)) / rows);
+
+      if (!live) {
+        // Screens powered down — blank glass, no channel content.
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < cols; col++) {
+            const x = pad + col * (cellW + gap);
+            const y = pad + row * (cellH + gap);
+            R(x, y, cellW, cellH, "#030712");
+            R(x + 1, y + 1, cellW - 2, cellH - 2, "#0c0c10");
+            // faint reflection + off LED
+            R(x + 2, y + 2, cellW - 4, 1, "#14141a");
+            R(x + cellW - 4, y + 2, 2, 2, "#1f2937");
+          }
+        }
+        R(0, 44, W, 8, "#020617");
+        X.fillStyle = "#e5e7eb";
+        X.font = "bold 9px monospace";
+        X.fillText("  WALL OFF  ·  รอคำขอข่าว  ", 4, 50);
+        return;
+      }
+
       type Style = "anchor" | "map" | "bars" | "yt" | "fb" | "alert" | "weather" | "stock" | "sport" | "chat" | "radar" | "split";
       type Chan = { tag: string; bg: string; accent: string; style: Style };
       // 12 unique combos — no shared style+hue between neighbors (esp. bottom-left).
@@ -815,18 +837,18 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
             R(x + 3 + Math.floor((cellW - 5) / 2), y + 2, Math.floor((cellW - 5) / 2), cellH - 6, "#92400e");
             R(x + 3, y + 4, 4, 1, ch.accent);
           }
-          X.fillStyle = "#f8fafc";
-          X.font = "5px monospace";
+          X.fillStyle = "#ffffff";
+          X.font = "bold 8px monospace";
           X.fillText(ch.tag, x + 2, y + cellH - 2);
         }
       }
-      R(0, 46, W, 4, "#020617");
-      R(0, 46, W, 1, "#f87171");
+      R(0, 44, W, 8, "#020617");
+      R(0, 44, W, 1, "#f87171");
       const tick = " ● BREAKING  ● RSS  ● FACEBOOK  ● YOUTUBE  ● NEWSDATA  ● LIVE  ";
       const shift = Math.floor(now / 35) % (tick.length * 4);
-      X.fillStyle = "#fde68a";
-      X.font = "6px monospace";
-      X.fillText(tick + tick, 4 - (shift % (tick.length * 4)), 49);
+      X.fillStyle = "#fef08a";
+      X.font = "bold 9px monospace";
+      X.fillText(tick + tick, 4 - (shift % (tick.length * 4)), 50);
     }
     function drawBg(now: number) {
       R(0, 0, W, H, "#2e2116");
@@ -1130,6 +1152,17 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     if (step === "reply") {
       const intent = e.label.replace(/^ตอบกลับ\s*/, "").replace(/[()]/g, "");
       const isNewsReply = newsJobRef.current || isNews || /news|ข่าว|get_news/i.test(intent);
+      // Interim “รอสรุป” — keep NEWS ROOM working; digest continues on line-now.
+      if (/📰 รอสรุปข่าว/.test(e.label || "")) {
+        newsJobRef.current = true;
+        armNewsIdleWatch();
+        if (newsCapRef.current) {
+          newsCapRef.current.innerHTML = "<b>NEWS</b> — รอสรุปหลังบ้าน · จะส่งเข้า LINE เมื่อเสร็จ";
+        }
+        log(`  NEWS: รอสรุปหลังบ้าน…`, "a");
+        setHud("WORKING", "var(--amber)");
+        return;
+      }
       for (let i = 0; i < 4; i++) if (statusRef.current[i] === "work") setAgent(i, "done");
       await courierReply(intent, e.at);
       setHud("DELIVERED", "var(--green)");
@@ -1180,7 +1213,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       await sleep(step === "fetch" ? 160 : 360);
       setAgent(idx, "done");
     }
-  }, [courierReply, deliverNewsCourier, idleNewsDesks, log, resetNewsRoom, resetRoom, setAgent, setCap, setHud, setLlmHud, updateNewsRoom]);
+  }, [armNewsIdleWatch, courierReply, deliverNewsCourier, idleNewsDesks, log, resetNewsRoom, resetRoom, setAgent, setCap, setHud, setLlmHud, updateNewsRoom]);
 
   // ---- player: drains the queue in order with animation timing ----
   useEffect(() => {

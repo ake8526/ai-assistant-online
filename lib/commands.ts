@@ -13,9 +13,11 @@ import {
   quickLinkMeetingIntent,
 } from "@/lib/meetingLink";
 import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
+import { kickLineDigest } from "@/lib/digestKick";
 import { sendLine } from "@/lib/line";
-import { trace } from "@/lib/trace";
+import { runWithTrace, trace } from "@/lib/trace";
 import { after } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { normalizeDue, resolveResponsible } from "@/lib/followup";
 import { createHash } from "crypto";
 import {
@@ -146,6 +148,8 @@ export type CommandResult = {
   suggestions?: { label: string; text: string }[];
   /** Show OneDrive folder path in file list (detailText). */
   show_file_location?: boolean;
+  /** LINE get_news: interim reply; digest continues on line-now / after(). */
+  newsPending?: boolean;
 };
 
 /** Interactive calendar must use the user's M365 token (Outlook-like rights). */
@@ -2587,41 +2591,15 @@ async function handleParsed(
   if (intent === "get_news") {
     trace("fetch", "📰 ดึงข่าวจากแหล่งที่ติดตาม", "start");
 
-    // LINE webhook maxDuration≈60s.
-    // 1) Try to finish digest inline (~40s) so the user gets news in the reply.
-    // 2) If not done in time, kick /api/digest/line-now (maxDuration=300) to push later.
+    // LINE replyToken expires ~30s. Try a short race for in-reply news;
+    // otherwise kick line-now (maxDuration 300) as the sole delivery owner.
     if (lite) {
       const upn = userUpn;
-      const base = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(
-        /\/$/,
-        ""
-      );
-      const secret = process.env.CRON_SECRET || "";
-      const kickUrl =
-        `${base}/api/digest/line-now?upn=${encodeURIComponent(upn)}` +
-        (secret ? `&key=${encodeURIComponent(secret)}` : "");
-
-      const kickLineNow = () => {
-        const req = fetch(kickUrl, {
-          method: "POST",
-          cache: "no-store",
-          headers: secret ? { "x-cron-secret": secret } : {},
-        });
-        after(async () => {
-          try {
-            const r = await req;
-            console.warn("[get_news kick]", r.status);
-          } catch (e) {
-            console.warn("[get_news kick]", String(e).slice(0, 160));
-          }
-        });
-      };
-
       const digestPromise = buildDigest(upn);
       type Race = { done: true; digest: DigestResult } | { done: false };
       const raced: Race = await Promise.race([
         digestPromise.then((digest) => ({ done: true as const, digest })),
-        new Promise<Race>((resolve) => setTimeout(() => resolve({ done: false }), 40_000)),
+        new Promise<Race>((resolve) => setTimeout(() => resolve({ done: false }), 12_000)),
       ]);
 
       if (raced.done) {
@@ -2640,15 +2618,57 @@ async function handleParsed(
         const extra = digest.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${digest.skipped.join(", ")})` : "";
         await rememberDeliveredStories(upn, digest.stories);
         trace("compose", "📰 สรุปข่าวภาษาไทย");
-        return { intent, reply: formatStoriesText(digest.stories) + extra, data: digest.stories };
+        return { intent, reply: formatStoriesText(digest.stories, digest.note) + extra, data: digest.stories };
       }
 
-      // Still running — finish + push on the long-running route.
-      kickLineNow();
+      trace("fetch", "📰 สรุปข่าวช้า · ส่งต่อ line-now", "start");
+
+      // Single delivery owner: /api/digest/line-now (maxDuration 300).
+      // Do NOT also finish in this isolate — claim races caused silent no-push.
+      try {
+        await kickLineDigest(upn);
+      } catch (e) {
+        console.warn("[get_news kick]", String(e).slice(0, 160));
+        // Last resort: finish in webhook isolate (no competing claim with line-now).
+        const finishLocal = (async () => {
+          try {
+            const digest = await digestPromise;
+            if (!digest.stories?.length) {
+              const why =
+                digest.note ||
+                (digest.skipped.length ? `ข้าม: ${digest.skipped.join(", ")}` : "ไม่มีข่าวใหม่ให้สรุป");
+              await sendLine(
+                upn,
+                "",
+                `สรุปข่าวแล้วยังไม่มีเรื่องส่งครับ (${why})\n\nพิมพ์ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ`
+              );
+              return;
+            }
+            await rememberDeliveredStories(upn, digest.stories);
+            const extra = digest.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${digest.skipped.join(", ")})` : "";
+            await sendLine(upn, "", formatStoriesText(digest.stories, digest.note) + extra);
+          } catch (err) {
+            console.warn("[get_news waitUntil]", String(err).slice(0, 200));
+            try {
+              await sendLine(upn, "", "สรุปข่าวไม่สำเร็จครับ — ลองพิมพ์ “ข่าววันนี้” อีกครั้งได้เลย");
+            } catch { /* ignore */ }
+          }
+        })();
+        try {
+          waitUntil(finishLocal);
+        } catch { /* non-Vercel */ }
+        after(async () => {
+          try {
+            await finishLocal;
+          } catch { /* ignore */ }
+        });
+      }
+
       return {
         intent,
+        newsPending: true,
         reply:
-          "กำลังรวบรวมและสรุปข่าวครับ — จะส่งเข้า LINE ให้อัตโนมัติเมื่อเสร็จ (ประมาณ 1 นาที)\n\nหรือพิมพ์ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ",
+          "กำลังรวบรวมและสรุปข่าวครับ — จะส่งเข้า LINE ให้อัตโนมัติเมื่อเสร็จ (ประมาณ 1–2 นาที)\n\nหรือพิมพ์ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ",
       };
     }
 
@@ -2679,7 +2699,7 @@ async function handleParsed(
     const extra = skipped.length ? `\n\n(ข้ามบางแหล่ง: ${skipped.join(", ")})` : "";
     await rememberDeliveredStories(userUpn, stories);
     trace("compose", "📰 สรุปข่าวภาษาไทย");
-    return { intent, reply: formatStoriesText(stories) + extra, data: stories };
+    return { intent, reply: formatStoriesText(stories, note) + extra, data: stories };
   }
 
   if (intent === "list_feeds") {

@@ -101,9 +101,12 @@ function bestArticleBody(title: string, summary: string, scraped: string): strin
 }
 
 /** Render stories as a natural briefing (for LINE push and chat). */
-export function formatStoriesText(stories: Story[]): string {
+export function formatStoriesText(stories: Story[], note?: string): string {
   const n = stories.length;
   const lines = [`📰 ข่าววันนี้ · ${n} เรื่องเด่น`, ""];
+  if (note) {
+    lines.push(`ℹ️ ${note}`, "");
+  }
   stories.forEach((s, i) => {
     const bullets = storyBullets(s).map((b) => b.trim()).filter((b) => b && !isHollowBullet(b));
     const headline = bullets[0] || s.title;
@@ -270,17 +273,25 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     return { stories: [], skipped, note: "ยังไม่มีเนื้อหา — เชื่อม YouTube หรือเพิ่มแหล่งข่าว / เลือกหัวข้อ" };
   }
 
-  // Skip stories already summarized for this user (push or “มีข่าวอะไรบ้าง”)
+  // Skip stories already summarized — but if EVERYTHING was seen, still
+  // re-pick highlights so “ข่าววันนี้” never comes back empty when sources have items.
   const seenKeys = await loadSeenNewsKeys(upn);
   let skippedSeen = 0;
+  let repeatNote: string | undefined;
   if (seenKeys.size) {
     const fresh = items.filter((it) => {
       const k = newsStoryKey(it.link || "", it.title || "");
       return !k || !seenKeys.has(k);
     });
     skippedSeen = items.length - fresh.length;
-    items.length = 0;
-    items.push(...fresh);
+    if (fresh.length > 0) {
+      items.length = 0;
+      items.push(...fresh);
+    } else if (skippedSeen > 0) {
+      // Keep original items; mark as repeat digest.
+      repeatNote = `ยังไม่มีข่าวใหม่จากแหล่งที่ติดตาม (เคยสรุปไปแล้ว ${skippedSeen} รายการ) — สรุปเรื่องเด่นซ้ำให้แทน`;
+      trace("fetch", `📰 ไม่มีใหม่ · สรุปซ้ำจาก ${skippedSeen} รายการ`);
+    }
   }
 
   if (items.length === 0) {
@@ -607,7 +618,7 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   }
 
   trace("compose", `📰 สรุปเสร็จ · ${stories.length} เรื่องเด่น`);
-  return { stories, skipped };
+  return { stories, skipped, note: repeatNote };
 }
 
 /** Call after a digest was shown/pushed so the same links are not summarized again. */
