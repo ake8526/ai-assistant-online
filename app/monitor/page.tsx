@@ -161,7 +161,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const badgesRef = useRef<HTMLDivElement[]>([]);
   const newsBadgesRef = useRef<HTMLDivElement[]>([]);
   const newsStatusRef = useRef<string[]>(NEWS_AGENTS.map(() => "idle"));
-  const postieRef = useRef<Postie>({ x: 74, y: 50, tx: null, ty: null, carry: false, visible: false, onArrive: null });
+  const postieRef = useRef<Postie>({ x: 160, y: 140, tx: null, ty: null, carry: false, visible: false, onArrive: null });
   const postieElRef = useRef<HTMLDivElement | null>(null);
   const doorElRef = useRef<HTMLDivElement | null>(null);
   const doorOpenRef = useRef(false);
@@ -282,8 +282,12 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     setNewsPicker(NEWS_PICKER_IDLE);
     setNewsReader(NEWS_READER_IDLE);
     setNewsWriter(NEWS_WRITER_IDLE);
-    postieRef.current.visible = false;
-    postieRef.current.carry = false;
+    const p = postieRef.current;
+    p.visible = false;
+    p.carry = false;
+    p.tx = null;
+    p.ty = null;
+    p.onArrive = null;
     doorOpenRef.current = false;
     if (doorElRef.current) doorElRef.current.classList.remove("open");
   }, []);
@@ -588,7 +592,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // ---- POSTIE overlay: walks news room → door → mailbox ----
+  // ---- POSTIE overlay: inside NEWS room-frame (coords = canvas px 320×240) ----
   useEffect(() => {
     let raf = 0;
     const tick = () => {
@@ -600,15 +604,15 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       el.style.display = "block";
       if (p.tx !== null && p.ty !== null) {
         const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
-        if (d < 0.9) {
+        if (d < 1.2) {
           p.x = p.tx; p.y = p.ty; p.tx = null; p.ty = null;
           const cb = p.onArrive; p.onArrive = null; if (cb) cb();
         } else {
-          p.x += (dx / d) * 1.3; p.y += (dy / d) * 1.3;
+          p.x += (dx / d) * 2.2; p.y += (dy / d) * 2.2;
         }
       }
-      el.style.left = `${p.x}%`;
-      el.style.top = `${p.y}%`;
+      el.style.left = `${(p.x / 320) * 100}%`;
+      el.style.top = `${(p.y / 240) * 100}%`;
       el.className = `news-courier${p.carry ? " carry" : ""}`;
     };
     raf = requestAnimationFrame(tick);
@@ -621,6 +625,12 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       await new Promise<void>((res) => {
         const p = postieRef.current;
         p.tx = px; p.ty = py; p.onArrive = res;
+        // Safety: never leave POSTIE stuck waiting forever
+        setTimeout(() => {
+          if (p.onArrive === res) {
+            p.x = px; p.y = py; p.tx = null; p.ty = null; p.onArrive = null; res();
+          }
+        }, 8000);
       });
     }
   }, []);
@@ -629,6 +639,16 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     doorOpenRef.current = open;
     if (doorElRef.current) doorElRef.current.classList.toggle("open", open);
   }, []);
+
+  const hidePostie = useCallback(() => {
+    const p = postieRef.current;
+    p.visible = false;
+    p.carry = false;
+    p.tx = null;
+    p.ty = null;
+    p.onArrive = null;
+    setDoorOpen(false);
+  }, [setDoorOpen]);
   const walkPath = useCallback(async (pts: number[][], who: "dash" | "helper" = "dash") => {
     const d = who === "helper" ? helperRef.current : dashRef.current;
     for (const [px, py] of pts) {
@@ -720,47 +740,50 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
   const deliverNewsCourier = useCallback(async () => {
     const p = postieRef.current;
-    // WRITER desk = news canvas bottom-right (~250,168) → % of building-stage
+    // Canvas coords inside NEWS room-frame (320×240):
+    // WRITER = desk index 3 at [250,168] (ม่วง) — NOT PICKER [250,92] (เขียว)
     p.visible = true;
     p.carry = false;
-    p.x = 70;
-    p.y = 48;
+    p.x = 160;
+    p.y = 140;
+    p.tx = null;
+    p.ty = null;
+    p.onArrive = null;
     setDoorOpen(true);
-    if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — เดินไปหยิบสรุปที่โต๊ะ WRITER…";
-    log("  POSTIE เดินไปหยิบข่าวที่โต๊ะ WRITER", "a");
-    // Aisle → beside WRITER desk (stand left of right-column desk, don't walk through it)
-    await walkPostie([[78, 55], [86, 68], [82, 74]]);
-    await sleep(280);
-    p.carry = true;
-    log("  POSTIE หยิบสรุปจากโต๊ะ WRITER ✓", "g");
-    if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — ถือข่าวเดินไปประตู…";
-    await walkPostie([[78, 62], [60, 56], [53, 56], [44, 56]]);
+    try {
+      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — เดินไปหยิบสรุปที่โต๊ะ WRITER…";
+      log("  POSTIE เดินไปหยิบข่าวที่โต๊ะ WRITER (ม่วง)", "a");
+      // Aisle → left side of WRITER desk (bottom-right)
+      await walkPostie([[200, 160], [218, 178]]);
+      await sleep(300);
+      p.carry = true;
+      log("  POSTIE หยิบสรุปจากโต๊ะ WRITER ✓", "g");
+      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — ถือข่าวเดินไปประตู…";
+      await walkPostie([[180, 160], [40, 140], [16, 140]]);
 
-    // DASH (red) walks to door, takes parcel, puts it in the mailbox.
-    setAgent(4, "work");
-    setDashPace(dashRef.current, false);
-    setCap("<b>DASH</b> — รับข่าวจาก POSTIE แล้วใส่ตู้จดหมาย");
-    log("  DASH เดินไปรับข่าวที่ประตู", "a");
-    await walkPath([[160, 150], [290, 140]]);
-    p.carry = false;
-    dashRef.current.carry = true;
-    log("  DASH รับพัสดุข่าวจาก POSTIE", "a");
-    if (capRef.current) capRef.current.innerHTML = "<b>DASH</b> — ใส่ข่าวลงตู้จดหมาย…";
-    await walkPath([[200, 160], [160, 198]]);
-    dashRef.current.carry = false;
-    mailFlashRef.current = 60;
-    mailHasParcelRef.current = true;
-    log("  DASH ใส่ข่าวในตู้จดหมาย ✓", "g");
-    if (capRef.current) capRef.current.innerHTML = "<b>ตู้จดหมาย</b> — ได้สรุปข่าวแล้ว · รอส่ง LINE";
+      setAgent(4, "work");
+      setDashPace(dashRef.current, false);
+      setCap("<b>DASH</b> — รับข่าวจาก POSTIE แล้วใส่ตู้จดหมาย");
+      log("  DASH เดินไปรับข่าวที่ประตู", "a");
+      await walkPath([[160, 150], [300, 140]]);
+      p.carry = false;
+      dashRef.current.carry = true;
+      log("  DASH รับพัสดุข่าวจาก POSTIE", "a");
+      if (capRef.current) capRef.current.innerHTML = "<b>DASH</b> — ใส่ข่าวลงตู้จดหมาย…";
+      await walkPath([[200, 160], [160, 198]]);
+      dashRef.current.carry = false;
+      mailFlashRef.current = 60;
+      mailHasParcelRef.current = true;
+      log("  DASH ใส่ข่าวในตู้จดหมาย ✓", "g");
+      if (capRef.current) capRef.current.innerHTML = "<b>ตู้จดหมาย</b> — ได้สรุปข่าวแล้ว · รอส่ง LINE";
 
-    void walkPostie([[50, 56], [66, 50], [74, 48]]).then(() => {
-      p.visible = false;
-      setDoorOpen(false);
-    });
-    await sleep(200);
-    await walkPath([[160, 150]]);
-    setAgent(4, "idle");
-  }, [log, setAgent, setCap, setDashPace, setDoorOpen, walkPath, walkPostie]);
+      await walkPostie([[40, 140], [160, 140]]);
+      await walkPath([[160, 150]]);
+      setAgent(4, "idle");
+    } finally {
+      hidePostie();
+    }
+  }, [hidePostie, log, setAgent, setCap, setDashPace, setDoorOpen, walkPath, walkPostie]);
 
   // ---- play one trace's events in sequence ----
   const resetRoom = useCallback(() => {
@@ -1020,12 +1043,12 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                     <span className="stt"><span className="dot" /><span className="w">IDLE</span></span>
                   </div>
                 ))}
+                <div className="news-courier" ref={postieElRef}>
+                  <span className="nm">POSTIE</span>
+                  <span className="body" />
+                </div>
               </div>
               <div className="wing-cap" ref={newsCapRef}>รอคำขอ “ข่าววันนี้”…</div>
-            </div>
-            <div className="news-courier" ref={postieElRef}>
-              <span className="nm">POSTIE</span>
-              <span className="body" />
             </div>
           </div>
           <div className="news-grid">
