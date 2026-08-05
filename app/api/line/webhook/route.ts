@@ -498,6 +498,8 @@ const MEETING_RSVP_ACTIONS = new Set([
   "mthostok",
   "mthostedit",
   "mthostcancel",
+  "mthostforce",
+  "mthostwait",
 ]);
 
 /** Parse free-text meeting window, e.g. "พรุ่งนี้ 10:00-11:00", "10.00-11.00", "10 โมง 30 นาที". */

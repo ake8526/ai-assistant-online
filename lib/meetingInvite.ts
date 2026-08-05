@@ -9,6 +9,10 @@ import { fmtDateTime, fmtTime, parseWall, parseHHMM, addMinutes, wallIso, wallTo
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Re-ping unanswered LINE invitees this often. */
 const NUDGE_INTERVAL_MS = 60 * 60 * 1000;
+/** Escalate to organizer after this long with no reply. */
+const HOST_ESCALATE_DAY_MS = 24 * 60 * 60 * 1000;
+/** Escalate to organizer when meeting starts within this window. */
+const HOST_ESCALATE_NEAR_MS = 2 * 60 * 60 * 1000;
 const PENDING_RSVP_KEY = "_mt_rsvp_pending";
 const HOST_EDIT_KEY = "_mt_host_edit";
 
@@ -29,6 +33,10 @@ export type MeetingInviteRecord = {
   responses: Record<string, "accept" | "decline">;
   /** Last nudge timestamp per attendee UPN (ms) — hourly follow-up while unanswered. */
   nudgeAt?: Record<string, number>;
+  /** Host already got “waited 1 day” escalation. */
+  hostAlertDay?: boolean;
+  /** Host already got “near start time” escalation. */
+  hostAlertNear?: boolean;
   /** Attendee-proposed new time (from “เปลี่ยนเวลาเป็น…”) */
   proposedBy?: string;
   proposedHint?: string;
@@ -620,7 +628,7 @@ export async function bookMeetingWithLineHold(opts: {
       note:
         `\n\n⏳ ยังไม่สร้างใน Outlook — ส่งคำขอทาง LINE แล้ว ${ping.notified} คน\n` +
         `จะสร้างนัดให้อัตโนมัติเมื่ออีกฝั่งกดยืนยันครับ\n` +
-        `ถ้ายังไม่ตอบ ระบบจะติดตามทุก 1 ชม. จนกว่าจะได้คำตอบหรือถึงเวลานัดครับ`,
+        `ถ้ายังไม่ตอบ ระบบจะติดตามทุก 1 ชม. และถ้าครบ 1 วันหรือใกล้ถึงเวลานัด จะถามคุณว่าจะทำอย่างไรต่อครับ`,
     };
   }
 
@@ -930,14 +938,14 @@ async function createOrUpdateOutlook(
   }
 }
 
-/** Host replies to attendee reschedule request: accept / edit / cancel. */
+/** Host replies to attendee reschedule / escalation: accept / edit / cancel / force / wait. */
 export async function handleHostRescheduleChoice(
   hostUpn: string,
   act: string,
   organizerUpn: string,
   inviteId: string
 ): Promise<{ ok: boolean; reply: string; quickReply?: object } | null> {
-  if (!["mthostok", "mthostedit", "mthostcancel"].includes(act)) return null;
+  if (!["mthostok", "mthostedit", "mthostcancel", "mthostforce", "mthostwait"].includes(act)) return null;
 
   if (hostUpn.toLowerCase() !== organizerUpn.toLowerCase()) {
     return { ok: false, reply: "เฉพาะเจ้าของนัดเท่านั้นที่ตอบคำขอนี้ได้ครับ" };
@@ -946,6 +954,52 @@ export async function handleHostRescheduleChoice(
   const rec = await readInvite(organizerUpn.toLowerCase(), inviteId);
   if (!rec) {
     return { ok: false, reply: "ไม่พบคำขอนัดนี้แล้วครับ" };
+  }
+
+  if (act === "mthostwait") {
+    const awaiting = linkedAwaitList(rec).filter((u) => !rec.responses[u]);
+    return {
+      ok: true,
+      reply:
+        `รับทราบครับ — จะรอและติดตามอีกฝั่งต่อให้\n` +
+        `📌 ${rec.subject}\n🕐 ${whenLabel(rec.start, rec.end)}\n` +
+        (awaiting.length ? `⏳ ยังรอ: ${awaiting.join(", ")}` : ""),
+    };
+  }
+
+  if (act === "mthostforce") {
+    if (rec.status === "cancelled") {
+      return { ok: false, reply: "คำขอนัดนี้ถูกยกเลิกไปแล้วครับ" };
+    }
+    if (rec.eventId && rec.status === "booked") {
+      return {
+        ok: true,
+        reply: `นัดนี้อยู่ใน Outlook แล้วครับ\n📌 ${rec.subject}\n🕐 ${whenLabel(rec.start, rec.end)}`,
+      };
+    }
+    const created = await createOrUpdateOutlook(rec, rec.start, rec.end);
+    if (created.id) {
+      rec.eventId = created.id;
+      rec.status = "booked";
+      await saveInvite(rec.organizerUpn, rec);
+      await notifyAttendeeOfHostDecision(
+        rec,
+        `📬 เจ้าของนัดสร้างนัดใน Outlook แล้ว (ยังไม่รอคำยืนยันเพิ่ม)\n` +
+          `📌 ${rec.subject}\n🕐 ${whenLabel(rec.start, rec.end)}\n\n` +
+          `ถ้าไม่สะดวก แจ้งเจ้าของนัดได้โดยตรงครับ`
+      );
+      return {
+        ok: true,
+        reply:
+          `✅ สร้างนัดใน Outlook แล้วครับ\n📌 ${rec.subject}\n🕐 ${whenLabel(rec.start, rec.end)}\n\n` +
+          `แจ้งอีกฝั่งแล้วว่าสร้างนัดโดยไม่รอคำยืนยัน`,
+        quickReply: hostNextStepQuickReply(rec.attendees[0]),
+      };
+    }
+    return {
+      ok: false,
+      reply: `⚠️ สร้างนัดไม่สำเร็จ: ${created.error || "unknown"}\nลองให้สิทธิ์ปฏิทินแล้วกดอีกครั้งได้ครับ`,
+    };
   }
 
   if (act === "mthostedit") {
@@ -1104,18 +1158,20 @@ export async function tryHandleHostEditText(
 }
 
 /**
- * Cron: re-ping LINE invitees who have not accepted/declined yet, every ~1 hour,
- * until they answer or the meeting start time has passed.
+ * Cron: re-ping unanswered LINE invitees every ~1 hour, and escalate to the
+ * organizer after 1 day or when the meeting is near — ask what to do next.
  */
 export async function nudgePendingMeetingInvites(): Promise<{
   scanned: number;
   nudged: number;
+  hostAlerts: number;
   details: { inviteId: string; upn: string }[];
 }> {
   const now = Date.now();
   const details: { inviteId: string; upn: string }[] = [];
   let scanned = 0;
   let nudged = 0;
+  let hostAlerts = 0;
 
   let rows: { owner_upn: string; key: string; value: string }[] = [];
   try {
@@ -1123,7 +1179,7 @@ export async function nudgePendingMeetingInvites(): Promise<{
     rows = (data || []) as typeof rows;
   } catch (e) {
     console.warn("[mt-invite] nudge scan failed", String(e).slice(0, 120));
-    return { scanned: 0, nudged: 0, details };
+    return { scanned: 0, nudged: 0, hostAlerts: 0, details };
   }
 
   for (const row of rows) {
@@ -1141,8 +1197,9 @@ export async function nudgePendingMeetingInvites(): Promise<{
     if (rec.status && rec.status !== "pending") continue;
 
     const start = parseWall(rec.start);
+    let startMs = 0;
     if (start) {
-      const startMs = new Date(wallToUtcIso(start)).getTime();
+      startMs = new Date(wallToUtcIso(start)).getTime();
       if (startMs <= now) continue; // meeting already started / past
     }
 
@@ -1172,6 +1229,25 @@ export async function nudgePendingMeetingInvites(): Promise<{
       }
     }
 
+    // Escalate to organizer: 1 day unanswered, or near meeting start
+    let escalate: "day" | "near" | null = null;
+    const untilStart = startMs > 0 ? startMs - now : Number.POSITIVE_INFINITY;
+    if (untilStart > 0 && untilStart <= HOST_ESCALATE_NEAR_MS && !rec.hostAlertNear) {
+      escalate = "near";
+    } else if (now - rec.ts >= HOST_ESCALATE_DAY_MS && !rec.hostAlertDay) {
+      escalate = "day";
+    }
+
+    if (escalate) {
+      const ok = await notifyHostUnanswered(rec, awaiting, escalate);
+      if (ok) {
+        if (escalate === "near") rec.hostAlertNear = true;
+        if (escalate === "day") rec.hostAlertDay = true;
+        hostAlerts++;
+        changed = true;
+      }
+    }
+
     if (changed) {
       await saveInvite(rec.organizerUpn, rec).catch((e) =>
         console.warn("[mt-invite] save nudgeAt", String(e).slice(0, 80))
@@ -1179,5 +1255,78 @@ export async function nudgePendingMeetingInvites(): Promise<{
     }
   }
 
-  return { scanned, nudged, details };
+  return { scanned, nudged, hostAlerts, details };
+}
+
+async function notifyHostUnanswered(
+  rec: MeetingInviteRecord,
+  awaiting: string[],
+  kind: "day" | "near"
+): Promise<boolean> {
+  const orgLine = await getLineId(rec.organizerUpn);
+  if (!orgLine) return false;
+  const oid = encodeURIComponent(rec.organizerUpn);
+  const when = whenLabel(rec.start, rec.end);
+  const who = awaiting.join(", ");
+  const reason =
+    kind === "near"
+      ? "ใกล้ถึงเวลานัดแล้ว แต่อีกฝั่งยังไม่ตอบกลับ"
+      : "รอครบ 1 วันแล้ว แต่อีกฝั่งยังไม่ตอบกลับ";
+
+  try {
+    await pushLineMessages(orgLine, [
+      {
+        type: "text",
+        text:
+          `⚠️ ${reason}\n\n` +
+          `📌 ${rec.subject}\n` +
+          `🕐 ${when}\n` +
+          `👤 รอ: ${who}\n\n` +
+          `จะเอายังไงต่อดีครับ? กดปุ่มด้านล่างได้เลย 👇`,
+        quickReply: {
+          items: [
+            {
+              type: "action",
+              action: {
+                type: "postback",
+                label: "✅ สร้าง Outlook เลย",
+                data: `a=mthostforce&oid=${oid}&id=${rec.id}`,
+                displayText: "สร้างนัด Outlook เลย",
+              },
+            },
+            {
+              type: "action",
+              action: {
+                type: "postback",
+                label: "⏳ รอต่อ",
+                data: `a=mthostwait&oid=${oid}&id=${rec.id}`,
+                displayText: "รออีกฝั่งต่อ",
+              },
+            },
+            {
+              type: "action",
+              action: {
+                type: "message",
+                label: "📅 หาเวลาใหม่",
+                text: hostRescheduleMessage(awaiting[0]),
+              },
+            },
+            {
+              type: "action",
+              action: {
+                type: "postback",
+                label: "❌ ยกเลิกคำขอ",
+                data: `a=mthostcancel&oid=${oid}&id=${rec.id}`,
+                displayText: "ยกเลิกคำขอนัด",
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    return true;
+  } catch (e) {
+    console.warn("[mt-invite] host escalate failed", String(e).slice(0, 120));
+    return false;
+  }
 }
