@@ -414,6 +414,34 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
   let reply = res.reply || "รับทราบครับ";
   if (res.map_url) reply += `\n🗺️ ${res.map_url}`;
   reply += detailText(res, upn);
+
+  // Persistable "open file" actions:
+  // quick-reply buttons can disappear after you send another message, so for
+  // file search results we also send a template button (keeps in chat history).
+  if (res.intent === "file_results" && upn && Array.isArray(res.files) && res.files.length > 0 && res.files.length <= 4) {
+    const actions = (res.files as { id?: string }[])
+      .map((f, i) => {
+        if (!f.id) return null;
+        return { type: "uri" as const, label: `🔗 เปิด ${i + 1}`, uri: buildShortFileOpenUrl(upn, f.id) };
+      })
+      .filter(Boolean) as { type: "uri"; label: string; uri: string }[];
+    if (actions.length) {
+      await replyLineMessages(replyToken, [
+        { type: "text", text: reply.slice(0, 4900) },
+        {
+          type: "template",
+          altText: "เปิดไฟล์ใน OneDrive",
+          template: {
+            type: "buttons",
+            text: "แตะเพื่อเปิดไฟล์",
+            actions,
+          },
+        } as any,
+      ]);
+      return;
+    }
+  }
+
   const qr = quickReplyFor(res, upn);
   if (qr) {
     await replyLineMessages(replyToken, [{ type: "text", text: reply.slice(0, 4900), quickReply: qr }]);
