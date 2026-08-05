@@ -770,14 +770,17 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
     .replace(/\s+/g, " ")
     .trim();
 
-  // Prefer explicit emails in the message (external Gmail etc.) over leftover words.
+  // Emails + nicknames in the same line: "ake@gmail.com กับเบส"
   const emails = extractEmails(body);
-  const attendees = emails.length
-    ? emails
-    : body
-        .split(/\s*(?:กับ|และ|,)\s*/)
-        .map((s) => stripHonorificPublic(s).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
-        .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง|หา|ส่ง)$/i.test(s));
+  const names = body
+    .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, " ")
+    .split(/\s*(?:กับ|และ|,)\s*/)
+    .map((s) => stripHonorificPublic(s).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
+    .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง|หา|ส่ง)$/i.test(s));
+  const attendees: string[] = [...emails];
+  for (const n of names) {
+    if (!attendees.some((a) => a.toLowerCase() === n.toLowerCase())) attendees.push(n);
+  }
 
   if (!attendees.length) return null;
 
@@ -792,6 +795,49 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
 function extractEmails(text: string): string[] {
   const found = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) || [];
   return Array.from(new Set(found.map((e) => e.toLowerCase())));
+}
+
+/** Nicknames beside emails in a book line: "ake@x.com กับเบส" → ["เบส"]. */
+function nameTokensBesideEmails(text: string): string[] {
+  let body = text
+    .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, " ")
+    .replace(/\d+\s*(?:นาที|min|ชม\.?|ชั่วโมง|hr|hour)/gi, " ")
+    .replace(/\sเรื่อง\s+.+$/i, " ")
+    .replace(/\bวันนี้\b|\bพรุ่งนี้\b|\bมะรืน(นี้)?\b/g, " ")
+    .replace(/บ่าน/g, "บ่าย")
+    .replace(/(?:ตอน|เวลา|ที่)?\s*\d{1,2}\s*[:.]\s*\d{2}/g, " ")
+    .replace(/(?:ตอน|เวลา|ที่)?\s*\d{1,2}\s*โมง(?:\s*เย็น)?(?:\s*(?:ครึ่ง|\d{1,2}))?/g, " ")
+    .replace(/บ่าย\s*โมง(?:\s*เย็น)?(?:\s*ครึ่ง)?/g, " ")
+    .replace(/บ่าย\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)(?:\s*โมง)?(?:\s*เย็น)?(?:\s*ครึ่ง)?/g, " ")
+    .replace(/(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)\s*ทุ่ม(?:\s*ครึ่ง)?/g, " ")
+    .replace(/ทุ่ม\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)?(?:\s*ครึ่ง)?/g, " ")
+    .replace(/(?:ตอน|เวลา|ที่)?\s*ตี\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)(?:\s*ครึ่ง)?/g, " ")
+    .replace(/(?:ตอน|เวลา|ที่)?\s*เที่ยงคืน/g, " ")
+    .replace(/(?:ตอน|เวลา|ที่)?\s*เที่ยง(?:วัน|ตรง)?(?:\s*ครึ่ง)?/g, " ")
+    .replace(/^(?:ส่งนัดหา|ส่งนัด|นัดหา|เชิญ|invite)\s*/i, "")
+    .replace(/^(?:นัด|จอง)(?:ประชุม)?(?:กับ|หา)?/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const out: string[] = [];
+  const push = (raw: string) => {
+    const n = stripHonorificPublic(raw).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim();
+    if (
+      !n ||
+      SELF_WORDS.has(n) ||
+      /^(ประชุม|นัด|จอง|หา|ส่ง|ตอน|เวลา|ช่วง|ว่าง|ตรงกัน)$/i.test(n)
+    ) {
+      return;
+    }
+    if (!out.some((x) => x.toLowerCase() === n.toLowerCase())) out.push(n);
+  };
+
+  for (const n of peopleFromText(body)) push(n);
+  for (const m of body.matchAll(/(?:กับ|และ)\s+(\S+)/g)) {
+    push(m[1]);
+  }
+  for (const part of body.split(/\s*(?:กับ|และ|,)\s*/)) push(part);
+  return out;
 }
 
 function historyLines(context?: CommandContext): string[] {
@@ -2850,15 +2896,30 @@ async function handleParsed(
       ? bandFromParams
       : timeBandFromText(text);
 
-    // Fresh invite with explicit email(s) in this message → never drag in last_meeting crowd.
+    // Fresh invite with email(s) → don't pull last_meeting crowd, but KEEP nicknames
+    // in the same message (e.g. "นัด ake@gmail.com กับเบส").
     const emailsInText = extractEmails(text);
     const freshInvite =
       emailsInText.length > 0 && /ส่งนัด|นัดหา|เชิญ|invite\b|นัด\s|จอง\s/i.test(text);
-    const attendees: MtAttendee[] = freshInvite
-      ? emailsInText.map((mail) => ({ mail }))
-      : attendeesRaw.length
-        ? attendeesRaw.map((token) => attendeeFromToken(String(token), userUpn))
-        : (context?.last_meeting?.attendees || []).map((mail) => ({ mail }));
+    let attendeeTokens: string[] = attendeesRaw.map(String).filter(Boolean);
+    if (freshInvite) {
+      for (const mail of emailsInText) {
+        if (!attendeeTokens.some((t) => t.toLowerCase() === mail.toLowerCase())) {
+          attendeeTokens.push(mail);
+        }
+      }
+      for (const n of nameTokensBesideEmails(text)) {
+        if (!attendeeTokens.some((t) => t.toLowerCase() === n.toLowerCase())) {
+          attendeeTokens.push(n);
+        }
+      }
+      if (!attendeeTokens.length) attendeeTokens = [...emailsInText];
+    } else if (!attendeeTokens.length) {
+      attendeeTokens = (context?.last_meeting?.attendees || []).map(String);
+    }
+    const attendees: MtAttendee[] = attendeeTokens.map((token) =>
+      attendeeFromToken(String(token), userUpn)
+    );
 
     if (!attendees.length) {
       return { intent: "find_meeting_time", reply: "ยังไม่ทราบว่าจะนัดกับใครครับ ลองระบุชื่อคนที่ต้องการดูตารางด้วยนะครับ" };
@@ -2867,7 +2928,14 @@ async function handleParsed(
     let atMin = parseHHMM(params.at);
     let meetDuration = duration;
 
-    // Recover exact range from text when LLM/subject swallowed “17:30-18:00”
+    // Recover duration / subject from the raw line when the parser/LLM dropped them
+    const durHit = text.match(/(\d+)\s*(?:นาที|min)/i);
+    if (durHit) meetDuration = Math.max(5, Number(durHit[1]));
+    const noteHit = text.match(/\sเรื่อง\s+(.+)$/i);
+    if (noteHit) {
+      const recovered = noteHit[1].trim().replace(/[.,]+$/g, "").trim();
+      if (recovered) subject = recovered.slice(0, 200);
+    }
     const rangeHit = text.match(/(\d{1,2})[:.](\d{2})\s*(?:[-–—]|ถึง)\s*(\d{1,2})[:.](\d{2})/);
     if (rangeHit) {
       const startMin = Number(rangeHit[1]) * 60 + Number(rangeHit[2]);
