@@ -29,6 +29,9 @@ import {
   resolveUserInfo,
   searchFiles,
   rankDriveFileHits,
+  enrichDriveHitPaths,
+  withDriveItemPath,
+  type DriveFileHit,
   searchUsers,
   stripHonorificPublic,
 } from "@/lib/graph";
@@ -95,7 +98,7 @@ export type CommandContext = {
   last_person_mail?: string;
   /** Last calendar day scope the user was talking about (today/tomorrow/week/…). */
   last_period?: string;
-  files?: { id?: string; name?: string; url?: string; is_folder?: boolean }[];
+  files?: { id?: string; name?: string; url?: string; path?: string; is_folder?: boolean }[];
   selected?: { start: string; person?: { mail?: string; displayName?: string } };
   /** Last multi-person schedule search — used for follow-ups like "ตอนเย็นว่างไหม". */
   last_meeting?: {
@@ -139,6 +142,8 @@ export type CommandResult = {
   map_where?: string;
   /** LINE quick-reply follow-ups (message actions). */
   suggestions?: { label: string; text: string }[];
+  /** Show OneDrive folder path in file list (detailText). */
+  show_file_location?: boolean;
 };
 
 /** Interactive calendar must use the user's M365 token (Outlook-like rights). */
@@ -673,17 +678,22 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
 
   const fileSearch = t.match(/^ห(?:า|้)?(?:ไฟล์|file)\s+(.+)$/i);
   if (fileSearch) {
-    const raw = fileSearch[1]!.trim();
-    const parsed = parseQueryWithExtension(raw);
-    const typeWord = raw.match(/\b(excel|word|pdf|powerpoint|ppt|html|htm|xlsx|docx|pptx)\b/i);
+    const rawIn = fileSearch[1]!.trim();
+    const { query: stripped, wantsLocation } = stripFileLocationHint(rawIn);
+    const parsed = parseQueryWithExtension(stripped);
+    const typeWord = stripped.match(/\b(excel|word|pdf|powerpoint|ppt|html|htm|xlsx|docx|pptx)\b/i);
     const filetype = parsed.filetype || (typeWord ? normalizeFileType(typeWord[1]!) : "");
     let query = parsed.query;
     if (typeWord && !parsed.filetype) {
-      query = raw.replace(new RegExp(`\\b${typeWord[1]}\\b`, "i"), "").replace(/\s+/g, " ").trim();
+      query = stripped.replace(new RegExp(`\\b${typeWord[1]}\\b`, "i"), "").replace(/\s+/g, " ").trim();
     }
     return {
       intent: "search_files",
-      params: { query, ...(filetype ? { filetype } : {}) },
+      params: {
+        query,
+        ...(filetype ? { filetype } : {}),
+        ...(wantsLocation ? { show_location: true } : {}),
+      },
     };
   }
 
@@ -986,6 +996,13 @@ async function parseIntent(
     const extFilter = parseFileExtensionFilter(textClean);
     if (extFilter) {
       return { intent: "filter_file_results", params: { filetype: extFilter }, source: "quick" };
+    }
+  }
+
+  // File location follow-up — "อยู่ที่ไหน" after search
+  if (context?.last_intent === "file_results" && context?.files?.length) {
+    if (/อยู่(?:ที่)?ไหน|อยู่ไหน|โฟลเดอร์(?:ไหน|อะไร)|ไฟล์อยู่|path/i.test(textClean)) {
+      return { intent: "file_locations", params: {}, source: "quick" };
     }
   }
 
@@ -1342,19 +1359,52 @@ function parseFileExtensionFilter(text: string): string | null {
   return null;
 }
 
-type FileResultItem = { id?: string; name?: string; url?: string; is_folder?: boolean; modified?: string };
+function stripFileLocationHint(raw: string): { query: string; wantsLocation: boolean } {
+  const wantsLocation = /อยู่(?:ที่)?ไหน|อยู่ไหน|โฟลเดอร์(?:ไหน|อะไร)|path\s*อะไร|ที่(?:อยู่|เก็บ)/i.test(raw);
+  const query = raw
+    .replace(/\s*(?:อยู่(?:ที่)?ไหน|อยู่ไหน|โฟลเดอร์(?:ไหน|อะไร)|path\s*อะไร|ที่(?:อยู่|เก็บ)(?:ไฟล์)?)\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return { query, wantsLocation };
+}
+
+function mapFileHits(hits: DriveFileHit[]): FileResultItem[] {
+  return hits.map((f) => {
+    const p = withDriveItemPath(f);
+    return {
+      id: p.id,
+      name: p.name,
+      url: p.webUrl,
+      path: p.path,
+      is_folder: !!p.folder,
+      modified: p.lastModifiedDateTime,
+    };
+  });
+}
+
+type FileResultItem = {
+  id?: string;
+  name?: string;
+  url?: string;
+  path?: string;
+  is_folder?: boolean;
+  modified?: string;
+};
 
 function buildFileResultsResponse(
   files: FileResultItem[],
-  label: string
+  label: string,
+  opts?: { showLocation?: boolean }
 ): CommandResult {
   return {
     intent: "file_results",
     reply:
       `เจอ ${files.length} ไฟล์ที่ตรงกับ “${label}” ครับ 👇\n\n` +
       `จะผูกกับนัดวันนี้ พิมพ์ เช่น “ผูกไฟล์นัด 1” หรือ “แนบอัน 2 กับนัด 1”\n` +
-      `ผูกลิงก์: “แนบลิงก์นัด 1 https://…”`,
+      `ผูกลิงก์: “แนบลิงก์นัด 1 https://…”` +
+      (!opts?.showLocation ? `\n(ถาม “อยู่ที่ไหน” เพื่อดูโฟลเดอร์ใน OneDrive)` : ""),
     files,
+    show_file_location: !!opts?.showLocation,
     suggestions: [
       { label: "สรุปอัน 1", text: "สรุปอัน 1" },
       { label: "สรุปอัน 2", text: "สรุปอัน 2" },
@@ -3029,6 +3079,24 @@ async function handleParsed(
     return { intent, reply: lines.join("\n"), map_url: url, map_where: where };
   }
 
+  if (intent === "file_locations") {
+    const prev = context?.files || [];
+    if (!prev.length) {
+      return { intent, reply: "ยังไม่มีรายการไฟล์ครับ — ลองพิมพ์ “หาไฟล์ …” ก่อน" };
+    }
+    const enriched = await enrichDriveHitPaths(
+      userUpn,
+      prev.map((f) => ({ id: f.id, name: f.name, webUrl: f.url }))
+    );
+    const files = mapFileHits(enriched);
+    return {
+      intent: "file_results",
+      reply: "ตำแหน่งไฟล์ใน OneDrive ครับ 👇",
+      files,
+      show_file_location: true,
+    };
+  }
+
   if (intent === "filter_file_results") {
     const ft = normalizeFileType(String(params.filetype || ""));
     const all = context?.files || [];
@@ -3045,6 +3113,13 @@ async function handleParsed(
   if (intent === "search_files") {
     let q = String(params.query || "").trim();
     let ft = normalizeFileType(String(params.filetype || ""));
+    const locFromText = stripFileLocationHint(text);
+    const wantsLocation = !!params.show_location || locFromText.wantsLocation;
+    if (!q && locFromText.query) q = locFromText.query;
+    if (q) {
+      const stripped = stripFileLocationHint(q);
+      if (stripped.query) q = stripped.query;
+    }
     if (!ft && q) {
       const parsed = parseQueryWithExtension(q);
       if (parsed.filetype) {
@@ -3053,22 +3128,14 @@ async function handleParsed(
       }
     }
     if (!q && !ft) return { intent, reply: "ระบุคำค้นไฟล์ด้วยครับ เช่น “หาไฟล์งบประมาณ”" };
-    const files = await searchFilesSmart(userUpn, q, ft);
-    if (!files.length) {
+    let hits = await searchFilesSmart(userUpn, q, ft);
+    if (wantsLocation) hits = await enrichDriveHitPaths(userUpn, hits);
+    if (!hits.length) {
       const what = q ? (ft ? `${q} (.${ft})` : q) : `.${ft}`;
       return { intent, reply: `ไม่พบไฟล์ที่ตรงกับ “${what}” ใน OneDrive ครับ` };
     }
     const label = q ? (ft ? `${q} (.${ft})` : q) : `.${ft}`;
-    return buildFileResultsResponse(
-      files.map((f) => ({
-        id: f.id,
-        name: f.name,
-        url: f.webUrl,
-        is_folder: !!(f as { folder?: unknown }).folder,
-        modified: f.lastModifiedDateTime,
-      })),
-      label
-    );
+    return buildFileResultsResponse(mapFileHits(hits), label, { showLocation: wantsLocation });
   }
 
   if (intent === "cancel_meeting") {

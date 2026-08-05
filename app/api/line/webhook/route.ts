@@ -239,9 +239,13 @@ function detailText(res: CommandResult): string {
   } else if (res.intent === "choose_link_meeting" && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).map((c, i) => `${c.index || i + 1}) ${c.label || ""}`);
   } else if (res.intent === "file_results" && Array.isArray(res.files)) {
-    lines = (res.files as { name?: string; url?: string }[]).map(
-      (f, i) => `${i + 1}) ${(f.name || f.url || "ไฟล์").trim()}`
-    );
+    const showPath = !!(res as CommandResult).show_file_location;
+    lines = (res.files as { name?: string; url?: string; path?: string }[]).map((f, i) => {
+      const name = (f.name || f.url || "ไฟล์").trim();
+      const path =
+        showPath && f.path && f.path !== "OneDrive" ? `\n   📂 ${f.path}` : "";
+      return `${i + 1}) ${name}${path}`;
+    });
   }
   return lines.length ? "\n\n" + lines.join("\n") : "";
 }

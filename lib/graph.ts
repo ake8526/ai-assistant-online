@@ -1753,7 +1753,71 @@ export type DriveFileHit = {
   size?: number;
   folder?: unknown;
   file?: unknown;
+  parentReference?: { path?: string; name?: string; id?: string };
+  /** Human-readable folder path under OneDrive root */
+  path?: string;
 };
+
+const DRIVE_ITEM_SELECT =
+  "id,name,webUrl,lastModifiedDateTime,size,file,folder,parentReference";
+
+/** Turn Graph parentReference / webUrl into a readable OneDrive folder path. */
+export function formatDriveItemPath(hit: DriveFileHit): string {
+  if (hit.path) return hit.path;
+  const pr = hit.parentReference;
+  if (pr?.path) {
+    const m = pr.path.match(/root:(.+)$/i);
+    if (m) {
+      const folder = decodeURIComponent(m[1].replace(/^\/+/, "").replace(/\/+$/, ""));
+      if (folder) return folder;
+    }
+  }
+  if (pr?.name) return pr.name;
+  const url = hit.webUrl || "";
+  if (url) {
+    try {
+      const u = new URL(url);
+      const idParam = u.searchParams.get("id");
+      if (idParam) {
+        const full = decodeURIComponent(idParam);
+        const dm = full.match(/\/Documents\/(.+)$/i);
+        if (dm) {
+          const parts = dm[1].split("/").filter(Boolean);
+          if (parts.length > 1) {
+            parts.pop();
+            return parts.join("/").replace(/^Documents\//i, "");
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return "OneDrive";
+}
+
+export function withDriveItemPath(hit: DriveFileHit): DriveFileHit {
+  return { ...hit, path: formatDriveItemPath(hit) };
+}
+
+/** Fill missing folder paths (Graph search sometimes omits parentReference). */
+export async function enrichDriveHitPaths(userUpn: string, hits: DriveFileHit[]): Promise<DriveFileHit[]> {
+  return Promise.all(
+    hits.map(async (h) => {
+      if (h.path && h.path !== "OneDrive") return h;
+      if (h.parentReference?.path) return withDriveItemPath(h);
+      if (!h.id) return withDriveItemPath(h);
+      try {
+        const data = await graphGet(`${driveBase(userUpn)}/items/${encodeURIComponent(h.id)}`, {
+          $select: "id,parentReference",
+        });
+        return withDriveItemPath({ ...h, parentReference: data.parentReference });
+      } catch {
+        return withDriveItemPath(h);
+      }
+    })
+  );
+}
 
 function driveBase(userUpn: string): string {
   // Prefer /me when we have a delegated token (matches the signed-in OneDrive).
@@ -1772,7 +1836,7 @@ async function listFolderChildren(userUpn: string, folderPath: string): Promise<
     .join("/");
   try {
     const data = await graphGet(`${driveBase(userUpn)}/root:/${encoded}:/children`, {
-      $select: "id,name,webUrl,lastModifiedDateTime,size,file,folder",
+      $select: DRIVE_ITEM_SELECT,
       $top: "200",
     });
     return (data.value as DriveFileHit[]) || [];
@@ -1797,7 +1861,7 @@ export async function resolveDriveItemFromUrl(
   try {
     const shareId = encodeSharingUrl(url);
     const data = await graphGet(`/shares/${encodeURIComponent(shareId)}/driveItem`, {
-      $select: "id,name,webUrl,lastModifiedDateTime,size,file,folder",
+      $select: DRIVE_ITEM_SELECT,
     });
     if (data?.id) return data as DriveFileHit;
   } catch {
@@ -1839,7 +1903,7 @@ export async function getDriveItemByPath(
     .join("/");
   try {
     const data = await graphGet(`${driveBase(userUpn)}/root:/${encoded}`, {
-      $select: "id,name,webUrl,lastModifiedDateTime,size,file,folder",
+      $select: DRIVE_ITEM_SELECT,
     });
     return (data as DriveFileHit) || null;
   } catch {
@@ -1853,7 +1917,7 @@ async function searchDriveOnce(userUpn: string, query: string, top: number): Pro
   const path = `${driveBase(userUpn)}/root/search(q='${q}')`;
   try {
     const data = await graphGet(path, {
-      $select: "id,name,webUrl,lastModifiedDateTime,size,file,folder",
+      $select: DRIVE_ITEM_SELECT,
       $top: String(top),
     });
     return (data.value as DriveFileHit[]) || [];
