@@ -3,15 +3,24 @@ import { verifyFileOpenToken } from "@/lib/fileOpenLink";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  let upn = "";
+  const token = url.searchParams.get("t") || "";
+  const dot = token.lastIndexOf(".");
+  if (!token || dot <= 0) return new Response("Invalid link", { status: 400 });
+  const payloadB64 = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+
+  let payload = "";
   try {
-    upn = Buffer.from(url.searchParams.get("u") || "", "base64url").toString("utf8");
+    payload = Buffer.from(payloadB64, "base64url").toString("utf8");
   } catch {
     return new Response("Invalid link", { status: 400 });
   }
-  const fileId = url.searchParams.get("id") || "";
-  const exp = Number(url.searchParams.get("e"));
-  const sig = url.searchParams.get("s") || "";
+
+  const parts = payload.split("|");
+  const upn = parts[0] || "";
+  const fileId = parts[1] || "";
+  const exp = Number(parts[2] || 0);
+
   if (!verifyFileOpenToken(upn, fileId, exp, sig)) {
     return new Response("Link expired or invalid", { status: 403 });
   }

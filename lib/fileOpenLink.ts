@@ -29,12 +29,8 @@ export function verifyFileOpenToken(upn: string, fileId: string, expMs: number, 
 export function buildShortFileOpenUrl(upn: string, fileId: string): string {
   const exp = Date.now() + LINK_TTL_MS;
   const sig = signFileOpenToken(upn, fileId, exp);
-  const u = Buffer.from(upn, "utf8").toString("base64url");
-  const q = new URLSearchParams({
-    u,
-    id: fileId,
-    e: String(exp),
-    s: sig,
-  });
-  return `${APP_BASE}/api/file/open?${q.toString()}`;
+  const payload = `${upn}|${fileId}|${exp}`;
+  const p = Buffer.from(payload, "utf8").toString("base64url");
+  // Single param keeps URL shorter (LINE often wraps multi-param query strings).
+  return `${APP_BASE}/api/file/open?t=${encodeURIComponent(`${p}.${sig}`)}`;
 }

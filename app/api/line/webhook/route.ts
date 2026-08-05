@@ -273,11 +273,11 @@ function detailText(res: CommandResult, upn?: string): string {
     const fileList = res.files as { name?: string; url?: string; path?: string; id?: string }[];
     lines = fileList.map((f, i) => {
       const name = (f.name || f.url || "ไฟล์").trim();
-      const path =
-        showPath && f.path && f.path !== "OneDrive" ? `\n   📂 ${f.path}` : "";
+      const pathInline = showPath && f.path && f.path !== "OneDrive" ? ` 📂 ${f.path}` : "";
       const openUri = upn && f.id ? buildShortFileOpenUrl(upn, f.id) : "";
-      const link = openUri ? `\n   🔗 ${openUri}` : "";
-      return `${i + 1}) ${name}${path}${link}`;
+      // Keep everything on one line to avoid LINE auto-wrapping URL into multiple lines.
+      const linkInline = openUri ? ` 🔗 ${openUri}` : "";
+      return `${i + 1}) ${name}${pathInline}${linkInline}`;
     });
   }
   return lines.length ? "\n\n" + lines.join("\n") : "";
