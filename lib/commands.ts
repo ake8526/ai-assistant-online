@@ -733,6 +733,7 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
           .replace(/(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)\s*ทุ่ม(?:\s*ครึ่ง)?/g, " ")
           .replace(/ทุ่ม\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)?(?:\s*ครึ่ง)?/g, " ")
           .replace(/(?:ตอน|เวลา|ที่)?\s*ตี\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)(?:\s*ครึ่ง)?/g, " ")
+          .replace(/(?:ตอน|เวลา|ที่)?\s*เที่ยงคืน/g, " ")
           .replace(/(?:ตอน|เวลา|ที่)\s*เที่ยง(?:วัน|ตรง)?(?:\s*ครึ่ง)?/g, " ")
           .replace(/(?:^|\s)เที่ยง(?:วัน|ตรง)?(?:\s*ครึ่ง)?(?=\s|$)/g, " ")
           .replace(/\s+/g, " ")
@@ -1270,11 +1271,47 @@ function resolveFindWindow(params: Record<string, unknown>, text: string): MtWin
 }
 
 function timeBandFromText(text: string): { after: number | null; before: number | null; label: string } | null {
-  const t = text.trim();
-  if (/(ตอน)?เช้า|ช่วงเช้า/.test(t)) return { after: 9 * 60, before: 12 * 60, label: "ช่วงเช้า" };
-  if (/(ตอน)?สาย|ช่วงสาย/.test(t)) return { after: 9 * 60, before: 12 * 60, label: "ช่วงสาย" };
-  if (/(ตอน)?บ่าย|ช่วงบ่าย/.test(t)) return { after: 12 * 60, before: 16 * 60, label: "ช่วงบ่าย" };
-  if (/(ตอน)?เย็น|ช่วงเย็น|ค่ำ/.test(t)) return { after: 16 * 60, before: 20 * 60, label: "ช่วงเย็น" };
+  // Typos: ช่าวง→ช่วง, เข้า(เมื่อคู่กับช่วง)→เช้า
+  const t = text
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/ช่าวง/g, "ช่วง")
+    .replace(/ช่วง\s*เข้า/g, "ช่วงเช้า");
+
+  // Exact clock in the message → leave to parseThaiClock* (unless ก่อน/หลัง…)
+  const hasRelative =
+    /ก่อนเที่ยง|หลังเที่ยง|ก่อนบ่าย|หลังบ่าย|ก่อนเย็น|หลังเย็น|หลังเลิกงาน|(?:หลัง|ก่อน|ตั้งแต่|ถึง)\s*\d/.test(
+      t
+    );
+  if (!hasRelative) {
+    if (/(?:บ่าย|บ่าน)\s*(?:\d|โมง|หนึ่ง|สอง|สาม|สี่|ห้า|หก)/.test(t)) return null;
+    if (/\d{1,2}\s*โมง/.test(t) || /\d{1,2}\s*[:.]\d{2}/.test(t)) return null;
+    if (/\d\s*ทุ่ม|(?:^|[\s,])ทุ่ม(?:\s|$)|ทุ่ม\s*\d/.test(t)) return null;
+    if (/(?:ตอน|เวลา)?\s*ตี\s*\d/.test(t)) return null;
+    if (/เที่ยงคืน|(?:ตอน|เวลา|ที่)\s*เที่ยง(?:วัน|ตรง)?/.test(t)) return null;
+  }
+
+  // Relative to noon / afternoon / evening — most specific first
+  if (/ก่อนเที่ยง/.test(t)) return { after: null, before: 12 * 60, label: "ก่อนเที่ยง" };
+  if (/หลังเที่ยง/.test(t)) return { after: 12 * 60, before: null, label: "หลังเที่ยง" };
+  if (/ก่อนบ่าย/.test(t)) return { after: null, before: 13 * 60, label: "ก่อนบ่าย" };
+  if (/หลังบ่าย/.test(t)) return { after: 16 * 60, before: null, label: "หลังบ่าย" };
+  if (/ก่อนเย็น/.test(t)) return { after: null, before: 16 * 60, label: "ก่อนเย็น" };
+  if (/หลังเย็น|หลังเลิกงาน/.test(t)) return { after: 17 * 60, before: null, label: "หลังเลิกงาน" };
+  if (/พักเที่ยง|ช่วงเที่ยง|มื้อเที่ยง/.test(t)) return { after: 12 * 60, before: 13 * 60, label: "ช่วงเที่ยง" };
+
+  // Named parts of day (ตอน/ช่วง)
+  if (/(?:ตอน|ช่วง)?เช้า|ตอนเช้า|ช่วงเช้า/.test(t) && !/เย็น/.test(t)) {
+    return { after: 9 * 60, before: 12 * 60, label: "ช่วงเช้า" };
+  }
+  if (/(?:ตอน|ช่วง)?สาย|ช่วงสาย/.test(t)) return { after: 9 * 60, before: 12 * 60, label: "ช่วงสาย" };
+  if (/(?:ตอน|ช่วง)?บ่าย|ช่วงบ่าย/.test(t) && !/เย็น/.test(t)) {
+    return { after: 12 * 60, before: 16 * 60, label: "ช่วงบ่าย" };
+  }
+  if (/(?:ตอน|ช่วง)?เย็น|ช่วงเย็น|ค่ำ|หัวค่ำ/.test(t)) {
+    return { after: 16 * 60, before: 20 * 60, label: "ช่วงเย็น" };
+  }
+
   const afterM = t.match(/(?:หลัง|ตั้งแต่)\s*(\d{1,2})(?::(\d{2}))?\s*(โมง|ทุ่ม)?/);
   const beforeM = t.match(/(?:ก่อน|ถึง)\s*(\d{1,2})(?::(\d{2}))?\s*(โมง|ทุ่ม)?/);
   let after: number | null = null;
@@ -1282,14 +1319,18 @@ function timeBandFromText(text: string): { after: number | null; before: number 
   if (afterM) {
     let h = Number(afterM[1]);
     const mi = afterM[2] ? Number(afterM[2]) : 0;
-    if (afterM[3] === "ทุ่ม") h = h === 1 ? 13 : h + 12;
-    else if (afterM[3] === "โมง" && h < 7) h += 12; // "บ่าย 2 โมง" often written without บ่าย
+    if (afterM[3] === "ทุ่ม") h = h === 1 ? 19 : h + 18;
+    else if (afterM[3] === "โมง") {
+      if (h >= 1 && h <= 5) h += 12;
+      // หลัง 6 โมง → after 06:00
+    }
     after = h * 60 + mi;
   }
   if (beforeM) {
     let h = Number(beforeM[1]);
     const mi = beforeM[2] ? Number(beforeM[2]) : 0;
-    if (beforeM[3] === "ทุ่ม") h = h === 1 ? 13 : h + 12;
+    if (beforeM[3] === "ทุ่ม") h = h === 1 ? 19 : h + 18;
+    else if (beforeM[3] === "โมง" && h >= 1 && h <= 5) h += 12;
     before = h * 60 + mi;
   }
   if (after === null && before === null) return null;
@@ -1308,7 +1349,9 @@ function isTimeFollowUp(text: string): boolean {
   return (
     /^(?:แล้ว)?(?:ช่วง|ตอน)?(?:เช้า|สาย|บ่าย|เย็น|ค่ำ)(?:\s*ว่าง)?(?:ไหม|มั้ย|ล่ะ|ละ|รึเปล่า|หรือเปล่า)?[!?.…]*$/i.test(
       t
-    ) || /^(?:แล้ว)?ว่าง(?:ไหม|มั้ย|รึเปล่า|หรือเปล่า|บ้าง)?[!?.…]*$/i.test(t)
+    ) ||
+    /^(?:แล้ว)?(?:ก่อน|หลัง)(?:เที่ยง|บ่าย|เย็น)(?:\s*ว่าง)?(?:ไหม|มั้ย|ล่ะ|ละ)?[!?.…]*$/i.test(t) ||
+    /^(?:แล้ว)?ว่าง(?:ไหม|มั้ย|รึเปล่า|หรือเปล่า|บ้าง)?[!?.…]*$/i.test(t)
   );
 }
 
