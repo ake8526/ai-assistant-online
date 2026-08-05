@@ -411,6 +411,33 @@ export async function attachBytesToOutlookEvent(
   return attachR.ok;
 }
 
+function isCloudDriveUrl(url: string): boolean {
+  return /sharepoint\.com|1drv\.ms|onedrive\.live\.com/i.test(url);
+}
+
+/** Link OneDrive/SharePoint file without downloading + re-uploading bytes (fast). */
+async function attachReferenceToOutlookEvent(
+  userUpn: string,
+  eventId: string,
+  fileName: string,
+  sourceUrl: string
+): Promise<boolean> {
+  const attachR = await graphFetch(`${outlookEventPath(userUpn, eventId)}/attachments`, {
+    method: "POST",
+    timeoutMs: 12_000,
+    body: {
+      "@odata.type": "#microsoft.graph.referenceAttachment",
+      name: fileName.slice(0, 180),
+      sourceUrl,
+      permission: "view",
+    },
+  });
+  if (!attachR.ok) {
+    console.warn("[graph] reference attach", attachR.status, (await attachR.text()).slice(0, 120));
+  }
+  return attachR.ok;
+}
+
 /**
  * Push a file/link into the real Outlook event: append HTML link in body,
  * and for small OneDrive files also add a fileAttachment attendees can open.
@@ -426,7 +453,20 @@ export async function pushMaterialToOutlookEvent(
   let bodyUpdated = false;
   const notes: string[] = [];
 
-  // 1) File bytes → Outlook attachment (small files only)
+  // 0) OneDrive/SharePoint URL → reference attachment (no byte download — fast, avoids monitor hang)
+  if (url && isCloudDriveUrl(url)) {
+    try {
+      if (await attachReferenceToOutlookEvent(userUpn, eventId, title, url)) {
+        return { bodyUpdated: false, fileAttached: true, note: "แนบไฟล์ OneDrive ใน Outlook แล้ว" };
+      }
+      notes.push("แนบแบบอ้างอิงไม่สำเร็จ — ลองวิธีอื่น");
+    } catch (e) {
+      console.warn("[graph] reference attach failed:", String(e).slice(0, 160));
+      notes.push("แนบแบบอ้างอิงไม่สำเร็จ");
+    }
+  }
+
+  // 1) File bytes → Outlook attachment (small files only; images from LINE, etc.)
   if (material.driveItemId) {
     try {
       const metaR = await graphFetch(

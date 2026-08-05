@@ -405,7 +405,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       setCap(`<b>${a.name}</b> (${a.role}) — ${a.cap}${capExtra}`);
       log(`  ${a.role}: ${e.label}`, step === "fetch" ? "t" : "g");
       await sleep(step === "fetch" ? 160 : 360);
-      if (step !== "fetch") setAgent(idx, "done");
+      setAgent(idx, "done");
     }
   }, [courierReply, log, resetRoom, setAgent, setCap, setHud, setLlmHud]);
 

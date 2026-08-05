@@ -23,6 +23,8 @@ type TraceCtx = {
   seq: number;
   t0: number;
   pending: PromiseLike<unknown>[];
+  /** Background work (e.g. after() attach) — skip fetch noise on /monitor */
+  muted?: boolean;
 };
 
 const als = new AsyncLocalStorage<TraceCtx>();
@@ -74,13 +76,19 @@ export function currentTraceId(): string | null {
   return als.getStore()?.traceId ?? null;
 }
 
+/** Stop tracing further stages (background after() work). */
+export function muteTrace(): void {
+  const ctx = als.getStore();
+  if (ctx) ctx.muted = true;
+}
+
 /**
  * Record one pipeline stage. No-op outside a traced request. `label` must be
  * non-PII (stage/intent/resource names only — never message text).
  */
 export function trace(step: TraceStep, label?: string, status: TraceStatus = "done"): void {
   const ctx = als.getStore();
-  if (!ctx) return;
+  if (!ctx || ctx.muted) return;
   const seq = ctx.seq++;
   const row = {
     trace_id: ctx.traceId,

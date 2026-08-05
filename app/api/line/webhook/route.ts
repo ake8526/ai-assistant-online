@@ -34,7 +34,7 @@ import {
   textWithDraftEscape,
 } from "@/lib/slashCommands";
 import { assertConfigured } from "@/lib/supabaseServer";
-import { runWithTrace, trace, setTraceUser } from "@/lib/trace";
+import { runWithTrace, trace, setTraceUser, muteTrace } from "@/lib/trace";
 
 export const maxDuration = 60;
 
@@ -796,6 +796,7 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
         const eventId = result.eventId!;
         const file = { ...draft.attachFile! };
         after(async () => {
+          muteTrace();
           let attachNote = "";
           try {
             const pushed = await Promise.race([
