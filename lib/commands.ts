@@ -289,7 +289,9 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "ไปหาลูกค้าบริษัท ABC" -> {"intent":"open_map","params":{"place":"ABC"}}
 "หาไฟล์งบประมาณ Q3" -> {"intent":"search_files","params":{"query":"งบประมาณ Q3"}}
 "หาไฟล์ excel ai" -> {"intent":"search_files","params":{"query":"ai","filetype":"excel"}}
-(หมายเหตุ: คำบอกชนิดไฟล์ เช่น excel/word/pdf/powerpoint ให้แยกไปที่ filetype ห้ามใส่ใน query)
+"หาไฟล์ ai.html" -> {"intent":"search_files","params":{"query":"ai","filetype":"html"}}
+(หมายเหตุ: คำบอกชนิดไฟล์ เช่น excel/word/pdf/powerpoint/html หรือนามสกุลใน query เช่น ai.html ให้แยกไปที่ filetype ห้ามใส่ใน query)
+(หมายเหตุ: ถ้าเพิ่งค้นไฟล์แล้วผู้ใช้พูด "เอาแค่ .html" / "แค่ xlsx" ให้กรองรายการเดิม — ไม่ใช่ search ใหม่)
 ห้ามแต่งข้อมูลเกินจากที่ผู้ใช้พูด`;
 
 // ---------------------------------------------------------------------------
@@ -663,6 +665,22 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   const book = quickBookIntent(t);
   if (book) return book;
 
+  const fileSearch = t.match(/^ห(?:า|้)?(?:ไฟล์|file)\s+(.+)$/i);
+  if (fileSearch) {
+    const raw = fileSearch[1]!.trim();
+    const parsed = parseQueryWithExtension(raw);
+    const typeWord = raw.match(/\b(excel|word|pdf|powerpoint|ppt|html|htm|xlsx|docx|pptx)\b/i);
+    const filetype = parsed.filetype || (typeWord ? normalizeFileType(typeWord[1]!) : "");
+    let query = parsed.query;
+    if (typeWord && !parsed.filetype) {
+      query = raw.replace(new RegExp(`\\b${typeWord[1]}\\b`, "i"), "").replace(/\s+/g, " ").trim();
+    }
+    return {
+      intent: "search_files",
+      params: { query, ...(filetype ? { filetype } : {}) },
+    };
+  }
+
   return null;
 }
 
@@ -931,6 +949,14 @@ async function parseIntent(
     );
   if (context?.last_intent === "find_duplicate_nicknames" && moreNick) {
     return { intent: "find_duplicate_nicknames", params: { more: true }, source: "quick" };
+  }
+
+  // Filter previous file list by extension — "เอาแค่ .html" (no LLM)
+  if (context?.last_intent === "file_results" && context?.files?.length) {
+    const extFilter = parseFileExtensionFilter(textClean);
+    if (extFilter) {
+      return { intent: "filter_file_results", params: { filetype: extFilter }, source: "quick" };
+    }
   }
 
   // Fast deterministic rule after a file search — summarize only, never steal booking lines
@@ -1228,6 +1254,72 @@ async function bookFromContext(userUpn: string, text: string, sel: NonNullable<C
   }
 }
 
+const FILETYPE_ALIASES: Record<string, string> = {
+  excel: "xlsx",
+  xls: "xlsx",
+  word: "docx",
+  doc: "docx",
+  powerpoint: "pptx",
+  ppt: "pptx",
+  pdf: "pdf",
+  html: "html",
+  htm: "html",
+  สเปรดชีต: "xlsx",
+  เอกสาร: "docx",
+};
+
+function normalizeFileType(raw: string): string {
+  const k = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\./, "");
+  return FILETYPE_ALIASES[k] || k;
+}
+
+/** "ai.html" → { query: "ai", filetype: "html" } */
+function parseQueryWithExtension(raw: string): { query: string; filetype: string } {
+  const s = String(raw || "").trim();
+  const m = s.match(/^(.+?)\.([a-z0-9]{2,5})$/i);
+  if (!m) return { query: s, filetype: "" };
+  return { query: m[1]!.trim(), filetype: normalizeFileType(m[2]!) };
+}
+
+/** Follow-up after file search: "เอาแค่ .html", "แค่ xlsx" */
+function parseFileExtensionFilter(text: string): string | null {
+  const t = text.trim().replace(/\s+/g, " ");
+  const patterns = [
+    /^เอา(?:แค่|เฉพาะ)\s*\.?([a-z0-9]{2,5})$/i,
+    /^(?:แค่|เฉพาะ|only)\s*\.?([a-z0-9]{2,5})$/i,
+    /^\.([a-z0-9]{2,5})$/i,
+  ];
+  for (const p of patterns) {
+    const m = t.match(p);
+    if (m) return normalizeFileType(m[1]!);
+  }
+  return null;
+}
+
+type FileResultItem = { id?: string; name?: string; url?: string; is_folder?: boolean; modified?: string };
+
+function buildFileResultsResponse(
+  files: FileResultItem[],
+  label: string
+): CommandResult {
+  return {
+    intent: "file_results",
+    reply:
+      `เจอ ${files.length} ไฟล์ที่ตรงกับ “${label}” ครับ 👇\n\n` +
+      `จะผูกกับนัดวันนี้ พิมพ์ เช่น “ผูกไฟล์นัด 1” หรือ “แนบอัน 2 กับนัด 1”\n` +
+      `ผูกลิงก์: “แนบลิงก์นัด 1 https://…”`,
+    files,
+    suggestions: [
+      { label: "สรุปอัน 1", text: "สรุปอัน 1" },
+      { label: "สรุปอัน 2", text: "สรุปอัน 2" },
+      { label: "ผูกไฟล์นัด 1", text: "ผูกไฟล์นัด 1" },
+    ],
+  };
+}
+
 async function searchFilesSmart(userUpn: string, query: string, filetype: string) {
   const found = new Map<string, Awaited<ReturnType<typeof searchFiles>>[number]>();
   const add = (items: Awaited<ReturnType<typeof searchFiles>>) => {
@@ -1246,8 +1338,7 @@ async function searchFilesSmart(userUpn: string, query: string, filetype: string
 
   let files = [...found.values()];
   if (filetype) {
-    const typed = files.filter((f) => (f.name || "").toLowerCase().endsWith("." + filetype));
-    if (typed.length) files = typed;
+    files = files.filter((f) => (f.name || "").toLowerCase().endsWith("." + filetype));
   }
   // Re-rank across merged sources (same rules as searchFiles)
   return rankDriveFileHits(files, query || filetype, 15);
@@ -1990,7 +2081,12 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       return handleParsed(userUpn, text, context, lite, linkQ.intent, linkQ.params);
     }
     const quick = quickFeedIntent(text);
-    if (quick?.intent === "list_meetings" || quick?.intent === "get_brief" || quick?.intent === "ack") {
+    if (
+      quick?.intent === "list_meetings" ||
+      quick?.intent === "get_brief" ||
+      quick?.intent === "ack" ||
+      quick?.intent === "search_files"
+    ) {
       trace("parse", `★ AI:NONE · intent=${quick.intent} (กฎตายตัว ไม่เรียก API)`);
       return await handleParsed(userUpn, text, context, lite, quick.intent, quick.params);
     }
@@ -2852,36 +2948,46 @@ async function handleParsed(
     return { intent, reply: lines.join("\n"), map_url: url, map_where: where };
   }
 
+  if (intent === "filter_file_results") {
+    const ft = normalizeFileType(String(params.filetype || ""));
+    const all = context?.files || [];
+    if (!all.length) {
+      return { intent, reply: "ยังไม่มีรายการไฟล์ให้กรองครับ — ลองพิมพ์ “หาไฟล์ …” ก่อน" };
+    }
+    const filtered = all.filter((f) => (f.name || "").toLowerCase().endsWith("." + ft));
+    if (!filtered.length) {
+      return { intent, reply: `ในรายการก่อนหน้าไม่มีไฟล์ .${ft} ครับ` };
+    }
+    return buildFileResultsResponse(filtered, `.${ft}`);
+  }
+
   if (intent === "search_files") {
-    const q = String(params.query || "").trim();
-    let ft = String(params.filetype || "").trim().toLowerCase();
-    ft = ({ excel: "xlsx", word: "docx", powerpoint: "pptx", ppt: "pptx", สเปรดชีต: "xlsx", เอกสาร: "docx" } as Record<string, string>)[ft] || ft;
+    let q = String(params.query || "").trim();
+    let ft = normalizeFileType(String(params.filetype || ""));
+    if (!ft && q) {
+      const parsed = parseQueryWithExtension(q);
+      if (parsed.filetype) {
+        q = parsed.query;
+        ft = parsed.filetype;
+      }
+    }
     if (!q && !ft) return { intent, reply: "ระบุคำค้นไฟล์ด้วยครับ เช่น “หาไฟล์งบประมาณ”" };
     const files = await searchFilesSmart(userUpn, q, ft);
     if (!files.length) {
-      const what = q || `ชนิด .${ft}`;
+      const what = q ? (ft ? `${q} (.${ft})` : q) : `.${ft}`;
       return { intent, reply: `ไม่พบไฟล์ที่ตรงกับ “${what}” ใน OneDrive ครับ` };
     }
-    const label = q || `.${ft}`;
-    return {
-      intent: "file_results",
-      reply:
-        `เจอ ${files.length} ไฟล์ที่ตรงกับ “${label}” ครับ 👇\n\n` +
-        `จะผูกกับนัดวันนี้ พิมพ์ เช่น “ผูกไฟล์นัด 1” หรือ “แนบอัน 2 กับนัด 1”\n` +
-        `ผูกลิงก์: “แนบลิงก์นัด 1 https://…”`,
-      files: files.map((f) => ({
+    const label = q ? (ft ? `${q} (.${ft})` : q) : `.${ft}`;
+    return buildFileResultsResponse(
+      files.map((f) => ({
         id: f.id,
         name: f.name,
         url: f.webUrl,
         is_folder: !!(f as { folder?: unknown }).folder,
         modified: f.lastModifiedDateTime,
       })),
-      suggestions: [
-        { label: "สรุปอัน 1", text: "สรุปอัน 1" },
-        { label: "สรุปอัน 2", text: "สรุปอัน 2" },
-        { label: "ผูกไฟล์นัด 1", text: "ผูกไฟล์นัด 1" },
-      ],
-    };
+      label
+    );
   }
 
   if (intent === "cancel_meeting") {

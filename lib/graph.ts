@@ -1951,11 +1951,18 @@ export async function searchFiles(
     return rankDriveFileHits([...found.values()], raw, top);
   };
 
-  let hits = await searchOnce();
+  const applyExtFilter = (items: DriveFileHit[]) => {
+    const extQ = raw.match(/^(.+?)\.([a-z0-9]{2,5})$/i);
+    if (!extQ || !items.length) return items;
+    const ext = extQ[2]!.toLowerCase();
+    return items.filter((h) => (h.name || "").toLowerCase().endsWith("." + ext));
+  };
+
+  let hits = applyExtFilter(await searchOnce());
   if (hits.length) return hits;
   // Delegated chat sessions often lack Files.Read — retry with app credentials.
   if (getUserGraphToken()) {
-    hits = await runAsAppOnly(() => searchOnce());
+    hits = applyExtFilter(await runAsAppOnly(() => searchOnce()));
   }
   return hits;
 }
