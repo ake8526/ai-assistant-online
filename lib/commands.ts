@@ -720,7 +720,7 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
       after = at;
       body = body.replace(timeM[0], " ").replace(/\s+/g, " ").trim();
     } else {
-      // "ตอน 11 โมง" / "บ่ายสองโมง" / "11 โมงครึ่ง"
+      // "ตอน 11 โมง" / "บ่ายสองโมง" / "11 โมงครึ่ง" / "ตอนเที่ยง"
       const thaiClock = parseThaiClockToHHMM(body);
       if (thaiClock) {
         at = thaiClock;
@@ -729,6 +729,8 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
           .replace(/(?:ตอน|เวลา|ที่)?\s*\d{1,2}\s*โมง(?:\s*(?:ครึ่ง|\d{1,2}\s*นาที))?/g, " ")
           .replace(/บ่าย\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)(?:\s*โมง)?(?:\s*ครึ่ง)?/g, " ")
           .replace(/ทุ่ม\s*(?:\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)?(?:\s*ครึ่ง)?/g, " ")
+          .replace(/(?:ตอน|เวลา|ที่)\s*เที่ยง(?:วัน|ตรง)?(?:\s*ครึ่ง)?/g, " ")
+          .replace(/(?:^|\s)เที่ยง(?:วัน|ตรง)?(?:\s*ครึ่ง)?(?=\s|$)/g, " ")
           .replace(/\s+/g, " ")
           .trim();
       }

@@ -157,7 +157,7 @@ export function parseHHMM(s: unknown): number | null {
 
 /**
  * Parse Thai / casual clock phrases into "HH:MM".
- * Examples: "ตอน 11 โมง", "11 โมงครึ่ง", "บ่ายสองโมง", "17:30", "ทุ่มหนึ่ง"
+ * Examples: "ตอน 11 โมง", "11 โมงครึ่ง", "บ่ายสองโมง", "ตอนเที่ยง", "17:30", "ทุ่มหนึ่ง"
  */
 export function parseThaiClockToHHMM(text: string): string | null {
   const t = (text || "").trim().replace(/\s+/g, " ");
@@ -203,6 +203,17 @@ export function parseThaiClockToHHMM(text: string): string | null {
       const h = n === 1 ? 19 : n + 18;
       const mi = tum?.[2] ? 30 : 0;
       if (h < 24) return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+    }
+  }
+
+  // Noon: "เที่ยง" / "ตอนเที่ยง" / "เที่ยงตรง" — not ก่อนเที่ยง·หลังเที่ยง·พักเที่ยง·ช่วงเที่ยง·มื้อเที่ยง
+  if (!/(ก่อนเที่ยง|หลังเที่ยง|พักเที่ยง|ช่วงเที่ยง|มื้อเที่ยง)/.test(t)) {
+    const noon =
+      t.match(/(?:ตอน|เวลา|ที่)\s*เที่ยง(?:วัน|ตรง)?(?:\s*(ครึ่ง))?/) ||
+      t.match(/(?:^|[\s,])เที่ยง(?:วัน|ตรง)?(?:\s*(ครึ่ง))?(?=$|[\s,!.])/);
+    if (noon) {
+      const half = noon[1] === "ครึ่ง" || /เที่ยง(?:วัน|ตรง)?\s*ครึ่ง/.test(t);
+      return half ? "12:30" : "12:00";
     }
   }
 
