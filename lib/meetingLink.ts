@@ -1,6 +1,6 @@
 // Link OneDrive files / URLs to a calendar meeting for later morning prep.
 import { buildMorningAgenda, resolveAgendaEventId } from "@/lib/brief";
-import { canAccessDriveItem, getEvent, searchFiles } from "@/lib/graph";
+import { canAccessDriveItem, getEvent, pushMaterialToOutlookEvent, searchFiles } from "@/lib/graph";
 import {
   addMeetingMaterial,
   formatMaterialsList,
@@ -282,15 +282,30 @@ export async function handleLinkMeetingFile(
     resolved.subject
   );
 
+  let outlookNote = "";
+  try {
+    const pushed = await pushMaterialToOutlookEvent(upn, resolved.eventId, {
+      name: file.name,
+      url: file.url || "",
+      driveItemId: file.id,
+    });
+    outlookNote = pushed.note;
+  } catch (e) {
+    console.warn("[meetingLink] outlook push failed:", String(e).slice(0, 160));
+    outlookNote = "อัปเดต Outlook ไม่สำเร็จ (ยังผูกให้ AI อ่านได้)";
+  }
+
   const n = resolved.index || meetingIndex || "?";
   return {
     intent: "link_meeting_file",
     files: searchedFiles,
     reply:
-      `✅ ผูกไฟล์กับนัดแล้วครับ\n` +
+      `✅ แนบไฟล์เข้า Outlook แล้วครับ\n` +
       `📌 ${resolved.subject}\n` +
-      `📎 ${(file.name || file.url || "").trim()}\n\n` +
-      `ตอนเช้าหรือพิมพ์ “เตรียมนัด ${n}” ระบบจะอ่านไฟล์นี้ประกอบคำแนะนำให้ครับ`,
+      `📎 ${(file.name || file.url || "").trim()}\n` +
+      (outlookNote ? `📬 ${outlookNote}\n` : "") +
+      `\nผู้เข้าร่วมจะเห็นในนัด Outlook / Teams\n` +
+      `พิมพ์ “เตรียมนัด ${n}” เพื่อให้ AI อ่านไฟล์นี้ด้วยได้ครับ`,
     suggestions: [
       { label: `เตรียมนัด ${n}`, text: `เตรียมนัด ${n}` },
       { label: `เอกสารนัด ${n}`, text: `เอกสารนัด ${n}` },
@@ -320,14 +335,24 @@ export async function handleLinkMeetingUrl(
     resolved.subject
   );
 
+  let outlookNote = "";
+  try {
+    const pushed = await pushMaterialToOutlookEvent(upn, resolved.eventId, { name: url, url });
+    outlookNote = pushed.note;
+  } catch (e) {
+    console.warn("[meetingLink] outlook link push failed:", String(e).slice(0, 160));
+    outlookNote = "อัปเดต Outlook ไม่สำเร็จ (ยังผูกให้ AI อ่านได้)";
+  }
+
   const n = resolved.index || meetingIndex || "?";
   return {
     intent: "link_meeting_url",
     reply:
-      `✅ ผูกลิงก์กับนัดแล้วครับ\n` +
+      `✅ ใส่ลิงก์ในนัด Outlook แล้วครับ\n` +
       `📌 ${resolved.subject}\n` +
-      `🔗 ${url}\n\n` +
-      `พิมพ์ “เตรียมนัด ${n}” เพื่อให้ช่วยอ่านลิงก์นี้ด้วยครับ`,
+      `🔗 ${url}\n` +
+      (outlookNote ? `📬 ${outlookNote}\n` : "") +
+      `\nพิมพ์ “เตรียมนัด ${n}” เพื่อให้ AI อ่านลิงก์นี้ด้วยได้ครับ`,
     suggestions: [
       { label: `เตรียมนัด ${n}`, text: `เตรียมนัด ${n}` },
       { label: `เอกสารนัด ${n}`, text: `เอกสารนัด ${n}` },

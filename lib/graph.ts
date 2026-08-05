@@ -235,6 +235,122 @@ export async function getEventAttachments(userUpn: string, eventId: string): Pro
   }
 }
 
+function outlookEventPath(userUpn: string, eventId: string): string {
+  return getUserGraphToken()
+    ? `/me/events/${encodeURIComponent(eventId)}`
+    : `/users/${encodeURIComponent(userUpn)}/events/${encodeURIComponent(eventId)}`;
+}
+
+const OUTLOOK_FILE_ATTACH_MAX = 2.5 * 1024 * 1024; // stay under Graph JSON attachment ~3MB limit
+
+/**
+ * Push a file/link into the real Outlook event: append HTML link in body,
+ * and for small OneDrive files also add a fileAttachment attendees can open.
+ */
+export async function pushMaterialToOutlookEvent(
+  userUpn: string,
+  eventId: string,
+  material: { name?: string; url: string; driveItemId?: string }
+): Promise<{ bodyUpdated: boolean; fileAttached: boolean; note: string }> {
+  const title = (material.name || material.url || "เอกสาร").trim();
+  const url = (material.url || "").trim();
+  let fileAttached = false;
+  let bodyUpdated = false;
+  const notes: string[] = [];
+
+  // 1) File bytes → Outlook attachment (small files only)
+  if (material.driveItemId) {
+    try {
+      const metaR = await graphFetch(
+        getUserGraphToken()
+          ? `/me/drive/items/${encodeURIComponent(material.driveItemId)}`
+          : `/users/${encodeURIComponent(userUpn)}/drive/items/${encodeURIComponent(material.driveItemId)}`,
+        { params: { $select: "id,name,size" } }
+      );
+      const meta = metaR.ok ? await metaR.json() : {};
+      const size = Number(meta.size || 0);
+      const fname = String(meta.name || title || "file").slice(0, 180);
+      if (size > 0 && size <= OUTLOOK_FILE_ATTACH_MAX) {
+        const contentPath = getUserGraphToken()
+          ? `/me/drive/items/${encodeURIComponent(material.driveItemId)}/content`
+          : `/users/${encodeURIComponent(userUpn)}/drive/items/${encodeURIComponent(material.driveItemId)}/content`;
+        const contentR = await graphFetch(contentPath);
+        if (contentR.ok) {
+          const buf = Buffer.from(await contentR.arrayBuffer());
+          const attachR = await graphFetch(`${outlookEventPath(userUpn, eventId)}/attachments`, {
+            method: "POST",
+            body: {
+              "@odata.type": "#microsoft.graph.fileAttachment",
+              name: fname,
+              contentBytes: buf.toString("base64"),
+            },
+          });
+          if (attachR.ok) {
+            fileAttached = true;
+            notes.push("แนบไฟล์ใน Outlook แล้ว");
+          } else {
+            notes.push(`แนบไฟล์ไม่สำเร็จ (${attachR.status}) — ใส่ลิงก์ในรายละเอียดแทน`);
+          }
+        }
+      } else if (size > OUTLOOK_FILE_ATTACH_MAX) {
+        notes.push("ไฟล์ใหญ่เกินลิมิตแนบ Outlook (~2.5MB) — ใส่ลิงก์ในรายละเอียดนัดแทน");
+      }
+    } catch (e) {
+      console.warn("[graph] outlook file attach failed:", String(e).slice(0, 160));
+      notes.push("แนบไฟล์ไม่สำเร็จ — ใส่ลิงก์ในรายละเอียดแทน");
+    }
+  }
+
+  // 2) Always append a visible link in the event body (attendees see it in Outlook)
+  if (url || title) {
+    try {
+      const ev = await graphGet(outlookEventPath(userUpn, eventId), {
+        $select: "id,body,subject",
+      });
+      const prevType = String(ev.body?.contentType || "HTML").toLowerCase();
+      const prev = String(ev.body?.content || "");
+      const href = url || title;
+      const label = title || url;
+      const marker = `<!--ktis-mat:${href.slice(0, 120)}-->`;
+      if (!prev.includes(marker) && !prev.includes(href)) {
+        const block =
+          prevType === "text"
+            ? `\n\n---\n📎 ${label}\n${href}\n`
+            : `<hr/><p>${marker}<b>📎 เอกสารแนบ:</b> <a href="${href.replace(/"/g, "&quot;")}">${label
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")}</a></p>`;
+        const patchR = await graphFetch(outlookEventPath(userUpn, eventId), {
+          method: "PATCH",
+          body: {
+            body: {
+              contentType: prevType === "text" ? "Text" : "HTML",
+              content: prev + block,
+            },
+          },
+        });
+        if (patchR.ok) {
+          bodyUpdated = true;
+          if (!fileAttached) notes.push("ใส่ลิงก์ในรายละเอียดนัด Outlook แล้ว");
+        } else {
+          notes.push(`อัปเดตรายละเอียดนัดไม่สำเร็จ (${patchR.status})`);
+        }
+      } else {
+        bodyUpdated = true;
+        notes.push("ลิงก์นี้อยู่ในรายละเอียดนัดแล้ว");
+      }
+    } catch (e) {
+      console.warn("[graph] outlook body update failed:", String(e).slice(0, 160));
+      notes.push("อัปเดตรายละเอียดนัดไม่สำเร็จ");
+    }
+  }
+
+  return {
+    bodyUpdated,
+    fileAttached,
+    note: notes.length ? notes.join(" · ") : "ไม่มีการเปลี่ยนแปลงใน Outlook",
+  };
+}
+
 /** Download a drive file as readable text (txt/md/html + Office Open XML). */
 export async function downloadDriveText(userUpn: string, itemId: string, maxChars = 12000): Promise<string> {
   const once = async (): Promise<string> => {
