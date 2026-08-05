@@ -721,7 +721,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       R(46, 176, 28, 18, "#946f49"); R(246, 176, 28, 18, "#946f49");
     }
     function drawNewsWall(now: number) {
-      // Multi-channel video wall — each panel has its own palette/layout (not all blue).
+      // Multi-channel video wall — every panel must look different (color + layout).
       R(0, 0, W, 52, "#111827");
       R(0, 50, W, 2, "#030712");
       const cols = 6;
@@ -730,30 +730,34 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       const gap = 2;
       const cellW = Math.floor((W - pad * 2 - gap * (cols - 1)) / cols);
       const cellH = Math.floor((44 - pad * 2 - gap * (rows - 1)) / rows);
-      type Chan = { tag: string; bg: string; accent: string; style: "anchor" | "map" | "bars" | "yt" | "fb" | "alert" };
+      type Style = "anchor" | "map" | "bars" | "yt" | "fb" | "alert" | "weather" | "stock" | "sport" | "chat" | "radar" | "split";
+      type Chan = { tag: string; bg: string; accent: string; style: Style };
+      // 12 unique combos — no shared style+hue between neighbors (esp. bottom-left).
       const chans: Chan[] = [
         { tag: "TNN", bg: "#1e3a5f", accent: "#38bdf8", style: "anchor" },
         { tag: "PBS", bg: "#14532d", accent: "#4ade80", style: "bars" },
-        { tag: "RSS", bg: "#422006", accent: "#fbbf24", style: "bars" },
+        { tag: "RSS", bg: "#422006", accent: "#fbbf24", style: "split" },
         { tag: "FB", bg: "#1e3a8a", accent: "#93c5fd", style: "fb" },
         { tag: "YT", bg: "#450a0a", accent: "#f87171", style: "yt" },
         { tag: "ND", bg: "#312e81", accent: "#a5b4fc", style: "map" },
         { tag: "LIVE", bg: "#7f1d1d", accent: "#fecaca", style: "alert" },
-        { tag: "BRK", bg: "#9a3412", accent: "#fdba74", style: "alert" },
-        { tag: "CH9", bg: "#0f766e", accent: "#5eead4", style: "anchor" },
-        { tag: "TPBS", bg: "#1e40af", accent: "#bfdbfe", style: "map" },
-        { tag: "BBC", bg: "#881337", accent: "#fda4af", style: "bars" },
-        { tag: "CNN", bg: "#1f2937", accent: "#f3f4f6", style: "anchor" },
+        { tag: "WX", bg: "#0c4a6e", accent: "#67e8f9", style: "weather" },
+        { tag: "SET", bg: "#365314", accent: "#a3e635", style: "stock" },
+        { tag: "SP", bg: "#9a3412", accent: "#fdba74", style: "sport" },
+        { tag: "CHAT", bg: "#4c1d95", accent: "#c4b5fd", style: "chat" },
+        { tag: "RAD", bg: "#134e4a", accent: "#2dd4bf", style: "radar" },
       ];
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
           const x = pad + col * (cellW + gap);
           const y = pad + row * (cellH + gap);
           const idx = row * cols + col;
-          const ch = chans[idx % chans.length]!;
+          const ch = chans[idx]!;
           R(x, y, cellW, cellH, "#030712");
           R(x + 1, y + 1, cellW - 2, cellH - 2, ch.bg);
           const t = Math.floor(now / 350);
+          const midX = x + Math.floor(cellW / 2);
+          const midY = y + Math.floor(cellH / 2);
           if (ch.style === "anchor") {
             R(x + 3, y + 3, 6, 6, "#fcd34d");
             R(x + 10, y + 4, cellW - 14, 2, ch.accent);
@@ -769,22 +773,47 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
               R(x + 3 + b * 5, y + cellH - 6 - h, 3, h, ch.accent);
             }
           } else if (ch.style === "yt") {
-            R(x + Math.floor(cellW / 2) - 4, y + Math.floor(cellH / 2) - 3, 8, 6, "#ef4444");
-            R(x + Math.floor(cellW / 2) - 1, y + Math.floor(cellH / 2) - 1, 3, 2, "#fff");
+            R(midX - 4, midY - 3, 8, 6, "#ef4444");
+            R(midX - 1, midY - 1, 3, 2, "#fff");
           } else if (ch.style === "fb") {
             R(x + 4, y + 3, cellW - 8, 2, ch.accent);
             R(x + 4, y + 7, cellW - 10, 1, "#60a5fa");
             R(x + 4, y + 10, Math.floor(cellW / 2), 1, "#93c5fd");
-          } else {
-            // alert / breaking
+          } else if (ch.style === "alert") {
             const flash = Math.floor(now / 280) % 2 === 0;
             R(x + 2, y + 2, cellW - 4, 4, flash ? "#ef4444" : "#7f1d1d");
             R(x + 3, y + 8, cellW - 6, 1, ch.accent);
             R(x + 3, y + 11, cellW - 10, 1, ch.accent);
-          }
-          if (ch.tag === "LIVE" || ch.style === "alert") {
-            const on = Math.floor(now / 400) % 2 === 0;
-            R(x + cellW - 5, y + 2, 2, 2, on ? "#ef4444" : "#450a0a");
+            R(x + cellW - 5, y + 2, 2, 2, flash ? "#ef4444" : "#450a0a");
+          } else if (ch.style === "weather") {
+            R(x + 4, y + 3, 5, 5, "#fde047");
+            R(x + 10, y + 5, 6, 3, "#e0f2fe");
+            R(x + 3, y + cellH - 6, cellW - 6, 2, ch.accent);
+          } else if (ch.style === "stock") {
+            X.strokeStyle = ch.accent;
+            X.beginPath();
+            X.moveTo(x + 3, y + cellH - 6);
+            X.lineTo(x + 8, y + 8);
+            X.lineTo(x + 14, y + 11);
+            X.lineTo(x + cellW - 4, y + 4);
+            X.stroke();
+          } else if (ch.style === "sport") {
+            R(midX - 5, midY - 5, 10, 10, "#fff7ed");
+            R(midX - 3, midY - 3, 6, 6, ch.bg);
+            R(midX - 1, midY - 1, 2, 2, ch.accent);
+          } else if (ch.style === "chat") {
+            R(x + 3, y + 3, cellW - 8, 5, ch.accent);
+            R(x + 6, y + 9, cellW - 10, 4, "#6d28d9");
+          } else if (ch.style === "radar") {
+            R(midX - 6, midY - 5, 12, 10, "#042f2e");
+            R(midX - 1, midY - 1, 2, 2, ch.accent);
+            const sweep = (t + idx) % 6;
+            R(midX, midY - 4 + (sweep % 3), 5, 1, ch.accent);
+          } else {
+            // split — two panes
+            R(x + 2, y + 2, Math.floor((cellW - 5) / 2), cellH - 6, "#78350f");
+            R(x + 3 + Math.floor((cellW - 5) / 2), y + 2, Math.floor((cellW - 5) / 2), cellH - 6, "#92400e");
+            R(x + 3, y + 4, 4, 1, ch.accent);
           }
           X.fillStyle = "#f8fafc";
           X.font = "5px monospace";
