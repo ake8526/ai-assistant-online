@@ -64,7 +64,7 @@ function settings(provider: Provider): { baseUrl: string; key: string; model: st
         process.env.GEMINI_BASE_URL ||
         "https://generativelanguage.googleapis.com/v1beta/openai",
       key,
-      model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
     };
   }
   const key = process.env.GROQ_API_KEY || "";
