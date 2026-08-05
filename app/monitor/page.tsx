@@ -100,15 +100,18 @@ const CSS = `
 .mon .bdg.error{border-color:var(--red)}.mon .bdg.error .stt{color:var(--red)}.mon .bdg.error .dot{background:var(--red)}
 @keyframes monpulse{50%{opacity:.2}}
 .mon .caption{font-size:19px;color:var(--dim);text-align:center;padding:9px}.mon .caption b{color:var(--red)}
-.mon .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px);gap:6px;align-items:stretch;flex-shrink:0;height:clamp(100px,18vh,150px);margin-bottom:0}
+.mon .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,420px);gap:6px;align-items:stretch;flex-shrink:0;height:clamp(100px,18vh,150px);margin-bottom:0}
 @media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:28vh}}
 .mon .cols > .panel{min-width:0;max-width:100%;overflow:hidden;margin-bottom:0;display:flex;flex-direction:column}
 .mon .cols > .panel .ph{flex-shrink:0}
 .mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:15px;line-height:1.15;padding:6px 8px}
 .mon #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .mon #log .t{color:var(--dim)}.mon #log .g{color:var(--green)}.mon #log .r{color:var(--red)}.mon #log .a{color:var(--amber)}.mon #log .b{color:#3a86ff}
-.mon #legend{flex:1;min-height:0;overflow-y:auto;padding:6px 8px;font-size:14px;line-height:1.35}
-.mon #legend .row{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.mon #legend{flex:1;min-height:0;overflow-y:auto;padding:6px 8px;font-size:14px;line-height:1.35;display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;align-content:start}
+.mon #legend .row{display:flex;align-items:center;gap:6px;margin-bottom:0;min-width:0}
+.mon #legend .row > span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mon #legend .row.span2{grid-column:1 / -1;margin-top:6px;white-space:normal}
+.mon #legend .row.span2 > span:last-child{white-space:normal;overflow:visible;text-overflow:unset}
 .mon #legend .sw{width:10px;height:10px;flex:none;border:1px solid #000}
 .mon #legend .rl{font-family:'Press Start 2P';font-size:6px;color:var(--ink)}
 .mon #legend .rc{color:var(--dim);font-size:13px}
@@ -1229,7 +1232,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                 <span><span className="rl">HOP</span> <span className="rc">— ช่วยส่งเมื่อคิวซ้อน</span></span>
               </div>
               {llmChain ? (
-                <div className="row" style={{ marginTop: 10, alignItems: "flex-start" }}>
+                <div className="row span2" style={{ alignItems: "flex-start" }}>
                   <span className="sw" style={{ background: "#f0b429" }} />
                   <span>
                     <span className="rl">LLM KEYS</span>{" "}
