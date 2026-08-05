@@ -2587,41 +2587,25 @@ async function handleParsed(
   if (intent === "get_news") {
     trace("fetch", "📰 ดึงข่าวจากแหล่งที่ติดตาม", "start");
 
-    // LINE webhook maxDuration≈60s. If we wait ~52s then try to finish in
-    // background, almost no time left and the push never arrives.
-    // For LINE (lite): reply immediately and run the full digest inside after().
+    // LINE webhook maxDuration≈60s — cannot finish digest there.
+    // Kick a separate function (maxDuration=300) that builds + pushes to LINE.
     if (lite) {
       const upn = userUpn;
-      after(async () => {
-        try {
-          const late = await buildDigest(upn);
-          if (!late.stories?.length) {
-            const why =
-              late.note ||
-              (late.skipped.length ? `ข้าม: ${late.skipped.join(", ")}` : "ไม่มีข่าวใหม่ให้สรุป");
-            await sendLine(
-              upn,
-              "",
-              `สรุปข่าวแล้วยังไม่มีเรื่องส่งครับ (${why})\n\nลองพิมพ์ “ข่าววันนี้” อีกครั้ง หรือ “ดูแหล่งข่าว” ได้ครับ`
-            );
-            trace("reply", "📰 ตอบกลับ get_news (หลังบ้าน — ว่าง)");
-            return;
-          }
-          await rememberDeliveredStories(upn, late.stories);
-          const extra = late.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${late.skipped.join(", ")})` : "";
-          await sendLine(upn, "", formatStoriesText(late.stories) + extra);
-          trace("reply", `📰 ตอบกลับ get_news (หลังบ้าน ${late.stories.length} เรื่อง)`);
-        } catch (e) {
-          console.warn("[get_news after]", String(e).slice(0, 200));
-          try {
-            await sendLine(
-              upn,
-              "",
-              "สรุปข่าวไม่สำเร็จครับ — ลองพิมพ์ “ข่าววันนี้” อีกครั้งได้เลย"
-            );
-          } catch { /* ignore */ }
-          trace("reply", "📰 ตอบกลับ get_news (หลังบ้าน ✗)", "error");
-        }
+      const base = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(
+        /\/$/,
+        ""
+      );
+      const secret = process.env.CRON_SECRET || "";
+      const kickUrl =
+        `${base}/api/digest/line-now?upn=${encodeURIComponent(upn)}` +
+        (secret ? `&key=${encodeURIComponent(secret)}` : "");
+      after(() => {
+        // Fire-and-forget: the line-now invocation has its own 300s budget.
+        void fetch(kickUrl, {
+          method: "POST",
+          cache: "no-store",
+          headers: secret ? { "x-cron-secret": secret } : {},
+        }).catch((e) => console.warn("[get_news kick]", String(e).slice(0, 160)));
       });
       return {
         intent,
