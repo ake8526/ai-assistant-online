@@ -157,7 +157,7 @@ export function parseHHMM(s: unknown): number | null {
 
 /**
  * Parse Thai / casual clock phrases into "HH:MM".
- * Examples: "ตอน 11 โมง", "บ่ายโมง", "บ่าน2", "บ่าย4โมงเย็น", "4โมง", "6โมงเย็น", "1ทุ่ม", "ตอนเที่ยง"
+ * Examples: "ตอน 11 โมง", "บ่ายโมง", "6โมง", "ตี 5", "1ทุ่ม", "ตอนเที่ยง"
  */
 export function parseThaiClockToHHMM(text: string): string | null {
   const t0 = (text || "").trim().replace(/\s+/g, " ");
@@ -240,6 +240,15 @@ export function parseThaiClockToHHMM(text: string): string | null {
       const half = noon[1] === "ครึ่ง" || /เที่ยง(?:วัน|ตรง)?\s*ครึ่ง/.test(t);
       return half ? "12:30" : "12:00";
     }
+  }
+
+  // ตี 5 / ตีห้า / ตอนตี1 → early morning 01:00–06:00
+  const dti = t.match(
+    /(?:ตอน|เวลา|ที่)?\s*ตี\s*(\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)(?:\s*(ครึ่ง))?/
+  );
+  if (dti) {
+    const n = numToken(dti[1]);
+    if (n >= 1 && n <= 6) return hhmm(n, dti[2] ? 30 : 0);
   }
 
   // 4โมงเย็น / 6โมงเย็น → 16:00 / 18:00
