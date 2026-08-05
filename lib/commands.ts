@@ -539,6 +539,11 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     return { intent: "my_availability", params: {} };
   }
 
+  // Dismiss / ack buttons left over from older replies
+  if (/^รับทราบ(ครับ|ค่ะ)?$|^รับทราบ\s*รออีกฝั่ง$|^โอเค$|^ok$/i.test(t)) {
+    return { intent: "ack", params: {} };
+  }
+
   if (/^ช่วย(เหลือ)?เรื่องอื่น$/i.test(t)) {
     return { intent: "help_menu", params: {} };
   }
@@ -1958,7 +1963,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   // (prevents “ดูประชุมเช้านี้” being eaten by last_meeting time-band follow-up)
   {
     const quick = quickFeedIntent(text);
-    if (quick?.intent === "list_meetings" || quick?.intent === "get_brief") {
+    if (quick?.intent === "list_meetings" || quick?.intent === "get_brief" || quick?.intent === "ack") {
       trace("parse", `★ AI:NONE · intent=${quick.intent} (กฎตายตัว ไม่เรียก API)`);
       return await handleParsed(userUpn, text, context, lite, quick.intent, quick.params);
     }
@@ -2012,6 +2017,13 @@ async function handleParsed(
         { label: "/นัดพรุ่งนี้", text: "/นัดพรุ่งนี้" },
         { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
       ],
+    };
+  }
+
+  if (intent === "ack") {
+    return {
+      intent: "ack",
+      reply: "รับทราบครับ ✅",
     };
   }
 

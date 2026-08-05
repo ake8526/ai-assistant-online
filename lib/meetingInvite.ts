@@ -504,10 +504,6 @@ function hostNextStepQuickReply(attendeeHint?: string): object {
           text: hostRescheduleMessage(attendeeHint),
         },
       },
-      {
-        type: "action",
-        action: { type: "message", label: "รับทราบ", text: "รับทราบ" },
-      },
     ],
   };
 }
@@ -526,7 +522,7 @@ async function notifyHostDeclineFinal(rec: MeetingInviteRecord, who: string, kin
         `🕐 ${when}\n` +
         `👤 ${who} ไม่สะดวก ❌\n\n` +
         (holding ? "ยังไม่ได้สร้างนัดใน Outlook ครับ\n\n" : "") +
-        `ต้องการหาเวลาใหม่ หรือรับทราบไปก่อนครับ?`,
+        `ต้องการหาเวลาใหม่ไหมครับ?`,
       quickReply: hostNextStepQuickReply(who),
     },
   ]);
@@ -1039,7 +1035,6 @@ export async function handleHostRescheduleChoice(
     return {
       ok: true,
       reply: `ยกเลิกนัดแล้วครับ\n📌 ${rec.subject}\n🕐 ${when}\n\nแจ้งอีกฝั่งเรียบร้อยแล้ว`,
-      quickReply: hostNextStepQuickReply(rec.proposedBy || rec.attendees[0]),
     };
   }
 
