@@ -15,6 +15,7 @@ import {
 import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
 import { sendLine } from "@/lib/line";
 import { trace } from "@/lib/trace";
+import { after } from "next/server";
 import { normalizeDue, resolveResponsible } from "@/lib/followup";
 import { createHash } from "crypto";
 import {
@@ -2585,43 +2586,59 @@ async function handleParsed(
 
   if (intent === "get_news") {
     trace("fetch", "📰 ดึงข่าวจากแหล่งที่ติดตาม", "start");
-    // LINE webhook maxDuration≈60s — leave headroom for reply/push after digest.
-    const DIGEST_BUDGET_MS = 52_000;
-    const timedOut: DigestResult = {
-      stories: [],
-      skipped: ["หมดเวลารอสรุปข่าว"],
-      note: "สรุปข่าวใช้เวลานานเกินไปครับ — ลองพิมพ์ “ข่าววันนี้” อีกครั้ง หรือ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ",
-    };
-    const digestPromise = buildDigest(userUpn);
+
+    // LINE webhook maxDuration≈60s. If we wait ~52s then try to finish in
+    // background, almost no time left and the push never arrives.
+    // For LINE (lite): reply immediately and run the full digest inside after().
+    if (lite) {
+      const upn = userUpn;
+      after(async () => {
+        try {
+          const late = await buildDigest(upn);
+          if (!late.stories?.length) {
+            const why =
+              late.note ||
+              (late.skipped.length ? `ข้าม: ${late.skipped.join(", ")}` : "ไม่มีข่าวใหม่ให้สรุป");
+            await sendLine(
+              upn,
+              "",
+              `สรุปข่าวแล้วยังไม่มีเรื่องส่งครับ (${why})\n\nลองพิมพ์ “ข่าววันนี้” อีกครั้ง หรือ “ดูแหล่งข่าว” ได้ครับ`
+            );
+            trace("reply", "📰 ตอบกลับ get_news (หลังบ้าน — ว่าง)");
+            return;
+          }
+          await rememberDeliveredStories(upn, late.stories);
+          const extra = late.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${late.skipped.join(", ")})` : "";
+          await sendLine(upn, "", formatStoriesText(late.stories) + extra);
+          trace("reply", `📰 ตอบกลับ get_news (หลังบ้าน ${late.stories.length} เรื่อง)`);
+        } catch (e) {
+          console.warn("[get_news after]", String(e).slice(0, 200));
+          try {
+            await sendLine(
+              upn,
+              "",
+              "สรุปข่าวไม่สำเร็จครับ — ลองพิมพ์ “ข่าววันนี้” อีกครั้งได้เลย"
+            );
+          } catch { /* ignore */ }
+          trace("reply", "📰 ตอบกลับ get_news (หลังบ้าน ✗)", "error");
+        }
+      });
+      return {
+        intent,
+        reply:
+          "กำลังรวบรวมและสรุปข่าวครับ — จะส่งเข้า LINE ให้อัตโนมัติเมื่อเสร็จ (ประมาณ 1 นาที)\n\nหรือพิมพ์ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ",
+      };
+    }
+
+    // Web / non-LINE: wait for digest inline
     let digest: DigestResult;
     try {
-      digest = await Promise.race([
-        digestPromise,
-        new Promise<DigestResult>((resolve) => setTimeout(() => resolve(timedOut), DIGEST_BUDGET_MS)),
-      ]);
+      digest = await buildDigest(userUpn);
     } catch (e) {
       digest = {
         stories: [],
         skipped: [String(e).slice(0, 80)],
         note: "ดึงข่าวไม่สำเร็จครับ ลองใหม่อีกครั้งได้เลย",
-      };
-    }
-    // Timed out waiting for LINE reply — keep building and push when ready.
-    if (!digest.stories.length && digest.skipped.includes("หมดเวลารอสรุปข่าว")) {
-      trace("compose", "📰 สรุปข่าวช้า — จะส่งต่อเมื่อเสร็จ");
-      void digestPromise
-        .then(async (late) => {
-          if (!late.stories?.length) return;
-          await rememberDeliveredStories(userUpn, late.stories);
-          const extra = late.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${late.skipped.join(", ")})` : "";
-          await sendLine(userUpn, "", formatStoriesText(late.stories) + extra);
-          trace("reply", `📰 ตอบกลับ get_news (ส่งช้า ${late.stories.length} เรื่อง)`);
-        })
-        .catch(() => {});
-      return {
-        intent,
-        reply:
-          "กำลังสรุปข่าวต่อหลังบ้านครับ — จะส่งเข้า LINE ให้อัตโนมัติเมื่อเสร็จ (ประมาณ 1–2 นาที)\n\nหรือลองพิมพ์ “ข่าววันนี้” อีกครั้ง / “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ",
       };
     }
     trace("fetch", digest.stories.length ? `📰 ได้ข่าว ${digest.stories.length} เรื่อง` : "📰 ไม่มีข่าวใหม่");

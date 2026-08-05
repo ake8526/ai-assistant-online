@@ -721,52 +721,81 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       R(46, 176, 28, 18, "#946f49"); R(246, 176, 28, 18, "#946f49");
     }
     function drawNewsWall(now: number) {
-      // Full-bleed multi-channel news video wall (back wall of NEWS ROOM)
-      R(0, 0, W, 52, "#0a1628");
-      R(0, 50, W, 2, "#061018");
+      // Multi-channel video wall — each panel has its own palette/layout (not all blue).
+      R(0, 0, W, 52, "#111827");
+      R(0, 50, W, 2, "#030712");
       const cols = 6;
       const rows = 2;
       const pad = 2;
       const gap = 2;
       const cellW = Math.floor((W - pad * 2 - gap * (cols - 1)) / cols);
       const cellH = Math.floor((44 - pad * 2 - gap * (rows - 1)) / rows);
-      const labels = ["CH1", "CH2", "RSS", "FB", "YT", "ND", "LIVE", "BREAK", "TNN", "PBS", "CNN", "BBC"];
+      type Chan = { tag: string; bg: string; accent: string; style: "anchor" | "map" | "bars" | "yt" | "fb" | "alert" };
+      const chans: Chan[] = [
+        { tag: "TNN", bg: "#1e3a5f", accent: "#38bdf8", style: "anchor" },
+        { tag: "PBS", bg: "#14532d", accent: "#4ade80", style: "bars" },
+        { tag: "RSS", bg: "#422006", accent: "#fbbf24", style: "bars" },
+        { tag: "FB", bg: "#1e3a8a", accent: "#93c5fd", style: "fb" },
+        { tag: "YT", bg: "#450a0a", accent: "#f87171", style: "yt" },
+        { tag: "ND", bg: "#312e81", accent: "#a5b4fc", style: "map" },
+        { tag: "LIVE", bg: "#7f1d1d", accent: "#fecaca", style: "alert" },
+        { tag: "BRK", bg: "#9a3412", accent: "#fdba74", style: "alert" },
+        { tag: "CH9", bg: "#0f766e", accent: "#5eead4", style: "anchor" },
+        { tag: "TPBS", bg: "#1e40af", accent: "#bfdbfe", style: "map" },
+        { tag: "BBC", bg: "#881337", accent: "#fda4af", style: "bars" },
+        { tag: "CNN", bg: "#1f2937", accent: "#f3f4f6", style: "anchor" },
+      ];
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
           const x = pad + col * (cellW + gap);
           const y = pad + row * (cellH + gap);
           const idx = row * cols + col;
-          // Bezel
-          R(x, y, cellW, cellH, "#0b1220");
-          R(x + 1, y + 1, cellW - 2, cellH - 2, "#07101c");
-          // Screen glow — slightly different blues per channel
-          const blues = ["#0c4a6e", "#075985", "#0369a1", "#0284c7", "#0e7490", "#155e75"];
-          const glow = blues[(idx + Math.floor(now / 900)) % blues.length]!;
-          R(x + 2, y + 2, cellW - 4, cellH - 4, glow);
-          // Scanline / ticker motion
-          const scan = Math.floor((now / 80 + idx * 7) % Math.max(1, cellH - 5));
-          R(x + 2, y + 2 + scan, cellW - 4, 1, "rgba(255,255,255,0.18)");
-          // Fake headline bars
-          const barY = y + 4 + ((Math.floor(now / 400) + idx) % 2) * 3;
-          R(x + 3, barY, Math.max(4, cellW - 8), 1, "#7dd3fc");
-          R(x + 3, barY + 3, Math.max(3, cellW - 12), 1, "#bae6fd");
-          // LIVE blink on some panels
-          if (idx % 3 === 0) {
-            const on = Math.floor(now / 500) % 2 === 0;
-            R(x + cellW - 6, y + 3, 3, 2, on ? "#ef4444" : "#7f1d1d");
+          const ch = chans[idx % chans.length]!;
+          R(x, y, cellW, cellH, "#030712");
+          R(x + 1, y + 1, cellW - 2, cellH - 2, ch.bg);
+          const t = Math.floor(now / 350);
+          if (ch.style === "anchor") {
+            R(x + 3, y + 3, 6, 6, "#fcd34d");
+            R(x + 10, y + 4, cellW - 14, 2, ch.accent);
+            R(x + 10, y + 8, cellW - 16, 1, ch.accent);
+            R(x + 2, y + cellH - 5, cellW - 4, 3, "#111827");
+          } else if (ch.style === "map") {
+            R(x + 3, y + 3, cellW - 6, cellH - 8, "#0c4a6e");
+            R(x + 5 + ((t + idx) % 4), y + 5, 4, 3, ch.accent);
+            R(x + 12, y + 8, 5, 2, "#67e8f9");
+          } else if (ch.style === "bars") {
+            for (let b = 0; b < 4; b++) {
+              const h = 2 + ((t + idx + b * 2) % 5);
+              R(x + 3 + b * 5, y + cellH - 6 - h, 3, h, ch.accent);
+            }
+          } else if (ch.style === "yt") {
+            R(x + Math.floor(cellW / 2) - 4, y + Math.floor(cellH / 2) - 3, 8, 6, "#ef4444");
+            R(x + Math.floor(cellW / 2) - 1, y + Math.floor(cellH / 2) - 1, 3, 2, "#fff");
+          } else if (ch.style === "fb") {
+            R(x + 4, y + 3, cellW - 8, 2, ch.accent);
+            R(x + 4, y + 7, cellW - 10, 1, "#60a5fa");
+            R(x + 4, y + 10, Math.floor(cellW / 2), 1, "#93c5fd");
+          } else {
+            // alert / breaking
+            const flash = Math.floor(now / 280) % 2 === 0;
+            R(x + 2, y + 2, cellW - 4, 4, flash ? "#ef4444" : "#7f1d1d");
+            R(x + 3, y + 8, cellW - 6, 1, ch.accent);
+            R(x + 3, y + 11, cellW - 10, 1, ch.accent);
           }
-          // Channel tag
-          X.fillStyle = "#e0f2fe";
+          if (ch.tag === "LIVE" || ch.style === "alert") {
+            const on = Math.floor(now / 400) % 2 === 0;
+            R(x + cellW - 5, y + 2, 2, 2, on ? "#ef4444" : "#450a0a");
+          }
+          X.fillStyle = "#f8fafc";
           X.font = "5px monospace";
-          X.fillText(labels[idx % labels.length]!, x + 3, y + cellH - 3);
+          X.fillText(ch.tag, x + 2, y + cellH - 2);
         }
       }
-      // Bottom ticker strip across the whole wall
       R(0, 46, W, 4, "#020617");
-      R(0, 46, W, 1, "#38bdf8");
-      const tick = " ● RSS  ● FACEBOOK  ● YOUTUBE  ● NEWSDATA  ● LIVE NEWS FEED  ";
-      const shift = Math.floor(now / 40) % (tick.length * 4);
-      X.fillStyle = "#7dd3fc";
+      R(0, 46, W, 1, "#f87171");
+      const tick = " ● BREAKING  ● RSS  ● FACEBOOK  ● YOUTUBE  ● NEWSDATA  ● LIVE  ";
+      const shift = Math.floor(now / 35) % (tick.length * 4);
+      X.fillStyle = "#fde68a";
       X.font = "6px monospace";
       X.fillText(tick + tick, 4 - (shift % (tick.length * 4)), 49);
     }
