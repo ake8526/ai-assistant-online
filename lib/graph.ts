@@ -1629,6 +1629,60 @@ async function searchDriveOnce(userUpn: string, query: string, top: number): Pro
 }
 
 /**
+ * Rank/filter OneDrive hits so short queries like "ai" don't flood with
+ * Adobe Illustrator (.ai), Airplay/AirServer substring noise, etc.
+ * Lower score = better. Scores ≥ 80 are dropped for short queries.
+ */
+export function scoreDriveFileHit(name: string, query: string): number {
+  const n = (name || "").toLowerCase();
+  const q = (query || "").trim().toLowerCase();
+  if (!n || !q) return 50;
+  const stem = n.replace(/\.[a-z0-9]{1,8}$/i, "");
+  const ext = (n.match(/\.([a-z0-9]{1,8})$/i) || [])[1] || "";
+  const tokens = stem.split(/[^a-z0-9\u0e00-\u0e7f]+/i).filter(Boolean);
+
+  if (n === q || stem === q) return 0;
+  // Explicit AI Assistant / product names
+  if (/\bai[\s_-]*assistant\b/i.test(n) || /ai-assistant/i.test(n)) {
+    return /ai/.test(q) || /assistant|ฟังก์ชัน|assistant/.test(q) ? 1 : 3;
+  }
+  // Adobe Illustrator / Anguilla TLD-style ".ai" files when user asked for "ai"
+  if (q === "ai" && ext === "ai") return 95;
+  // Whole-token match (AI, Assistant, …)
+  if (tokens.some((t) => t === q)) return 2;
+  // Token starts with query (only for q length ≥ 3 to avoid "ai" → "air…")
+  if (q.length >= 3 && tokens.some((t) => t.startsWith(q))) return 4;
+  // Boundary match: not mid-word (blocks Airplay / parking.ai host junk when q=ai)
+  const boundary = new RegExp(
+    `(^|[^a-z0-9])${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`,
+    "i"
+  );
+  if (boundary.test(stem)) return q.length <= 3 ? 6 : 5;
+  // Weak substring — reject for very short queries
+  if (q.length <= 3) return 90;
+  if (n.includes(q) || stem.includes(q)) return 12;
+  return 60;
+}
+
+export function rankDriveFileHits<T extends { name?: string }>(hits: T[], query: string, top = 25): T[] {
+  const q = (query || "").trim();
+  const scored = hits
+    .map((h) => ({ h, s: scoreDriveFileHit(h.name || "", q) }))
+    .filter((x) => x.s < 80)
+    .sort((a, b) => a.s - b.s || (a.h.name || "").localeCompare(b.h.name || "", "th"));
+  // If everything was noise, keep a tiny best-effort list (still sorted)
+  if (!scored.length && hits.length && q.length <= 3) {
+    return [...hits]
+      .sort(
+        (a, b) =>
+          scoreDriveFileHit(a.name || "", q) - scoreDriveFileHit(b.name || "", q)
+      )
+      .slice(0, Math.min(5, top));
+  }
+  return scored.slice(0, top).map((x) => x.h);
+}
+
+/**
  * Find files by name / SharePoint URL / known OneDrive paths.
  * Thai full names often miss in Graph search — we fall back to path + folder walk.
  * If the LINE session uses a delegated token without Files.Read, retry as app-only.
@@ -1662,10 +1716,11 @@ export async function searchFiles(
     if (stem && stem !== raw) add(await searchDriveOnce(userUpn, stem, top));
 
     // ASCII-ish tokens help Graph search when Thai full-name misses
+    // Skip ultra-short tokens (ai/it/…) — Graph returns huge noisy sets.
     const tokens = stem
       .split(/[\s_\-–—·.]+/)
       .map((t) => t.trim())
-      .filter((t) => t.length >= 2 && /[A-Za-z0-9]/.test(t));
+      .filter((t) => t.length >= 3 && /[A-Za-z0-9]/.test(t));
     for (const t of tokens.slice(0, 4)) {
       add(await searchDriveOnce(userUpn, t, top));
     }
@@ -1700,25 +1755,18 @@ export async function searchFiles(
         const kids = await listFolderChildren(userUpn, folder);
         const matched = kids.filter((k) => {
           if (k.folder) return false;
-          const n = (k.name || "").toLowerCase();
-          return n === qLow || n === stemLow || n.includes(stemLow) || stemLow.includes(n.replace(/\.[a-z0-9]{1,8}$/i, ""));
+          const nm = (k.name || "").toLowerCase();
+          return (
+            nm === qLow ||
+            nm === stemLow ||
+            scoreDriveFileHit(k.name || "", raw) < 80
+          );
         });
         if (matched.length) add(matched);
       }
     }
 
-    // Prefer name matches to the original query
-    const all = [...found.values()];
-    const qLow = raw.toLowerCase();
-    const stemLow = stem.toLowerCase();
-    all.sort((a, b) => {
-      const an = (a.name || "").toLowerCase();
-      const bn = (b.name || "").toLowerCase();
-      const score = (n: string) =>
-        n === qLow ? 0 : n === stemLow ? 1 : n.endsWith(qLow) ? 2 : n.includes(stemLow) ? 3 : 9;
-      return score(an) - score(bn);
-    });
-    return all.slice(0, top);
+    return rankDriveFileHits([...found.values()], raw, top);
   };
 
   let hits = await searchOnce();

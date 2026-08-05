@@ -25,6 +25,7 @@ import {
   resolveUser,
   resolveUserInfo,
   searchFiles,
+  rankDriveFileHits,
   searchUsers,
   stripHonorificPublic,
 } from "@/lib/graph";
@@ -1204,12 +1205,15 @@ async function bookFromContext(userUpn: string, text: string, sel: NonNullable<C
 async function searchFilesSmart(userUpn: string, query: string, filetype: string) {
   const found = new Map<string, Awaited<ReturnType<typeof searchFiles>>[number]>();
   const add = (items: Awaited<ReturnType<typeof searchFiles>>) => {
-    for (const f of items) found.set(f.webUrl || f.name || "", f);
+    for (const f of items) found.set(f.webUrl || f.id || f.name || "", f);
   };
   if (query) {
     add(await searchFiles(userUpn, query));
+    // Only split into words when the full query missed — skip ultra-short tokens
     if (!found.size) {
-      for (const w of query.split(/\s+/)) if (w.length > 1) add(await searchFiles(userUpn, w));
+      for (const w of query.split(/\s+/)) {
+        if (w.length >= 3) add(await searchFiles(userUpn, w));
+      }
     }
   }
   if (!found.size && filetype) add(await searchFiles(userUpn, filetype));
@@ -1219,7 +1223,8 @@ async function searchFilesSmart(userUpn: string, query: string, filetype: string
     const typed = files.filter((f) => (f.name || "").toLowerCase().endsWith("." + filetype));
     if (typed.length) files = typed;
   }
-  return files;
+  // Re-rank across merged sources (same rules as searchFiles)
+  return rankDriveFileHits(files, query || filetype, 15);
 }
 
 function navUrl(locationText?: string | null, lat?: string | null, lng?: string | null): string | null {
