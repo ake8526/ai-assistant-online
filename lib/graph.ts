@@ -307,8 +307,9 @@ export async function pushMaterialToOutlookEvent(
     }
   }
 
-  // 2) Always append a visible link in the event body (attendees see it in Outlook)
-  if (url || title) {
+  // 2) Link in body only when file bytes weren't attached (large file / attach failed).
+  // Small files go in Outlook attachments — duplicating the SharePoint URL clutters the invite.
+  if ((url || title) && !fileAttached) {
     try {
       const ev = await graphGet(outlookEventPath(userUpn, eventId), {
         $select: "id,body,subject",
