@@ -86,6 +86,20 @@ function decodeAttachmentText(att: GraphAttachment): string {
   }
 }
 
+function usefulBodyPreview(raw: string | undefined): string {
+  const t = (raw || "").replace(/\s+/g, " ").trim();
+  if (t.length < 12) return "";
+  // Teams invite boilerplate often lands in bodyPreview and pollutes the LINE brief
+  if (
+    /microsoft teams|join the meeting|click here to join|meeting id|conference id|dial-in|________________|────────|เข้าร่วม\s*:|ปฏิทิน.*Teams|Learn more about Teams/i.test(
+      t
+    )
+  ) {
+    return "";
+  }
+  return t.slice(0, 120);
+}
+
 /** Format today's calendar as a numbered agenda (no LLM). */
 export function formatAgendaList(
   events: GraphEvent[],
@@ -110,16 +124,17 @@ export function formatAgendaList(
     if (who) lines.push(`   ผู้จัด: ${who}`);
     if (loc) lines.push(`   สถานที่: ${loc}`);
     if (people) lines.push(`   ผู้เข้าร่วม: ${people}`);
-    if (ev.bodyPreview?.trim()) lines.push(`   รายละเอียดย่อ: ${ev.bodyPreview.trim().slice(0, 120)}`);
+    const preview = usefulBodyPreview(ev.bodyPreview);
+    if (preview) lines.push(`   รายละเอียดย่อ: ${preview}`);
     lines.push("");
   });
   if (askPrep) {
     lines.push("อยากให้ช่วยแนะนำเตรียมตัวนัดไหนดีครับ?");
     if (events.length === 1) {
-      lines.push("กด «1» หรือพิมพ์ “แนะนำประชุม 1” เพื่อให้ช่วยเตรียมตัวนัดนี้");
+      lines.push("กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด 1”");
     } else {
       lines.push(
-        `กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “แนะนำประชุม 1” / “เตรียมนัด ${Math.min(2, events.length)}”`
+        `กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด 1” / “แนะนำประชุม ${Math.min(2, events.length)}”`
       );
     }
   }
