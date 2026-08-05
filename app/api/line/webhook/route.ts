@@ -16,7 +16,7 @@ import { createEvent, pushMaterialToOutlookEvent, attachBytesToOutlookEvent, res
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold, findLinkedLineAttendees } from "@/lib/meetingInvite";
 import { addMeetingMaterial } from "@/lib/meetingMaterials";
-import { attachLineImageToMeeting, clearPendingLinePhoto, loadPendingLinePhoto, saveLastBookedEvent, savePendingLinePhoto } from "@/lib/meetingLink";
+import { attachLineImageToMeeting, clearMeetingPhotoContext, clearPendingLinePhoto, loadPendingLinePhoto, saveLastBookedEvent, savePendingLinePhoto } from "@/lib/meetingLink";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -1098,6 +1098,9 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         try {
           await clearDraft(upn);
         } catch { /* ignore */ }
+        try {
+          await clearMeetingPhotoContext(upn);
+        } catch { /* ignore */ }
         await replyLineMessages(ev.replyToken, [
           {
             type: "text",
@@ -1199,6 +1202,9 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       } catch { /* ignore */ }
       try {
         await clearDraft(upn);
+      } catch { /* ignore */ }
+      try {
+        await clearMeetingPhotoContext(upn);
       } catch { /* ignore */ }
       return;
     }

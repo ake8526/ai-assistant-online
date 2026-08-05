@@ -62,6 +62,25 @@ export async function clearPendingLinePhoto(upn: string): Promise<void> {
   }
 }
 
+/** Reset photo/meeting attach state (on /ล้างความจำ). */
+export async function clearMeetingPhotoContext(upn: string): Promise<void> {
+  for (const key of [LAST_BOOKED_KEY, LINE_PHOTO_KEY, PENDING_PHOTO_KEY]) {
+    try {
+      await deleteSetting(upn, key);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function photoSavedReply(name: string): string {
+  return (
+    `รับรูปแล้วครับ 📷 (${name})\n\n` +
+    `• จองนัดพร้อมแนบรูป: “แนบรูป ส่งนัด …” แล้วกดยืนยัน\n` +
+    `• แนบเข้านัดที่ส่งไปแล้ว: พิมพ์ “แนบรูปเพิ่ม” แล้วส่งรูปอีกครั้ง`
+  );
+}
+
 export async function saveLastBookedEvent(upn: string, eventId: string, subject: string): Promise<void> {
   await setSetting(
     upn,
@@ -123,15 +142,12 @@ export async function attachLineImageToMeeting(
     /* ignore */
   }
 
-  const target = await resolvePhotoTargetEvent(upn, meetingIndex, allowAgenda);
+  const target = allowAgenda ? await resolvePhotoTargetEvent(upn, meetingIndex, true) : null;
   if (!target) {
     const name = await savePendingLinePhoto(upn, imageBuffer, contentType);
     return {
       intent: "link_meeting_file",
-      reply:
-        `รับรูปแล้วครับ 📷 (${name})\n\n` +
-        `พิมพ์ “แนบรูป ส่งนัด …” แล้วกดยืนยัน — จะแนบรูปเข้านัดอัตโนมัติ\n` +
-        `หรือพิมพ์ “แนบรูปเพิ่ม” หลังส่งนัดแล้ว แล้วส่งรูปอีกครั้ง`,
+      reply: photoSavedReply(name),
     };
   }
 
@@ -150,9 +166,9 @@ export async function attachLineImageToMeeting(
     return {
       intent: "link_meeting_file",
       reply:
-        `แนบเข้านัดเดิมไม่สำเร็จ — เก็บรูปไว้แล้ว 📷 (${saved})\n\n` +
+        `แนบเข้า “${target.subject}” ไม่ได้ — เก็บรูปไว้ให้แล้ว 📷 (${saved})\n\n` +
         `ลอง “แนบรูป ส่งนัด …” เพื่อสร้างนัดใหม่พร้อมแนบรูป\n` +
-        `หรือ “ผูกไฟล์นัด ${meetingIndex}” ถ้าอัปโหลดรูปไป OneDrive แล้ว`,
+        `หรือ “แนบรูปเพิ่ม” แล้วส่งรูปอีกครั้ง`,
     };
   }
 

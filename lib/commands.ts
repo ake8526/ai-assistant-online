@@ -7,6 +7,7 @@ import {
   handleLinkMeetingUrl,
   handleListMeetingMaterials,
   handleUnlinkMeetingMaterial,
+  clearMeetingPhotoContext,
   loadPendingLinePhoto,
   markPendingMeetingPhoto,
   quickLinkMeetingIntent,
@@ -2150,6 +2151,7 @@ async function handleParsed(
   params: Record<string, unknown>
 ): Promise<CommandResult> {
   if (intent === "clear_memory") {
+    await clearMeetingPhotoContext(userUpn);
     return {
       intent: "clear_memory",
       reply: "ล้างความจำการสนทนาแล้วครับ — เริ่มเรื่องใหม่ได้เลย 🧹\n(พิมพ์ / เพื่อดูคำสั่งอื่น)",
