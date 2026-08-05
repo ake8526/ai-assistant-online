@@ -5,6 +5,7 @@ import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestRe
 import { sendLine } from "@/lib/line";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { claimSend, clearInflight, isDueNow, markSent } from "@/lib/notify";
+import { runWithTrace } from "@/lib/trace";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
 export const maxDuration = 300;
@@ -83,13 +84,15 @@ async function sendBuiltNews(upn: string, force: boolean, d: DigestResult): Prom
 }
 
 async function pushNews(upn: string, force: boolean): Promise<string> {
-  if (!force && !(await isDueNow(upn, "news"))) return "skip (not due)";
-  try {
-    const d = await buildDigest(upn);
-    return await sendBuiltNews(upn, force, d);
-  } catch (e) {
-    return `ERROR: ${String(e).slice(0, 150)}`;
-  }
+  return runWithTrace({ upn, channel: "cron" }, async () => {
+    if (!force && !(await isDueNow(upn, "news"))) return "skip (not due)";
+    try {
+      const d = await buildDigest(upn);
+      return await sendBuiltNews(upn, force, d);
+    } catch (e) {
+      return `ERROR: ${String(e).slice(0, 150)}`;
+    }
+  });
 }
 
 /**

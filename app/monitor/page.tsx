@@ -34,15 +34,21 @@ const AGENTS = [
   { id: "courier", name: "DASH", role: "REPLY", cap: "เดินเอาคำตอบไปส่งกลับ", shirt: "#ee1b24", hair: "#141414", screen: "" },
 ] as const;
 
+const NEWS_AGENTS = [
+  { id: "scout", name: "SCOUT", role: "ดึงแหล่ง", shirt: "#f0b429", hair: "#caa15a", screen: "search" },
+  { id: "picker", name: "PICKER", role: "เลือกเด่น", shirt: "#2f9e44", hair: "#2a2a2a", screen: "filter" },
+  { id: "writer", name: "WRITER", role: "สรุป", shirt: "#7048e8", hair: "#7a4a2a", screen: "render" },
+] as const;
+
 const STEP_TO_INDEX: Record<StageId, number> = { receive: 0, parse: 1, fetch: 2, compose: 3, reply: 4 };
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
-.mon{--bg:#0a0a0a;--panel:#121212;--panel2:#171717;--ink:#f5f5f5;--dim:#7c7c7c;--red:#ee1b24;--green:#39d353;--amber:#f0b429;--hair:#262626;background:var(--bg);color:var(--ink);font-family:'VT323',monospace;min-height:100vh;padding:18px;position:relative;overflow-x:hidden}
+.mon{--bg:#0a0a0a;--panel:#121212;--panel2:#171717;--ink:#f5f5f5;--dim:#7c7c7c;--red:#ee1b24;--green:#39d353;--amber:#f0b429;--hair:#262626;background:var(--bg);color:var(--ink);font-family:'VT323',monospace;min-height:100vh;padding:12px 10px;position:relative;overflow-x:hidden}
 .mon *{margin:0;padding:0;box-sizing:border-box}
 .mon::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:60;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.14) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
 .mon .pix{font-family:'Press Start 2P',monospace}
-.mon .wrap{max-width:1160px;margin:0 auto}
+.mon .wrap{max-width:min(1680px,98vw);margin:0 auto;width:100%}
 .mon header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border:2px solid var(--hair);background:var(--panel);padding:14px 16px;margin-bottom:12px}
 .mon header .mark{width:34px;height:34px;flex:none}
 .mon header h1{font-size:15px;line-height:1.4}.mon header h1 em{color:var(--red);font-style:normal}
@@ -56,8 +62,12 @@ const CSS = `
 .mon .ph{font-family:'Press Start 2P';font-size:9px;color:var(--dim);padding:9px 11px;border-bottom:2px solid var(--hair);background:var(--panel2);display:flex;justify-content:space-between}
 .mon .ph .live{color:var(--red)}
 .mon .room-stage{background:#1a120a;padding:10px;display:flex;justify-content:center}
-.mon .room-frame{position:relative;width:100%;max-width:760px}
-.mon #room{width:100%;display:block;image-rendering:pixelated;border:2px solid #3a2a1a;background:#2e2116}
+.mon .room-frame{position:relative;width:100%;max-width:none}
+.mon #room,.mon #news-room{width:100%;display:block;image-rendering:pixelated;border:2px solid #3a2a1a;background:#2e2116}
+.mon .rooms-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:12px;align-items:stretch}
+@media(max-width:1100px){.mon .rooms-row{grid-template-columns:minmax(0,1fr)}}
+.mon .room-panel{margin-bottom:0;display:flex;flex-direction:column;min-width:0}
+.mon .room-panel .room-stage{flex:1}
 .mon .bdg{position:absolute;transform:translate(-50%,-100%);text-align:center;pointer-events:none;background:rgba(10,7,4,.92);border:2px solid var(--hair);padding:2px 4px 1px;white-space:nowrap;line-height:1;transition:left .05s linear,top .05s linear;z-index:2}
 .mon .bdg .nm{font-family:'Press Start 2P';font-size:6px;color:var(--ink);display:block;margin-bottom:2px}
 .mon .bdg .stt{font-family:'Press Start 2P';font-size:6px}
@@ -65,12 +75,13 @@ const CSS = `
 .mon .bdg.idle .stt{color:var(--dim)}.mon .bdg.idle .dot{background:var(--dim)}
 .mon .bdg.work{border-color:var(--amber)}.mon .bdg.work .stt{color:var(--amber)}.mon .bdg.work .dot{background:var(--amber);animation:monpulse .55s steps(1) infinite}
 .mon .bdg.done{border-color:var(--green)}.mon .bdg.done .stt{color:var(--green)}.mon .bdg.done .dot{background:var(--green)}
+.mon .bdg.error{border-color:var(--red)}.mon .bdg.error .stt{color:var(--red)}.mon .bdg.error .dot{background:var(--red)}
 @keyframes monpulse{50%{opacity:.2}}
 .mon .caption{font-size:19px;color:var(--dim);text-align:center;padding:9px}.mon .caption b{color:var(--red)}
-.mon .cols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:stretch}
+.mon .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,380px);gap:12px;align-items:stretch}
 @media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr)}}
 .mon .cols > .panel{min-width:0;max-width:100%;overflow:hidden}
-.mon #log{height:220px;overflow-x:hidden;overflow-y:auto;font-size:18px;line-height:1.18;padding:10px;min-width:0}
+.mon #log{height:240px;overflow-x:hidden;overflow-y:auto;font-size:18px;line-height:1.18;padding:10px;min-width:0}
 .mon #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .mon #log .t{color:var(--dim)}.mon #log .g{color:var(--green)}.mon #log .r{color:var(--red)}.mon #log .a{color:var(--amber)}.mon #log .b{color:#3a86ff}
 .mon #legend{padding:12px;min-height:220px;font-size:18px;line-height:1.5;min-width:0}
@@ -81,9 +92,34 @@ const CSS = `
 .mon .foot{font-family:'Press Start 2P';font-size:8px;color:#3a3a3a;text-align:center;margin-top:12px;padding:6px}
 .mon .btn{font-family:'Press Start 2P';font-size:10px;background:var(--ink);color:#000;border:2px solid var(--ink);padding:10px 16px;cursor:pointer}
 .mon .center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:60vh;text-align:center}
+.mon .news-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:10px 12px 12px;border-top:2px solid var(--hair)}
+.mon .news-desk{border:2px solid var(--hair);background:var(--panel2);padding:8px 10px;min-height:auto;min-width:0}
+.mon .news-desk .hd{font-family:'Press Start 2P';font-size:7px;display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:8px}
+.mon .news-desk .nm{color:var(--ink)}.mon .news-desk .st{font-size:6px;padding:2px 4px;border:1px solid var(--hair);color:var(--dim)}
+.mon .news-desk.work .st{color:var(--amber);border-color:var(--amber);animation:monpulse .55s steps(1) infinite}
+.mon .news-desk.done .st{color:var(--green);border-color:var(--green)}
+.mon .news-desk.error .st{color:var(--red);border-color:var(--red)}
+.mon .news-desk .ai{font-size:17px;color:var(--amber);margin:4px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mon .news-desk .cap{font-size:16px;color:var(--dim);line-height:1.35;margin-bottom:6px}
+.mon .news-desk ul{list-style:none;font-size:16px;color:var(--ink);line-height:1.35;max-height:88px;overflow-y:auto}
+.mon .news-desk li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px}
+.mon .news-desk li .k{color:var(--dim)}.mon .news-desk li.work{color:var(--amber)}.mon .news-desk li.done{color:var(--green)}.mon .news-desk li.err{color:var(--red)}
 `;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+type NewsSourceRow = { key: string; text: string; status: "work" | "done" | "error" };
+type NewsDesk = { status: "idle" | "work" | "done" | "error"; ai: string; detail: string };
+
+const NEWS_SCOUT_IDLE: NewsDesk = { status: "idle", ai: "—", detail: "รอคำขอข่าว…" };
+const NEWS_PICKER_IDLE: NewsDesk = { status: "idle", ai: "—", detail: "AI เลือกข่าวเด่น" };
+const NEWS_WRITER_IDLE: NewsDesk = { status: "idle", ai: "—", detail: "AI สรุปประเด็น" };
+
+function parseNewsAi(label: string): string | null {
+  const m = label.match(/★\s*AI:([A-Z]+)\s*·\s*([^\s✓✗·]+)/i) || label.match(/AI:([A-Z]+)\s*·\s*([^\s✓✗·]+)/i);
+  if (!m) return null;
+  return `${m[1].toUpperCase()} · ${m[2]}`;
+}
 
 // Online (Vercel build) → NODE_ENV=production → M365 login required.
 // Local `next dev` → development → open, no login (watch the room while working).
@@ -94,12 +130,16 @@ type Dash = { x: number; y: number; tx: number | null; ty: number | null; face: 
 
 function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | null>; account: unknown }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const newsCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
   const capRef = useRef<HTMLDivElement | null>(null);
+  const newsCapRef = useRef<HTMLDivElement | null>(null);
   const hudRef = useRef<HTMLElement | null>(null);
   const llmHudRef = useRef<HTMLElement | null>(null);
   const badgesRef = useRef<HTMLDivElement[]>([]);
+  const newsBadgesRef = useRef<HTMLDivElement[]>([]);
+  const newsStatusRef = useRef<string[]>(NEWS_AGENTS.map(() => "idle"));
 
   const statusRef = useRef<string[]>(AGENTS.map(() => "idle"));
   const dashRef = useRef<Dash>({ x: 160, y: 150, tx: null, ty: null, face: "down", moving: false, phase: 0, carry: false, onArrive: null });
@@ -117,6 +157,29 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const [llmHot, setLlmHot] = useState(false);
   const [llmChain, setLlmChain] = useState("");
   const lastLlmRef = useRef("—");
+  const [newsScoutStatus, setNewsScoutStatus] = useState<NewsDesk["status"]>("idle");
+  const [newsSources, setNewsSources] = useState<NewsSourceRow[]>([]);
+  const [newsPicker, setNewsPicker] = useState<NewsDesk>(NEWS_PICKER_IDLE);
+  const [newsWriter, setNewsWriter] = useState<NewsDesk>(NEWS_WRITER_IDLE);
+
+  useEffect(() => {
+    newsStatusRef.current = [newsScoutStatus, newsPicker.status, newsWriter.status];
+    NEWS_AGENTS.forEach((_, i) => {
+      const b = newsBadgesRef.current[i];
+      if (!b) return;
+      const st = newsStatusRef.current[i] || "idle";
+      b.className = "bdg " + st;
+      const w = b.querySelector(".w");
+      if (w) w.textContent = st === "work" ? "WORKING" : st === "done" ? "DONE" : st === "error" ? "ERROR" : "IDLE";
+    });
+    if (newsCapRef.current) {
+      if (newsScoutStatus === "work") newsCapRef.current.innerHTML = "<b>SCOUT</b> — กำลังดึงข่าวจากแหล่ง…";
+      else if (newsPicker.status === "work") newsCapRef.current.innerHTML = `<b>PICKER</b> — AI เลือกข่าวเด่น · <b style="color:#f0b429">${newsPicker.ai}</b>`;
+      else if (newsWriter.status === "work") newsCapRef.current.innerHTML = `<b>WRITER</b> — AI สรุปประเด็น · <b style="color:#f0b429">${newsWriter.ai}</b>`;
+      else if (newsWriter.status === "done") newsCapRef.current.innerHTML = `<b>เสร็จ</b> — สรุปข่าว ${newsWriter.detail.replace(/^📰 สรุปเสร็จ · /, "")}`;
+      else newsCapRef.current.textContent = "รอคำขอ “ข่าววันนี้” จาก LINE / Web…";
+    }
+  }, [newsScoutStatus, newsPicker, newsWriter]);
 
   const parseLlm = (label: string): string | null => {
     if (/AI:NONE|ไม่ใช้\s*LLM|กฎตายตัว|ติดตามเวลา|ไม่เรียก API/i.test(label)) return "NONE · กฎ";
@@ -176,6 +239,102 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const setCap = useCallback((html: string) => {
     if (capRef.current) capRef.current.innerHTML = html;
   }, []);
+
+  const resetNewsRoom = useCallback(() => {
+    setNewsScoutStatus("idle");
+    setNewsSources([]);
+    setNewsPicker(NEWS_PICKER_IDLE);
+    setNewsWriter(NEWS_WRITER_IDLE);
+  }, []);
+
+  const upsertNewsSource = useCallback((key: string, text: string, status: NewsSourceRow["status"]) => {
+    setNewsSources((prev) => {
+      const i = prev.findIndex((r) => r.key === key);
+      if (i >= 0) {
+        const next = [...prev];
+        next[i] = { key, text, status };
+        return next;
+      }
+      return [...prev, { key, text, status }];
+    });
+  }, []);
+
+  const updateNewsRoom = useCallback((e: MonEvent) => {
+    const lbl = e.label || "";
+    if (!lbl.includes("📰")) return;
+
+    const err = e.status === "error" || /✗/.test(lbl);
+
+    if (/📰 RSS ·/.test(lbl)) {
+      setNewsScoutStatus("work");
+      const name = lbl.replace(/^📰 RSS · /, "").replace(/ · \d+ รายการ$/, "").replace(/ ✗$/, "");
+      const key = `rss:${name}`;
+      if (e.status === "start") upsertNewsSource(key, `RSS · ${name}`, "work");
+      else upsertNewsSource(key, lbl.replace(/^📰 /, ""), err ? "error" : "done");
+      return;
+    }
+    if (/📰 Facebook ·/.test(lbl)) {
+      setNewsScoutStatus("work");
+      const name = lbl.replace(/^📰 Facebook · /, "").replace(/ · \d+ โพสต์$/, "").replace(/ ✗$/, "");
+      const key = `fb:${name}`;
+      if (e.status === "start") upsertNewsSource(key, `Facebook · ${name}`, "work");
+      else upsertNewsSource(key, lbl.replace(/^📰 /, ""), err ? "error" : "done");
+      return;
+    }
+    if (/📰 YouTube ·/.test(lbl)) {
+      setNewsScoutStatus("work");
+      const key = "yt";
+      if (e.status === "start") upsertNewsSource(key, "YouTube · subscriptions", "work");
+      else upsertNewsSource(key, lbl.replace(/^📰 /, ""), err ? "error" : "done");
+      return;
+    }
+    if (/📰 NewsData ·/.test(lbl)) {
+      setNewsScoutStatus("work");
+      const topic = lbl.replace(/^📰 NewsData · /, "").replace(/ · \d+ รายการ$/, "");
+      const key = `nd:${topic}`;
+      if (e.status === "start") upsertNewsSource(key, `NewsData · ${topic}`, "work");
+      else upsertNewsSource(key, lbl.replace(/^📰 /, ""), err ? "error" : "done");
+      return;
+    }
+    if (/📰 เริ่มรวบรวมข่าว/.test(lbl)) {
+      setNewsScoutStatus("work");
+      return;
+    }
+    if (/📰 อ่านบทความ/.test(lbl)) {
+      setNewsScoutStatus("work");
+      if (e.status !== "start") upsertNewsSource("read", lbl.replace(/^📰 /, ""), err ? "error" : "done");
+      return;
+    }
+
+    if (/📰 เลือกเด่น/.test(lbl)) {
+      const ai = parseNewsAi(lbl);
+      if (e.status === "start" || ai) {
+        setNewsPicker((p) => ({
+          status: err ? "error" : e.status === "start" || !/✓/.test(lbl) ? "work" : "done",
+          ai: ai || p.ai,
+          detail: lbl.replace(/^📰 เลือกเด่น · /, "").replace(/^★ /, ""),
+        }));
+      } else if (/ได้ \d+ เรื่อง/.test(lbl)) {
+        setNewsPicker((p) => ({ ...p, status: "done", detail: lbl.replace(/^📰 /, "") }));
+      }
+      return;
+    }
+
+    if (/📰 สรุปประเด็น/.test(lbl)) {
+      const ai = parseNewsAi(lbl);
+      setNewsWriter((p) => ({
+        status: err ? "error" : e.status === "start" || (ai && !/✓/.test(lbl)) ? "work" : "done",
+        ai: ai || p.ai,
+        detail: lbl.replace(/^📰 สรุปประเด็น · /, "").replace(/^★ /, ""),
+      }));
+      return;
+    }
+
+    if (/📰 สรุปเสร็จ/.test(lbl)) {
+      setNewsScoutStatus("done");
+      setNewsWriter((p) => ({ ...p, status: "done", detail: lbl.replace(/^📰 /, "") }));
+    }
+  }, [upsertNewsSource]);
 
   // ---- canvas render loop ----
   useEffect(() => {
@@ -298,6 +457,66 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  // ---- news room canvas (3 desks: SCOUT / PICKER / WRITER) ----
+  useEffect(() => {
+    const cv = newsCanvasRef.current;
+    if (!cv) return;
+    const X = cv.getContext("2d")!;
+    X.imageSmoothingEnabled = false;
+    const W = cv.width, H = cv.height;
+    const DESK = [[54, 96], [160, 96], [266, 96]];
+    const SEAT = [[54, 130], [160, 130], [266, 130]];
+    const R = (x: number, y: number, w: number, h: number, c: string) => { X.fillStyle = c; X.fillRect(Math.round(x), Math.round(y), Math.max(1, w | 0), Math.max(1, h | 0)); };
+
+    newsBadgesRef.current.forEach((b, i) => {
+      if (i < 3) { b.style.left = (DESK[i][0] / 320 * 100) + "%"; b.style.top = ((DESK[i][1] - 7) / 240 * 100) + "%"; }
+    });
+
+    function drawScreen(mx: number, my: number, mw: number, mh: number, id: string, st: string, now: number) {
+      if (st === "idle") { R(mx + mw - 3, my + mh - 2, 1, 1, Math.floor(now / 500) % 2 ? "#173" : "#000"); return; }
+      if (st === "done") { X.strokeStyle = "#39d353"; X.lineWidth = 1; X.beginPath(); X.moveTo(mx + 4, my + 4); X.lineTo(mx + 6, my + 6); X.lineTo(mx + 10, my + 2); X.stroke(); return; }
+      const t = (now / 700) % 1;
+      if (id === "search") { const sx = mx + 1 + t * (mw - 2); R(sx, my + 1, 1, mh - 2, "#39d353"); }
+      else if (id === "filter") { const ok = Math.floor(now / 450) % 2 === 0; X.strokeStyle = ok ? "#39d353" : "#ee1b24"; X.beginPath(); if (ok) { X.moveTo(mx + 4, my + 4); X.lineTo(mx + 6, my + 6); X.lineTo(mx + 10, my + 2); } else { X.moveTo(mx + 5, my + 2); X.lineTo(mx + 9, my + 6); X.moveTo(mx + 9, my + 2); X.lineTo(mx + 5, my + 6); } X.stroke(); }
+      else { R(mx + 2, my + 1, mw - 4, 1, "#ee1b24"); const rows = Math.floor(t * 3) + 1; for (let r = 0; r < rows && r < 3; r++) R(mx + 2, my + 3 + r * 2, mw - 4, 1, "#cfcfcf"); }
+    }
+    function drawWorker(i: number, now: number) {
+      const [sx, sy] = SEAT[i]; const a = NEWS_AGENTS[i], st = newsStatusRef.current[i] || "idle"; const work = st === "work";
+      const bob = work ? Math.round(Math.sin(now / 160) * 1) : 0; const y = sy + bob;
+      const shirt = a.shirt, hair = a.hair;
+      R(sx - 8, y - 1, 16, 5, "#3a2a1a"); R(sx - 8, y - 10, 16, 10, shirt); R(sx - 8, y - 10, 16, 2, shirt);
+      const tw = work ? (Math.floor(now / 140) % 2) : 0;
+      R(sx - 10, y - 11 + tw, 4, 8, shirt); R(sx + 6, y - 11 + (1 - tw), 4, 8, shirt);
+      R(sx - 6, y - 19, 12, 11, hair);
+      if (work) { const p = Math.floor(now / 200) % 2; R(sx - 1, y - 25, 2, 2, p ? "#f0b429" : "#5a4410"); }
+    }
+    function drawDesk(i: number, now: number) {
+      const [dx, dy] = DESK[i]; const st = newsStatusRef.current[i] || "idle";
+      R(dx - 24, dy - 10, 48, 24, "#6b4a2e"); R(dx - 24, dy - 10, 48, 2, "#835a36");
+      R(dx - 9, dy - 9, 18, 12, "#141414");
+      const scr = st === "idle" ? "#0a1626" : st === "done" ? "#0c2a14" : "#0a2018";
+      R(dx - 7, dy - 7, 14, 8, scr);
+      drawScreen(dx - 7, dy - 7, 14, 8, NEWS_AGENTS[i].screen, st, now);
+      drawWorker(i, now);
+    }
+    function drawBg() {
+      R(0, 0, W, H, "#2e2116");
+      R(0, 52, W, H - 52, "#7a5636");
+      for (let y = 52; y < H; y += 10) R(0, y, W, 1, "#6b4a2e");
+      R(0, 0, W, 52, "#1e3a5f");
+      R(8, 8, 304, 36, "#152a45");
+      X.fillStyle = "#39d353"; X.font = "8px monospace"; X.fillText("RSS · FB · YT · NewsData", 14, 30);
+    }
+    let raf = 0;
+    const loop = (now: number) => {
+      raf = requestAnimationFrame(loop);
+      drawBg();
+      for (let i = 0; i < 3; i++) drawDesk(i, now);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   // ---- courier walk helpers (touch only stable refs) ----
   const walkPath = useCallback(async (pts: number[][]) => {
     for (const [px, py] of pts) {
@@ -341,6 +560,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     if (e.traceId !== curTraceRef.current) {
       curTraceRef.current = e.traceId;
       resetRoom();
+      resetNewsRoom();
       // Placeholder: keep the internal "last LLM used" state,
       // but hide the visible "LLM —" until we actually parse a label.
       lastLlmRef.current = "—";
@@ -351,6 +571,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     }
 
     const llmFromLabel = parseLlm(e.label);
+    updateNewsRoom(e);
     if (llmFromLabel) {
       if (llmFromLabel.startsWith("NONE")) {
         setLlmHud("NONE · กฎ", false);
@@ -412,7 +633,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       await sleep(step === "fetch" ? 160 : 360);
       setAgent(idx, "done");
     }
-  }, [courierReply, log, resetRoom, setAgent, setCap, setHud, setLlmHud]);
+  }, [courierReply, log, resetNewsRoom, resetRoom, setAgent, setCap, setHud, setLlmHud, updateNewsRoom]);
 
   // ---- player: drains the queue in order with animation timing ----
   useEffect(() => {
@@ -499,6 +720,8 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     return () => { alive = false; };
   }, [account, getToken]);
 
+  const newsLive = newsScoutStatus !== "idle" || newsPicker.status !== "idle" || newsWriter.status !== "idle";
+
   return (
     <div className="mon">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
@@ -520,29 +743,85 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
           </div>
         </header>
 
-        <div className="panel">
-          <div className="ph">
-            <span>THE OFFICE</span>
-            <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <span className="live">● LIVE</span>
-            </span>
+        <div className="rooms-row">
+          <div className="panel room-panel">
+            <div className="ph">
+              <span>THE OFFICE</span>
+              <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <span className="live">● LIVE</span>
+              </span>
+            </div>
+            <div className="room-stage" ref={stageRef}>
+              <div className="room-frame">
+                <canvas id="room" ref={canvasRef} width={320} height={240} />
+                {AGENTS.map((a, i) => (
+                  <div
+                    key={a.id}
+                    className="bdg idle"
+                    ref={(el) => { if (el) badgesRef.current[i] = el; }}
+                  >
+                    <span className="nm">{a.name}</span>
+                    <span className="stt"><span className="dot" /><span className="w">IDLE</span></span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="caption" ref={capRef}>รอคำขอเข้ามา… (คุยกับผู้ช่วยผ่าน LINE แล้วดูที่นี่)</div>
           </div>
-          <div className="room-stage" ref={stageRef}>
-            <div className="room-frame">
-              <canvas id="room" ref={canvasRef} width={320} height={240} />
-              {AGENTS.map((a, i) => (
-                <div
-                  key={a.id}
-                  className="bdg idle"
-                  ref={(el) => { if (el) badgesRef.current[i] = el; }}
-                >
-                  <span className="nm">{a.name}</span>
-                  <span className="stt"><span className="dot" /><span className="w">IDLE</span></span>
+
+          <div className="panel room-panel">
+            <div className="ph">
+              <span>NEWS ROOM · สรุปข่าว</span>
+              <span className="live">● {newsLive ? "LIVE" : "IDLE"}</span>
+            </div>
+            <div className="room-stage">
+              <div className="room-frame">
+                <canvas id="news-room" ref={newsCanvasRef} width={320} height={240} />
+                {NEWS_AGENTS.map((a, i) => (
+                  <div
+                    key={a.id}
+                    className="bdg idle"
+                    ref={(el) => { if (el) newsBadgesRef.current[i] = el; }}
+                  >
+                    <span className="nm">{a.name}</span>
+                    <span className="stt"><span className="dot" /><span className="w">IDLE</span></span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="caption" ref={newsCapRef}>รอคำขอ “ข่าววันนี้” จาก LINE / Web…</div>
+            <div className="news-grid">
+              <div className={`news-desk scout ${newsScoutStatus}`}>
+                <div className="hd">
+                  <span className="nm">SCOUT · ดึงแหล่ง</span>
+                  <span className="st">{newsScoutStatus === "work" ? "WORKING" : newsScoutStatus === "done" ? "DONE" : newsScoutStatus === "error" ? "ERROR" : "IDLE"}</span>
                 </div>
-              ))}
+                <ul>
+                  {newsSources.length ? newsSources.map((s) => (
+                    <li key={s.key} className={s.status}>{s.text}</li>
+                  )) : (
+                    <li className="k">RSS · Facebook · YouTube · NewsData</li>
+                  )}
+                </ul>
+              </div>
+              <div className={`news-desk picker ${newsPicker.status}`}>
+                <div className="hd">
+                  <span className="nm">PICKER · AI เลือกเด่น</span>
+                  <span className="st">{newsPicker.status === "work" ? "WORKING" : newsPicker.status === "done" ? "DONE" : newsPicker.status === "error" ? "ERROR" : "IDLE"}</span>
+                </div>
+                <div className="ai">{newsPicker.ai}</div>
+                <div className="cap">{newsPicker.detail}</div>
+              </div>
+              <div className={`news-desk writer ${newsWriter.status}`}>
+                <div className="hd">
+                  <span className="nm">WRITER · AI สรุปประเด็น</span>
+                  <span className="st">{newsWriter.status === "work" ? "WORKING" : newsWriter.status === "done" ? "DONE" : newsWriter.status === "error" ? "ERROR" : "IDLE"}</span>
+                </div>
+                <div className="ai">{newsWriter.ai}</div>
+                <div className="cap">{newsWriter.detail}</div>
+              </div>
             </div>
           </div>
-          <div className="caption" ref={capRef}>รอคำขอเข้ามา… (คุยกับผู้ช่วยผ่าน LINE แล้วดูที่นี่)</div>
         </div>
 
         <div className="cols">

@@ -2583,7 +2583,7 @@ async function handleParsed(
   }
 
   if (intent === "get_news") {
-    trace("fetch", "ดึงข่าวจากแหล่งที่ติดตาม", "start");
+    trace("fetch", "📰 ดึงข่าวจากแหล่งที่ติดตาม", "start");
     const DIGEST_BUDGET_MS = 40_000;
     const timedOut: DigestResult = {
       stories: [],

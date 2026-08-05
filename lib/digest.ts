@@ -9,6 +9,7 @@ import { chat } from "@/lib/llm";
 import { getNewsCount, isNewsCountAll, NEWS_COUNT_ALL_CAP } from "@/lib/notify";
 import { nowWall, TZ_OFFSET_MIN } from "@/lib/time";
 import { loadSeenNewsKeys, newsStoryKey } from "@/lib/store";
+import { trace } from "@/lib/trace";
 import * as youtube from "@/lib/youtube";
 
 export interface Story {
@@ -93,22 +94,24 @@ function bestArticleBody(title: string, summary: string, scraped: string): strin
 
 /** Render stories as a natural briefing (for LINE push and chat). */
 export function formatStoriesText(stories: Story[]): string {
-  const lines = ["📰 สรุปข่าวที่คุณติดตามวันนี้", ""];
+  const n = stories.length;
+  const lines = [`📰 ข่าววันนี้ · ${n} เรื่องเด่น`, ""];
   stories.forEach((s, i) => {
-    const bullets = storyBullets(s).map((b) => b.trim()).filter((b) => b && !isHollowBullet(b)).slice(0, 4);
-    const blurb = bullets[0] || s.title;
-    const rest = bullets.slice(1);
+    const bullets = storyBullets(s).map((b) => b.trim()).filter((b) => b && !isHollowBullet(b));
+    const headline = bullets[0] || s.title;
+    const points = bullets.slice(1);
     const topic = (s.source || "").replace(/^หัวข้อ\s*·\s*/u, "").trim() || s.source;
     lines.push(`${i + 1}) ${topic}`);
-    lines.push(blurb);
-    for (const b of rest) lines.push(`• ${b}`);
-    if (s.rawLink) lines.push(`🔗 ${s.rawLink}`);
+    lines.push(`   ${headline}`);
+    for (const p of points.slice(0, 4)) lines.push(`   • ${p}`);
+    if (s.rawLink) lines.push(`   🔗 ${s.rawLink}`);
     lines.push("");
   });
   return lines.join("\n").trim();
 }
 
 export async function buildDigest(upn: string): Promise<DigestResult> {
+  trace("fetch", "📰 เริ่มรวบรวมข่าว", "start");
   // 1) consents + feeds
   const { data: consentRows } = await admin.from("consents").select("capability, granted").eq("owner_upn", upn);
   const granted = new Set((consentRows || []).filter((r) => r.granted).map((r) => r.capability));
@@ -140,20 +143,27 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
             entries: [] as DigestItem[],
           };
         }
+        const rssLabel = (f.label || f.ref || "RSS").slice(0, 60);
+        trace("fetch", `📰 RSS · ${rssLabel}`, "start");
         const entries = await fetchFeed(f.ref);
+        trace("fetch", `📰 RSS · ${rssLabel} · ${entries.length} รายการ`);
         return {
           skip: null as string | null,
           entries: entries.map((e) => ({ ...e, kind: f.kind, feedLabel: f.label || e.source })),
         };
       }
       if (f.kind === "facebook") {
+        const fbLabel = (f.label || "Facebook").slice(0, 60);
+        trace("fetch", `📰 Facebook · ${fbLabel}`, "start");
         try {
           const entries = await facebookPosts(f.ref, 8);
+          trace("fetch", `📰 Facebook · ${fbLabel} · ${entries.length} โพสต์`);
           return {
             skip: entries.length ? null : `${f.label || "Facebook"} (ดึงโพสต์ไม่ได้ — ตรวจ App / สิทธิ์เพจ)`,
             entries: entries.map((e) => ({ ...e, kind: f.kind, feedLabel: f.label || e.source })),
           };
         } catch (e) {
+          trace("fetch", `📰 Facebook · ${fbLabel} ✗`, "error");
           return { skip: `${f.label || "Facebook"} (${String(e).slice(0, 60)})`, entries: [] as DigestItem[] };
         }
       }
@@ -174,7 +184,9 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     const { data: tok } = await admin.from("oauth_tokens").select("refresh_token").eq("owner_upn", upn).eq("provider", "google").single();
     if (tok?.refresh_token) {
       try {
+        trace("fetch", "📰 YouTube · subscriptions", "start");
         const vids = await youtube.recentUploads(tok.refresh_token);
+        trace("fetch", `📰 YouTube · subscriptions · ${Math.min(vids.length, YT_HARD_CAP)} คลิป`);
         vids
           .sort((a, b) => (b.published || "").localeCompare(a.published || ""))
           .slice(0, YT_HARD_CAP)
@@ -198,7 +210,9 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
           const topicResults = await Promise.all(
             prefs.topics.slice(0, 6).map(async (topic) => {
               try {
+                trace("fetch", `📰 NewsData · ${topic}`, "start");
                 const entries = await fetchNewsByTopic(topicQuery(topic), 5);
+                trace("fetch", `📰 NewsData · ${topic} · ${entries.length} รายการ`);
                 if (!entries.length) return { skipped: `หัวข้อ “${topic}” (ไม่มีข่าวจาก NewsData)`, entries: [] as FeedEntry[] };
                 return {
                   skipped: null as string | null,
@@ -350,16 +364,20 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
       })
       .join("\n");
     try {
+      trace("fetch", `📰 เลือกเด่น · ${Math.min(highlightN, pool.length)} เรื่อง`, "start");
       const raw = await chat(
-        `เลือกข่าวเด่น ${Math.min(highlightN, pool.length)} อัน ตอบ JSON เท่านั้น {"highlights":[index...]}\n` +
-          `สำคัญ: ให้ความสำคัญกับรายการที่มีแท็ก [หัวข้อ] ก่อน — YouTube เลือกได้ไม่เกิน ${ytCap} อัน`,
+        `คุณเป็นบรรณาธิการข่าว — เลือกข่าวที่ "เด่น สำคัญ หรือน่าสนใจที่สุด" ${Math.min(highlightN, pool.length)} อัน\n` +
+          `ตอบ JSON เท่านั้น {"highlights":[index...]}\n` +
+          `เลือกข่าวที่มีประเด็นชัด มีผลกระทบ มีตัวเลข/เหตุการณ์เด่น หรือน่าติดตาม — ไม่ใช่แค่ข่าวทั่วไป\n` +
+          `ให้ความสำคัญกับรายการที่มีแท็ก [หัวข้อ] ก่อน — YouTube เลือกได้ไม่เกิน ${ytCap} อัน`,
         listing,
-        { json: true, temperature: 0, timeoutMs: 12000, fast: true }
+        { json: true, temperature: 0, timeoutMs: 12000, fast: true, traceStep: "fetch", tracePrefix: "📰 เลือกเด่น" }
       );
       const d = JSON.parse(raw);
       picks = [...(d.highlights || [])].filter(
         (n: unknown) => typeof n === "number" && n >= 0 && n < pool.length
       );
+      trace("fetch", `📰 เลือกเด่น · ได้ ${picks.length} เรื่อง`);
     } catch {
       picks = [];
     }
@@ -384,8 +402,9 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     picks = chosenIdx.slice(0, highlightN);
   }
 
-  // 4) fetch article text + stage 2 — natural briefing (not title-only / not "no details")
-  const chosen = picks.map((i) => pool[i]).slice(0, Math.min(highlightN, 5));
+  // 4) fetch article text + stage 2 — pull out interesting key points (not title-only)
+  const chosen = picks.map((i) => pool[i]).slice(0, highlightN);
+  trace("fetch", `📰 อ่านบทความ · ${chosen.length} เรื่อง`, "start");
   const withText = await Promise.all(
     chosen.map(async (it) => {
       // Prefer existing summary for topics (already has body); scrape only when thin / paywalled.
@@ -397,7 +416,9 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
       return { ...it, full };
     })
   );
-  const summaries: Record<string, { blurb?: string; bullets?: string[]; points?: string[] }> = {};
+  trace("fetch", `📰 อ่านบทความ · ${withText.length} เรื่อง`);
+  type StorySummary = { headline?: string; points?: string[]; blurb?: string; bullets?: string[] };
+  const summaries: Record<string, StorySummary> = {};
   const BATCH = 3;
   for (let offset = 0; offset < withText.length; offset += BATCH) {
     const batch = withText.slice(offset, offset + BATCH);
@@ -408,30 +429,30 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
         const thin = body.trim().length < 80 || body.trim() === (it.title || "").trim();
         return (
           `#${globalIdx}\nหัวข้อ: ${it.title}\nแหล่ง: ${it.feedLabel}\n` +
-          (thin ? "หมายเหตุ: เนื้อหาสั้นมาก — สรุปจากที่มีอย่างตรงไปตรงมา 1–2 ประโยค\n" : "") +
+          (thin ? "หมายเหตุ: เนื้อหาสั้นมาก — สรุปจากที่มีอย่างตรงไปตรงมา\n" : "") +
           `เนื้อหา: ${body}`
         );
       })
       .join("\n\n");
     try {
+      trace("compose", `📰 สรุปประเด็น · ${batch.length} เรื่อง`, "start");
       const raw = await chat(
-        "คุณเป็นผู้ช่วยสรุปข่าวให้หัวหน้าอ่านบน LINE — น้ำเสียงธรรมชาติ กระชับ มีสาระ\n" +
+        "คุณเป็นผู้ช่วยสรุปข่าวให้หัวหน้าอ่านบน LINE — ดึงเฉพาะ 'ประเด็นที่น่าสนใจ' มาให้อ่าน ไม่ต้องเล่าทั้งเรื่องยาว\n" +
           "ตอบ JSON เท่านั้น โดยใช้เลขตาม # ที่ให้มา:\n" +
-          '{"0":{"blurb":"ประโยคสรุป 1-2 ประโยค","bullets":["รายละเอียดเสริม"]},"1":{...}}\n' +
+          '{"0":{"headline":"1 ประโยค เกิดอะไรและทำไมควรรู้","points":["ประเด็นที่น่าสนใจ 1","ประเด็นที่ 2"]},"1":{...}}\n' +
           "กติกา:\n" +
-          "- blurb = เรียบเรียงเป็นประโยคเล่าเรื่อง (ใคร/อะไร/ทำไมสำคัญ) อ่านรู้เรื่องทันที ห้ามวางหัวข้อข่าวดิบๆ\n" +
-          "- bullets = 0–2 ข้อ เฉพาะข้อเท็จจริงเสริมที่มีในเนื้อหา (ตัวเลข ชื่อคน ผลที่ตามมา) — ไม่มีก็ใส่ []\n" +
+          "- headline = 1 ประโยค บอกเหตุการณ์หลักและทำไมเรื่องนี้น่าสนใจ (ห้ามวางหัวข้อข่าวดิบๆ)\n" +
+          "- points = 2–4 ข้อ เอาเฉพาะประเด็นที่น่าสนใจ/มีตัวเลข/มีผลกระทบ/มีมุมที่ควรจับตา\n" +
+          "- แต่ละ point กระชับ 1 ประโยค อ่านแล้วรู้เรื่อง ไม่ต้องซ้ำ headline\n" +
           "- ห้ามเขียนว่า “ไม่มีรายละเอียด…” “ไม่ระบุ…” “เนื้อหาไม่ได้บอก…” เด็ดขาด\n" +
-          "- ข้อมูลน้อย → blurb สั้นๆ จากที่มี แล้วจบ อย่าเติมประโยคว่างเปล่า\n" +
+          "- ข้อมูลน้อย → headline สั้นๆ + points 1–2 ข้อจากที่มี\n" +
           "- ห้ามแต่งตัวเลข/เหตุการณ์ที่ไม่มีในเนื้อหา",
         writerInput,
-        { json: true, temperature: 0.35, timeoutMs: 18000, fast: true }
+        { json: true, temperature: 0.35, timeoutMs: 18000, fast: true, traceStep: "compose", tracePrefix: "📰 สรุปประเด็น" }
       );
-      const parsed = JSON.parse(raw) as Record<
-        string,
-        { blurb?: string; bullets?: string[]; points?: string[] }
-      >;
+      const parsed = JSON.parse(raw) as Record<string, StorySummary>;
       Object.assign(summaries, parsed);
+      trace("compose", `📰 สรุปประเด็น · ${batch.length} เรื่อง ✓`);
     } catch {
       /* keep whatever we have; fallbacks below */
     }
@@ -442,11 +463,11 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   for (let i = 0; i < withText.length; i++) {
     const it = withText[i];
     const s = summaries[String(i)] || {};
-    const blurb = String(s.blurb || "").trim();
-    const extra = (s.bullets || s.points || [])
+    const headline = String(s.headline || s.blurb || "").trim();
+    const points = (s.points || s.bullets || [])
       .map((b) => String(b || "").trim())
       .filter((b) => b && !isHollowBullet(b));
-    let finalBullets = [blurb, ...extra].filter((b) => b && !isHollowBullet(b)).slice(0, 4);
+    let finalBullets = [headline, ...points].filter((b) => b && !isHollowBullet(b)).slice(0, 5);
     if (!finalBullets.length) {
       const snip = (it.summary || it.full || "").replace(/\s+/g, " ").trim().slice(0, 220);
       finalBullets = snip && snip !== it.title ? [snip] : [(it.title || "").trim()].filter(Boolean);
@@ -467,6 +488,7 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     });
   }
 
+  trace("compose", `📰 สรุปเสร็จ · ${stories.length} เรื่องเด่น`);
   return { stories, skipped };
 }
 

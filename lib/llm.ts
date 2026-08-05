@@ -1,7 +1,7 @@
 // Pluggable LLM client with provider fallback.
 // LLM_PROVIDER supports a comma-separated chain, e.g. "qwen,groq,gemini"
 // (try first, fall back on failure). Always replies in Thai (primary) / English only.
-import { trace } from "@/lib/trace";
+import { trace, type TraceStep } from "@/lib/trace";
 
 const LANGUAGE_RULE =
   "\n\nกติกาภาษา: ตอบเป็นภาษาไทยเป็นหลักเสมอ ใช้อังกฤษเฉพาะศัพท์เทคนิค/ชื่อเฉพาะ ห้ามตอบภาษาอื่นเด็ดขาด";
@@ -150,26 +150,36 @@ export function llmUserErrorMessage(err: unknown): string {
 export async function chat(
   system: string,
   user: string,
-  opts?: { json?: boolean; temperature?: number; fast?: boolean; timeoutMs?: number }
+  opts?: {
+    json?: boolean;
+    temperature?: number;
+    fast?: boolean;
+    timeoutMs?: number;
+    /** Override pipeline stage for /monitor (e.g. news picker → fetch). */
+    traceStep?: TraceStep;
+    /** Prefix for monitor labels — use "📰 …" for the news room. */
+    tracePrefix?: string;
+  }
 ): Promise<string> {
   const chain = providerChain(opts?.fast).filter((p) => settings(p));
   if (!chain.length) {
     throw new Error("No LLM provider configured (set QWEN_API_KEY, GROQ_API_KEY, and/or GEMINI_API_KEY)");
   }
 
-  const stage = opts?.json ? "parse" : "compose";
+  const stage: TraceStep = opts?.traceStep ?? (opts?.json ? "parse" : "compose");
+  const pfx = opts?.tracePrefix ? `${opts.tracePrefix} · ` : "";
   const errors: string[] = [];
   for (let i = 0; i < chain.length; i++) {
     const provider = chain[i];
     const cfg = settings(provider)!;
     try {
       // Monitor Agent Room: show which API key/provider is actively calling.
-      trace(stage, `★ AI:${provider.toUpperCase()} · ${cfg.model}`, "start");
+      trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model}`, "start");
       const out = await callProvider(provider, system, user, opts);
       if (opts?.json) {
-        trace("parse", `★ AI:${provider.toUpperCase()} · ${cfg.model} ✓`);
+        trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model} ✓`);
       } else {
-        trace("compose", `★ AI:${provider.toUpperCase()} · ${cfg.model} · เขียนคำตอบ`);
+        trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model} · เขียนคำตอบ`);
       }
       return out;
     } catch (e) {
@@ -178,10 +188,10 @@ export async function chat(
           ? `${e.provider} ${e.status}`
           : String(e).slice(0, 120);
       errors.push(short);
-      trace(stage, `★ AI:${provider.toUpperCase()} · ${cfg.model} ✗ (${short})`, "error");
+      trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model} ✗ (${short})`, "error");
       if (i + 1 < chain.length) {
         console.warn(`[llm] ${provider} failed; trying ${chain[i + 1]} next — ${short}`);
-        trace(stage, `★ AI:fallback → ${chain[i + 1]!.toUpperCase()}`, "start");
+        trace(stage, `${pfx}★ AI:fallback → ${chain[i + 1]!.toUpperCase()}`, "start");
       }
     }
   }
