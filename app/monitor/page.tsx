@@ -720,21 +720,69 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       R(46, 100, 28, 18, "#946f49"); R(246, 100, 28, 18, "#946f49");
       R(46, 176, 28, 18, "#946f49"); R(246, 176, 28, 18, "#946f49");
     }
-    function drawBg() {
+    function drawNewsWall(now: number) {
+      // Full-bleed multi-channel news video wall (back wall of NEWS ROOM)
+      R(0, 0, W, 52, "#0a1628");
+      R(0, 50, W, 2, "#061018");
+      const cols = 6;
+      const rows = 2;
+      const pad = 2;
+      const gap = 2;
+      const cellW = Math.floor((W - pad * 2 - gap * (cols - 1)) / cols);
+      const cellH = Math.floor((44 - pad * 2 - gap * (rows - 1)) / rows);
+      const labels = ["CH1", "CH2", "RSS", "FB", "YT", "ND", "LIVE", "BREAK", "TNN", "PBS", "CNN", "BBC"];
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const x = pad + col * (cellW + gap);
+          const y = pad + row * (cellH + gap);
+          const idx = row * cols + col;
+          // Bezel
+          R(x, y, cellW, cellH, "#0b1220");
+          R(x + 1, y + 1, cellW - 2, cellH - 2, "#07101c");
+          // Screen glow — slightly different blues per channel
+          const blues = ["#0c4a6e", "#075985", "#0369a1", "#0284c7", "#0e7490", "#155e75"];
+          const glow = blues[(idx + Math.floor(now / 900)) % blues.length]!;
+          R(x + 2, y + 2, cellW - 4, cellH - 4, glow);
+          // Scanline / ticker motion
+          const scan = Math.floor((now / 80 + idx * 7) % Math.max(1, cellH - 5));
+          R(x + 2, y + 2 + scan, cellW - 4, 1, "rgba(255,255,255,0.18)");
+          // Fake headline bars
+          const barY = y + 4 + ((Math.floor(now / 400) + idx) % 2) * 3;
+          R(x + 3, barY, Math.max(4, cellW - 8), 1, "#7dd3fc");
+          R(x + 3, barY + 3, Math.max(3, cellW - 12), 1, "#bae6fd");
+          // LIVE blink on some panels
+          if (idx % 3 === 0) {
+            const on = Math.floor(now / 500) % 2 === 0;
+            R(x + cellW - 6, y + 3, 3, 2, on ? "#ef4444" : "#7f1d1d");
+          }
+          // Channel tag
+          X.fillStyle = "#e0f2fe";
+          X.font = "5px monospace";
+          X.fillText(labels[idx % labels.length]!, x + 3, y + cellH - 3);
+        }
+      }
+      // Bottom ticker strip across the whole wall
+      R(0, 46, W, 4, "#020617");
+      R(0, 46, W, 1, "#38bdf8");
+      const tick = " ● RSS  ● FACEBOOK  ● YOUTUBE  ● NEWSDATA  ● LIVE NEWS FEED  ";
+      const shift = Math.floor(now / 40) % (tick.length * 4);
+      X.fillStyle = "#7dd3fc";
+      X.font = "6px monospace";
+      X.fillText(tick + tick, 4 - (shift % (tick.length * 4)), 49);
+    }
+    function drawBg(now: number) {
       R(0, 0, W, H, "#2e2116");
       R(0, 52, W, H - 52, "#7a5636");
       for (let y = 52; y < H; y += 10) R(0, y, W, 1, "#6b4a2e");
       for (let x = 0; x < W; x += 40) R(x, 52, 1, H - 52, "#6e4d30");
       drawAisles();
-      R(0, 0, W, 52, "#1e3a5f");
-      R(8, 8, 304, 36, "#152a45");
-      X.fillStyle = "#39d353"; X.font = "8px monospace"; X.fillText("RSS · FB · YT · NewsData", 14, 30);
+      drawNewsWall(now);
       drawDoorLeft();
     }
     let raf = 0;
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
-      drawBg();
+      drawBg(now);
       for (let i = 0; i < 4; i++) drawDesk(i, now);
       drawParcelOnWriter();
       drawPostie(now);
