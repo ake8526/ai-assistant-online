@@ -341,7 +341,11 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     if (e.traceId !== curTraceRef.current) {
       curTraceRef.current = e.traceId;
       resetRoom();
-      setLlmHud("—", false);
+      // Placeholder: keep the internal "last LLM used" state,
+      // but hide the visible "LLM —" until we actually parse a label.
+      lastLlmRef.current = "—";
+      setLlmLabel("");
+      setLlmHot(false);
       log(`> คำขอใหม่จาก ${e.user} (${e.channel})`, "b");
       setHud("WORKING", "var(--amber)");
     }
