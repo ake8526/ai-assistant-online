@@ -232,7 +232,7 @@ function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | 
 
 // LINE quick-reply labels are capped at 20 chars, so button text gets cut off.
 // List the full options in the message body so nothing is hidden.
-function detailText(res: CommandResult): string {
+function detailText(res: CommandResult, upn?: string): string {
   let lines: string[] = [];
   if ((res.intent === "choose_person" || res.intent === "choose_mt_person") && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).filter((c) => c.mail).map((c, i) => `${i + 1}) ${c.displayName || c.mail} — ${c.mail}`);
@@ -275,11 +275,10 @@ function detailText(res: CommandResult): string {
       const name = (f.name || f.url || "ไฟล์").trim();
       const path =
         showPath && f.path && f.path !== "OneDrive" ? `\n   📂 ${f.path}` : "";
-      return `${i + 1}) ${name}${path}`;
+      const openUri = upn && f.id ? buildShortFileOpenUrl(upn, f.id) : "";
+      const link = openUri ? `\n   🔗 ${openUri}` : "";
+      return `${i + 1}) ${name}${path}${link}`;
     });
-    if (fileList.some((f) => f.url || f.id)) {
-      lines.push("🔗 เปิดไฟล์ได้จากปุ่มด้านล่าง");
-    }
   }
   return lines.length ? "\n\n" + lines.join("\n") : "";
 }
@@ -410,7 +409,7 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
 
   let reply = res.reply || "รับทราบครับ";
   if (res.map_url) reply += `\n🗺️ ${res.map_url}`;
-  reply += detailText(res);
+  reply += detailText(res, upn);
   const qr = quickReplyFor(res, upn);
   if (qr) {
     await replyLineMessages(replyToken, [{ type: "text", text: reply.slice(0, 4900), quickReply: qr }]);
@@ -1230,7 +1229,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         const card = (await confirmCardMessage(draft, "", upn)) as { text: string };
         await pushLineToId(userId, card.text);
       } else {
-        await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
+        await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res, upn));
       }
       trace("reply", `push fallback (${res.intent})`, "error");
     }
@@ -1310,7 +1309,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       trace("reply", `ตอบกลับ (${res.intent})`);
     } catch (replyErr) {
       console.warn("[line] postback reply failed, pushing:", String(replyErr).slice(0, 120));
-      await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res));
+      await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res, upn));
       trace("reply", `push fallback (${res.intent})`, "error");
     }
     // Remember who this selection was about so text follow-ups continue on them.
