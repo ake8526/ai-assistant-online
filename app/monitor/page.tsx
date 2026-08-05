@@ -41,10 +41,14 @@ const NEWS_AGENTS = [
   { id: "writer", name: "WRITER", role: "สรุป", shirt: "#e879f9", hair: "#a21caf", screen: "render" },
 ] as const;
 
-/** WRITER desk (canvas px) — POSTIE picks here */
+/** WRITER desk (canvas px) — POSTIE picks here via aisle */
 const NEWS_WRITER_DESK = [250, 168] as const;
-const NEWS_WRITER_PICKUP = [218, 190] as const; // stand left of WRITER seat
+const NEWS_AISLE_X = 160;
+const NEWS_WRITER_PICKUP = [218, 190] as const; // spur off aisle to WRITER
 const NEWS_DOOR = [18, 140] as const;
+const OFFICE_DOOR = [302, 140] as const;
+const OFFICE_AISLE_X = 160;
+const OFFICE_MAIL = [160, 198] as const;
 
 const STEP_TO_INDEX: Record<StageId, number> = { receive: 0, parse: 1, fetch: 2, compose: 3, reply: 4 };
 
@@ -153,7 +157,11 @@ type Dash = {
   speed: number; running: boolean; visible: boolean;
   onArrive: (() => void) | null;
 };
-type Postie = { x: number; y: number; tx: number | null; ty: number | null; carry: boolean; visible: boolean; onArrive: (() => void) | null };
+type Postie = {
+  x: number; y: number; tx: number | null; ty: number | null;
+  carry: boolean; visible: boolean; running: boolean; phase: number;
+  onArrive: (() => void) | null;
+};
 
 function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | null>; account: unknown }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -166,7 +174,9 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const badgesRef = useRef<HTMLDivElement[]>([]);
   const newsBadgesRef = useRef<HTMLDivElement[]>([]);
   const newsStatusRef = useRef<string[]>(NEWS_AGENTS.map(() => "idle"));
-  const postieRef = useRef<Postie>({ x: 160, y: 140, tx: null, ty: null, carry: false, visible: false, onArrive: null });
+  const postieRef = useRef<Postie>({
+    x: 160, y: 150, tx: null, ty: null, carry: false, visible: false, running: false, phase: 0, onArrive: null,
+  });
   const postieElRef = useRef<HTMLDivElement | null>(null);
   const doorElRef = useRef<HTMLDivElement | null>(null);
   const doorOpenRef = useRef(false);
@@ -423,9 +433,20 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       R(0, 52, W, H - 52, "#7a5636");
       for (let y = 52; y < H; y += 10) R(0, y, W, 1, "#6b4a2e");
       for (let x = 0; x < W - 14; x += 40) R(x, 52, 1, H - 52, "#6e4d30");
-      R(140, 52, 40, H - 52, "#946f49");
-      for (let y = 52; y < H; y += 10) R(140, y, 40, 1, "#845f3d");
+      // Center vertical aisle + horizontal crosswalk to door / desks
+      R(140, 52, 40, H - 52, "#a07850");
+      for (let y = 52; y < H; y += 8) R(140, y, 40, 1, "#8a6540");
       R(139, 52, 1, H - 52, "#5f4527"); R(180, 52, 1, H - 52, "#5f4527");
+      // dashed center line on aisle
+      for (let y = 56; y < H - 8; y += 12) R(158, y, 4, 6, "#c9a06a");
+      // Horizontal corridor at door height
+      R(0, 128, W, 28, "#a07850");
+      for (let x = 0; x < W; x += 10) R(x, 128, 1, 28, "#8a6540");
+      R(0, 128, W, 1, "#5f4527"); R(0, 155, W, 1, "#5f4527");
+      for (let x = 4; x < W - 4; x += 14) R(x, 140, 8, 2, "#c9a06a");
+      // Spurs toward each desk column
+      R(46, 100, 28, 18, "#946f49"); R(246, 100, 28, 18, "#946f49");
+      R(46, 176, 28, 18, "#946f49"); R(246, 176, 28, 18, "#946f49");
       drawDoorRight();
     }
     function drawWalls() {
@@ -591,29 +612,36 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       if (!p.visible) return;
       if (p.tx !== null && p.ty !== null) {
         const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
-        const sp = 2.8;
+        const sp = p.running ? 3.6 : 2.2;
         if (d <= sp || d < 1.2) {
           p.x = p.tx; p.y = p.ty; p.tx = null; p.ty = null;
           const cb = p.onArrive; p.onArrive = null; if (cb) cb();
         } else {
           p.x += (dx / d) * sp; p.y += (dy / d) * sp;
+          p.phase += p.running ? 0.35 : 0.2;
         }
       }
       const x = Math.round(p.x), y = Math.round(p.y);
-      const bob = Math.floor(now / 120) % 2;
+      const f = Math.floor(p.phase) % 2;
+      const bob = p.tx !== null ? (f ? 0 : (p.running ? -2 : -1)) : 0;
       X.fillStyle = "rgba(0,0,0,0.28)"; X.fillRect(x - 6, y + 1, 12, 2);
-      R(x - 4, y - 4 + bob, 3, 4, "#2b2b3a"); R(x + 1, y - 4 + (1 - bob), 3, 4, "#2b2b3a");
-      R(x - 5, y - 12, 10, 8, "#38bdf8"); R(x - 5, y - 12, 10, 2, "#0284c7");
+      const l1 = p.tx !== null ? (f ? (p.running ? 3 : 2) : 0) : 0;
+      const l2 = p.tx !== null ? (f ? 0 : (p.running ? 3 : 2)) : 0;
+      R(x - 4, y - 4 + l1 + bob, 3, 4, "#2b2b3a"); R(x + 1, y - 4 + l2 + bob, 3, 4, "#2b2b3a");
+      R(x - 5, y - 12 + bob, 10, 8, "#38bdf8"); R(x - 5, y - 12 + bob, 10, 2, "#0284c7");
       if (p.carry) {
-        R(x - 4, y - 22, 8, 7, "#e8e8e0"); R(x - 4, y - 22, 8, 2, "#39d353");
-        R(x - 3, y - 18, 6, 1, "#888");
+        R(x - 4, y - 22 + bob, 8, 7, "#e8e8e0"); R(x - 4, y - 22 + bob, 8, 2, "#39d353");
+        R(x - 3, y - 18 + bob, 6, 1, "#888");
       }
-      R(x - 5, y - 20, 10, 8, "#f0c090");
-      R(x - 5, y - 21, 10, 4, "#0c4a6e");
-      // name tag
-      X.fillStyle = "rgba(10,7,4,0.92)"; X.fillRect(x - 14, y - 32, 28, 9);
-      X.strokeStyle = "#38bdf8"; X.strokeRect(x - 14.5, y - 32.5, 29, 10);
-      X.fillStyle = "#38bdf8"; X.font = "6px monospace"; X.fillText("POSTIE", x - 11, y - 25);
+      R(x - 5, y - 20 + bob, 10, 8, "#f0c090");
+      R(x - 5, y - 21 + bob, 10, 4, "#0c4a6e");
+      if (p.running && p.tx !== null) {
+        X.fillStyle = "rgba(255,255,255,0.35)";
+        X.fillRect(x - 12, y - 8, 3, 1); X.fillRect(x - 14, y - 5, 4, 1);
+      }
+      X.fillStyle = "rgba(10,7,4,0.92)"; X.fillRect(x - 14, y - 32 + bob, 28, 9);
+      X.strokeStyle = "#38bdf8"; X.strokeRect(x - 14.5, y - 32.5 + bob, 29, 10);
+      X.fillStyle = "#38bdf8"; X.font = "6px monospace"; X.fillText("POSTIE", x - 11, y - 25 + bob);
     }
     function drawDoorLeft() {
       const open = doorOpenRef.current;
@@ -621,10 +649,25 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       R(2, 116, 11, 36, open ? "#1a120a" : "#6b4a2e");
       if (open) { R(2, 116, 3, 36, "#39d353"); R(10, 116, 3, 36, "#39d353"); }
     }
+    function drawAisles() {
+      // Match THE OFFICE: center aisle + horizontal corridor + desk spurs
+      R(140, 52, 40, H - 52, "#a07850");
+      for (let y = 52; y < H; y += 8) R(140, y, 40, 1, "#8a6540");
+      R(139, 52, 1, H - 52, "#5f4527"); R(180, 52, 1, H - 52, "#5f4527");
+      for (let y = 56; y < H - 8; y += 12) R(158, y, 4, 6, "#c9a06a");
+      R(0, 128, W, 28, "#a07850");
+      for (let x = 0; x < W; x += 10) R(x, 128, 1, 28, "#8a6540");
+      R(0, 128, W, 1, "#5f4527"); R(0, 155, W, 1, "#5f4527");
+      for (let x = 4; x < W - 4; x += 14) R(x, 140, 8, 2, "#c9a06a");
+      R(46, 100, 28, 18, "#946f49"); R(246, 100, 28, 18, "#946f49");
+      R(46, 176, 28, 18, "#946f49"); R(246, 176, 28, 18, "#946f49");
+    }
     function drawBg() {
       R(0, 0, W, H, "#2e2116");
       R(0, 52, W, H - 52, "#7a5636");
       for (let y = 52; y < H; y += 10) R(0, y, W, 1, "#6b4a2e");
+      for (let x = 0; x < W; x += 40) R(x, 52, 1, H - 52, "#6e4d30");
+      drawAisles();
       R(0, 0, W, 52, "#1e3a5f");
       R(8, 8, 304, 36, "#152a45");
       X.fillStyle = "#39d353"; X.font = "8px monospace"; X.fillText("RSS · FB · YT · NewsData", 14, 30);
@@ -672,6 +715,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     const p = postieRef.current;
     p.visible = false;
     p.carry = false;
+    p.running = false;
     p.tx = null;
     p.ty = null;
     p.onArrive = null;
@@ -705,11 +749,14 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     const verb = run ? "วิ่ง" : "เดิน";
     const isNewsJob = newsJobRef.current || mailHasParcelRef.current || /news|ข่าว|get_news/i.test(intent);
 
-    // News → always from mailbox. Never walk to BRAIN (green) / office desks.
+    // News → always from mailbox along the aisle. Never walk to BRAIN / office desks.
     if (isNewsJob) {
-      setCap(`<b>DASH</b> (REPLY) — ${verb}ส่งข่าวจากตู้จดหมายไป LINE`);
-      log(`  DASH ${verb}ส่งข่าวจากตู้จดหมาย (ไม่หยิบจากโต๊ะออฟฟิศ)`, "a");
-      await walkPath([[160, 150], [160, 198]]);
+      setCap(`<b>DASH</b> (REPLY) — ${verb}ตามทางเดินส่งข่าวจากตู้จดหมาย`);
+      log(`  DASH ${verb}ตามทางเดิน → ตู้จดหมาย → LINE`, "a");
+      await walkPath([
+        [OFFICE_AISLE_X, 150],
+        [OFFICE_MAIL[0], OFFICE_MAIL[1]],
+      ]);
       mailFlashRef.current = 60;
       mailHasParcelRef.current = false;
       newsJobRef.current = false;
@@ -717,21 +764,21 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       log(`  ส่งคำตอบกลับแล้ว ✓ (${intent})`, "g");
       if (backlog) {
         const h = helperRef.current;
-        h.visible = true; h.x = 210; h.y = 130; h.carry = true;
+        h.visible = true; h.x = 200; h.y = 120; h.carry = true;
         setDashPace(h, true);
-        log("  HOP ช่วยหยิบส่งงานคิวถัดไป", "a");
-        void walkPath([[210, 160], [175, 198], [210, 130]], "helper").then(() => {
+        log("  HOP ช่วยวิ่งส่งงานคิวถัดไปตามทางเดิน", "a");
+        void walkPath([[OFFICE_AISLE_X, 130], [OFFICE_MAIL[0], OFFICE_MAIL[1]], [200, 120]], "helper").then(() => {
           h.carry = false; h.visible = false; h.running = false; h.speed = 1.1;
         });
       }
       await sleep(run ? 200 : 400);
-      await walkPath([[160, 150]]);
+      await walkPath([[OFFICE_AISLE_X, 150]]);
       setDashPace(dashRef.current, false);
       setAgent(4, "done");
       return;
     }
 
-    setCap(`<b>DASH</b> (REPLY) — ${verb}เอาคำตอบไปส่งกลับผู้ใช้`);
+    setCap(`<b>DASH</b> (REPLY) — ${verb}ตามทางเดินเอาคำตอบไปส่ง`);
     let last = 3;
     for (let i = 3; i >= 0; i--) {
       if (statusRef.current[i] === "done" || statusRef.current[i] === "work") { last = i; break; }
@@ -744,27 +791,28 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       const h = helperRef.current;
       h.visible = true; h.x = 200; h.y = 120; h.carry = false;
       setDashPace(h, run);
-      log("  HOP มาช่วยส่งงานซ้อน", "a");
+      log("  HOP มาช่วยส่งงานซ้อนตามทางเดิน", "a");
       void (async () => {
-        await walkPath([[200, ay], [left ? 218 : 102, ay]], "helper");
+        await walkPath([[OFFICE_AISLE_X, ay], [left ? 218 : 102, ay]], "helper");
         h.carry = true;
-        await walkPath([[200, ay], [180, 198]], "helper");
+        await walkPath([[OFFICE_AISLE_X, ay], [OFFICE_MAIL[0], OFFICE_MAIL[1]]], "helper");
         h.carry = false;
         mailFlashRef.current = 40;
-        await walkPath([[200, 120]], "helper");
+        await walkPath([[OFFICE_AISLE_X, 120]], "helper");
         h.visible = false; h.running = false; h.speed = 1.1;
       })();
     }
 
-    await walkPath([[160, ay], [sideX, ay]]);
+    // Aisle → spur to desk → aisle → mailbox
+    await walkPath([[OFFICE_AISLE_X, ay], [sideX, ay]]);
     dashRef.current.carry = true;
     await sleep(run ? 80 : 200);
-    await walkPath([[160, ay], [160, 198]]);
+    await walkPath([[OFFICE_AISLE_X, ay], [OFFICE_MAIL[0], OFFICE_MAIL[1]]]);
     dashRef.current.carry = false;
     mailFlashRef.current = 60;
     log(`  ส่งคำตอบกลับแล้ว ✓ (${intent})`, "g");
     await sleep(run ? 200 : 400);
-    await walkPath([[160, 150]]);
+    await walkPath([[OFFICE_AISLE_X, 150]]);
     setDashPace(dashRef.current, false);
     setAgent(4, "done");
   }, [isBackendFast, log, setAgent, setCap, setDashPace, walkPath]);
@@ -775,39 +823,68 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     writerHasParcelRef.current = true;
     p.visible = true;
     p.carry = false;
-    p.x = 160;
+    p.running = false;
+    p.phase = 0;
+    // Start on center aisle
+    p.x = NEWS_AISLE_X;
     p.y = 150;
     p.tx = null;
     p.ty = null;
     p.onArrive = null;
     setDoorOpen(true);
     try {
-      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — เดินไปหยิบที่โต๊ะ WRITER (ชมพูม่วง)…";
-      log("  POSTIE เดินไปหยิบข่าวที่โต๊ะ WRITER", "a");
-      await walkPostie([[200, 170], [NEWS_WRITER_PICKUP[0], NEWS_WRITER_PICKUP[1]]]);
-      await sleep(350);
+      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — เดินตามทางไปโต๊ะ WRITER…";
+      log("  POSTIE เดินตามทางเดิน → โต๊ะ WRITER", "a");
+      // Aisle down → spur to WRITER (don't cut through desks)
+      await walkPostie([
+        [NEWS_AISLE_X, 190],
+        [NEWS_WRITER_PICKUP[0], NEWS_WRITER_PICKUP[1]],
+      ]);
+      await sleep(300);
       writerHasParcelRef.current = false;
       p.carry = true;
-      log("  POSTIE หยิบสรุปจากโต๊ะ WRITER ✓", "g");
-      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — ถือข่าวไปประตู…";
-      await walkPostie([[160, 160], [NEWS_DOOR[0], NEWS_DOOR[1]]]);
+      p.running = true;
+      log("  POSTIE หยิบสรุปแล้ว วิ่งตามทางเดินไปประตู", "a");
+      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — วิ่งตามทางเดินไปประตู…";
+      // Spur back → aisle → horizontal corridor → door
+      await walkPostie([
+        [NEWS_AISLE_X, 190],
+        [NEWS_AISLE_X, 140],
+        [NEWS_DOOR[0], NEWS_DOOR[1]],
+      ]);
 
       setAgent(4, "work");
-      setDashPace(dashRef.current, false);
-      setCap("<b>DASH</b> — รับข่าวจาก POSTIE → ตู้จดหมาย");
-      log("  DASH รับข่าวที่ประตู (ไม่ใช่โต๊ะเขียว)", "a");
-      await walkPath([[160, 150], [300, 140]]);
+      setDashPace(dashRef.current, true);
+      setCap("<b>DASH</b> — วิ่งตามทางเดินรับข่าว → ตู้จดหมาย");
+      log("  DASH วิ่งตามทางเดินไปประตู", "a");
+      // Office aisle → horizontal corridor → door
+      await walkPath([
+        [OFFICE_AISLE_X, 150],
+        [OFFICE_AISLE_X, 140],
+        [OFFICE_DOOR[0], OFFICE_DOOR[1]],
+      ]);
       p.carry = false;
+      p.running = false;
       dashRef.current.carry = true;
-      await walkPath([[200, 160], [160, 198]]);
+      // Corridor back to aisle → down aisle to mailbox
+      await walkPath([
+        [OFFICE_AISLE_X, 140],
+        [OFFICE_MAIL[0], OFFICE_MAIL[1]],
+      ]);
       dashRef.current.carry = false;
       mailFlashRef.current = 60;
       mailHasParcelRef.current = true;
       log("  DASH ใส่ข่าวในตู้จดหมาย ✓", "g");
       if (capRef.current) capRef.current.innerHTML = "<b>ตู้จดหมาย</b> — ได้สรุปข่าวแล้ว · รอส่ง LINE";
 
-      await walkPostie([[80, 140], [160, 150]]);
-      await walkPath([[160, 150]]);
+      // POSTIE jogs back along aisle to hub
+      p.running = true;
+      await walkPostie([
+        [NEWS_AISLE_X, 140],
+        [NEWS_AISLE_X, 150],
+      ]);
+      await walkPath([[OFFICE_AISLE_X, 150]]);
+      setDashPace(dashRef.current, false);
       setAgent(4, "idle");
     } finally {
       hidePostie();
@@ -1145,7 +1222,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
               ))}
               <div className="row">
                 <span className="sw" style={{ background: "#38bdf8" }} />
-                <span><span className="rl">POSTIE</span> <span className="rc">— หยิบที่โต๊ะ WRITER → ประตู → DASH</span></span>
+                <span><span className="rl">POSTIE</span> <span className="rc">— วิ่งตามทางเดิน หยิบ WRITER → ประตู</span></span>
               </div>
               <div className="row">
                 <span className="sw" style={{ background: "#f97316" }} />
