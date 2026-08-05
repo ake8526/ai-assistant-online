@@ -201,6 +201,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const writerHasParcelRef = useRef(false);
   const newsJobRef = useRef(false);
   const newsDeliveredRef = useRef(false);
+  const newsScoutWatchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const traceStartedAtRef = useRef(0);
 
   // event pipeline
@@ -300,13 +301,25 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     if (capRef.current) capRef.current.innerHTML = html;
   }, []);
 
-  const resetNewsRoom = useCallback(() => {
+  const clearNewsScoutWatch = useCallback(() => {
+    if (newsScoutWatchRef.current) {
+      clearTimeout(newsScoutWatchRef.current);
+      newsScoutWatchRef.current = null;
+    }
+  }, []);
+
+  const idleNewsDesks = useCallback(() => {
+    clearNewsScoutWatch();
     setNewsScoutStatus("idle");
     setNewsSources([]);
     setNewsPicker(NEWS_PICKER_IDLE);
     setNewsReader(NEWS_READER_IDLE);
     setNewsWriter(NEWS_WRITER_IDLE);
     writerHasParcelRef.current = false;
+  }, [clearNewsScoutWatch]);
+
+  const resetNewsRoom = useCallback(() => {
+    idleNewsDesks();
     newsJobRef.current = false;
     newsDeliveredRef.current = false;
     const p = postieRef.current;
@@ -317,7 +330,25 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     p.onArrive = null;
     doorOpenRef.current = false;
     if (doorElRef.current) doorElRef.current.classList.remove("open");
-  }, []);
+  }, [idleNewsDesks]);
+
+  /** SCOUT (teal / เขียวอ่อน) must never bob forever if digest stalls after timeout. */
+  const armNewsScoutWatch = useCallback(() => {
+    clearNewsScoutWatch();
+    newsScoutWatchRef.current = setTimeout(() => {
+      newsScoutWatchRef.current = null;
+      setNewsScoutStatus((s) => (s === "work" ? "idle" : s));
+      setNewsPicker((p) => (p.status === "work" ? { ...NEWS_PICKER_IDLE } : p));
+      setNewsReader((p) => (p.status === "work" ? { ...NEWS_READER_IDLE } : p));
+      setNewsWriter((p) => (p.status === "work" ? { ...NEWS_WRITER_IDLE } : p));
+      writerHasParcelRef.current = false;
+      const p = postieRef.current;
+      p.visible = false; p.carry = false; p.tx = null; p.ty = null; p.onArrive = null;
+      doorOpenRef.current = false;
+      if (doorElRef.current) doorElRef.current.classList.remove("open");
+      if (newsCapRef.current) newsCapRef.current.textContent = "รอคำขอ “ข่าววันนี้” จาก LINE / Web…";
+    }, 90_000);
+  }, [clearNewsScoutWatch]);
 
   const upsertNewsSource = useCallback((key: string, text: string, status: NewsSourceRow["status"]) => {
     setNewsSources((prev) => {
@@ -337,8 +368,18 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
     const err = e.status === "error" || /✗/.test(lbl);
 
+    if (/📰 สรุปข่าวช้า/.test(lbl)) {
+      // Interim LINE reply — keep SCOUT visible briefly, but auto-clear if digest dies.
+      armNewsScoutWatch();
+      if (newsCapRef.current) {
+        newsCapRef.current.innerHTML = "<b>SCOUT</b> — สรุปช้า · รอส่งต่อหลังบ้าน…";
+      }
+      return;
+    }
+
     if (/📰 RSS ·/.test(lbl) || /📰 Facebook ·/.test(lbl) || /📰 YouTube ·/.test(lbl) || /📰 NewsData ·/.test(lbl) || /📰 ดึงข่าวจากแหล่ง/.test(lbl) || /📰 เริ่มรวบรวมข่าว/.test(lbl)) {
-      setNewsScoutStatus(err ? "error" : e.status === "start" || /ดึงข่าว|เริ่มรวบรวม/.test(lbl) ? "work" : "work");
+      setNewsScoutStatus(err ? "error" : "work");
+      if (!err) armNewsScoutWatch();
       if (/📰 RSS ·/.test(lbl)) {
         const name = lbl.replace(/^📰 RSS · /, "").replace(/ · \d+ รายการ$/, "").replace(/ ✗$/, "");
         const key = `rss:${name}`;
@@ -364,6 +405,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
     if (/📰 เลือกเด่น/.test(lbl)) {
       setNewsScoutStatus((s) => (s === "work" ? "done" : s));
+      clearNewsScoutWatch();
       const ai = parseNewsAi(lbl);
       if (e.status === "start" || ai) {
         setNewsPicker((p) => ({
@@ -398,13 +440,14 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       return;
     }
 
-    if (/📰 สรุปเสร็จ|📰 ได้ข่าว/.test(lbl)) {
+    if (/📰 สรุปเสร็จ|📰 ได้ข่าว|📰 สรุปข่าวภาษาไทย|📰 ตอบกลับ/.test(lbl)) {
+      clearNewsScoutWatch();
       setNewsScoutStatus((s) => (s === "idle" ? s : "done"));
       setNewsPicker((p) => (p.status === "idle" ? p : { ...p, status: "done" }));
       setNewsReader((p) => (p.status === "idle" ? p : { ...p, status: "done" }));
       setNewsWriter((p) => ({ ...p, status: "done", detail: lbl.replace(/^📰 /, "") }));
     }
-  }, [upsertNewsSource]);
+  }, [armNewsScoutWatch, clearNewsScoutWatch, upsertNewsSource]);
 
   // ---- canvas render loop ----
   useEffect(() => {
@@ -925,7 +968,13 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
     const llmFromLabel = parseLlm(e.label);
     const isNews = /📰/.test(e.label || "");
-    if (isNews) newsJobRef.current = true;
+    if (isNews) {
+      newsJobRef.current = true;
+      // Park OFFICE desks (esp. green BRAIN) — news work belongs in NEWS ROOM.
+      for (let i = 0; i < 4; i++) {
+        if (statusRef.current[i] === "work" || statusRef.current[i] === "done") setAgent(i, "idle");
+      }
+    }
     updateNewsRoom(e);
 
     // Hand off once when summary is ready
@@ -964,6 +1013,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
     if (step === "reply") {
       const intent = e.label.replace(/^ตอบกลับ\s*/, "").replace(/[()]/g, "");
+      const isNewsReply = newsJobRef.current || isNews || /news|ข่าว|get_news/i.test(intent);
       for (let i = 0; i < 4; i++) if (statusRef.current[i] === "work") setAgent(i, "done");
       await courierReply(intent, e.at);
       setHud("DELIVERED", "var(--green)");
@@ -977,6 +1027,17 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       setLlmHud(used === "—" ? "NONE · รอบนี้" : used, false);
       setCap(`<b>เสร็จ</b> — ส่งคำตอบให้ ${e.user} แล้ว${aiBit}`);
       log(`  ★ สรุป AI รอบนี้: ${used === "—" ? "ไม่ได้เรียก LLM" : used}`, used.startsWith("NONE") || used === "—" ? "t" : "g");
+      // After LINE reply: clear SCOUT (เขียวอ่อน) / news desks so nobody stays WORKING.
+      // If digest is still running in background, later 📰 events will light them again.
+      if (isNewsReply) {
+        for (let i = 0; i < 4; i++) setAgent(i, "idle");
+        setAgent(4, "idle");
+        idleNewsDesks();
+        if (newsDeliveredRef.current) newsJobRef.current = false;
+      } else {
+        await sleep(800);
+        for (let i = 0; i < 5; i++) setAgent(i, "idle");
+      }
       return;
     }
 
@@ -1003,7 +1064,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       await sleep(step === "fetch" ? 160 : 360);
       setAgent(idx, "done");
     }
-  }, [courierReply, deliverNewsCourier, log, resetNewsRoom, resetRoom, setAgent, setCap, setHud, setLlmHud, updateNewsRoom]);
+  }, [courierReply, deliverNewsCourier, idleNewsDesks, log, resetNewsRoom, resetRoom, setAgent, setCap, setHud, setLlmHud, updateNewsRoom]);
 
   // ---- player: drains the queue in order with animation timing ----
   useEffect(() => {
