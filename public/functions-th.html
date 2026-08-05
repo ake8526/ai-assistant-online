@@ -779,15 +779,16 @@
         <button type="button" class="vis" data-demo="files">
           <div class="art" style="background:linear-gradient(160deg,#1e293b,#0f172a);display:grid;place-items:center;padding:16px">
             <div style="width:86%;background:#0b1220;border:1px solid #334155;border-radius:12px;padding:10px">
-              <div style="height:8px;width:40%;background:#d7a13a;border-radius:4px;margin-bottom:8px"></div>
+              <div style="height:8px;width:40%;background:#d7a13a;border-radius:4px;margin-bottom:6px"></div>
+              <div style="font-size:9px;font-weight:800;color:#d7a13a;margin-bottom:6px">📂 App/AI Assistant</div>
               <div style="height:6px;width:90%;background:#334155;border-radius:3px;margin-bottom:5px"></div>
               <div style="height:6px;width:70%;background:#334155;border-radius:3px;margin-bottom:5px"></div>
-              <div style="height:6px;width:80%;background:#334155;border-radius:3px"></div>
+              <div style="font-size:9px;color:#64748b;margin-top:4px">*.html · วางแผนเดินทาง</div>
             </div>
           </div>
           <div class="body">
-            <h3>ค้นไฟล์ · วางแผนเดินทาง</h3>
-            <p>ค้น OneDrive แยกชนิดไฟล์ · ดูโฟลเดอร์ · คำนวณเวลาออกจากบ้านจากนัดแรกของวัน</p>
+            <h3>ค้นไฟล์ OneDrive · อยู่ที่ไหน · วางแผนเดินทาง</h3>
+            <p>ค้น · ดูโฟลเดอร์ · กรองนามสกุล · ผูกนัด · คำนวณเวลาออกจากบ้านจากนัดแรกของวัน</p>
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
@@ -810,53 +811,26 @@
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
-        <button type="button" class="vis" data-demo="linkmeet">
-          <div class="art art-linkmeet">
-            <div class="lm-row">
-              <div class="lm-box">นัด 2 · Weekly Sync</div>
-              <div class="lm-plus">+</div>
-              <div class="lm-box file">สรุปงบ_Q3.pptx</div>
+        <button type="button" class="vis" data-demo="meetfiles">
+          <div class="art" style="background:linear-gradient(160deg,#1a2f4a,#0f172a);padding:12px;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center">
+            <div style="display:flex;gap:6px;align-items:center">
+              <div style="width:28px;height:28px;border-radius:6px;background:#334155;display:grid;place-items:center;font-size:14px">📷</div>
+              <div style="font-size:12px;color:#94a3b8">→</div>
+              <div style="width:28px;height:28px;border-radius:6px;background:#d7a13a;display:grid;place-items:center;font-size:11px;font-weight:800;color:#0f172a">📅</div>
+              <div style="font-size:12px;color:#94a3b8">+</div>
+              <div style="font-size:9px;padding:4px 8px;border-radius:6px;background:#0b1220;border:1px solid #334155;color:#cbd5e1">สรุปงบ_Q3.pptx</div>
             </div>
-            <div class="lm-foot">ผูกทีหลัง → AI อ่านตอนเตรียมเช้า</div>
+            <div style="font-size:10px;font-weight:800;color:#cbd5e1">แนบตอนจอง · ผูกทีหลัง · AI เตรียมนัด</div>
           </div>
           <div class="body">
-            <h3>ผูกไฟล์ · ลิงก์ กับนัดทีหลัง</h3>
-            <p>นัดในปฏิทินยังไม่มีไฟล์นำเสนอ ก็ผูก OneDrive/ลิงก์ทีหลังได้ — ตอนเช้าหรือพิมพ์ “เตรียมนัด …” AI จะอ่านให้</p>
+            <h3>ไฟล์กับนัด · แนบตอนจอง · ผูกทีหลัง</h3>
+            <p>ส่งรูป/ไฟล์ตอนจองนัด · ผูก OneDrive กับนัดที่มีแล้ว — ตอนเช้าหรือพิมพ์ “เตรียมนัด …” AI อ่านให้</p>
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
       </div>
 
       <div class="vis-grid" style="margin-top:14px">
-        <button type="button" class="vis" data-demo="bookattach">
-          <div class="art" style="background:linear-gradient(160deg,#1a2f4a,#0f172a);padding:14px;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center">
-            <div style="display:flex;gap:8px;align-items:center">
-              <div style="width:36px;height:36px;border-radius:8px;background:#334155;display:grid;place-items:center;font-size:18px">📷</div>
-              <div style="font-size:16px;color:#94a3b8">→</div>
-              <div style="width:36px;height:36px;border-radius:8px;background:#d7a13a;display:grid;place-items:center;font-size:14px;font-weight:800;color:#0f172a">📅</div>
-            </div>
-            <div style="font-size:10px;font-weight:800;color:#cbd5e1">แนบรูป/ไฟล์ → ยืนยันส่งนัด</div>
-          </div>
-          <div class="body">
-            <h3>แนบไฟล์ · รูป ตอนจองนัด</h3>
-            <p>ส่งรูปใน LINE แล้วพิมพ์ “แนบรูป ส่งนัด …” หรือ “แนบไฟล์ 2 ส่งนัด …” — กดยืนยันแล้วแนบเข้า Outlook</p>
-            <span class="tap">ดูตัวอย่าง →</span>
-          </div>
-        </button>
-        <button type="button" class="vis" data-demo="fileloc">
-          <div class="art" style="background:linear-gradient(160deg,#1e293b,#0f172a);padding:16px;display:grid;place-items:center">
-            <div style="width:90%;font-family:ui-monospace,monospace;font-size:10px;line-height:1.5;color:#94a3b8;background:#0b1220;border:1px solid #334155;border-radius:10px;padding:10px">
-              <div style="color:#d7a13a;margin-bottom:4px">📂 App/AI Assistant</div>
-              <div>ai.html</div>
-              <div style="opacity:.7">*.claude-backup.html</div>
-            </div>
-          </div>
-          <div class="body">
-            <h3>ค้นไฟล์ · อยู่ที่ไหน · กรองนามสกุล</h3>
-            <p>“หาไฟล์ ai.html อยู่ที่ไหน” แสดงโฟลเดอร์ OneDrive · “เอาแค่ .html” กรองรายการ · สรุป/ผูกนัดได้ต่อ</p>
-            <span class="tap">ดูตัวอย่าง →</span>
-          </div>
-        </button>
         <button type="button" class="vis" data-demo="cancelday">
           <div class="art" style="background:linear-gradient(160deg,#2a1f1f,#0f172a);padding:16px;display:grid;place-items:center">
             <div style="width:88%;background:#0b1220;border:1px solid #334155;border-radius:12px;padding:10px">
@@ -1205,43 +1179,35 @@
       ],
     },
     files: {
-      title: "ค้นไฟล์ · วางแผนเดินทาง",
+      title: "ค้นไฟล์ OneDrive · อยู่ที่ไหน · วางแผนเดินทาง",
       sub: "ตัวอย่างใน LINE",
-      note: "ค้น OneDrive + คำนวณเวลาออกบ้าน · ดูตัวอย่าง “อยู่ที่ไหน” ที่การ์ดถัดไป",
+      note: "ค้น · โฟลเดอร์ · กรองนามสกุล · วางแผนเดินทาง",
       steps: [
         { t: 0, role: "me", text: "หาไฟล์งบประมาณ Q3" },
         { t: 700, role: "typing" },
         { t: 1600, role: "bot", text: "เจอ 3 ไฟล์ใน OneDrive ครับ\n1) งบประมาณ_Q3.xlsx\n2) สรุปงบ_Q3.pptx\n3) บันทึกประชุมงบ.pdf" },
-        { t: 2100, role: "btns", items: [
-          { label: "ผูกไฟล์กับนัด →", go: "linkmeet" },
-          { label: "อยู่ที่ไหน →", go: "fileloc" },
+        { t: 2300, role: "me", text: "หาไฟล์ ai.html อยู่ที่ไหน" },
+        { t: 3000, role: "typing" },
+        { t: 3900, role: "bot", text: "เจอ 2 ไฟล์ที่ตรงกับ “ai (.html)” ครับ 👇\n\n1) ฟังก์ชันทั้งระบบ-AI-Assistant.claude-backup.html\n   📂 App/AI Assistant\n2) ฟังก์ชันทั้งระบบ-AI-Assistant.html\n   📂 App/AI Assistant" },
+        { t: 4600, role: "btns", items: ["สรุปอัน 1", "ผูกไฟล์นัด 1"] },
+        { t: 5300, role: "me", text: "หาไฟล์ ai" },
+        { t: 5900, role: "typing" },
+        { t: 6700, role: "bot", text: "เจอ 5 ไฟล์ที่ตรงกับ “ai” ครับ 👇\n(ถาม “อยู่ที่ไหน” เพื่อดูโฟลเดอร์ใน OneDrive)" },
+        { t: 7300, role: "me", text: "เอาแค่ .html" },
+        { t: 7900, role: "typing" },
+        { t: 8700, role: "bot", text: "เจอ 2 ไฟล์ที่ตรงกับ “.html” ครับ 👇\n\n1) …claude-backup.html\n   📂 App/AI Assistant\n2) …AI-Assistant.html\n   📂 App/AI Assistant" },
+        { t: 9300, role: "me", text: "ต้องออกกี่โมงถึงออฟฟิศทันนัดแรก" },
+        { t: 9900, role: "typing" },
+        { t: 10700, role: "bot", text: "นัดแรกวันนี้ 09:30 ที่ออฟฟิศ\nแนะนำออกจากบ้านประมาณ 08:35 (เผื่อรถติด 25 นาที) ครับ" },
+        { t: 11300, role: "btns", items: [
+          { label: "ไฟล์กับนัด →", go: "meetfiles" },
         ] },
-        { t: 2800, role: "me", text: "ต้องออกกี่โมงถึงออฟฟิศทันนัดแรก" },
-        { t: 3400, role: "typing" },
-        { t: 4200, role: "bot", text: "นัดแรกวันนี้ 09:30 ที่ออฟฟิศ\nแนะนำออกจากบ้านประมาณ 08:35 (เผื่อรถติด 25 นาที) ครับ" },
       ],
     },
-    fileloc: {
-      title: "ค้นไฟล์ · อยู่ที่ไหน · กรองนามสกุล",
+    meetfiles: {
+      title: "ไฟล์กับนัด · แนบตอนจอง · ผูกทีหลัง",
       sub: "ตัวอย่างใน LINE",
-      note: "แสดงโฟลเดอร์ OneDrive · กรอง .html · สรุป/ผูกนัดต่อได้",
-      steps: [
-        { t: 0, role: "me", text: "หาไฟล์ ai.html อยู่ที่ไหน" },
-        { t: 700, role: "typing" },
-        { t: 1800, role: "bot", text: "เจอ 2 ไฟล์ที่ตรงกับ “ai (.html)” ครับ 👇\n\n1) ฟังก์ชันทั้งระบบ-AI-Assistant.claude-backup.html\n   📂 App/AI Assistant\n2) ฟังก์ชันทั้งระบบ-AI-Assistant.html\n   📂 App/AI Assistant" },
-        { t: 2600, role: "btns", items: ["สรุปอัน 1", "ผูกไฟล์นัด 1"] },
-        { t: 3400, role: "me", text: "หาไฟล์ ai" },
-        { t: 4000, role: "typing" },
-        { t: 4800, role: "bot", text: "เจอ 5 ไฟล์ที่ตรงกับ “ai” ครับ 👇\n(ถาม “อยู่ที่ไหน” เพื่อดูโฟลเดอร์ใน OneDrive)" },
-        { t: 5400, role: "me", text: "เอาแค่ .html" },
-        { t: 6000, role: "typing" },
-        { t: 6800, role: "bot", text: "เจอ 2 ไฟล์ที่ตรงกับ “.html” ครับ 👇\n\n1) …claude-backup.html\n   📂 App/AI Assistant\n2) …AI-Assistant.html\n   📂 App/AI Assistant" },
-      ],
-    },
-    bookattach: {
-      title: "แนบไฟล์ · รูป ตอนจองนัด",
-      sub: "ตัวอย่างใน LINE",
-      note: "ส่งรูปก่อนหรือหลังพิมพ์คำสั่งได้ · กดยืนยันแล้วแนบเข้า Outlook",
+      note: "แนบรูป/ไฟล์ตอนจอง · ผูก OneDrive ทีหลัง · AI อ่านตอนเตรียม",
       steps: [
         { t: 0, role: "me", text: "(ส่งรูปในแชท 📷)" },
         { t: 600, role: "bot", text: "รับรูปแล้วครับ 📷 (line-photo-….jpg)\n\n• จองนัดพร้อมแนบรูป: “แนบรูป ส่งนัด …” แล้วกดยืนยัน\n• แนบเข้านัดที่ส่งแล้ว: “แนบรูปเพิ่ม”" },
@@ -1253,9 +1219,20 @@
         { t: 5000, role: "typing" },
         { t: 5800, role: "bot", text: "✅ ส่งนัดประชุมแล้ว!\n📌 test\n🕐 06/08/2026 13:30–14:00\n👤 ake@gmail.com\n📷 กำลังแนบรูป line-photo-….jpg…" },
         { t: 6600, role: "bot", text: "📷 แนบรูปแล้ว: line-photo-….jpg" },
-        { t: 7200, role: "btns", items: [
-          { label: "แนบไฟล์ OneDrive →", go: "linkmeet" },
-        ] },
+        { t: 7400, role: "me", text: "ตารางวันนี้" },
+        { t: 8000, role: "typing" },
+        { t: 8800, role: "bot", text: "🌅 ตารางวันนี้ — มี 2 นัด\n\n1) 09:30–10:00 — สแตนด์อัพทีม\n2) 14:00–15:00 — Weekly Sync\n\nอยากให้ช่วยเตรียมนัดไหนดีครับ?" },
+        { t: 9600, role: "me", text: "หาไฟล์ สรุปงบ Q3" },
+        { t: 10200, role: "typing" },
+        { t: 11000, role: "bot", text: "เจอ 2 ไฟล์ครับ\n1) สรุปงบ_Q3.pptx\n2) งบประมาณ_Q3.xlsx\n\nจะผูกกับนัด พิมพ์ เช่น “ผูกไฟล์นัด 2”" },
+        { t: 11700, role: "btns", items: ["ผูกไฟล์นัด 2", "แนบอัน 1 กับนัด 2"] },
+        { t: 12400, role: "me", text: "ผูกไฟล์นัด 2" },
+        { t: 13000, role: "typing" },
+        { t: 13800, role: "bot", text: "✅ ผูกไฟล์กับนัดแล้วครับ\n📌 Weekly Sync\n📎 สรุปงบ_Q3.pptx\n\nพิมพ์ “เตรียมนัด 2” ระบบจะอ่านไฟล์นี้ประกอบคำแนะนำให้ครับ" },
+        { t: 14600, role: "btns", items: ["เตรียมนัด 2", "เอกสารนัด 2"] },
+        { t: 15400, role: "me", text: "เตรียมนัด 2" },
+        { t: 16000, role: "typing" },
+        { t: 17200, role: "bot", text: "📌 Weekly Sync — เตรียมตัวครับ\n\n📄 จากไฟล์ที่คุณผูกไว้ (สรุปงบ_Q3.pptx):\n• ไฮไลต์ตัวเลข Q3 ที่ต้องพรีเซนต์\n• สไลด์สรุปความเสี่ยง\n\n✅ ต้องเตรียม: เปิดไฟล์ก่อนเข้าห้อง · ทบทวนตัวเลขหน้า 3–5\n💬 ควรพูด: สถานะเทียบเป้า · จุดที่ขอตัดสินใจ" },
       ],
     },
     cancelday: {
@@ -1273,27 +1250,6 @@
         { t: 5000, role: "me", text: "พรุ่งนี้ ไม่ใช่วันนี้" },
         { t: 5600, role: "typing" },
         { t: 6400, role: "bot", text: "เลือกนัด พรุ่งนี้ ที่ต้องการยกเลิกครับ 👇\n(ไม่โชว์นัดวันนี้ที่กำลังประชุมอยู่)" },
-      ],
-    },
-    linkmeet: {
-      title: "ผูกไฟล์ · ลิงก์ กับนัดทีหลัง",
-      sub: "ตัวอย่างใน LINE",
-      note: "ไฟล์ OneDrive ต้องมีสิทธิ์เข้าถึง · AI อ่านตอนเตรียมนัด/บรีฟเช้า",
-      steps: [
-        { t: 0, role: "me", text: "ตารางวันนี้" },
-        { t: 600, role: "typing" },
-        { t: 1400, role: "bot", text: "🌅 ตารางวันนี้ — มี 2 นัด\n\n1) 09:30–10:00 — สแตนด์อัพทีม\n2) 14:00–15:00 — Weekly Sync\n\nอยากให้ช่วยเตรียมนัดไหนดีครับ?" },
-        { t: 2200, role: "me", text: "หาไฟล์ สรุปงบ Q3" },
-        { t: 2800, role: "typing" },
-        { t: 3600, role: "bot", text: "เจอ 2 ไฟล์ครับ\n1) สรุปงบ_Q3.pptx\n2) งบประมาณ_Q3.xlsx\n\nจะผูกกับนัด พิมพ์ เช่น “ผูกไฟล์นัด 2”" },
-        { t: 4300, role: "btns", items: ["ผูกไฟล์นัด 2", "แนบอัน 1 กับนัด 2"] },
-        { t: 5000, role: "me", text: "ผูกไฟล์นัด 2" },
-        { t: 5600, role: "typing" },
-        { t: 6400, role: "bot", text: "✅ ผูกไฟล์กับนัดแล้วครับ\n📌 Weekly Sync\n📎 สรุปงบ_Q3.pptx\n\nพิมพ์ “เตรียมนัด 2” ระบบจะอ่านไฟล์นี้ประกอบคำแนะนำให้ครับ" },
-        { t: 7200, role: "btns", items: ["เตรียมนัด 2", "เอกสารนัด 2"] },
-        { t: 8000, role: "me", text: "เตรียมนัด 2" },
-        { t: 8600, role: "typing" },
-        { t: 9800, role: "bot", text: "📌 Weekly Sync — เตรียมตัวครับ\n\n📄 จากไฟล์ที่คุณผูกไว้ (สรุปงบ_Q3.pptx):\n• ไฮไลต์ตัวเลข Q3 ที่ต้องพรีเซนต์\n• สไลด์สรุปความเสี่ยง\n\n✅ ต้องเตรียม: เปิดไฟล์ก่อนเข้าห้อง · ทบทวนตัวเลขหน้า 3–5\n💬 ควรพูด: สถานะเทียบเป้า · จุดที่ขอตัดสินใจ" },
       ],
     },
     privacy: {
