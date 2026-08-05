@@ -271,6 +271,7 @@ function detailText(res: CommandResult, upn?: string): string {
   } else if (res.intent === "file_results" && Array.isArray(res.files)) {
     const showPath = !!(res as CommandResult).show_file_location;
     const fileList = res.files as { name?: string; url?: string; path?: string; id?: string }[];
+    const hasOpenLinks = !!(upn && fileList.some((f) => f.id));
     lines = fileList.map((f, i) => {
       const name = (f.name || f.url || "ไฟล์").trim();
       const pathInline = showPath && f.path && f.path !== "OneDrive" ? ` 📂 ${f.path}` : "";
@@ -281,6 +282,7 @@ function detailText(res: CommandResult, upn?: string): string {
       const linkInline = openUri ? " 🔗 เปิดไฟล์" : "";
       return `${i + 1}) ${name}${pathInline}${linkInline}`;
     });
+    if (hasOpenLinks) lines.push("แตะปุ่มด้านล่างเพื่อเปิดไฟล์");
   }
   return lines.length ? "\n\n" + lines.join("\n") : "";
 }
