@@ -157,11 +157,13 @@ export function parseHHMM(s: unknown): number | null {
 
 /**
  * Parse Thai / casual clock phrases into "HH:MM".
- * Examples: "ตอน 11 โมง", "11 โมงครึ่ง", "บ่ายสองโมง", "ตอนเที่ยง", "17:30", "ทุ่มหนึ่ง"
+ * Examples: "ตอน 11 โมง", "บ่ายโมง", "บ่าน2", "บ่าย4โมงเย็น", "4โมง", "6โมงเย็น", "1ทุ่ม", "ตอนเที่ยง"
  */
 export function parseThaiClockToHHMM(text: string): string | null {
-  const t = (text || "").trim().replace(/\s+/g, " ");
-  if (!t) return null;
+  const t0 = (text || "").trim().replace(/\s+/g, " ");
+  if (!t0) return null;
+  // Common typo บ่าน → บ่าย
+  const t = t0.replace(/บ่าน/g, "บ่าย");
 
   const colon = t.match(/(?:ตอน|เวลา|ที่)?\s*(\d{1,2})\s*[:.]\s*(\d{2})/);
   if (colon) {
@@ -184,29 +186,52 @@ export function parseThaiClockToHHMM(text: string): string | null {
     สิบเอ็ด: 11,
     สิบสอง: 12,
   };
+  const numToken = (raw: string) => wordMap[raw] ?? Number(raw);
+  const hhmm = (h: number, mi = 0) =>
+    h >= 0 && h < 24 && mi < 60 ? `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}` : null;
 
-  const bai = t.match(/บ่าย\s*(\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)(?:\s*โมง)?(?:\s*(ครึ่ง))?/);
+  // บ่ายโมง (no number) = 13:00 — must run before บ่าย+digit
+  const baiBare = t.match(/(?:ตอน|เวลา|ที่)?\s*บ่าย\s*โมง(?:\s*เย็น)?(?:\s*(ครึ่ง))?/);
+  if (baiBare && !/บ่าย\s*(\d|หนึ่ง|สอง|สาม|สี่|ห้า|หก)/.test(t)) {
+    return hhmm(13, baiBare[1] ? 30 : 0);
+  }
+
+  // บ่าย2 / บ่าย4โมง / บ่าย4โมงเย็น / บ่ายสอง
+  const bai = t.match(
+    /(?:ตอน|เวลา|ที่)?\s*บ่าย\s*(\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า|หก)(?:\s*โมง)?(?:\s*เย็น)?(?:\s*(ครึ่ง))?/
+  );
   if (bai) {
-    const n = wordMap[bai[1]] ?? Number(bai[1]);
+    const n = numToken(bai[1]);
     if (n >= 1 && n <= 6) {
       const h = n === 1 ? 13 : n + 12;
-      const mi = bai[2] ? 30 : 0;
-      return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+      return hhmm(h, bai[2] ? 30 : 0);
     }
   }
 
-  const tum = t.match(/ทุ่ม\s*(\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)?(?:\s*(ครึ่ง))?/);
-  if (tum || /ทุ่ม/.test(t)) {
-    const raw = tum?.[1];
-    const n = raw ? wordMap[raw] ?? Number(raw) : 1;
+  // 1ทุ่ม / หนึ่งทุ่ม (number before ทุ่ม) — prefer over bare ทุ่ม
+  const tumLead = t.match(
+    /(?:ตอน|เวลา|ที่)?\s*(\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)\s*ทุ่ม(?:\s*(ครึ่ง))?/
+  );
+  if (tumLead) {
+    const n = numToken(tumLead[1]);
     if (n >= 1 && n <= 5) {
       const h = n === 1 ? 19 : n + 18;
-      const mi = tum?.[2] ? 30 : 0;
-      if (h < 24) return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+      return hhmm(h, tumLead[2] ? 30 : 0);
     }
   }
 
-  // Noon: "เที่ยง" / "ตอนเที่ยง" / "เที่ยงตรง" — not ก่อนเที่ยง·หลังเที่ยง·พักเที่ยง·ช่วงเที่ยง·มื้อเที่ยง
+  // ทุ่ม / ทุ่มหนึ่ง / ทุ่ม 2
+  const tum = t.match(/(?:ตอน|เวลา|ที่)?\s*ทุ่ม\s*(\d{1,2}|หนึ่ง|สอง|สาม|สี่|ห้า)?(?:\s*(ครึ่ง))?/);
+  if (tum || /(?:^|[\s,])ทุ่ม(?=$|[\s,!.])/.test(t)) {
+    const raw = tum?.[1];
+    const n = raw ? numToken(raw) : 1;
+    if (n >= 1 && n <= 5) {
+      const h = n === 1 ? 19 : n + 18;
+      return hhmm(h, tum?.[2] ? 30 : 0);
+    }
+  }
+
+  // Noon: "เที่ยง" / "ตอนเที่ยง" — not ก่อนเที่ยง·หลังเที่ยง·พักเที่ยง·ช่วงเที่ยง·มื้อเที่ยง
   if (!/(ก่อนเที่ยง|หลังเที่ยง|พักเที่ยง|ช่วงเที่ยง|มื้อเที่ยง)/.test(t)) {
     const noon =
       t.match(/(?:ตอน|เวลา|ที่)\s*เที่ยง(?:วัน|ตรง)?(?:\s*(ครึ่ง))?/) ||
@@ -217,15 +242,24 @@ export function parseThaiClockToHHMM(text: string): string | null {
     }
   }
 
+  // 4โมงเย็น / 6โมงเย็น → 16:00 / 18:00
+  const mongYen = t.match(/(?:ตอน|เวลา|ที่)?\s*(\d{1,2})\s*โมง\s*เย็น(?:\s*(ครึ่ง))?/);
+  if (mongYen) {
+    let h = Number(mongYen[1]);
+    if (h >= 1 && h <= 6) h += 12;
+    return hhmm(h, mongYen[2] ? 30 : 0);
+  }
+
+  // 4โมง / ตอน 11 โมง / 11 โมงครึ่ง
   const mong = t.match(/(?:ตอน|เวลา|ที่)?\s*(\d{1,2})\s*โมง(?:\s*(ครึ่ง|[\d]{1,2})\s*(?:นาที)?)?/);
   if (mong) {
     let h = Number(mong[1]);
     let mi = 0;
     if (mong[2] === "ครึ่ง") mi = 30;
     else if (mong[2] && /^\d+$/.test(mong[2])) mi = Math.min(59, Number(mong[2]));
-    // "1–6 โมง" without เช้า/บ่าย → afternoon (common office speak); 7–11 stay morning
-    if (h >= 1 && h <= 6 && !/เช้า/.test(t)) h += 12;
-    if (h >= 0 && h < 24 && mi < 60) return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+    // "1–6 โมง" without เช้า → afternoon (office speak); เย็น also forces PM
+    if (h >= 1 && h <= 6 && (!/เช้า/.test(t) || /เย็น/.test(t))) h += 12;
+    return hhmm(h, mi);
   }
 
   return null;
