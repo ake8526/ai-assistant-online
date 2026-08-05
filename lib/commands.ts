@@ -393,7 +393,7 @@ function personFromText(text: string): string {
   return SELF_WORDS.has(s) ? "" : s;
 }
 
-/** Split “เบสกับพี่แบง” / “เบส และ นนท์” into separate people. */
+/** Split “เบสกับพี่แบง” / “พี่เอม พี่แบง พี่นน เบส” into separate people. */
 function peopleFromText(text: string): string[] {
   let body = (text || "").trim().replace(/\s+/g, " ");
   let changed = true;
@@ -418,13 +418,57 @@ function peopleFromText(text: string): string[] {
   body = body.replace(/\s+/g, " ").trim();
   if (!body) return [];
 
-  const parts = body
+  const splitChunk = (chunk: string): string[] => {
+    // "พี่เอม พี่แบง พี่นน" — honorifics mark each person
+    const byHonor = chunk
+      .split(/\s+(?=พี่|คุณ|น้อง)/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const pieces = byHonor.length >= 2 ? byHonor : [chunk];
+    const out: string[] = [];
+    for (const piece of pieces) {
+      const stripped = (stripHonorificPublic(piece) || piece).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim();
+      if (!stripped) continue;
+      const toks = stripped.split(/\s+/).filter(Boolean);
+      // "เอม แบง นน เบส" or leftover "นน เบส" after honorific split
+      if (
+        toks.length >= 2 &&
+        toks.every(
+          (t) =>
+            t.length <= 12 &&
+            !/[.@]/.test(t) &&
+            !/^(วันนี้|พรุ่งนี้|ตาราง|ว่าง|ประชุม|นัด|จอง|ตรงกัน)$/i.test(t)
+        )
+      ) {
+        out.push(...toks);
+      } else {
+        out.push(stripped);
+      }
+    }
+    return out;
+  };
+
+  let parts = body
     .split(/\s*(?:กับ|และ|,|\/|&)\s*/)
     .map((s) => s.replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
     .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง|ตาราง|ว่าง|ตรงกัน)$/i.test(s));
 
+  parts = parts.flatMap((p) => splitChunk(p));
+  parts = parts
+    .map((s) => (stripHonorificPublic(s) || s).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
+    .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง|ตาราง|ว่าง|ตรงกัน)$/i.test(s));
+
+  // Dedupe while preserving order
+  const seen = new Set<string>();
+  parts = parts.filter((p) => {
+    const k = p.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
   if (parts.length >= 2) return parts;
-  if (parts.length === 1) return [stripHonorificPublic(parts[0]!) || parts[0]!];
+  if (parts.length === 1) return [parts[0]!];
   const one = personFromText(text);
   return one ? [one] : [];
 }
@@ -2439,11 +2483,13 @@ async function handleParsed(
       const multi =
         peopleFromText(text).length >= 2
           ? peopleFromText(text)
-          : glued && /(?:กับ|และ|,)/.test(glued)
-            ? glued
-                .split(/\s*(?:กับ|และ|,)\s*/)
-                .map((s) => stripHonorificPublic(s).trim())
-                .filter(Boolean)
+          : glued && /(?:กับ|และ|,|\s+พี่|\s+คุณ|\s+น้อง)/.test(glued)
+            ? peopleFromText(`ตาราง ${glued}`).length >= 2
+              ? peopleFromText(`ตาราง ${glued}`)
+              : glued
+                  .split(/\s*(?:กับ|และ|,)\s*/)
+                  .map((s) => stripHonorificPublic(s).trim())
+                  .filter(Boolean)
             : [];
       if (multi.length >= 2) {
         return runFindMeeting(

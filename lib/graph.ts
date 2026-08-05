@@ -536,6 +536,8 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
     if (s === "แบง" || low === "bang") out.push("แบงค์", "Bank");
     if (s === "แบงค์" || low === "bank") out.push("แบง", "Bank");
     if (s === "เบส" || low === "base" || low === "bes") out.push("Base", "Best");
+    if (s === "เอม" || s === "เอ็ม" || low === "em" || low === "aem") out.push("เอม", "เอ็ม", "Em", "Aem");
+    if (s === "นน" || s === "นนท์" || low === "non") out.push("นน", "นนท์", "Non");
     return out;
   };
   const variants = Array.from(
