@@ -1733,8 +1733,19 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
     }
     if (a === "prep") {
       const idx = Number(data.get("i") || "");
-      const eventId = data.get("id") || (idx ? await resolveAgendaEventId(userUpn, idx) : null);
-      if (!eventId) return { intent: "error", reply: "ไม่พบนัดที่เลือก — พิมพ์ “สรุปตารางเช้า” เพื่อดูรายการใหม่ครับ" };
+      let eventId = data.get("id") || (idx ? await resolveAgendaEventId(userUpn, idx) : null);
+      // Agenda may have been wiped by a bad empty pull — rebuild and retry by index.
+      if (!eventId && idx) {
+        const agenda = await buildMorningAgenda(userUpn);
+        eventId = agenda.choices.find((c) => c.index === idx)?.event_id || null;
+        if (!eventId) eventId = await resolveAgendaEventId(userUpn, idx);
+      }
+      if (!eventId) {
+        return {
+          intent: "error",
+          reply: "ไม่พบนัดที่เลือก — พิมพ์ “สรุปตารางเช้า” เพื่อดูรายการใหม่ แล้วกดเลขเพื่อให้แนะนำประชุมครับ",
+        };
+      }
       const reply = await buildMeetingPrep(userUpn, eventId);
       return { intent: "meeting_prep", reply };
     }

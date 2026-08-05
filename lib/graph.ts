@@ -121,10 +121,11 @@ export type GraphAttachment = {
 
 /** Calendar events between two ISO datetimes (calendarView expands recurrences). */
 export async function getEventsRange(userUpn: string, startIso: string, endIso: string): Promise<GraphEvent[]> {
-  // Always address the mailbox by UPN. With a delegated token this returns full
-  // events only for your own calendar or calendars shared with you (Calendars.Read.Shared);
-  // otherwise callers should fall back to getSchedule free/busy.
-  const path = `/users/${encodeURIComponent(userUpn)}/calendarView`;
+  // Delegated tokens must use /me — /users/{own-upn}/calendarView often returns []
+  // even when the mailbox has events. App-only cron keeps addressing by UPN.
+  const path = getUserGraphToken()
+    ? `/me/calendarView`
+    : `/users/${encodeURIComponent(userUpn)}/calendarView`;
   const data = await graphGet(
     path,
     {

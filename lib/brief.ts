@@ -116,9 +116,11 @@ export function formatAgendaList(
   if (askPrep) {
     lines.push("อยากให้ช่วยแนะนำเตรียมตัวนัดไหนดีครับ?");
     if (events.length === 1) {
-      lines.push("กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด 1”");
+      lines.push("กด «1» หรือพิมพ์ “แนะนำประชุม 1” เพื่อให้ช่วยเตรียมตัวนัดนี้");
     } else {
-      lines.push(`กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด 1” / “แนะนำประชุม ${Math.min(2, events.length)}”`);
+      lines.push(
+        `กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “แนะนำประชุม 1” / “เตรียมนัด ${Math.min(2, events.length)}”`
+      );
     }
   }
   return lines.join("\n").trim();
@@ -128,11 +130,21 @@ export async function saveAgendaIds(upn: string, events: GraphEvent[]): Promise<
   const now = nowWall();
   const pad = (n: number) => String(n).padStart(2, "0");
   const date = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
-  await setSetting(
-    upn,
-    AGENDA_KEY,
-    JSON.stringify({ date, ids: events.map((e) => e.id).filter(Boolean) })
-  );
+  const ids = events.map((e) => e.id).filter(Boolean) as string[];
+  // Never wipe a good same-day agenda with an empty pull (false "ไม่มีนัด" would
+  // break quick-reply "กด 1" → แนะนำประชุม).
+  if (!ids.length) {
+    const raw = await getSetting(upn, AGENDA_KEY);
+    if (raw) {
+      try {
+        const prev = JSON.parse(raw) as { date?: string; ids?: string[] };
+        if (prev.date === date && Array.isArray(prev.ids) && prev.ids.length) return;
+      } catch {
+        /* replace below */
+      }
+    }
+  }
+  await setSetting(upn, AGENDA_KEY, JSON.stringify({ date, ids }));
 }
 
 export async function resolveAgendaEventId(upn: string, index1: number): Promise<string | null> {
@@ -151,7 +163,12 @@ export async function resolveAgendaEventId(upn: string, index1: number): Promise
 /** List today's meetings + ask which one to prep. */
 export async function buildMorningAgenda(userUpn: string, periodLabel = "วันนี้"): Promise<MorningAgenda> {
   const now = nowWall();
-  const events = await getEventsRange(userUpn, wallIso(startOfDay(now)), wallIso(endOfDay(now)));
+  let events = await getEventsRange(userUpn, wallIso(startOfDay(now)), wallIso(endOfDay(now)));
+  // Second chance with Intl-based day bounds (same idea as getTodayEvents)
+  if (!events.length) {
+    const { getTodayEvents } = await import("@/lib/graph");
+    events = await getTodayEvents(userUpn);
+  }
   await saveAgendaIds(userUpn, events);
   const choices: AgendaChoice[] = events
     .filter((e) => e.id)
@@ -311,15 +328,19 @@ export async function runForUser(userUpn: string, ready?: MorningAgenda): Promis
     return agenda.text;
   }
 
-  const items = agenda.choices.slice(0, 12).map((c) => ({
-    type: "action",
-    action: {
-      type: "postback",
-      label: `${c.index}`,
-      data: `a=prep&i=${c.index}`,
-      displayText: `เตรียมนัด ${c.index}) ${c.label}`.slice(0, 60),
-    },
-  }));
+  const items = agenda.choices.slice(0, 12).map((c) => {
+    const withId = `a=prep&i=${c.index}&id=${encodeURIComponent(c.event_id)}`;
+    const data = withId.length <= 300 ? withId : `a=prep&i=${c.index}`;
+    return {
+      type: "action",
+      action: {
+        type: "postback",
+        label: `${c.index}`,
+        data,
+        displayText: `แนะนำประชุม ${c.index}`.slice(0, 60),
+      },
+    };
+  });
 
   await pushLineMessages(lineId, [
     {
