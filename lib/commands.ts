@@ -13,7 +13,7 @@ import {
   quickLinkMeetingIntent,
 } from "@/lib/meetingLink";
 import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
-import { kickLineDigest } from "@/lib/digestKick";
+import { claimDigestPush, clearDigestClaim, kickLineDigest } from "@/lib/digestKick";
 import { sendLine } from "@/lib/line";
 import { runWithTrace, trace } from "@/lib/trace";
 import { after } from "next/server";
@@ -2623,46 +2623,67 @@ async function handleParsed(
 
       trace("fetch", "📰 สรุปข่าวช้า · ส่งต่อ line-now", "start");
 
-      // Single delivery owner: /api/digest/line-now (maxDuration 300).
-      // Do NOT also finish in this isolate — claim races caused silent no-push.
+      // Primary: line-now. Backup: always finish here too (claim = one push only).
+      // Old path only backed up when kick threw → silent no-push if line-now died.
+      const finishLocal = (async () => {
+        try {
+          const digest = await digestPromise;
+          // Retry claim: line-now may hold briefly then die without sending.
+          for (let attempt = 0; attempt < 4; attempt++) {
+            if (await claimDigestPush(upn)) {
+              try {
+                if (!digest.stories?.length) {
+                  const why =
+                    digest.note ||
+                    (digest.skipped.length ? `ข้าม: ${digest.skipped.join(", ")}` : "ไม่มีข่าวใหม่ให้สรุป");
+                  await sendLine(
+                    upn,
+                    "",
+                    `สรุปข่าวแล้วยังไม่มีเรื่องส่งครับ (${why})\n\nพิมพ์ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ`
+                  );
+                } else {
+                  await rememberDeliveredStories(upn, digest.stories);
+                  const extra = digest.skipped.length
+                    ? `\n\n(ข้ามบางแหล่ง: ${digest.skipped.join(", ")})`
+                    : "";
+                  await sendLine(upn, "", formatStoriesText(digest.stories, digest.note) + extra);
+                  trace("reply", `📰 ตอบกลับ get_news สำรอง (${digest.stories.length} เรื่อง)`);
+                }
+              } finally {
+                await clearDigestClaim(upn);
+              }
+              return;
+            }
+            await new Promise((r) => setTimeout(r, 28_000));
+          }
+        } catch (err) {
+          console.warn("[get_news backup]", String(err).slice(0, 200));
+          try {
+            if (await claimDigestPush(upn)) {
+              try {
+                await sendLine(upn, "", "สรุปข่าวไม่สำเร็จครับ — ลองพิมพ์ “ข่าววันนี้” อีกครั้งได้เลย");
+              } finally {
+                await clearDigestClaim(upn);
+              }
+            }
+          } catch { /* ignore */ }
+        }
+      })();
+
       try {
         await kickLineDigest(upn);
       } catch (e) {
         console.warn("[get_news kick]", String(e).slice(0, 160));
-        // Last resort: finish in webhook isolate (no competing claim with line-now).
-        const finishLocal = (async () => {
-          try {
-            const digest = await digestPromise;
-            if (!digest.stories?.length) {
-              const why =
-                digest.note ||
-                (digest.skipped.length ? `ข้าม: ${digest.skipped.join(", ")}` : "ไม่มีข่าวใหม่ให้สรุป");
-              await sendLine(
-                upn,
-                "",
-                `สรุปข่าวแล้วยังไม่มีเรื่องส่งครับ (${why})\n\nพิมพ์ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ`
-              );
-              return;
-            }
-            await rememberDeliveredStories(upn, digest.stories);
-            const extra = digest.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${digest.skipped.join(", ")})` : "";
-            await sendLine(upn, "", formatStoriesText(digest.stories, digest.note) + extra);
-          } catch (err) {
-            console.warn("[get_news waitUntil]", String(err).slice(0, 200));
-            try {
-              await sendLine(upn, "", "สรุปข่าวไม่สำเร็จครับ — ลองพิมพ์ “ข่าววันนี้” อีกครั้งได้เลย");
-            } catch { /* ignore */ }
-          }
-        })();
-        try {
-          waitUntil(finishLocal);
-        } catch { /* non-Vercel */ }
-        after(async () => {
-          try {
-            await finishLocal;
-          } catch { /* ignore */ }
-        });
       }
+
+      try {
+        waitUntil(finishLocal);
+      } catch { /* non-Vercel */ }
+      after(async () => {
+        try {
+          await finishLocal;
+        } catch { /* ignore */ }
+      });
 
       return {
         intent,

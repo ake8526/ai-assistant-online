@@ -22,7 +22,8 @@ export async function claimDigestPush(upn: string): Promise<boolean> {
   if (prev) {
     try {
       const p = JSON.parse(prev) as { id?: string; ts?: number };
-      if (p.ts && Date.now() - p.ts < 3 * 60 * 1000) return false;
+      // Short TTL: if the winner died mid-flight, another worker can take over.
+      if (p.ts && Date.now() - p.ts < 90_000) return false;
     } catch {
       /* take over stale */
     }

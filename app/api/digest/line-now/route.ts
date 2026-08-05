@@ -12,18 +12,27 @@ import { assertConfigured } from "@/lib/supabaseServer";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-async function authorizeLineNow(req: Request, upn: string): Promise<boolean> {
+async function authorizeLineNow(req: Request, upn: string, rawUpn: string): Promise<boolean> {
   if (checkCronSecret(req)) return true;
   const job = new URL(req.url).searchParams.get("job") || "";
   if (!job || !upn) return false;
+  // Token may be stored under the webhook UPN or the resolved linked UPN.
+  const keys = Array.from(new Set([upn, rawUpn.toLowerCase(), rawUpn].filter(Boolean)));
   try {
-    const raw = await getSetting(upn, digestKickSettingKey());
-    if (!raw) return false;
-    const payload = JSON.parse(raw) as DigestKickPayload;
-    if (!payload?.token || payload.token !== job) return false;
-    if (Date.now() - (payload.ts || 0) > 15 * 60 * 1000) return false;
-    await deleteSetting(upn, digestKickSettingKey());
-    return true;
+    for (const key of keys) {
+      const raw = await getSetting(key, digestKickSettingKey());
+      if (!raw) continue;
+      const payload = JSON.parse(raw) as DigestKickPayload;
+      if (!payload?.token || payload.token !== job) continue;
+      if (Date.now() - (payload.ts || 0) > 15 * 60 * 1000) continue;
+      for (const k of keys) {
+        try {
+          await deleteSetting(k, digestKickSettingKey());
+        } catch { /* ignore */ }
+      }
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -38,7 +47,7 @@ async function run(req: Request) {
       return NextResponse.json({ error: "upn required" }, { status: 400 });
     }
     const upn = (await resolveLinkedUpn(rawUpn)) || rawUpn.toLowerCase();
-    if (!(await authorizeLineNow(req, upn))) {
+    if (!(await authorizeLineNow(req, upn, rawUpn))) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
