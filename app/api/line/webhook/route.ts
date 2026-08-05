@@ -419,7 +419,13 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
   // quick-reply buttons can disappear after you send another message, so for
   // file search results we also send a template button (keeps in chat history).
   if (res.intent === "file_results" && upn && Array.isArray(res.files) && res.files.length > 0 && res.files.length <= 4) {
-    const actions = (res.files as { id?: string }[])
+    const files = res.files as { id?: string; name?: string }[];
+    const fileText = files
+      .map((f, i) => `${i + 1}) ${(f.name || "ไฟล์").trim()}`)
+      .join("\n");
+    const templateText = `พบไฟล์ ${files.length} รายการ\n${fileText}\nแตะเพื่อเปิดไฟล์`;
+
+    const actions = files
       .map((f, i) => {
         if (!f.id) return null;
         return { type: "uri" as const, label: `🔗 เปิด ${i + 1}`, uri: buildShortFileOpenUrl(upn, f.id) };
@@ -432,9 +438,7 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
           altText: "เปิดไฟล์ใน OneDrive",
           template: {
             type: "buttons",
-            // Put the (short) reply content into the same bubble,
-            // so it doesn't appear as a separate extra message.
-            text: reply.slice(0, 500),
+            text: templateText.slice(0, 450),
             actions,
           },
         } as any,
