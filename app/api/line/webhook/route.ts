@@ -427,13 +427,14 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
       .filter(Boolean) as { type: "uri"; label: string; uri: string }[];
     if (actions.length) {
       await replyLineMessages(replyToken, [
-        { type: "text", text: reply.slice(0, 4900) },
         {
           type: "template",
           altText: "เปิดไฟล์ใน OneDrive",
           template: {
             type: "buttons",
-            text: "แตะเพื่อเปิดไฟล์",
+            // Put the (short) reply content into the same bubble,
+            // so it doesn't appear as a separate extra message.
+            text: reply.slice(0, 500),
             actions,
           },
         } as any,
