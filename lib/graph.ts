@@ -390,7 +390,23 @@ export async function downloadDriveText(userUpn: string, itemId: string, maxChar
         ct.includes("xml") ||
         ct.includes("csv")
       ) {
-        return buf.toString("utf8").replace(/\u0000/g, "").replace(/\s+/g, " ").trim().slice(0, maxChars);
+        let text = buf.toString("utf8").replace(/\u0000/g, "");
+        // HTML/XML: strip scripts/styles/tags so LLM summarizes the document, not CSS
+        if (/\.html?$/i.test(nameLow) || ct.includes("html") || /<\s*html[\s>]/i.test(text.slice(0, 500))) {
+          text = text
+            .replace(/<script[\s\S]*?<\/script>/gi, " ")
+            .replace(/<style[\s\S]*?<\/style>/gi, " ")
+            .replace(/<!--[\s\S]*?-->/g, " ")
+            .replace(/<\/?(?:br|p|div|h[1-6]|li|tr|td|th)[^>]*>/gi, "\n")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&#39;/g, "'")
+            .replace(/&quot;/g, '"');
+        }
+        return text.replace(/\s+/g, " ").trim().slice(0, maxChars);
       }
 
       const office = extractOfficeZipText(buf, filename);

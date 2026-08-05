@@ -100,6 +100,7 @@ export type CommandContext = {
     duration: number;
     subject?: string;
     window?: { start: string; end: string; label: string };
+    attach_file?: { id?: string; name?: string; url?: string };
   };
   /** Next index when paging duplicate-nickname groups (“มีอีกไหม”). */
   nick_dup_offset?: number;
@@ -125,6 +126,8 @@ export type CommandResult = {
     duration: number;
     subject: string;
     window?: { start: string; end: string; label: string };
+    /** OneDrive file to attach when Outlook event is created */
+    attach_file?: { id?: string; name?: string; url?: string };
   };
   person?: { mail: string; displayName?: string };
   map_url?: string | null;
@@ -194,7 +197,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - ถ้าประวัติ/บริบทรอบก่อนพูดถึงวันใดวันหนึ่ง (เช่น พรุ่งนี้ / last_period) แล้วผู้ใช้ถามต่อแบบไม่ระบุวัน เช่น "ขอตารางว่าง", "ว่างกี่โมง", "แล้วว่างไหม" → คง period/วันเดิมจากบริบท (ห้ามดีฟอลต์เป็นวันนี้)
 - add_task: { "title": "...", "responsible": "...", "due": "YYYY-MM-DD HH:MM หรือ null" }
 - complete_task: { "task_id": <number> }
-- find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "weekday": "mon|tue|… (ถ้าพูดชื่อวัน เช่น วันจันทร์นี้)", "date": "YYYY-MM-DD หรือ 31 (ถ้าเจาะจงวันที่)", "period": "today|tomorrow|week (ถ้าไม่ได้เจาะจงวัน)", "after": "HH:MM (เช้า/บ่าย/เย็น หรือหลัง…)", "before": "HH:MM", "note": "..." }
+- find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "weekday": "mon|tue|… (ถ้าพูดชื่อวัน เช่น วันจันทร์นี้)", "date": "YYYY-MM-DD หรือ 31 (ถ้าเจาะจงวันที่)", "period": "today|tomorrow|week (ถ้าไม่ได้เจาะจงวัน)", "after": "HH:MM (เช้า/บ่าย/เย็น หรือหลัง…)", "before": "HH:MM", "note": "...", "file_index": 3 }
 - cancel_meeting: { "person": "ชื่อ/อีเมลคนในนัด ถ้าผู้ใช้ระบุ เช่น ยกเลิกนัดกับเบส (ถ้าไม่ระบุ = โชว์รายการทั้งหมด)" }
 - get_brief / get_news / list_tasks / summarize_meetings / list_feeds: {}
 - prep_meeting: { "meeting_index": 1 }  หรือ { "subject": "ชื่อนัดถ้าพิมพ์ชื่อ" }
@@ -259,7 +262,9 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "แล้วบ่ายล่ะ" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"12:00","before":"16:00"}}
 "ช่วงเช้าว่างไหม" (เมื่อเพิ่งหาเวลาหลายคน) -> {"intent":"find_meeting_time","params":{"after":"09:00","before":"12:00"}}
 "ส่งนัดหา ake@gmail.com" -> {"intent":"find_meeting_time","params":{"attendees":["ake@gmail.com"]}}
+"แนบไฟล์ 3 ส่งนัด ake@gmail.com พรุ่งนี้ครึ่งชม ตอนบ่ายโมงครึ่ง เรื่อง test" -> {"intent":"find_meeting_time","params":{"attendees":["ake@gmail.com"],"duration_min":30,"period":"tomorrow","at":"13:30","note":"test","file_index":3}}
 (หมายเหตุ: “ส่งนัดหา/นัดหา/เชิญ” + อีเมล = นัดกับอีเมลนั้นเท่านั้น ห้ามดึงคนจาก last_meeting มาผสม)
+(หมายเหตุ: หลังค้นไฟล์แล้วพูด “แนบไฟล์ N ส่งนัด/นัด …” = find_meeting_time + file_index — ห้ามใช้ summarize_file)
 "นัดประชุมกับสมชายและสมหญิง 30 นาที" -> {"intent":"find_meeting_time","params":{"attendees":["สมชาย","สมหญิง"],"duration_min":30}}
 "นัดเบสวันนี้ 10นาทีตอน 13:50 เรื่อง test meeting" -> {"intent":"find_meeting_time","params":{"attendees":["เบส"],"duration_min":10,"period":"today","at":"13:50","note":"test meeting"}}
 "นัดพี่นนท์พรุ่งนี้ 30 นาที เรื่อง sync" -> {"intent":"find_meeting_time","params":{"attendees":["พี่นนท์"],"duration_min":30,"period":"tomorrow","note":"sync"}}
@@ -675,8 +680,16 @@ function quickCancelIntent(text: string): { intent: string; params: Record<strin
 
 /** Deterministic parse for “นัด/จอง + ชื่อคน (+ วัน/เวลา/เรื่อง)” — avoids LLM mistaking เรื่อง… as add_task. */
 function quickBookIntent(text: string): { intent: string; params: Record<string, unknown> } | null {
-  const t = text.trim().replace(/\s+/g, " ");
+  let t = text.trim().replace(/\s+/g, " ");
   if (!t) return null;
+
+  // “แนบไฟล์ 3 ส่งนัด …” → book + attach file from last search
+  let file_index: number | undefined;
+  const attachPrefix = t.match(/^(?:แนบ|ผูก)\s*(?:ไฟล์|อัน|ข้อ)\s*(\d{1,2})\s+/i);
+  if (attachPrefix) {
+    file_index = Number(attachPrefix[1]);
+    t = t.slice(attachPrefix[0].length).trim();
+  }
 
   // Bare day lists already handled above; don't steal them
   if (/^(นัด|ประชุม|ตาราง)(วัน)?(วันนี้|พรุ่งนี้|สัปดาห์นี้|อาทิตย์นี้)$/i.test(t)) return null;
@@ -694,6 +707,11 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
   let note: string | undefined;
 
   let duration_min = 30;
+  const halfHr = body.match(/ครึ่ง\s*(?:ชม\.?|ชั่วโมง|hr|hour)/i);
+  if (halfHr) {
+    duration_min = 30;
+    body = body.replace(halfHr[0], " ").replace(/\s+/g, " ").trim();
+  }
   const durHr = body.match(/(\d+)\s*(?:ชม\.?|ชั่วโมง|hr|hour)/i);
   const durMin = body.match(/(\d+)\s*(?:นาที|min)/i);
   if (durHr) {
@@ -792,6 +810,7 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
   if (at) params.at = at;
   else if (after) params.after = after;
   if (note) params.note = note;
+  if (file_index) params.file_index = file_index;
   return { intent: "find_meeting_time", params };
 }
 
@@ -913,20 +932,26 @@ async function parseIntent(
     return { intent: "find_duplicate_nicknames", params: { more: true }, source: "quick" };
   }
 
-  // Fast deterministic rule after a file search
+  // Fast deterministic rule after a file search — summarize only, never steal booking lines
   if (context?.last_intent === "file_results" || (context?.files?.length && /อ่าน|สรุป/.test(textClean))) {
-    const idxHit =
-      textClean.match(/(?:อัน|ข้อ|ไฟล์)\s*(?:ที่\s*)?(\d{1,2})\b/) ||
-      textClean.match(/^(\d{1,2})$/);
-    if (idxHit) {
-      return { intent: "summarize_file", params: { file_index: Number(idxHit[1]) }, source: "quick" };
-    }
-    if (/อ่านอันแรก|สรุปอันแรก|ไฟล์แรก/.test(textClean)) {
-      return { intent: "summarize_file", params: { file_index: 1 }, source: "quick" };
-    }
-    if (["อ่านและสรุป", "สรุปให้ฟัง", "อ่านสรุป", "สรุปไฟล์", "อ่านไฟล์"].some((kw) => textLower.includes(kw))) {
-      // No number yet — ask which file; do not auto-pick.
-      return { intent: "summarize_file", params: {}, source: "quick" };
+    const bookingish =
+      /ส่งนัด|นัดหา|เชิญ\b|invite\b|จอง(?:ประชุม)?|หาเวลา|ผูก(?:ไฟล์)?|แนบ(?:อัน|ไฟล์|ลิงก์).*(?:นัด|ประชุม|ส่งนัด)|แนบไฟล์\s*\d+\s*(?:ส่งนัด|นัด|จอง)|กับนัด|ให้นัด/i.test(
+        textClean
+      );
+    if (!bookingish) {
+      const idxHit =
+        textClean.match(/(?:อัน|ข้อ|ไฟล์)\s*(?:ที่\s*)?(\d{1,2})\b/) ||
+        textClean.match(/^(\d{1,2})$/);
+      if (idxHit) {
+        return { intent: "summarize_file", params: { file_index: Number(idxHit[1]) }, source: "quick" };
+      }
+      if (/อ่านอันแรก|สรุปอันแรก|ไฟล์แรก/.test(textClean)) {
+        return { intent: "summarize_file", params: { file_index: 1 }, source: "quick" };
+      }
+      if (["อ่านและสรุป", "สรุปให้ฟัง", "อ่านสรุป", "สรุปไฟล์", "อ่านไฟล์"].some((kw) => textLower.includes(kw))) {
+        // No number yet — ask which file; do not auto-pick.
+        return { intent: "summarize_file", params: {}, source: "quick" };
+      }
     }
   }
 
@@ -1555,7 +1580,7 @@ export async function runFindMeeting(
   includeLunch = false,
   subject = "ประชุม",
   atMin: number | null = null,
-  opts?: { showMore?: boolean }
+  opts?: { showMore?: boolean; attachFile?: { id?: string; name?: string; url?: string } }
 ): Promise<CommandResult> {
   const denied = needCalendarConsent();
   if (denied) return denied;
@@ -1691,6 +1716,16 @@ export async function runFindMeeting(
   const dayNote = window ? ` (${window.label})` : "";
   const bandNote =
     resolvedAt != null ? ` ตอน ${fmtHHMM(resolvedAt)}` : band?.label ? ` ${band.label}` : "";
+  const attachNote = opts?.attachFile?.name ? `\n📎 จะแนบไฟล์: ${opts.attachFile.name}` : "";
+  const meetingBase = (): NonNullable<CommandResult["meeting"]> => ({
+    attendees: resolved,
+    duration,
+    subject,
+    window: window
+      ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
+      : undefined,
+    ...(opts?.attachFile ? { attach_file: opts.attachFile } : {}),
+  });
   if (!result.slots.length) {
     if (opts?.showMore && totalFound > 0 && offset >= totalFound) {
       return {
@@ -1705,14 +1740,7 @@ export async function runFindMeeting(
     return {
       intent: "find_meeting_time",
       reply: formatBusy(result.busy) + note + hint + `\n(ค้นของ:\n👤 ${who}${dayNote}${bandNote})`,
-      meeting: {
-        attendees: resolved,
-        duration,
-        subject,
-        window: window
-          ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
-          : undefined,
-      },
+      meeting: meetingBase(),
     };
   }
 
@@ -1771,17 +1799,11 @@ export async function runFindMeeting(
         `👤 ${who}\n` +
         `📌 ${subject}\n` +
         `🕐 ${exact.label}` +
+        attachNote +
         pastNote +
         note,
       slots: [exact],
-      meeting: {
-        attendees: resolved,
-        duration,
-        subject,
-        window: window
-          ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
-          : undefined,
-      },
+      meeting: meetingBase(),
     };
   }
 
@@ -1793,6 +1815,7 @@ export async function runFindMeeting(
     (opts?.showMore ? `ช่วงว่างเพิ่มเติมครับ\n` : `เจอเวลาที่ทุกคนว่างตรงกัน${dayNote}${bandNote}ครับ\n`) +
     `👤 ${who}\n` +
     (subject && subject !== "ประชุม" ? `📌 ${subject}\n` : "") +
+    (attachNote ? attachNote.trimStart() + "\n" : "") +
     `เลือกเวลาเริ่มประชุม (${duration} นาที) จากรายการด้านล่างได้เลย 👇` +
     afterHoursNote +
     note;
@@ -1802,14 +1825,7 @@ export async function runFindMeeting(
     reply,
     slots: result.slots,
     ranges: result.ranges,
-    meeting: {
-      attendees: resolved,
-      duration,
-      subject,
-      window: window
-        ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
-        : undefined,
-    },
+    meeting: meetingBase(),
     // Shown after slot #8 in the list + as a quick-reply button
     suggestions:
       hiddenCount > 0 || moreTomorrow
@@ -2252,7 +2268,8 @@ async function handleParsed(
 
     try {
       const summary = await chat(
-        "คุณเป็นผู้ช่วยสรุปเอกสารสั้นๆ เป็นภาษาไทย อ่านเนื้อหาที่ให้แล้วสรุปประเด็นสำคัญ 3–8 ข้อ กระชับ ชัดเจน ห้ามแต่งข้อมูลที่ไม่มีในไฟล์",
+        "คุณเป็นผู้ช่วยสรุปเอกสารสั้นๆ เป็นภาษาไทย อ่านเนื้อหาที่ให้แล้วสรุปประเด็นสำคัญ 3–8 ข้อ กระชับ ชัดเจน ห้ามแต่งข้อมูลที่ไม่มีในไฟล์\n" +
+          "ถ้าเป็นคู่มือ/เอกสารผลิตภัณฑ์ ให้สรุปว่าเอกสารนี้คืออะไร ใช้ทำอะไร และหัวข้อหลัก — ห้ามสรุปเป็นโครงสร้าง HTML/CSS/โค้ด เว้นแต่ผู้ใช้ถามเรื่องเทคนิค",
         `ชื่อไฟล์: ${fileName}\n\nเนื้อหา:\n${body.slice(0, 10000)}`,
         { temperature: 0.2, timeoutMs: 25000 }
       );
@@ -2977,6 +2994,8 @@ async function handleParsed(
     let meetDuration = duration;
 
     // Recover duration / subject from the raw line when the parser/LLM dropped them
+    const halfHit = text.match(/ครึ่ง\s*(?:ชม\.?|ชั่วโมง)/i);
+    if (halfHit) meetDuration = 30;
     const durHit = text.match(/(\d+)\s*(?:นาที|min)/i);
     if (durHit) meetDuration = Math.max(5, Number(durHit[1]));
     const noteHit = text.match(/\sเรื่อง\s+(.+)$/i);
@@ -3002,6 +3021,25 @@ async function handleParsed(
       else atMin = parseClockToMinutes(text);
     }
 
+    // “แนบไฟล์ 3 …” after search_files → snapshot OneDrive file onto the booking
+    let attachFile: { id?: string; name?: string; url?: string } | undefined;
+    const fileIdx =
+      Number(params.file_index || 0) ||
+      Number((text.match(/(?:แนบ|ผูก)\s*(?:ไฟล์|อัน|ข้อ)\s*(\d{1,2})/i) || [])[1] || 0);
+    if (fileIdx > 0) {
+      const f = context?.files?.[fileIdx - 1];
+      if (f && !f.is_folder && (f.url || f.id)) {
+        attachFile = { id: f.id, name: f.name, url: f.url };
+      } else {
+        return {
+          intent: "find_meeting_time",
+          reply:
+            `อยากแนบไฟล์ข้อ ${fileIdx} แต่${context?.files?.length ? `ไม่มีในรายการล่าสุด (มี ${context.files.length} ไฟล์)` : "ยังไม่มีรายการไฟล์จากการค้นหา"}\n` +
+            `ลองพิมพ์ “หาไฟล์ …” ก่อน แล้วค่อย “แนบไฟล์ ${fileIdx} ส่งนัด …” อีกครั้งครับ`,
+        };
+      }
+    }
+
     return runFindMeeting(
       userUpn,
       attendees,
@@ -3011,7 +3049,7 @@ async function handleParsed(
       wantsLunchIncluded(text),
       subject,
       atMin,
-      { showMore: !!params.show_more }
+      { showMore: !!params.show_more, attachFile }
     );
   }
 

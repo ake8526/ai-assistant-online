@@ -12,9 +12,10 @@ import {
 } from "@/lib/newsOnboarding";
 import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
-import { createEvent, resolveUser } from "@/lib/graph";
+import { createEvent, pushMaterialToOutlookEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold, findLinkedLineAttendees } from "@/lib/meetingInvite";
+import { addMeetingMaterial } from "@/lib/meetingMaterials";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -346,13 +347,19 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
   // After confirm: LINE-linked attendees → hold until they accept; otherwise Outlook immediately.
   if (res.intent === "confirm_meeting" && upn && Array.isArray(res.slots) && res.slots[0]) {
     const s = res.slots[0] as Slot;
-    const meeting = (res.meeting as { attendees?: string[]; subject?: string }) || {};
+    const meeting =
+      (res.meeting as {
+        attendees?: string[];
+        subject?: string;
+        attach_file?: { id?: string; name?: string; url?: string };
+      }) || {};
     const draft: Draft = {
       start: s.start,
       end: s.end,
       attendees: meeting.attendees || [],
       subject: meeting.subject || "ประชุม",
       detail: "",
+      attachFile: meeting.attach_file?.url || meeting.attach_file?.id ? meeting.attach_file : undefined,
       ts: Date.now(),
     };
     await saveDraft(upn, draft);
@@ -406,6 +413,8 @@ type Draft = {
   detail: string;
   await?: "subject" | "detail" | "attendee" | "custom_time";
   durationMin?: number;
+  /** Snapshot from last file search — attach to Outlook after confirm */
+  attachFile?: { id?: string; name?: string; url?: string };
   ts: number;
 };
 
@@ -443,6 +452,7 @@ async function confirmCardMessage(d: Draft, prefix = "", organizerUpn?: string):
     `🕐 ${draftWhen(d)}\n` +
     `📌 หัวข้อ: ${d.subject}\n` +
     (d.detail ? `📝 รายละเอียด: ${d.detail}\n` : "") +
+    (d.attachFile?.name ? `📎 ไฟล์แนบ: ${d.attachFile.name}\n` : "") +
     `👤 ผู้เข้าร่วม: ${d.attendees.length ? d.attendees.join(", ") : "(ยังไม่มี)"}\n\n` +
     hint;
   const items: object[] = [
@@ -568,12 +578,15 @@ function parseCustomMeetingWindow(
 
 async function handleBookingFlow(upn: string, act: string, params: URLSearchParams, replyToken: string): Promise<void> {
   if (act === "book") {
+    const ctx = await loadCtx(upn);
+    const attach = ctx?.last_meeting?.attach_file;
     const draft: Draft = {
       start: params.get("s") || "",
       end: params.get("e") || "",
       attendees: (params.get("at") || "").split(",").map((x) => x.trim()).filter(Boolean),
       subject: params.get("subj") || "ประชุม",
       detail: "",
+      attachFile: attach?.url || attach?.id ? attach : undefined,
       ts: Date.now(),
     };
     await saveDraft(upn, draft);
@@ -582,6 +595,8 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
   }
 
   if (act === "bookcustom") {
+    const ctx = await loadCtx(upn);
+    const attach = ctx?.last_meeting?.attach_file;
     const draft: Draft = {
       start: "",
       end: "",
@@ -590,6 +605,7 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       detail: "",
       await: "custom_time",
       durationMin: Math.max(15, Math.min(240, Number(params.get("dur") || 30) || 30)),
+      attachFile: attach?.url || attach?.id ? attach : undefined,
       ts: Date.now(),
     };
     await saveDraft(upn, draft);
@@ -754,6 +770,38 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       }
       await clearDraft(upn);
 
+      let attachNote = "";
+      if (result.mode === "booked" && result.eventId && draft.attachFile?.url) {
+        try {
+          const pushed = await withDelegatedGraph(upn, () =>
+            pushMaterialToOutlookEvent(upn, result.eventId!, {
+              name: draft.attachFile!.name,
+              url: draft.attachFile!.url!,
+              driveItemId: draft.attachFile!.id,
+            })
+          );
+          const note = pushed.result?.note || "";
+          attachNote = note
+            ? `\n📎 ${note}`
+            : `\n📎 แนบไฟล์: ${draft.attachFile.name || "เอกสาร"}`;
+          await addMeetingMaterial(upn, result.eventId, {
+            type: "file",
+            id: draft.attachFile.id,
+            name: draft.attachFile.name || "เอกสาร",
+            url: draft.attachFile.url,
+          });
+        } catch (e) {
+          console.warn("[line] attach on book", String(e).slice(0, 120));
+          attachNote = draft.attachFile.name
+            ? `\n⚠️ แนบไฟล์ไม่สำเร็จ (${draft.attachFile.name}) — ลอง “ผูกไฟล์นัด 1” ทีหลังได้ครับ`
+            : "";
+        }
+      } else if (result.mode === "proposed" && draft.attachFile?.name) {
+        attachNote =
+          `\n📎 จะแนบไฟล์หลังอีกฝั่งยืนยัน: ${draft.attachFile.name}\n` +
+          `(หรือหลังมีนัดใน Outlook แล้ว พิมพ์ “ผูกไฟล์นัด 1”)`;
+      }
+
       const headline =
         result.mode === "proposed"
           ? `⏳ ส่งคำขอนัดแล้ว — รออีกฝั่งยืนยัน\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}`
@@ -764,6 +812,7 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
         headline +
           (draft.detail ? `\n📝 ${draft.detail}` : "") +
           `\n👤 ${draft.attendees.join(", ")}` +
+          attachNote +
           result.note
       );
     } catch (err) {
@@ -1003,13 +1052,19 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       console.warn("[line] reply failed, pushing:", String(replyErr).slice(0, 120));
       if (res.intent === "confirm_meeting" && Array.isArray(res.slots) && res.slots[0]) {
         const s = res.slots[0] as Slot;
-        const meeting = (res.meeting as { attendees?: string[]; subject?: string }) || {};
+        const meeting =
+          (res.meeting as {
+            attendees?: string[];
+            subject?: string;
+            attach_file?: { id?: string; name?: string; url?: string };
+          }) || {};
         const draft: Draft = {
           start: s.start,
           end: s.end,
           attendees: meeting.attendees || [],
           subject: meeting.subject || "ประชุม",
           detail: "",
+          attachFile: meeting.attach_file?.url || meeting.attach_file?.id ? meeting.attach_file : undefined,
           ts: Date.now(),
         };
         await saveDraft(upn, draft);
