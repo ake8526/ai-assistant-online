@@ -55,7 +55,13 @@ async function authHeader(): Promise<string> {
 
 async function graphFetch(
   path: string,
-  opts: { method?: string; params?: Record<string, string>; headers?: Record<string, string>; body?: unknown } = {}
+  opts: {
+    method?: string;
+    params?: Record<string, string>;
+    headers?: Record<string, string>;
+    body?: unknown;
+    timeoutMs?: number;
+  } = {}
 ): Promise<Response> {
   const url = new URL(path.startsWith("http") ? path : GRAPH_BASE + path);
   for (const [k, v] of Object.entries(opts.params || {})) url.searchParams.set(k, v);
@@ -75,7 +81,7 @@ async function graphFetch(
   // the serverless function is killed — /monitor stays on RUNNER forever.
   const timeoutMs = Math.max(
     5_000,
-    Number(process.env.GRAPH_FETCH_TIMEOUT_MS || 25_000) || 25_000
+    opts.timeoutMs || Number(process.env.GRAPH_FETCH_TIMEOUT_MS || 25_000) || 25_000
   );
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
@@ -1352,51 +1358,86 @@ export async function getSchedule(
   return (await r.json()).value || [];
 }
 
-/** Create a calendar event (optionally Teams online meeting). Needs Calendars.ReadWrite. */
+/** Create a calendar event with a Microsoft Teams join link (always). Needs Calendars.ReadWrite. */
 export async function createEvent(
   organizerUpn: string,
   subject: string,
   startIso: string,
   endIso: string,
   attendeeEmails: string[],
-  online = true,
+  _online = true,
   description?: string
-): Promise<GraphEvent & { id: string; webLink?: string }> {
+): Promise<GraphEvent & { id: string; webLink?: string; onlineMeeting?: { joinUrl?: string } | null }> {
   const asUser = !!getUserGraphToken();
   const path = asUser ? `/me/events` : `/users/${encodeURIComponent(organizerUpn)}/events`;
+  // Teams create can be slow — keep under LINE webhook maxDuration (~60s) with one retry.
+  const teamsTimeout = Math.max(
+    20_000,
+    Number(process.env.GRAPH_CREATE_EVENT_TIMEOUT_MS || 28_000) || 28_000
+  );
 
-  const post = async (withTeams: boolean) => {
+  const postTeams = async () => {
     const r = await graphFetch(path, {
       method: "POST",
+      timeoutMs: teamsTimeout,
       body: {
         subject,
         ...(description ? { body: { contentType: "text", content: description } } : {}),
         start: { dateTime: startIso, timeZone: TIMEZONE },
         end: { dateTime: endIso, timeZone: TIMEZONE },
         attendees: attendeeEmails.map((a) => ({ emailAddress: { address: a }, type: "required" })),
-        ...(withTeams
-          ? { isOnlineMeeting: true, onlineMeetingProvider: "teamsForBusiness" }
-          : { isOnlineMeeting: false }),
+        isOnlineMeeting: true,
+        onlineMeetingProvider: "teamsForBusiness",
       },
     });
     if (!r.ok) throw new Error(`Graph createEvent ${r.status}: ${(await r.text()).slice(0, 300)}`);
     return r.json() as Promise<GraphEvent & { id: string; webLink?: string }>;
   };
 
-  // Teams online meeting create is often the slow/hanging part — fall back to a plain event.
-  if (online) {
-    try {
-      return await post(true);
-    } catch (e) {
-      const msg = String(e);
-      if (/timeout|503|504|502|429/i.test(msg)) {
-        console.warn("[graph] createEvent Teams failed, retry without online meeting:", msg.slice(0, 160));
-        return await post(false);
-      }
+  let ev: GraphEvent & { id: string; webLink?: string };
+  try {
+    ev = await postTeams();
+  } catch (e) {
+    const msg = String(e);
+    if (/timeout|503|504|502|429/i.test(msg)) {
+      console.warn("[graph] createEvent Teams retry:", msg.slice(0, 160));
+      await new Promise((r) => setTimeout(r, 1200));
+      ev = await postTeams();
+    } else {
       throw e;
     }
   }
-  return post(false);
+
+  // Join URL sometimes lands a moment after create — refetch / patch if missing.
+  if (!ev.onlineMeeting?.joinUrl && ev.id) {
+    try {
+      await new Promise((r) => setTimeout(r, 800));
+      const refreshed = await getEvent(organizerUpn, ev.id);
+      if (refreshed?.onlineMeeting?.joinUrl) {
+        ev = { ...ev, onlineMeeting: refreshed.onlineMeeting };
+      } else {
+        const patchPath = asUser
+          ? `/me/events/${encodeURIComponent(ev.id)}`
+          : `/users/${encodeURIComponent(organizerUpn)}/events/${encodeURIComponent(ev.id)}`;
+        const patchR = await graphFetch(patchPath, {
+          method: "PATCH",
+          timeoutMs: teamsTimeout,
+          body: { isOnlineMeeting: true, onlineMeetingProvider: "teamsForBusiness" },
+        });
+        if (patchR.ok) {
+          const again = await getEvent(organizerUpn, ev.id);
+          if (again?.onlineMeeting) ev = { ...ev, onlineMeeting: again.onlineMeeting };
+        }
+      }
+    } catch (e) {
+      console.warn("[graph] ensure Teams joinUrl failed:", String(e).slice(0, 160));
+    }
+  }
+
+  if (!ev.onlineMeeting?.joinUrl) {
+    console.warn("[graph] createEvent succeeded but Teams joinUrl still missing", ev.id);
+  }
+  return ev;
 }
 
 export async function deleteEvent(userUpn: string, eventId: string): Promise<void> {

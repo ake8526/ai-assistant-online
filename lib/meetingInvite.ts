@@ -590,6 +590,7 @@ export type BookWithHoldResult = {
   notified: number;
   names: string[];
   eventId?: string;
+  joinUrl?: string;
   note: string;
 };
 
@@ -604,7 +605,11 @@ export async function bookMeetingWithLineHold(opts: {
   endIso: string;
   attendees: string[];
   detail?: string;
-  create: () => Promise<{ id?: string } | null | undefined>;
+  create: () => Promise<
+    | { id?: string; onlineMeeting?: { joinUrl?: string } | null }
+    | null
+    | undefined
+  >;
 }): Promise<BookWithHoldResult> {
   const linked = await findLinkedLineAttendees(opts.attendees, opts.organizerUpn);
   if (linked.length > 0) {
@@ -629,14 +634,19 @@ export async function bookMeetingWithLineHold(opts: {
   }
 
   const ev = await opts.create();
+  const joinUrl = ev?.onlineMeeting?.joinUrl || undefined;
   return {
     mode: "booked",
     notified: 0,
     names: [],
     eventId: ev?.id,
+    joinUrl,
     note: opts.attendees.length
-      ? "\n\n📲 ผู้เข้าร่วมยังไม่ได้ผูก LINE — ส่งคำเชิญทาง Outlook แล้วครับ"
-      : "",
+      ? "\n\n📲 ผู้เข้าร่วมยังไม่ได้ผูก LINE — ส่งคำเชิญทาง Outlook แล้วครับ" +
+        (joinUrl ? `\n🔗 Teams: ${joinUrl}` : "\n⚠️ นัดมีใน Outlook แล้ว แต่ยังไม่เห็นลิงก์ Teams — เปิดนัดใน Outlook เช็กอีกครั้งได้ครับ")
+      : joinUrl
+        ? `\n\n🔗 Teams: ${joinUrl}`
+        : "",
   };
 }
 
