@@ -720,23 +720,26 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
   const deliverNewsCourier = useCallback(async () => {
     const p = postieRef.current;
+    // WRITER desk = news canvas bottom-right (~250,168) → % of building-stage
     p.visible = true;
     p.carry = false;
-    p.x = 74;
-    p.y = 50;
+    p.x = 70;
+    p.y = 48;
     setDoorOpen(true);
-    if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — รับสรุปจาก WRITER…";
-    log("  POSTIE รับสรุปข่าวจาก WRITER", "a");
-    await walkPostie([[74, 50], [66, 56], [53, 56]]);
-    await sleep(150);
+    if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — เดินไปหยิบสรุปที่โต๊ะ WRITER…";
+    log("  POSTIE เดินไปหยิบข่าวที่โต๊ะ WRITER", "a");
+    // Aisle → beside WRITER desk (stand left of right-column desk, don't walk through it)
+    await walkPostie([[78, 55], [86, 68], [82, 74]]);
+    await sleep(280);
     p.carry = true;
-    if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — ส่งต่อที่ประตู…";
-    await walkPostie([[50, 56], [44, 56]]);
+    log("  POSTIE หยิบสรุปจากโต๊ะ WRITER ✓", "g");
+    if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — ถือข่าวเดินไปประตู…";
+    await walkPostie([[78, 62], [60, 56], [53, 56], [44, 56]]);
 
     // DASH (red) walks to door, takes parcel, puts it in the mailbox.
     setAgent(4, "work");
     setDashPace(dashRef.current, false);
-    setCap("<b>DASH</b> — เดินไปรับข่าวจาก POSTIE แล้วใส่ตู้จดหมาย");
+    setCap("<b>DASH</b> — รับข่าวจาก POSTIE แล้วใส่ตู้จดหมาย");
     log("  DASH เดินไปรับข่าวที่ประตู", "a");
     await walkPath([[160, 150], [290, 140]]);
     p.carry = false;
@@ -1085,7 +1088,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
               ))}
               <div className="row">
                 <span className="sw" style={{ background: "#38bdf8" }} />
-                <span><span className="rl">POSTIE</span> <span className="rc">— ขนข่าวถึงประตู ส่งต่อ DASH</span></span>
+                <span><span className="rl">POSTIE</span> <span className="rc">— หยิบที่โต๊ะ WRITER → ประตู → DASH</span></span>
               </div>
               <div className="row">
                 <span className="sw" style={{ background: "#f97316" }} />
