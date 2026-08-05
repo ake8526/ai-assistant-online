@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { handleCommand, handleSelection, type CommandContext, type CommandResult } from "@/lib/commands";
-import { getUpnByLineId, replyLine, replyLineMessages, showLineLoading, pushLineToId } from "@/lib/line";
+import { getUpnByLineId, getLineId, replyLine, replyLineMessages, showLineLoading, pushLineToId } from "@/lib/line";
 import { llmUserErrorMessage } from "@/lib/llm";
 import {
   handleNewsOnboardingPostback,
@@ -768,53 +768,61 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
         await replyLine(replyToken, calendarConsentNeededMessage());
         return;
       }
-      await clearDraft(upn);
-
-      let attachNote = "";
-      if (result.mode === "booked" && result.eventId && draft.attachFile?.url) {
-        try {
-          const pushed = await withDelegatedGraph(upn, () =>
-            pushMaterialToOutlookEvent(upn, result.eventId!, {
-              name: draft.attachFile!.name,
-              url: draft.attachFile!.url!,
-              driveItemId: draft.attachFile!.id,
-            })
-          );
-          const note = pushed.result?.note || "";
-          attachNote = note
-            ? `\n📎 ${note}`
-            : `\n📎 แนบไฟล์: ${draft.attachFile.name || "เอกสาร"}`;
-          await addMeetingMaterial(upn, result.eventId, {
-            type: "file",
-            id: draft.attachFile.id,
-            name: draft.attachFile.name || "เอกสาร",
-            url: draft.attachFile.url,
-          });
-        } catch (e) {
-          console.warn("[line] attach on book", String(e).slice(0, 120));
-          attachNote = draft.attachFile.name
-            ? `\n⚠️ แนบไฟล์ไม่สำเร็จ (${draft.attachFile.name}) — ลอง “ผูกไฟล์นัด 1” ทีหลังได้ครับ`
-            : "";
-        }
-      } else if (result.mode === "proposed" && draft.attachFile?.name) {
-        attachNote =
-          `\n📎 จะแนบไฟล์หลังอีกฝั่งยืนยัน: ${draft.attachFile.name}\n` +
-          `(หรือหลังมีนัดใน Outlook แล้ว พิมพ์ “ผูกไฟล์นัด 1”)`;
-      }
 
       const headline =
         result.mode === "proposed"
           ? `⏳ ส่งคำขอนัดแล้ว — รออีกฝั่งยืนยัน\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}`
           : `✅ ส่งนัดประชุมแล้ว!\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}`;
 
+      const pendingAttach = result.mode === "booked" && result.eventId && draft.attachFile?.url;
+      await clearDraft(upn);
+
+      // Reply LINE first — file attach can take 10–20s and must not block the reply token.
       await replyLine(
         replyToken,
         headline +
           (draft.detail ? `\n📝 ${draft.detail}` : "") +
           `\n👤 ${draft.attendees.join(", ")}` +
-          attachNote +
+          (pendingAttach ? `\n📎 กำลังแนบไฟล์ ${draft.attachFile!.name || "เอกสาร"}…` : "") +
           result.note
       );
+
+      if (pendingAttach) {
+        let attachNote = "";
+        try {
+          const pushed = await Promise.race([
+            withDelegatedGraph(upn, () =>
+              pushMaterialToOutlookEvent(upn, result.eventId!, {
+                name: draft.attachFile!.name,
+                url: draft.attachFile!.url!,
+                driveItemId: draft.attachFile!.id,
+              })
+            ),
+            new Promise<never>((_, rej) =>
+              setTimeout(() => rej(new Error("attach timeout")), 20_000)
+            ),
+          ]);
+          const note = pushed.result?.note || "";
+          attachNote = note
+            ? `📎 ${note}`
+            : `📎 แนบไฟล์แล้ว: ${draft.attachFile!.name || "เอกสาร"}`;
+          await addMeetingMaterial(upn, result.eventId!, {
+            type: "file",
+            id: draft.attachFile!.id,
+            name: draft.attachFile!.name || "เอกสาร",
+            url: draft.attachFile!.url!,
+          });
+        } catch (e) {
+          console.warn("[line] attach on book", String(e).slice(0, 120));
+          attachNote = draft.attachFile!.name
+            ? `⚠️ แนบไฟล์ไม่สำเร็จ (${draft.attachFile!.name}) — ลอง “ผูกไฟล์นัด 1” ทีหลังได้ครับ`
+            : "⚠️ แนบไฟล์ไม่สำเร็จ";
+        }
+        const lineId = await getLineId(upn);
+        if (lineId && attachNote) {
+          await pushLineToId(lineId, attachNote);
+        }
+      }
     } catch (err) {
       await replyLine(replyToken, `⚠️ ส่งนัดไม่สำเร็จ: ${String(err).slice(0, 150)}`);
     }

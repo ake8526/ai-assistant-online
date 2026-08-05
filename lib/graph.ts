@@ -350,7 +350,8 @@ async function replaceTeamsInviteBody(
   eventId: string,
   rawBody: string,
   joinUrl?: string,
-  userDetail?: string
+  userDetail?: string,
+  timeoutMs = 8_000
 ): Promise<void> {
   const fields =
     parseTeamsInviteFromBody(rawBody, joinUrl) ||
@@ -359,10 +360,34 @@ async function replaceTeamsInviteBody(
   const clean = buildCleanTeamsInviteHtml(fields, userDetail);
   const patchR = await graphFetch(outlookEventPath(userUpn, eventId), {
     method: "PATCH",
+    timeoutMs,
     body: { body: { contentType: "HTML", content: clean } },
   });
   if (!patchR.ok) {
     console.warn("[graph] clean Teams body PATCH", patchR.status, (await patchR.text()).slice(0, 120));
+  }
+}
+
+/** One-shot compact body when we only have joinUrl (no extra GET). */
+export async function cleanTeamsEventBodyQuick(
+  userUpn: string,
+  eventId: string,
+  joinUrl: string,
+  userDetail?: string,
+  timeoutMs = 8_000
+): Promise<void> {
+  if (!joinUrl) return;
+  const clean = buildCleanTeamsInviteHtml(
+    { joinUrl, helpUrl: "https://aka.ms/JoinTeamsMeeting?omkt=en-US" },
+    userDetail
+  );
+  const patchR = await graphFetch(outlookEventPath(userUpn, eventId), {
+    method: "PATCH",
+    timeoutMs,
+    body: { body: { contentType: "HTML", content: clean } },
+  });
+  if (!patchR.ok) {
+    console.warn("[graph] quick Teams body PATCH", patchR.status, (await patchR.text()).slice(0, 120));
   }
 }
 
@@ -402,6 +427,7 @@ export async function pushMaterialToOutlookEvent(
           const buf = Buffer.from(await contentR.arrayBuffer());
           const attachR = await graphFetch(`${outlookEventPath(userUpn, eventId)}/attachments`, {
             method: "POST",
+            timeoutMs: 18_000,
             body: {
               "@odata.type": "#microsoft.graph.fileAttachment",
               name: fname,
@@ -445,6 +471,7 @@ export async function pushMaterialToOutlookEvent(
                 .replace(/>/g, "&gt;")}</a></p>`;
         const patchR = await graphFetch(outlookEventPath(userUpn, eventId), {
           method: "PATCH",
+          timeoutMs: 8_000,
           body: {
             body: {
               contentType: prevType === "text" ? "Text" : "HTML",
@@ -1571,21 +1598,16 @@ export async function createEvent(
     console.warn("[graph] createEvent succeeded but Teams joinUrl still missing", ev.id);
   }
 
-  // Graph/Outlook sometimes dumps full meetup-join + meetingOptions URLs as plain text.
-  // Replace with the compact Teams template (Join + ID + Passcode + labelled links).
+  // Compact Teams body from the create response — no extra GET/sleep (avoids LINE timeout).
   if (ev.id) {
-    try {
-      await new Promise((r) => setTimeout(r, 500));
-      const full = await getEvent(organizerUpn, ev.id);
-      await replaceTeamsInviteBody(
-        organizerUpn,
-        ev.id,
-        String(full.body?.content || ""),
-        ev.onlineMeeting?.joinUrl || full.onlineMeeting?.joinUrl,
-        description
-      );
-    } catch (e) {
-      console.warn("[graph] clean Teams invite body failed:", String(e).slice(0, 120));
+    const raw = String(ev.body?.content || "");
+    const join = ev.onlineMeeting?.joinUrl;
+    if (raw.includes("teams.microsoft.com") || join) {
+      try {
+        await replaceTeamsInviteBody(organizerUpn, ev.id, raw, join, description, 8_000);
+      } catch (e) {
+        console.warn("[graph] clean Teams invite body failed:", String(e).slice(0, 120));
+      }
     }
   }
 
