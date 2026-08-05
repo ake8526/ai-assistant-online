@@ -7,6 +7,7 @@ import {
   startNewsOnboarding,
 } from "@/lib/newsOnboarding";
 import { getNewsPrefs, resetNewsOnboarding } from "@/lib/newsPrefs";
+import { resolveLinkedUpn } from "@/lib/line";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
@@ -25,8 +26,12 @@ export async function POST(req: Request) {
     const preview = (url.searchParams.get("preview") || "").trim();
 
     if (checkCronSecret(req)) {
-      let upn = (url.searchParams.get("upn") || "").trim().toLowerCase();
-      if (!upn) {
+      let upn = (url.searchParams.get("upn") || "").trim();
+      if (upn) {
+        const resolved = await resolveLinkedUpn(upn);
+        if (!resolved) return NextResponse.json({ error: `upn not linked: ${upn}` }, { status: 404 });
+        upn = resolved;
+      } else {
         const { data } = await admin.from("line_links").select("upn").limit(1);
         upn = data?.[0]?.upn || "";
       }

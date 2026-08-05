@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { AuthError, checkCronSecret, requireUser } from "@/lib/auth";
 import { buildMorningAgenda, runForUser } from "@/lib/brief";
 import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
-import { sendLine } from "@/lib/line";
+import { resolveLinkedUpn, sendLine } from "@/lib/line";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { claimSend, clearInflight, isDueNow, markSent } from "@/lib/notify";
 import { runWithTrace } from "@/lib/trace";
@@ -170,12 +170,16 @@ async function run(req: Request) {
       const url = new URL(req.url);
       const force = url.searchParams.get("force") === "1";
       const only = parseOnly(req);
-      const onlyUpn = (url.searchParams.get("upn") || "").toLowerCase().trim();
-      const users = onlyUpn
-        ? (await linkedUsers()).filter((u) => u.toLowerCase() === onlyUpn)
-        : await linkedUsers();
-      if (onlyUpn && !users.length) {
-        return NextResponse.json({ ok: false, error: `upn not linked: ${onlyUpn}` }, { status: 404 });
+      const onlyUpnQuery = (url.searchParams.get("upn") || "").trim();
+      let users: string[];
+      if (onlyUpnQuery) {
+        const resolved = await resolveLinkedUpn(onlyUpnQuery);
+        if (!resolved) {
+          return NextResponse.json({ ok: false, error: `upn not linked: ${onlyUpnQuery}` }, { status: 404 });
+        }
+        users = [resolved];
+      } else {
+        users = await linkedUsers();
       }
       const results: Record<string, { brief: string; news: string }> = {};
       for (const upn of users) {

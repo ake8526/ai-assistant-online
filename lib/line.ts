@@ -93,6 +93,21 @@ export async function getUpnByLineId(lineUserId: string): Promise<string | null>
   return data?.upn || null;
 }
 
+/** Resolve cron ?upn=… — full email, LINE display_name, or local-part before @. */
+export async function resolveLinkedUpn(query: string): Promise<string | null> {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  const { data } = await admin.from("line_links").select("upn, display_name");
+  if (!data?.length) return null;
+  const exact = data.find((r) => r.upn.toLowerCase() === q);
+  if (exact) return exact.upn;
+  const byName = data.find((r) => (r.display_name || "").trim().toLowerCase() === q);
+  if (byName) return byName.upn;
+  const byLocal = data.find((r) => r.upn.toLowerCase().split("@")[0] === q);
+  if (byLocal) return byLocal.upn;
+  return null;
+}
+
 /** Push a message to the user's linked LINE account. Throws if not linked. */
 export async function sendLine(upn: string, subject: string, bodyText: string): Promise<void> {
   const lineId = await getLineId(upn);

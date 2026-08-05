@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkCronSecret } from "@/lib/auth";
-import { sendLine } from "@/lib/line";
+import { resolveLinkedUpn, sendLine } from "@/lib/line";
 import { claimSend, clearInflight, isDueNow, markSent } from "@/lib/notify";
 import { runWithTrace } from "@/lib/trace";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
@@ -17,8 +17,18 @@ async function run(req: Request) {
     if (!checkCronSecret(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const force = new URL(req.url).searchParams.get("force") === "1";
-    const { data } = await admin.from("line_links").select("upn");
-    const users = (data || []).map((r) => r.upn);
+    const upnQuery = (new URL(req.url).searchParams.get("upn") || "").trim();
+    let users: string[];
+    if (upnQuery) {
+      const resolved = await resolveLinkedUpn(upnQuery);
+      if (!resolved) {
+        return NextResponse.json({ ok: false, error: `upn not linked: ${upnQuery}` }, { status: 404 });
+      }
+      users = [resolved];
+    } else {
+      const { data } = await admin.from("line_links").select("upn");
+      users = (data || []).map((r) => r.upn);
+    }
 
     const results: Record<string, string> = {};
     for (const upn of users) {
