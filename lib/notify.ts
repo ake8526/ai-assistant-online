@@ -8,7 +8,7 @@ import { nowWall } from "@/lib/time";
 export type NotifyKind = "brief" | "news";
 
 export const NOTIFY_DEFAULTS: Record<NotifyKind, { enabled: boolean; time: string; days: number[] }> = {
-  // days: 0=Sun … 6=Sat — cron sends brief first (fast), then news
+  // days: 0=Sun … 6=Sat — cron sends news first, brief last (quick-reply buttons)
   brief: { enabled: true, time: "07:00", days: [1, 2, 3, 4, 5] },        // จ–ศ
   news: { enabled: true, time: "07:00", days: [1, 2, 3, 4, 5] },         // จ–ศ เวลาเดียวกับบรีฟ
 };

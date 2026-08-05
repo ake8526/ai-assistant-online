@@ -2,8 +2,8 @@
 # Requires repo secret CRON_SECRET (= Vercel CRON_SECRET).
 # Times are UTC (Bangkok = UTC+7).
 #
-# Brief (calendar) is a separate fast call so news scrape/timeout can never
-# swallow the morning agenda. News is its own step (+ digest/push backup).
+# News and brief are separate HTTP calls so a slow digest cannot starve the
+# agenda. Brief is ALWAYS last — it has LINE quick-reply number buttons.
 name: scheduled-jobs
 
 on:
@@ -24,14 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ vars.CRON_ENABLED != 'false' }}
     steps:
-      # 1) Agenda first — usually <15s; must not share a timeout budget with news
-      - name: Morning brief only (calendar → LINE)
-        run: |
-          curl -sS -m 90 -X POST \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            "$BASE/api/brief/run?only=brief" | head -c 1500
-
-      # 2) News digest — may take minutes when count=all
+      # 1) News first
       - name: Morning news only
         run: |
           curl -sS -m 280 -X POST \
@@ -44,7 +37,13 @@ jobs:
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             "$BASE/api/digest/push" | head -c 1000
 
-      # Brief retry if step 1 failed / raced before due time
+      # 2) Agenda LAST — quick-reply buttons stay on the newest message
+      - name: Morning brief only (calendar → LINE)
+        run: |
+          curl -sS -m 90 -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "$BASE/api/brief/run?only=brief" | head -c 1500
+
       - name: Morning brief retry
         run: |
           curl -sS -m 90 -X POST \

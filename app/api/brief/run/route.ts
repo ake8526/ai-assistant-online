@@ -93,18 +93,15 @@ async function pushNews(upn: string, force: boolean): Promise<string> {
 }
 
 /**
- * Brief always completes (and is pushed) before news is pushed.
- * When only=both, digest build starts in parallel with brief so news still
- * arrives ASAP after the agenda — without risking a news timeout eating brief.
+ * When only=both: push news first, then brief last so LINE quick-reply
+ * numbers stay on the newest message. Cron still calls only=news / only=brief
+ * as separate steps so a slow digest cannot starve the agenda.
  */
 async function deliverMorningForUser(
   upn: string,
   force: boolean,
   only: OnlyKind
 ): Promise<{ brief: string; news: string }> {
-  const wantBrief = only === "brief" || only === "both";
-  const wantNews = only === "news" || only === "both";
-
   if (only === "brief") {
     return { brief: await pushBrief(upn, force), news: "skip (only=brief)" };
   }
@@ -112,22 +109,44 @@ async function deliverMorningForUser(
     return { brief: "skip (only=news)", news: await pushNews(upn, force) };
   }
 
-  // both: build digest while brief runs; send news only after brief push
-  const newsDue = force || (await isDueNow(upn, "news"));
-  const digestP = newsDue
-    ? buildDigest(upn)
-        .then((d) => ({ ok: true as const, d }))
+  // both: start agenda fetch while news sends; push brief AFTER news (buttons last)
+  const briefDue = force || (await isDueNow(upn, "brief"));
+  const agendaP = briefDue
+    ? withDelegatedGraph(upn, () => buildMorningAgenda(upn))
+        .then(({ result }) => ({ ok: true as const, agenda: result }))
         .catch((e) => ({ ok: false as const, err: String(e).slice(0, 150) }))
     : null;
 
-  const brief = wantBrief ? await pushBrief(upn, force) : "skip (only=news)";
+  const news = await pushNews(upn, force);
 
-  let news = "skip (not due)";
-  if (wantNews && digestP) {
-    const built = await digestP;
-    news = built.ok ? await sendBuiltNews(upn, force, built.d) : `ERROR: ${built.err}`;
-  } else if (wantNews && !newsDue) {
-    news = "skip (not due)";
+  let brief = "skip (not due)";
+  if (!briefDue) {
+    brief = "skip (not due)";
+  } else if (!agendaP) {
+    brief = "skip (not due)";
+  } else {
+    const built = await agendaP;
+    if (!built.ok) {
+      // Fall through to pushBrief (sends Graph-error notice or retries)
+      brief = await pushBrief(upn, force);
+    } else if (!force && !(await claimSend(upn, "brief"))) {
+      brief = "skip (inflight or sent)";
+    } else {
+      try {
+        await runForUser(upn, built.agenda);
+        await markSent(upn, "brief");
+        brief = `delivered agenda (${built.agenda.events.length})`;
+      } catch (e) {
+        try {
+          await sendLine(upn, "🌅 สรุปตารางเช้า", built.agenda.text);
+          await markSent(upn, "brief");
+          brief = "delivered text-fallback";
+        } catch {
+          await clearInflight(upn, "brief");
+          brief = `ERROR: ${String(e).slice(0, 150)}`;
+        }
+      }
+    }
   }
 
   return { brief, news };

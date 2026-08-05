@@ -115,7 +115,11 @@ export function formatAgendaList(
   });
   if (askPrep) {
     lines.push("อยากให้ช่วยแนะนำเตรียมตัวนัดไหนดีครับ?");
-    lines.push("กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด 1” / “แนะนำประชุม 2”");
+    if (events.length === 1) {
+      lines.push("กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด 1”");
+    } else {
+      lines.push(`กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด 1” / “แนะนำประชุม ${Math.min(2, events.length)}”`);
+    }
   }
   return lines.join("\n").trim();
 }

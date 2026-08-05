@@ -2,7 +2,7 @@
   "framework": "nextjs",
   "buildCommand": "next build",
   "crons": [
-    { "path": "/api/brief/run?only=brief", "schedule": "0 0 * * 1-5" },
-    { "path": "/api/digest/push", "schedule": "5 0 * * 1-5" }
+    { "path": "/api/digest/push", "schedule": "0 0 * * 1-5" },
+    { "path": "/api/brief/run?only=brief", "schedule": "5 0 * * 1-5" }
   ]
 }
