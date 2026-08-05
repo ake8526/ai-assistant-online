@@ -30,7 +30,7 @@ const AGENTS = [
   { id: "receive", name: "GATE", role: "รับข้อความเข้าจาก LINE / Web", shirt: "#3a86ff", hair: "#6b4a2e", screen: "search" },
   { id: "parse", name: "BRAIN", role: "แยกเจตนาว่าผู้ใช้ต้องการอะไร (LLM)", shirt: "#2f9e44", hair: "#2a2a2a", screen: "filter" },
   { id: "fetch", name: "RUNNER", role: "ดึงข้อมูลจาก Microsoft 365", shirt: "#f0b429", hair: "#caa15a", screen: "search" },
-  { id: "compose", name: "SCRIBE", role: "เขียนคำตอบภาษาไทย", shirt: "#7048e8", hair: "#7a4a2a", screen: "render" },
+  { id: "compose", name: "SCRIBE", role: "เรียบเรียงคำตอบจากข้อมูลที่ได้ ก่อนส่ง LINE", shirt: "#7048e8", hair: "#7a4a2a", screen: "render" },
   { id: "courier", name: "DASH", role: "ส่งคำตอบเข้าตู้จดหมาย → LINE", shirt: "#ee1b24", hair: "#141414", screen: "" },
 ] as const;
 
@@ -40,6 +40,12 @@ const NEWS_AGENTS = [
   { id: "reader", name: "READER", role: "อ่านเนื้อหาบทความเต็ม", shirt: "#ec4899", hair: "#9d174d", screen: "search" },
   { id: "writer", name: "WRITER", role: "AI สรุปประเด็นเป็นภาษาไทย", shirt: "#e879f9", hair: "#a21caf", screen: "render" },
 ] as const;
+
+/** Desk centers (canvas px) for handoff beams — not used for DASH/POSTIE (they walk). */
+const OFFICE_DESK_XY = [[70, 92], [250, 92], [70, 168], [250, 168]] as const;
+const NEWS_DESK_XY = [[70, 92], [250, 92], [70, 168], [250, 168]] as const;
+
+type Beam = { x1: number; y1: number; x2: number; y2: number; born: number; ttl: number; color: string };
 
 /** WRITER desk (canvas px) — POSTIE picks here via aisle */
 const NEWS_WRITER_DESK = [250, 168] as const;
@@ -218,6 +224,8 @@ function MonitorRoom({
   const postieBadgeRef = useRef<HTMLDivElement | null>(null);
   const wallBannerRef = useRef<HTMLDivElement | null>(null);
   const wallBannerMsgRef = useRef<HTMLSpanElement | null>(null);
+  const officeBeamsRef = useRef<Beam[]>([]);
+  const newsBeamsRef = useRef<Beam[]>([]);
   const newsStatusRef = useRef<string[]>(NEWS_AGENTS.map(() => "idle"));
   const postieRef = useRef<Postie>({
     x: NEWS_POSTIE_HOME[0], y: NEWS_POSTIE_HOME[1], tx: null, ty: null,
@@ -325,7 +333,30 @@ function MonitorRoom({
     if (!b) return;
     b.className = "bdg " + st;
     const w = b.querySelector(".w");
-    if (w) w.textContent = st === "work" ? "WORKING" : st === "done" ? "DONE" : "IDLE";
+    if (w) w.textContent = st === "work" ? "WORKING" : st === "done" ? "DONE" : st === "error" ? "ERROR" : "IDLE";
+  }, []);
+
+  /** Desk→desk handoff spark (not to DASH/POSTIE — they walk the parcel). */
+  const fireOfficeBeam = useCallback((from: number, to: number) => {
+    if (from < 0 || to < 0 || from > 3 || to > 3 || from === to) return;
+    const a = OFFICE_DESK_XY[from]!;
+    const b = OFFICE_DESK_XY[to]!;
+    officeBeamsRef.current.push({
+      x1: a[0], y1: a[1], x2: b[0], y2: b[1],
+      born: performance.now(), ttl: 780,
+      color: AGENTS[to]?.shirt || "#39d353",
+    });
+  }, []);
+
+  const fireNewsBeam = useCallback((from: number, to: number) => {
+    if (from < 0 || to < 0 || from > 3 || to > 3 || from === to) return;
+    const a = NEWS_DESK_XY[from]!;
+    const b = NEWS_DESK_XY[to]!;
+    newsBeamsRef.current.push({
+      x1: a[0], y1: a[1], x2: b[0], y2: b[1],
+      born: performance.now(), ttl: 780,
+      color: NEWS_AGENTS[to]?.shirt || "#38bdf8",
+    });
   }, []);
 
   const setHud = useCallback((t: string, c?: string) => {
@@ -448,6 +479,7 @@ function MonitorRoom({
 
     if (/📰 เลือกเด่น/.test(lbl)) {
       setNewsScoutStatus((s) => (s === "work" ? "done" : s));
+      if (e.status === "start") fireNewsBeam(0, 1);
       const ai = parseNewsAi(lbl);
       if (e.status === "start" || ai) {
         setNewsPicker((p) => ({
@@ -464,6 +496,7 @@ function MonitorRoom({
 
     if (/📰 อ่านบทความ/.test(lbl)) {
       setNewsPicker((p) => (p.status === "work" ? { ...p, status: "done" } : p));
+      if (e.status === "start") fireNewsBeam(1, 2);
       setNewsReader({
         status: err ? "error" : e.status === "start" ? "work" : "done",
         ai: "—",
@@ -475,6 +508,7 @@ function MonitorRoom({
 
     if (/📰 สรุปประเด็น/.test(lbl)) {
       setNewsReader((p) => (p.status === "work" ? { ...p, status: "done" } : p));
+      if (e.status === "start") fireNewsBeam(2, 3);
       const ai = parseNewsAi(lbl);
       setNewsWriter((p) => ({
         status: err ? "error" : e.status === "start" || (ai && !/✓/.test(lbl)) ? "work" : "done",
@@ -492,7 +526,7 @@ function MonitorRoom({
       setNewsWriter((p) => ({ ...p, status: "done", detail: lbl.replace(/^📰 /, "") }));
       armNewsIdleWatch();
     }
-  }, [armNewsIdleWatch, upsertNewsSource]);
+  }, [armNewsIdleWatch, fireNewsBeam, upsertNewsSource]);
 
   // ---- canvas render loop ----
   useEffect(() => {
@@ -515,6 +549,34 @@ function MonitorRoom({
     });
     const dashB = badgesRef.current[4];
     if (dashB) { dashB.style.left = (160 / 320 * 100) + "%"; dashB.style.top = ((150 - 20) / 240 * 100) + "%"; }
+
+    function drawBeams(now: number) {
+      const list = officeBeamsRef.current;
+      officeBeamsRef.current = list.filter((b) => now - b.born < b.ttl);
+      for (const b of officeBeamsRef.current) {
+        const t = (now - b.born) / b.ttl;
+        const fade = t < 0.15 ? t / 0.15 : Math.max(0, 1 - (t - 0.15) / 0.85);
+        X.save();
+        X.globalAlpha = 0.25 + 0.55 * fade;
+        X.strokeStyle = b.color;
+        X.lineWidth = 2;
+        X.setLineDash([5, 4]);
+        X.beginPath();
+        X.moveTo(b.x1, b.y1);
+        X.lineTo(b.x2, b.y2);
+        X.stroke();
+        X.setLineDash([]);
+        const p = Math.min(1, t * 1.15);
+        const px = b.x1 + (b.x2 - b.x1) * p;
+        const py = b.y1 + (b.y2 - b.y1) * p;
+        X.globalAlpha = Math.min(1, fade + 0.2);
+        X.fillStyle = "#fff";
+        X.fillRect(Math.round(px) - 2, Math.round(py) - 2, 4, 4);
+        X.fillStyle = b.color;
+        X.fillRect(Math.round(px) - 1, Math.round(py) - 1, 2, 2);
+        X.restore();
+      }
+    }
 
     function drawDoorRight() {
       const open = doorOpenRef.current;
@@ -645,6 +707,7 @@ function MonitorRoom({
       drawPlant(14, H - 14); drawPlant(W - 14, H - 14);
       drawMailbox();
       for (let i = 0; i < 4; i++) drawDesk(i, now);
+      drawBeams(now);
       drawDash(now);
     };
     raf = requestAnimationFrame(loop);
@@ -665,6 +728,33 @@ function MonitorRoom({
     newsBadgesRef.current.forEach((b, i) => {
       if (i < 4) { b.style.left = (DESK[i][0] / 320 * 100) + "%"; b.style.top = ((DESK[i][1] - 7) / 240 * 100) + "%"; }
     });
+
+    function drawBeams(now: number) {
+      newsBeamsRef.current = newsBeamsRef.current.filter((b) => now - b.born < b.ttl);
+      for (const b of newsBeamsRef.current) {
+        const t = (now - b.born) / b.ttl;
+        const fade = t < 0.15 ? t / 0.15 : Math.max(0, 1 - (t - 0.15) / 0.85);
+        X.save();
+        X.globalAlpha = 0.25 + 0.55 * fade;
+        X.strokeStyle = b.color;
+        X.lineWidth = 2;
+        X.setLineDash([5, 4]);
+        X.beginPath();
+        X.moveTo(b.x1, b.y1);
+        X.lineTo(b.x2, b.y2);
+        X.stroke();
+        X.setLineDash([]);
+        const p = Math.min(1, t * 1.15);
+        const px = b.x1 + (b.x2 - b.x1) * p;
+        const py = b.y1 + (b.y2 - b.y1) * p;
+        X.globalAlpha = Math.min(1, fade + 0.2);
+        X.fillStyle = "#fff";
+        X.fillRect(Math.round(px) - 2, Math.round(py) - 2, 4, 4);
+        X.fillStyle = b.color;
+        X.fillRect(Math.round(px) - 1, Math.round(py) - 1, 2, 2);
+        X.restore();
+      }
+    }
 
     function drawScreen(mx: number, my: number, mw: number, mh: number, id: string, st: string, now: number) {
       if (st === "idle") { R(mx + mw - 3, my + mh - 2, 1, 1, Math.floor(now / 500) % 2 ? "#173" : "#000"); return; }
@@ -917,6 +1007,7 @@ function MonitorRoom({
       drawBg(now);
       for (let i = 0; i < 4; i++) drawDesk(i, now);
       drawParcelOnWriter();
+      drawBeams(now);
       drawPostie(now);
     };
     raf = requestAnimationFrame(loop);
@@ -1002,7 +1093,7 @@ function MonitorRoom({
         const h = helperRef.current;
         h.visible = true; h.x = 200; h.y = 120; h.carry = true;
         setDashPace(h, true);
-        log("  HOP ช่วยวิ่งส่งงานคิวถัดไปตามทางเดิน", "a");
+        log("  HOP ช่วยส่งคิวถัดไปตามทางเดิน", "a");
         void walkPath([[OFFICE_AISLE_X, 130], [OFFICE_MAIL[0], OFFICE_MAIL[1]], [200, 120]], "helper").then(() => {
           h.carry = false; h.visible = false; h.running = false; h.speed = 1.1;
         });
@@ -1027,7 +1118,7 @@ function MonitorRoom({
       const h = helperRef.current;
       h.visible = true; h.x = 200; h.y = 120; h.carry = false;
       setDashPace(h, run);
-      log("  HOP มาช่วยส่งงานซ้อนตามทางเดิน", "a");
+      log("  HOP มาช่วยส่งเมื่อมีคิวซ้อน", "a");
       void (async () => {
         await walkPath([[OFFICE_AISLE_X, ay], [left ? 218 : 102, ay]], "helper");
         h.carry = true;
@@ -1252,6 +1343,7 @@ function MonitorRoom({
     // receive / parse / fetch / compose — THE OFFICE only
     const a = AGENTS[idx];
     if (e.status === "start") {
+      if (idx >= 1 && idx <= 3) fireOfficeBeam(idx - 1, idx);
       setAgent(idx, "work");
       const capExtra = llmFromLabel ? ` · <b style="color:#f0b429">${llmFromLabel}</b>` : "";
       setCap(`<b>${a.name}</b> — ${a.role}${capExtra}`);
@@ -1265,7 +1357,7 @@ function MonitorRoom({
       await sleep(step === "fetch" ? 160 : 360);
       setAgent(idx, "done");
     }
-  }, [armNewsIdleWatch, courierReply, deliverNewsCourier, idleNewsDesks, log, resetNewsRoom, resetRoom, setAgent, setCap, setHud, setLlmHud, updateNewsRoom]);
+  }, [armNewsIdleWatch, courierReply, deliverNewsCourier, fireOfficeBeam, idleNewsDesks, log, resetNewsRoom, resetRoom, setAgent, setCap, setHud, setLlmHud, updateNewsRoom]);
 
   // ---- player: drains the queue in order with animation timing ----
   useEffect(() => {
@@ -1511,7 +1603,7 @@ function MonitorRoom({
                 ))}
                 <div className="row">
                   <span className="sw" style={{ background: "#f97316" }} />
-                  <span><span className="rl">HOP</span> <span className="rc">— ช่วย DASH ส่งคิวซ้อนเมื่องานหนา</span></span>
+                  <span><span className="rl">HOP</span> <span className="rc">— ช่วย DASH ส่งเมื่อมีคิวรอ / DASH ยังวิ่งอยู่</span></span>
                 </div>
               </div>
               <div className="leg-col">
