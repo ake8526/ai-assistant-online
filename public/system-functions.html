@@ -787,7 +787,7 @@
           </div>
           <div class="body">
             <h3>ค้นไฟล์ · วางแผนเดินทาง</h3>
-            <p>ค้น OneDrive แยกชนิดไฟล์ให้ และคำนวณเวลาออกจากบ้านจากนัดแรกของวัน</p>
+            <p>ค้น OneDrive แยกชนิดไฟล์ · ดูโฟลเดอร์ · คำนวณเวลาออกจากบ้านจากนัดแรกของวัน</p>
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
@@ -822,6 +822,54 @@
           <div class="body">
             <h3>ผูกไฟล์ · ลิงก์ กับนัดทีหลัง</h3>
             <p>นัดในปฏิทินยังไม่มีไฟล์นำเสนอ ก็ผูก OneDrive/ลิงก์ทีหลังได้ — ตอนเช้าหรือพิมพ์ “เตรียมนัด …” AI จะอ่านให้</p>
+            <span class="tap">ดูตัวอย่าง →</span>
+          </div>
+        </button>
+      </div>
+
+      <div class="vis-grid" style="margin-top:14px">
+        <button type="button" class="vis" data-demo="bookattach">
+          <div class="art" style="background:linear-gradient(160deg,#1a2f4a,#0f172a);padding:14px;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center">
+            <div style="display:flex;gap:8px;align-items:center">
+              <div style="width:36px;height:36px;border-radius:8px;background:#334155;display:grid;place-items:center;font-size:18px">📷</div>
+              <div style="font-size:16px;color:#94a3b8">→</div>
+              <div style="width:36px;height:36px;border-radius:8px;background:#d7a13a;display:grid;place-items:center;font-size:14px;font-weight:800;color:#0f172a">📅</div>
+            </div>
+            <div style="font-size:10px;font-weight:800;color:#cbd5e1">แนบรูป/ไฟล์ → ยืนยันส่งนัด</div>
+          </div>
+          <div class="body">
+            <h3>แนบไฟล์ · รูป ตอนจองนัด</h3>
+            <p>ส่งรูปใน LINE แล้วพิมพ์ “แนบรูป ส่งนัด …” หรือ “แนบไฟล์ 2 ส่งนัด …” — กดยืนยันแล้วแนบเข้า Outlook</p>
+            <span class="tap">ดูตัวอย่าง →</span>
+          </div>
+        </button>
+        <button type="button" class="vis" data-demo="fileloc">
+          <div class="art" style="background:linear-gradient(160deg,#1e293b,#0f172a);padding:16px;display:grid;place-items:center">
+            <div style="width:90%;font-family:ui-monospace,monospace;font-size:10px;line-height:1.5;color:#94a3b8;background:#0b1220;border:1px solid #334155;border-radius:10px;padding:10px">
+              <div style="color:#d7a13a;margin-bottom:4px">📂 App/AI Assistant</div>
+              <div>ai.html</div>
+              <div style="opacity:.7">*.claude-backup.html</div>
+            </div>
+          </div>
+          <div class="body">
+            <h3>ค้นไฟล์ · อยู่ที่ไหน · กรองนามสกุล</h3>
+            <p>“หาไฟล์ ai.html อยู่ที่ไหน” แสดงโฟลเดอร์ OneDrive · “เอาแค่ .html” กรองรายการ · สรุป/ผูกนัดได้ต่อ</p>
+            <span class="tap">ดูตัวอย่าง →</span>
+          </div>
+        </button>
+        <button type="button" class="vis" data-demo="cancelday">
+          <div class="art" style="background:linear-gradient(160deg,#2a1f1f,#0f172a);padding:16px;display:grid;place-items:center">
+            <div style="width:88%;background:#0b1220;border:1px solid #334155;border-radius:12px;padding:10px">
+              <div style="font-size:10px;font-weight:800;color:#f87171;margin-bottom:6px">ยกเลิกนัด · พรุ่งนี้</div>
+              <div style="font-size:10px;color:#94a3b8;margin-bottom:4px">06/08 13:30 test</div>
+              <div style="display:flex;gap:6px;margin-top:8px">
+                <span style="font-size:9px;padding:3px 6px;border-radius:6px;background:#334155;color:#e2e8f0">❌06/08 13:30</span>
+              </div>
+            </div>
+          </div>
+          <div class="body">
+            <h3>ยกเลิกนัด · เลือกวัน</h3>
+            <p>“ยกเลิกนัดพรุ่งนี้” โชว์เฉพาะวันนั้น · ปุ่มมีวันที่+หัวข้อ ไม่สับสนเมื่อเวลาซ้ำ</p>
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
@@ -1159,18 +1207,72 @@
     files: {
       title: "ค้นไฟล์ · วางแผนเดินทาง",
       sub: "ตัวอย่างใน LINE",
-      note: "ค้น OneDrive + คำนวณเวลาออกบ้าน",
+      note: "ค้น OneDrive + คำนวณเวลาออกบ้าน · ดูตัวอย่าง “อยู่ที่ไหน” ที่การ์ดถัดไป",
       steps: [
         { t: 0, role: "me", text: "หาไฟล์งบประมาณ Q3" },
         { t: 700, role: "typing" },
         { t: 1600, role: "bot", text: "เจอ 3 ไฟล์ใน OneDrive ครับ\n1) งบประมาณ_Q3.xlsx\n2) สรุปงบ_Q3.pptx\n3) บันทึกประชุมงบ.pdf" },
         { t: 2100, role: "btns", items: [
           { label: "ผูกไฟล์กับนัด →", go: "linkmeet" },
-          "พอแค่นี้",
+          { label: "อยู่ที่ไหน →", go: "fileloc" },
         ] },
         { t: 2800, role: "me", text: "ต้องออกกี่โมงถึงออฟฟิศทันนัดแรก" },
         { t: 3400, role: "typing" },
         { t: 4200, role: "bot", text: "นัดแรกวันนี้ 09:30 ที่ออฟฟิศ\nแนะนำออกจากบ้านประมาณ 08:35 (เผื่อรถติด 25 นาที) ครับ" },
+      ],
+    },
+    fileloc: {
+      title: "ค้นไฟล์ · อยู่ที่ไหน · กรองนามสกุล",
+      sub: "ตัวอย่างใน LINE",
+      note: "แสดงโฟลเดอร์ OneDrive · กรอง .html · สรุป/ผูกนัดต่อได้",
+      steps: [
+        { t: 0, role: "me", text: "หาไฟล์ ai.html อยู่ที่ไหน" },
+        { t: 700, role: "typing" },
+        { t: 1800, role: "bot", text: "เจอ 2 ไฟล์ที่ตรงกับ “ai (.html)” ครับ 👇\n\n1) ฟังก์ชันทั้งระบบ-AI-Assistant.claude-backup.html\n   📂 App/AI Assistant\n2) ฟังก์ชันทั้งระบบ-AI-Assistant.html\n   📂 App/AI Assistant" },
+        { t: 2600, role: "btns", items: ["สรุปอัน 1", "ผูกไฟล์นัด 1"] },
+        { t: 3400, role: "me", text: "หาไฟล์ ai" },
+        { t: 4000, role: "typing" },
+        { t: 4800, role: "bot", text: "เจอ 5 ไฟล์ที่ตรงกับ “ai” ครับ 👇\n(ถาม “อยู่ที่ไหน” เพื่อดูโฟลเดอร์ใน OneDrive)" },
+        { t: 5400, role: "me", text: "เอาแค่ .html" },
+        { t: 6000, role: "typing" },
+        { t: 6800, role: "bot", text: "เจอ 2 ไฟล์ที่ตรงกับ “.html” ครับ 👇\n\n1) …claude-backup.html\n   📂 App/AI Assistant\n2) …AI-Assistant.html\n   📂 App/AI Assistant" },
+      ],
+    },
+    bookattach: {
+      title: "แนบไฟล์ · รูป ตอนจองนัด",
+      sub: "ตัวอย่างใน LINE",
+      note: "ส่งรูปก่อนหรือหลังพิมพ์คำสั่งได้ · กดยืนยันแล้วแนบเข้า Outlook",
+      steps: [
+        { t: 0, role: "me", text: "(ส่งรูปในแชท 📷)" },
+        { t: 600, role: "bot", text: "รับรูปแล้วครับ 📷 (line-photo-….jpg)\n\n• จองนัดพร้อมแนบรูป: “แนบรูป ส่งนัด …” แล้วกดยืนยัน\n• แนบเข้านัดที่ส่งแล้ว: “แนบรูปเพิ่ม”" },
+        { t: 1400, role: "me", text: "แนบรูป ส่งนัด ake@gmail.com พรุ่งนี้ครึ่งชม ตอนบ่ายโมงครึ่ง เรื่อง test" },
+        { t: 2100, role: "typing" },
+        { t: 3000, role: "bot", text: "📋 ตรวจสอบก่อนส่งนัดประชุม\n🕐 06/08/2026 13:30–14:00\n📌 test\n📷 รูปจาก LINE: line-photo-….jpg\n👤 ake@gmail.com\n\nยืนยันเพื่อส่งนัดประชุม 👇" },
+        { t: 3600, role: "btns", items: ["✅ ยืนยันส่งนัด", "🕐 เวลา", "✏️ หัวข้อ"] },
+        { t: 4400, role: "me", text: "ยืนยันส่งนัด Outlook" },
+        { t: 5000, role: "typing" },
+        { t: 5800, role: "bot", text: "✅ ส่งนัดประชุมแล้ว!\n📌 test\n🕐 06/08/2026 13:30–14:00\n👤 ake@gmail.com\n📷 กำลังแนบรูป line-photo-….jpg…" },
+        { t: 6600, role: "bot", text: "📷 แนบรูปแล้ว: line-photo-….jpg" },
+        { t: 7200, role: "btns", items: [
+          { label: "แนบไฟล์ OneDrive →", go: "linkmeet" },
+        ] },
+      ],
+    },
+    cancelday: {
+      title: "ยกเลิกนัด · เลือกวัน",
+      sub: "ตัวอย่างใน LINE",
+      note: "กรองตามวัน · ปุ่มมีวันที่+หัวข้อ ไม่สับสนเมื่อเวลาซ้ำ",
+      steps: [
+        { t: 0, role: "me", text: "ยกเลิกนัดพรุ่งนี้" },
+        { t: 700, role: "typing" },
+        { t: 1600, role: "bot", text: "เลือกนัด พรุ่งนี้ ที่ต้องการยกเลิกครับ 👇\n\n1) 06/08/2026 13:30 — test · ake.pimton" },
+        { t: 2200, role: "btns", items: ["❌06/08 13:30 test"] },
+        { t: 3000, role: "me", text: "(กดปุ่มยกเลิก)" },
+        { t: 3600, role: "typing" },
+        { t: 4400, role: "bot", text: "✅ ยกเลิกนัดแล้วครับ" },
+        { t: 5000, role: "me", text: "พรุ่งนี้ ไม่ใช่วันนี้" },
+        { t: 5600, role: "typing" },
+        { t: 6400, role: "bot", text: "เลือกนัด พรุ่งนี้ ที่ต้องการยกเลิกครับ 👇\n(ไม่โชว์นัดวันนี้ที่กำลังประชุมอยู่)" },
       ],
     },
     linkmeet: {
