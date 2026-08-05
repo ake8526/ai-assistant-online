@@ -276,7 +276,9 @@ function detailText(res: CommandResult, upn?: string): string {
       const pathInline = showPath && f.path && f.path !== "OneDrive" ? ` 📂 ${f.path}` : "";
       const openUri = upn && f.id ? buildShortFileOpenUrl(upn, f.id) : "";
       // Keep everything on one line to avoid LINE auto-wrapping URL into multiple lines.
-      const linkInline = openUri ? ` 🔗 ${openUri}` : "";
+      // We intentionally do NOT print the URL text (it can still be long).
+      // Opening is provided via quick-reply URI buttons below.
+      const linkInline = openUri ? " 🔗 เปิดไฟล์" : "";
       return `${i + 1}) ${name}${pathInline}${linkInline}`;
     });
   }
