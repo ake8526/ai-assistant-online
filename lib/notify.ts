@@ -37,9 +37,9 @@ export function isNewsCountAll(n: number): boolean {
 }
 
 function parseDays(s: string | null, def: number[]): number[] {
-  if (s === null || s === undefined) return def;
-  const raw = s.split(",").map((x) => parseInt(x.trim(), 10)).filter((n) => !isNaN(n) && n >= 0 && n <= 6);
-  return raw.length ? Array.from(new Set(raw)).sort((a, b) => a - b) : [];
+  if (s === null || s === undefined || !String(s).trim()) return def;
+  const raw = String(s).split(",").map((x) => parseInt(x.trim(), 10)).filter((n) => !isNaN(n) && n >= 0 && n <= 6);
+  return raw.length ? Array.from(new Set(raw)).sort((a, b) => a - b) : def;
 }
 
 function validTime(s: string | null, def: string): string {
