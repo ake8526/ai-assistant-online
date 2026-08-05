@@ -186,22 +186,25 @@
   #office .sec-h { margin-bottom: 10px; }
   #office .sec-h h2 { font-size: clamp(26px, 3.2vw, 36px); }
   #office .sec-h p { font-size: clamp(14px, 1.5vw, 17px); max-width: 56ch; }
-  #office .live-frame {
-    display: flex; flex-direction: column;
-    flex: 1; min-height: 0;
-    margin-top: 0;
+  #office .office-panel {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
   }
-  #office .live-frame iframe {
-    flex: 1;
+  #office .room-stage {
+    flex: 1; min-height: 0; align-items: center; justify-content: center;
+  }
+  #office .room-frame {
+    max-width: min(1280px, 98%);
     width: 100%;
-    height: calc(100dvh - 168px);
-    min-height: 520px;
-    border: 0;
-    background: #0a0a0a;
   }
-  #office .office-panel { display: none; }
-  #office .legend { display: none; }
+  #office #office-room {
+    width: 100%;
+    max-height: calc(100dvh - 200px);
+    object-fit: contain;
+  }
+  #office .live-frame { display: none; }
   #office details.more { margin-top: 8px; flex-shrink: 0; }
+  #office .legend { flex-shrink: 0; margin-top: 8px; }
+  #office .legend span { font-size: 14px; }
 
   /* QR big */
   .qr-grid {
@@ -900,33 +903,55 @@
       </div>
     </div>
 
-    <!-- OFFICE: real /monitor embed (same UI as live room) -->
+    <!-- OFFICE: real pixel room (same as /monitor) + live iframe -->
     <section class="block" id="office">
       <div class="sec-h">
-        <h2>AI ทำงานยังไง — ห้องจริง</h2>
-        <p>หน้าเดียวกับ /monitor — OFFICE + NEWS ROOM + STAGES · เปิดเต็มจอเพื่อดู LIVE หลังล็อกอิน</p>
+        <h2>AI ทำงานยังไง — เดโมทดสอบ THE OFFICE</h2>
+        <p>เดโมวน 4 แบบ: ใช้ครบ 4 โต๊ะ / แค่ 3 / แค่ 2 / แค่ 1 แล้วส่ง — โต๊ะที่ไม่เกี่ยวจะ IDLE</p>
       </div>
 
-      <div class="live-frame" data-free-scroll>
-        <div class="bar">
-          <span>หน้าจอจริงจากระบบ · CONSOLE / STAGES / สองห้อง</span>
-          <a class="btn primary" style="padding:8px 12px;font-size:12px" href="/monitor?layout=right" target="_blank" rel="noopener">เปิดเต็มจอ</a>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
+        <a class="btn primary" style="padding:8px 14px;font-size:13px" href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">เปิด /monitor เต็มจอ</a>
+        <a class="btn ghost" style="padding:8px 14px;font-size:13px" href="https://ktis-ai-assistant.vercel.app/monitor?layout=right" target="_blank" rel="noopener">พรีวิว STAGES ขวา</a>
+        <span style="color:var(--mute);font-size:13px">ด้านล่าง = เดโมวนทดสอบออฟไลน์</span>
+      </div>
+      <div class="office-panel">
+        <div class="ph"><span>THE OFFICE</span><span class="live">● DEMO</span></div>
+        <div class="room-stage">
+          <div class="room-frame" id="office-frame">
+            <canvas id="office-room" width="320" height="240"></canvas>
+            <div class="bdg done" data-i="0"><span class="nm">GATE</span><span class="stt">DONE</span></div>
+            <div class="bdg done" data-i="1"><span class="nm">BRAIN</span><span class="stt">DONE</span></div>
+            <div class="bdg idle" data-i="2"><span class="nm">RUNNER</span><span class="stt">IDLE</span></div>
+            <div class="bdg idle" data-i="3"><span class="nm">SCRIBE</span><span class="stt">IDLE</span></div>
+            <div class="bdg idle" data-i="4" id="dash-bdg"><span class="nm">DASH</span><span class="stt">IDLE</span></div>
+          </div>
         </div>
-        <iframe
-          title="KTIS AI Assistant · Monitor"
-          src="https://ktis-ai-assistant.vercel.app/monitor?embed=1&layout=right"
-          loading="lazy"
-          referrerpolicy="same-origin"
-        ></iframe>
+        <div class="office-caption" id="office-cap"><b>BRAIN</b> (PARSE) — แยกเจตนา (intent) ด้วย LLM</div>
+      </div>
+
+      <div class="legend">
+        <span><i style="background:#3a86ff"></i>GATE รับข้อความ</span>
+        <span><i style="background:#2f9e44"></i>BRAIN แยกเจตนา</span>
+        <span><i style="background:#f0b429"></i>RUNNER ดึง M365</span>
+        <span><i style="background:#7048e8"></i>SCRIBE เรียบเรียงคำตอบ</span>
+        <span><i style="background:#ee1b24"></i>DASH ส่งกลับ LINE</span>
+      </div>
+
+      <div class="live-frame">
+        <div class="bar">
+          <span>เปิดห้อง LIVE เต็มจอเพื่อดู CONSOLE / STAGES แบบเรียลไทม์</span>
+          <a class="btn primary" style="padding:8px 12px;font-size:12px" href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">เปิด /monitor</a>
+        </div>
       </div>
 
       <details class="more">
         <summary>รายละเอียดสำหรับทีมเทคนิค (พับไว้)</summary>
         <div class="inner">
           <ul>
-            <li>กรอบด้านบน = หน้า <code>/monitor</code> จริง (โหมด embed)</li>
-            <li>เปิดเต็มจอ: <a href="/monitor" target="_blank" rel="noopener">/monitor</a></li>
-            <li>เลย์เอาต์ STAGES ชิดขวา: <a href="/monitor?layout=right" target="_blank" rel="noopener">/monitor?layout=right</a></li>
+            <li>ห้องด้านบน = render เดียวกับโค้ดหน้า <code>/monitor</code> (ออฟไลน์ได้)</li>
+            <li>หน้าจริง: <a href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">/monitor</a></li>
+            <li>พรีวิว STAGES ชิดขวา (ห้องจริง): <a href="/monitor?layout=right" target="_blank" rel="noopener">/monitor?layout=right</a></li>
           </ul>
         </div>
       </details>
@@ -1359,6 +1384,279 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && backdrop.classList.contains("open")) closeDemo();
   });
+})();
+</script>
+<script>
+(function () {
+  const AGENTS = [
+    { name: "GATE", shirt: "#3a86ff", hair: "#6b4a2e", screen: "search", st: "done" },
+    { name: "BRAIN", shirt: "#2f9e44", hair: "#2a2a2a", screen: "filter", st: "done" },
+    { name: "RUNNER", shirt: "#f0b429", hair: "#caa15a", screen: "search", st: "idle" },
+    { name: "SCRIBE", shirt: "#7048e8", hair: "#7a4a2a", screen: "render", st: "idle" },
+  ];
+  const DESK = [[70, 92], [250, 92], [70, 168], [250, 168]];
+  const SEAT = [[70, 126], [250, 126], [70, 202], [250, 202]];
+  const MAILBOX = [160, 214];
+  const SPINES = ["#c0392b", "#e67e22", "#f1c40f", "#27ae60", "#2980b9", "#8e44ad", "#d35400", "#16a085", "#c0392b", "#2c3e50"];
+  const cv = document.getElementById("office-room");
+  if (!cv) return;
+  const X = cv.getContext("2d");
+  X.imageSmoothingEnabled = false;
+  const W = cv.width, H = cv.height;
+  const R = (x, y, w, h, c) => { X.fillStyle = c; X.fillRect(Math.round(x), Math.round(y), Math.max(1, w | 0), Math.max(1, h | 0)); };
+  const badges = [...document.querySelectorAll("#office-frame .bdg")];
+  badges.forEach((b, i) => {
+    if (i < 4) {
+      b.style.left = (DESK[i][0] / 320 * 100) + "%";
+      b.style.top = ((DESK[i][1] - 7) / 240 * 100) + "%";
+    }
+  });
+  const dash = { x: 160, y: 150, tx: null, ty: null, face: "down", phase: 0, moving: false, carry: false, onArrive: null };
+  const dashBdg = document.getElementById("dash-bdg");
+  const capEl = document.getElementById("office-cap");
+  let mailFlash = 0;
+
+  function setBadge(i, st) {
+    AGENTS[i] && (AGENTS[i].st = st);
+    const b = badges[i];
+    if (!b) return;
+    b.className = "bdg " + st;
+    const s = b.querySelector(".stt");
+    if (s) s.textContent = st === "work" ? "WORKING" : st === "done" ? "DONE" : "IDLE";
+  }
+  function setDashBadge(st) {
+    if (!dashBdg) return;
+    dashBdg.className = "bdg " + st;
+    const s = dashBdg.querySelector(".stt");
+    if (s) s.textContent = st === "work" ? "WORKING" : st === "done" ? "DONE" : "IDLE";
+  }
+  function setCap(html) { if (capEl) capEl.innerHTML = html; }
+
+  function walkTo(px, py) {
+    return new Promise((res) => {
+      dash.tx = px; dash.ty = py; dash.onArrive = res;
+    });
+  }
+  function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+  function resetRoom() {
+    setBadge(0, "idle"); setBadge(1, "idle"); setBadge(2, "idle"); setBadge(3, "idle");
+    setDashBadge("idle"); dash.carry = false; dash.x = 160; dash.y = 150; dash.face = "down";
+  }
+
+  async function runStep(i, html, ms) {
+    setBadge(i, "work");
+    setCap(html);
+    await sleep(ms);
+    setBadge(i, "done");
+  }
+
+  async function deliver(pickupX, pickupY) {
+    const py = pickupY == null ? 178 : pickupY;
+    setDashBadge("work");
+    setCap("<b>DASH</b> (REPLY) — ส่งคำตอบกลับ LINE");
+    await walkTo(160, py);
+    await walkTo(pickupX, py);
+    dash.carry = true;
+    await sleep(240);
+    await walkTo(160, py);
+    await walkTo(160, 198);
+    dash.carry = false;
+    mailFlash = 70;
+    setCap("<b>เสร็จ</b> — ส่งเข้า LINE แล้ว");
+    setDashBadge("done");
+    await sleep(800);
+    await walkTo(160, 150);
+    setDashBadge("idle");
+  }
+
+  async function playLoop() {
+    for (;;) {
+      // —— 4 โต๊ะแล้วส่ง ——
+      resetRoom();
+      setCap("<b>ใช้ครบ 4 โต๊ะ แล้วส่ง</b> — เช่น “ดูตารางเบส”");
+      await sleep(900);
+      await runStep(0, "<b>GATE</b> — รับข้อความ", 700);
+      await runStep(1, "<b>BRAIN</b> — เข้าใจว่าอยากดูตาราง", 900);
+      await runStep(2, "<b>RUNNER</b> — ดึงปฏิทิน M365", 1000);
+      await runStep(3, "<b>SCRIBE</b> — เรียบเรียงคำตอบจากข้อมูลที่ได้", 900);
+      await deliver(218, 178);
+      await sleep(700);
+
+      // —— 3 โต๊ะแล้วส่ง (ข้าม RUNNER) ——
+      resetRoom();
+      setCap("<b>ใช้แค่ 3 โต๊ะ แล้วส่ง</b> — เช่น “ข่าววันนี้” · ไม่ดึงปฏิทิน → RUNNER ว่าง");
+      await sleep(900);
+      await runStep(0, "<b>GATE</b> — รับข้อความ", 700);
+      await runStep(1, "<b>BRAIN</b> — เข้าใจว่าอยากได้ข่าว", 900);
+      setCap("<b>ข้าม RUNNER</b> — คำสั่งนี้ไม่ต้องดึงปฏิทิน (โต๊ะเหลือง IDLE)");
+      await sleep(800);
+      await runStep(3, "<b>SCRIBE</b> — เรียบเรียงสรุปข่าว", 1000);
+      await deliver(218, 178);
+      await sleep(700);
+
+      // —— 2 โต๊ะแล้วส่ง (ข้าม RUNNER + SCRIBE) ——
+      resetRoom();
+      setCap("<b>ใช้แค่ 2 โต๊ะ แล้วส่ง</b> — เช่น “/ช่วยเหลือ” · ตอบสำเร็จรูป");
+      await sleep(900);
+      await runStep(0, "<b>GATE</b> — รับข้อความ", 700);
+      await runStep(1, "<b>BRAIN</b> — จับทางด่วนได้เลย", 900);
+      setCap("<b>ข้าม RUNNER + SCRIBE</b> — มีข้อความพร้อมส่ง (โต๊ะเหลือง/ม่วง IDLE)");
+      await sleep(900);
+      await deliver(218, 110);
+      await sleep(700);
+
+      // —— 1 โต๊ะแล้วส่ง ——
+      resetRoom();
+      setCap("<b>ใช้แค่ 1 โต๊ะ แล้วส่ง</b> — เช่น “/ยกเลิก” · คำสั่งลัดชัดเจน");
+      await sleep(900);
+      await runStep(0, "<b>GATE</b> — รับ + ยกเลิกงานค้าง", 1000);
+      setCap("<b>ข้าม BRAIN · RUNNER · SCRIBE</b> — ส่งคำตอบสั้นทันที");
+      await sleep(800);
+      await deliver(102, 110);
+      await sleep(1100);
+    }
+  }
+
+  function drawFloor() {
+    R(0, 52, W, H - 52, "#7a5636");
+    for (let y = 52; y < H; y += 10) R(0, y, W, 1, "#6b4a2e");
+    for (let x = 0; x < W; x += 40) R(x, 52, 1, H - 52, "#6e4d30");
+    R(140, 52, 40, H - 52, "#946f49");
+    for (let y = 52; y < H; y += 10) R(140, y, 40, 1, "#845f3d");
+    R(139, 52, 1, H - 52, "#5f4527"); R(180, 52, 1, H - 52, "#5f4527");
+  }
+  function drawWalls() {
+    R(0, 0, W, 52, "#2e2116"); R(0, 50, W, 2, "#1c140c");
+    [[8, 140], [172, 140]].forEach(([bx, bw]) => {
+      R(bx, 8, bw, 40, "#4a3420"); X.strokeStyle = "#5c4228"; X.strokeRect(bx + .5, 8.5, bw - 1, 39);
+      for (let r = 0; r < 3; r++) {
+        const ry = 12 + r * 13; R(bx + 2, ry + 9, bw - 4, 2, "#3a281a");
+        for (let s = 0; s < Math.floor((bw - 6) / 4); s++) R(bx + 3 + s * 4, ry, 3, 9, SPINES[(s + r * 3) % SPINES.length]);
+      }
+    });
+    R(150, 10, 20, 10, "#ee1b24"); R(150, 10, 20, 2, "#b3121a"); R(153, 13, 14, 2, "#0a0a0a"); R(153, 16, 10, 1, "#0a0a0a");
+  }
+  function drawPlant(x, y) {
+    R(x - 3, y - 2, 7, 5, "#8a5a2a"); R(x - 4, y + 3, 9, 3, "#6b4420");
+    R(x - 2, y - 8, 3, 6, "#2f7d32"); R(x - 5, y - 6, 3, 4, "#2f7d32");
+    R(x + 2, y - 6, 3, 4, "#39d353"); R(x - 1, y - 11, 2, 3, "#39d353");
+  }
+  function drawScreen(mx, my, mw, mh, id, st, now) {
+    if (st === "idle") { R(mx + mw - 3, my + mh - 2, 1, 1, Math.floor(now / 500) % 2 ? "#173" : "#000"); return; }
+    if (st === "done") {
+      X.strokeStyle = "#39d353"; X.lineWidth = 1; X.beginPath();
+      X.moveTo(mx + 4, my + 4); X.lineTo(mx + 6, my + 6); X.lineTo(mx + 10, my + 2); X.stroke(); return;
+    }
+    const t = (now / 700) % 1;
+    if (id === "search") {
+      const sx = mx + 1 + t * (mw - 2);
+      R(sx, my + 1, 1, mh - 2, "#39d353");
+      R(mx + 3, my + 2, 1, 1, "#39d353"); R(mx + 8, my + 4, 1, 1, "#39d353");
+    } else if (id === "filter") {
+      const ok = Math.floor(now / 450) % 2 === 0;
+      X.strokeStyle = ok ? "#39d353" : "#ee1b24"; X.beginPath();
+      if (ok) { X.moveTo(mx + 4, my + 4); X.lineTo(mx + 6, my + 6); X.lineTo(mx + 10, my + 2); }
+      else { X.moveTo(mx + 5, my + 2); X.lineTo(mx + 9, my + 6); X.moveTo(mx + 9, my + 2); X.lineTo(mx + 5, my + 6); }
+      X.stroke();
+    } else {
+      R(mx + 2, my + 1, mw - 4, 1, "#ee1b24");
+      const rows = Math.floor(t * 3) + 1;
+      for (let r = 0; r < rows && r < 3; r++) R(mx + 2, my + 3 + r * 2, mw - 4, 1, "#cfcfcf");
+    }
+  }
+  function drawWorker(i, now) {
+    const [sx, sy] = SEAT[i], a = AGENTS[i], st = a.st;
+    const work = st === "work";
+    const bob = work ? Math.round(Math.sin(now / 160) * 1) : 0;
+    const y = sy + bob;
+    const tw = work ? (Math.floor(now / 140) % 2) : 0;
+    R(sx - 8, y - 1, 16, 5, "#3a2a1a"); R(sx - 8, y - 1, 16, 2, "#4e3a28");
+    R(sx - 8, y - 10, 16, 10, a.shirt);
+    R(sx - 10, y - 11 + tw, 4, 8, a.shirt); R(sx + 6, y - 11 + (1 - tw), 4, 8, a.shirt);
+    R(sx - 10, y - 12 + tw, 4, 2, "#f0c090"); R(sx + 6, y - 12 + (1 - tw), 4, 2, "#f0c090");
+    R(sx - 6, y - 19, 12, 11, a.hair);
+    if (work) { const p = Math.floor(now / 200) % 2; R(sx - 1, y - 25, 2, 2, p ? "#f0b429" : "#5a4410"); }
+    if (st === "done") {
+      X.strokeStyle = "#39d353"; X.lineWidth = 2; X.beginPath();
+      X.moveTo(sx - 3, y - 24); X.lineTo(sx - 1, y - 22); X.lineTo(sx + 3, y - 27); X.stroke(); X.lineWidth = 1;
+    }
+  }
+  function drawDesk(i, now) {
+    const [dx, dy] = DESK[i], st = AGENTS[i].st;
+    R(dx - 24, dy - 10, 48, 24, "#6b4a2e"); R(dx - 24, dy - 10, 48, 2, "#835a36"); R(dx - 24, dy + 12, 48, 2, "#4e3420");
+    R(dx - 24, dy - 10, 2, 24, "#5a3f26"); R(dx + 22, dy - 10, 2, 24, "#5a3f26");
+    R(dx - 9, dy - 9, 18, 12, "#141414");
+    const scr = st === "idle" ? "#0a1626" : st === "done" ? "#0c2a14" : "#0a2018";
+    R(dx - 7, dy - 7, 14, 8, scr); R(dx - 2, dy + 3, 4, 2, "#0e0e0e");
+    drawScreen(dx - 7, dy - 7, 14, 8, AGENTS[i].screen, st, now);
+    R(dx - 8, dy + 7, 16, 3, "#4a3a2a"); R(dx + 11, dy + 6, 3, 4, st === "work" ? "#ee1b24" : "#8a5a2a");
+    drawWorker(i, now);
+  }
+  function drawDash(now) {
+    const moving = dash.moving;
+    const f = Math.floor(dash.phase) % 2;
+    const bob = moving ? (f ? 0 : -1) : Math.round(Math.sin(now / 500) * 0.5);
+    const x = Math.round(dash.x), y = Math.round(dash.y) + bob;
+    X.fillStyle = "rgba(0,0,0,0.28)"; X.fillRect(x - 6, y + 1, 12, 2);
+    const l1 = moving ? (f ? 2 : 0) : 0, l2 = moving ? (f ? 0 : 2) : 0;
+    R(x - 4, y - 4 + l1, 3, 4, "#2b2b3a"); R(x + 1, y - 4 + l2, 3, 4, "#2b2b3a");
+    R(x - 5, y - 12, 10, 8, "#ee1b24"); R(x - 5, y - 12, 10, 2, "#b3121a");
+    R(x - 7, y - 11, 2, 6, "#ee1b24"); R(x + 5, y - 11, 2, 6, "#ee1b24");
+    if (dash.carry) {
+      R(x - 4, y - 20, 8, 7, "#e8e8e0"); R(x - 4, y - 20, 8, 2, "#39d353");
+      R(x - 3, y - 16, 6, 1, "#888"); R(x - 3, y - 14, 4, 1, "#888");
+    }
+    const hy = y - 19;
+    R(x - 5, hy, 10, 9, "#f0c090");
+    if (dash.face === "up") { R(x - 5, hy - 1, 10, 9, "#141414"); }
+    else {
+      R(x - 5, hy - 1, 10, 4, "#141414"); R(x - 5, hy, 1, 5, "#141414"); R(x + 4, hy, 1, 5, "#141414");
+      if (dash.face === "down") { R(x - 3, hy + 4, 2, 2, "#141414"); R(x + 1, hy + 4, 2, 2, "#141414"); }
+      else if (dash.face === "left") { R(x - 3, hy + 4, 2, 2, "#141414"); }
+      else { R(x + 1, hy + 4, 2, 2, "#141414"); }
+    }
+    if (dashBdg) {
+      dashBdg.style.left = (dash.x / 320 * 100) + "%";
+      dashBdg.style.top = ((dash.y - 20) / 240 * 100) + "%";
+    }
+  }
+  function drawMailbox() {
+    const [mx, my] = MAILBOX;
+    R(mx - 3, my, 3, 10, "#5a3f26");
+    R(mx - 9, my - 10, 18, 11, "#b3121a"); R(mx - 9, my - 10, 18, 2, "#ee1b24");
+    R(mx - 7, my - 7, 14, 6, "#7a0d10"); R(mx - 2, my - 6, 4, 4, "#39d353");
+    R(mx + 8, my - 12, 1, 6, "#5a3f26"); R(mx + 9, my - 12, 4, 3, mailFlash > 0 ? "#39d353" : "#8a5a2a");
+    if (mailFlash > 0) {
+      R(mx - 4, my - 22, 10, 8, "#0d0d0d");
+      X.strokeStyle = "#39d353"; X.strokeRect(mx - 4.5, my - 22.5, 11, 9);
+      X.beginPath(); X.moveTo(mx - 1, my - 18); X.lineTo(mx + 1, my - 16); X.lineTo(mx + 4, my - 20); X.stroke();
+      mailFlash--;
+    }
+  }
+  function updateDash() {
+    if (dash.tx === null || dash.ty === null) { dash.moving = false; return; }
+    const dx = dash.tx - dash.x, dy = dash.ty - dash.y, d = Math.hypot(dx, dy), sp = 1.05;
+    if (d < 1.1) {
+      dash.x = dash.tx; dash.y = dash.ty; dash.tx = null; dash.moving = false;
+      const cb = dash.onArrive; dash.onArrive = null; if (cb) cb();
+      return;
+    }
+    dash.x += dx / d * sp; dash.y += dy / d * sp; dash.phase += 0.2; dash.moving = true;
+    dash.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+  }
+
+  function loop(now) {
+    requestAnimationFrame(loop);
+    updateDash();
+    drawFloor(); drawWalls();
+    drawPlant(14, H - 14); drawPlant(W - 14, H - 14);
+    drawMailbox();
+    for (let i = 0; i < 4; i++) drawDesk(i, now);
+    drawDash(now);
+  }
+  requestAnimationFrame(loop);
+  playLoop();
 })();
 </script>
 <script>
