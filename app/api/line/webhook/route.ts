@@ -274,13 +274,13 @@ function detailText(res: CommandResult, upn?: string): string {
     const hasOpenLinks = !!(upn && fileList.some((f) => f.id));
     lines = fileList.map((f, i) => {
       const name = (f.name || f.url || "ไฟล์").trim();
-      const pathInline = showPath && f.path && f.path !== "OneDrive" ? ` 📂 ${f.path}` : "";
+      const pathLine = showPath && f.path && f.path !== "OneDrive" ? `\n   📂 ${f.path}` : "";
       const openUri = upn && f.id ? buildShortFileOpenUrl(upn, f.id) : "";
       // Keep everything on one line to avoid LINE auto-wrapping URL into multiple lines.
       // We intentionally do NOT print the URL text (it can still be long).
       // Opening is provided via quick-reply URI buttons below.
-      const linkInline = openUri ? " 🔗 เปิดไฟล์" : "";
-      return `${i + 1}) ${name}${pathInline}${linkInline}`;
+      const linkLine = openUri ? `\n   🔗 เปิดไฟล์` : "";
+      return `${i + 1}) ${name}${pathLine}${linkLine}`;
     });
     if (hasOpenLinks) lines.push("แตะปุ่มด้านล่างเพื่อเปิดไฟล์");
   }
