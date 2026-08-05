@@ -44,39 +44,42 @@ const STEP_TO_INDEX: Record<StageId, number> = { receive: 0, parse: 1, fetch: 2,
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
-.mon{--bg:#0a0a0a;--panel:#121212;--panel2:#171717;--ink:#f5f5f5;--dim:#7c7c7c;--red:#ee1b24;--green:#39d353;--amber:#f0b429;--hair:#262626;background:var(--bg);color:var(--ink);font-family:'VT323',monospace;min-height:100vh;padding:12px 10px;position:relative;overflow-x:hidden}
+.mon{--bg:#0a0a0a;--panel:#121212;--panel2:#171717;--ink:#f5f5f5;--dim:#7c7c7c;--red:#ee1b24;--green:#39d353;--amber:#f0b429;--hair:#262626;background:var(--bg);color:var(--ink);font-family:'VT323',monospace;height:100vh;overflow:hidden;padding:6px 8px;position:relative;display:flex;flex-direction:column}
 .mon *{margin:0;padding:0;box-sizing:border-box}
 .mon::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:60;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.14) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
 .mon .pix{font-family:'Press Start 2P',monospace}
-.mon .wrap{max-width:min(1680px,98vw);margin:0 auto;width:100%}
-.mon header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border:2px solid var(--hair);background:var(--panel);padding:14px 16px;margin-bottom:12px}
-.mon header .mark{width:34px;height:34px;flex:none}
-.mon header h1{font-size:15px;line-height:1.4}.mon header h1 em{color:var(--red);font-style:normal}
-.mon header .tag{font-size:19px;color:var(--dim);margin-top:2px}
+.mon .wrap{flex:1;min-height:0;display:flex;flex-direction:column;max-width:100%;width:100%;margin:0 auto}
+.mon header{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;border:2px solid var(--hair);background:var(--panel);padding:8px 12px;margin-bottom:6px;flex-shrink:0}
+.mon header .mark{width:28px;height:28px;flex:none}
+.mon header h1{font-size:13px;line-height:1.3}.mon header h1 em{color:var(--red);font-style:normal}
 .mon header .spacer{flex:1}
-.mon .badge{font-size:16px;color:var(--dim);border:1px solid var(--hair);padding:3px 8px}.mon .badge b{color:var(--green)}
+.mon .badge{font-size:14px;color:var(--dim);border:1px solid var(--hair);padding:2px 6px}.mon .badge b{color:var(--green)}
 .mon .badge.llm b{color:var(--amber)}
 .mon .badge.llm.hot b{color:#fff;animation:monpulse .7s steps(1) infinite}
-.mon .badges{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.mon .panel{border:2px solid var(--hair);background:var(--panel);margin-bottom:12px}
-.mon .ph{font-family:'Press Start 2P';font-size:9px;color:var(--dim);padding:9px 11px;border-bottom:2px solid var(--hair);background:var(--panel2);display:flex;justify-content:space-between}
+.mon .badges{display:flex;gap:6px;flex-wrap:nowrap;align-items:center}
+.mon .panel{border:2px solid var(--hair);background:var(--panel);margin-bottom:6px}
+.mon .ph{font-family:'Press Start 2P';font-size:8px;color:var(--dim);padding:6px 9px;border-bottom:2px solid var(--hair);background:var(--panel2);display:flex;justify-content:space-between}
 .mon .ph .live{color:var(--red)}
-.mon .room-stage{background:#1a120a;padding:10px;display:flex;justify-content:center}
-.mon .room-frame{position:relative;width:100%;aspect-ratio:320/240;flex:none}
+.mon .room-frame{position:relative;aspect-ratio:320/240;height:100%;width:auto;max-width:100%;margin:0 auto;flex:none}
 .mon #room,.mon #news-room{width:100%;height:100%;display:block;image-rendering:pixelated;background:#2e2116}
-.mon .building{margin-bottom:12px}
-.mon .building-ph{display:grid;grid-template-columns:1fr 6px 1fr;gap:0;padding:9px 11px}
-.mon .building-ph .room-tag{font-family:'Press Start 2P';font-size:9px;color:var(--dim);display:flex;justify-content:space-between;align-items:center;gap:8px}
-.mon .building-ph .wall-bar{background:#3a2a1a}
-.mon .building-stage{display:grid;grid-template-columns:1fr 6px 1fr;background:#1a120a;padding:0 10px 10px;align-items:start}
-.mon .building-wall{background:linear-gradient(180deg,#2e2116 0%,#2e2116 52px,#5f4527 52px,#6b4a2e 100%);border-left:2px solid #1c140c;border-right:2px solid #1c140c;min-height:100%}
-.mon .building-wing{min-width:0;display:flex;flex-direction:column}
+.mon .building{flex:1;min-height:0;display:flex;flex-direction:column;margin-bottom:6px;overflow:hidden}
+.mon .building-ph{display:grid;grid-template-columns:1fr 18px 1fr;gap:0;padding:6px 9px}
+.mon .building-ph .room-tag{font-family:'Press Start 2P';font-size:8px;color:var(--dim);display:flex;justify-content:space-between;align-items:center;gap:6px}
+.mon .building-ph .wall-bar{background:transparent}
+.mon .building-stage{position:relative;flex:1;min-height:0;display:grid;grid-template-columns:1fr 18px 1fr;background:#1a120a;padding:6px 8px 4px;align-items:center}
+.mon .building-wall{position:relative;background:linear-gradient(180deg,#2e2116 0%,#2e2116 52px,#5f4527 52px,#6b4a2e 100%);border-left:2px solid #1c140c;border-right:2px solid #1c140c;align-self:stretch;min-height:0}
+.mon .building-wall .door{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);width:12px;height:34px;background:#6b4a2e;border:2px solid #3a2a1a;z-index:1}
+.mon .building-wall .door.open{background:#1a120a;border-color:#39d353;box-shadow:0 0 6px #39d35355}
+.mon .building-wing{min-width:0;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%}
 .mon .building-wing .room-frame{border:2px solid #3a2a1a}
-.mon .office-wing .room-frame{border-right:none;border-top-right-radius:0;border-bottom-right-radius:0}
-.mon .news-wing .room-frame{border-left:none;border-top-left-radius:0;border-bottom-left-radius:0}
-.mon .wing-cap{font-size:17px;color:var(--dim);text-align:center;padding:6px 4px 0;line-height:1.3;min-height:2.4em}
+.mon .office-wing .room-frame{border-right:none}
+.mon .news-wing .room-frame{border-left:none}
+.mon .wing-cap{font-size:14px;color:var(--dim);text-align:center;padding:2px 4px;line-height:1.2;flex-shrink:0}
 .mon .wing-cap b{color:var(--red)}
-.mon .news-wing .news-grid{border-top:2px solid var(--hair);margin-top:6px;padding-top:8px}
+.mon .news-courier{position:absolute;transform:translate(-50%,-100%);z-index:8;pointer-events:none;text-align:center;background:rgba(10,7,4,.94);border:2px solid #0ea5e9;padding:2px 4px;display:none}
+.mon .news-courier .nm{font-family:'Press Start 2P';font-size:6px;color:#0ea5e9;display:block}
+.mon .news-courier .body{width:10px;height:10px;background:#0ea5e9;margin:2px auto 0;border-top:2px solid #0284c7}
+.mon .news-courier.carry .body::after{content:"📰";font-size:8px;display:block;margin-top:-2px}
 .mon .bdg{position:absolute;transform:translate(-50%,-100%);text-align:center;pointer-events:none;background:rgba(10,7,4,.92);border:2px solid var(--hair);padding:2px 4px 1px;white-space:nowrap;line-height:1;transition:left .05s linear,top .05s linear;z-index:2}
 .mon .bdg .nm{font-family:'Press Start 2P';font-size:6px;color:var(--ink);display:block;margin-bottom:2px}
 .mon .bdg .stt{font-family:'Press Start 2P';font-size:6px}
@@ -87,32 +90,33 @@ const CSS = `
 .mon .bdg.error{border-color:var(--red)}.mon .bdg.error .stt{color:var(--red)}.mon .bdg.error .dot{background:var(--red)}
 @keyframes monpulse{50%{opacity:.2}}
 .mon .caption{font-size:19px;color:var(--dim);text-align:center;padding:9px}.mon .caption b{color:var(--red)}
-.mon .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,380px);gap:12px;align-items:stretch}
-@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr)}}
-.mon .cols > .panel{min-width:0;max-width:100%;overflow:hidden}
-.mon #log{height:240px;overflow-x:hidden;overflow-y:auto;font-size:18px;line-height:1.18;padding:10px;min-width:0}
+.mon .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px);gap:6px;align-items:stretch;flex-shrink:0;height:clamp(100px,18vh,150px);margin-bottom:0}
+@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:28vh}}
+.mon .cols > .panel{min-width:0;max-width:100%;overflow:hidden;margin-bottom:0;display:flex;flex-direction:column}
+.mon .cols > .panel .ph{flex-shrink:0}
+.mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:15px;line-height:1.15;padding:6px 8px}
 .mon #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .mon #log .t{color:var(--dim)}.mon #log .g{color:var(--green)}.mon #log .r{color:var(--red)}.mon #log .a{color:var(--amber)}.mon #log .b{color:#3a86ff}
-.mon #legend{padding:12px;min-height:220px;font-size:18px;line-height:1.5;min-width:0}
-.mon #legend .row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.mon #legend .sw{width:12px;height:12px;flex:none;border:1px solid #000}
-.mon #legend .rl{font-family:'Press Start 2P';font-size:7px;color:var(--ink)}
-.mon #legend .rc{color:var(--dim);font-size:16px}
-.mon .foot{font-family:'Press Start 2P';font-size:8px;color:#3a3a3a;text-align:center;margin-top:12px;padding:6px}
-.mon .btn{font-family:'Press Start 2P';font-size:10px;background:var(--ink);color:#000;border:2px solid var(--ink);padding:10px 16px;cursor:pointer}
-.mon .center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:60vh;text-align:center}
-.mon .news-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:10px 12px 12px;border-top:2px solid var(--hair)}
-.mon .news-desk{border:2px solid var(--hair);background:var(--panel2);padding:8px 10px;min-height:auto;min-width:0}
-.mon .news-desk .hd{font-family:'Press Start 2P';font-size:7px;display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:8px}
-.mon .news-desk .nm{color:var(--ink)}.mon .news-desk .st{font-size:6px;padding:2px 4px;border:1px solid var(--hair);color:var(--dim)}
+.mon #legend{flex:1;min-height:0;overflow-y:auto;padding:6px 8px;font-size:14px;line-height:1.35}
+.mon #legend .row{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.mon #legend .sw{width:10px;height:10px;flex:none;border:1px solid #000}
+.mon #legend .rl{font-family:'Press Start 2P';font-size:6px;color:var(--ink)}
+.mon #legend .rc{color:var(--dim);font-size:13px}
+.mon .foot{display:none}
+.mon .news-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px 8px 6px;border-top:2px solid var(--hair);flex-shrink:0}
+.mon .news-desk{border:2px solid var(--hair);background:var(--panel2);padding:4px 6px;min-width:0}
+.mon .news-desk .hd{font-family:'Press Start 2P';font-size:6px;display:flex;justify-content:space-between;align-items:center;gap:4px;margin-bottom:3px}
+.mon .news-desk .nm{color:var(--ink)}.mon .news-desk .st{font-size:5px;padding:1px 3px;border:1px solid var(--hair);color:var(--dim)}
 .mon .news-desk.work .st{color:var(--amber);border-color:var(--amber);animation:monpulse .55s steps(1) infinite}
 .mon .news-desk.done .st{color:var(--green);border-color:var(--green)}
 .mon .news-desk.error .st{color:var(--red);border-color:var(--red)}
-.mon .news-desk .ai{font-size:17px;color:var(--amber);margin:4px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mon .news-desk .cap{font-size:16px;color:var(--dim);line-height:1.35;margin-bottom:6px}
-.mon .news-desk ul{list-style:none;font-size:16px;color:var(--ink);line-height:1.35;max-height:88px;overflow-y:auto}
-.mon .news-desk li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px}
+.mon .news-desk .ai{font-size:13px;color:var(--amber);margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mon .news-desk .cap{font-size:12px;color:var(--dim);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mon .news-desk ul{list-style:none;font-size:12px;color:var(--ink);line-height:1.2;max-height:2.4em;overflow:hidden}
+.mon .news-desk li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px}
 .mon .news-desk li .k{color:var(--dim)}.mon .news-desk li.work{color:var(--amber)}.mon .news-desk li.done{color:var(--green)}.mon .news-desk li.err{color:var(--red)}
+.mon .btn{font-family:'Press Start 2P';font-size:10px;background:var(--ink);color:#000;border:2px solid var(--ink);padding:10px 16px;cursor:pointer}
+.mon .center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:60vh;text-align:center}
 `;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -136,6 +140,7 @@ const DEV = process.env.NODE_ENV !== "production";
 
 // ----- canvas art (ported, trimmed) -----
 type Dash = { x: number; y: number; tx: number | null; ty: number | null; face: string; moving: boolean; phase: number; carry: boolean; onArrive: (() => void) | null };
+type Postie = { x: number; y: number; tx: number | null; ty: number | null; carry: boolean; visible: boolean; onArrive: (() => void) | null };
 
 function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | null>; account: unknown }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -148,6 +153,10 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   const badgesRef = useRef<HTMLDivElement[]>([]);
   const newsBadgesRef = useRef<HTMLDivElement[]>([]);
   const newsStatusRef = useRef<string[]>(NEWS_AGENTS.map(() => "idle"));
+  const postieRef = useRef<Postie>({ x: 74, y: 50, tx: null, ty: null, carry: false, visible: false, onArrive: null });
+  const postieElRef = useRef<HTMLDivElement | null>(null);
+  const doorElRef = useRef<HTMLDivElement | null>(null);
+  const doorOpenRef = useRef(false);
 
   const statusRef = useRef<string[]>(AGENTS.map(() => "idle"));
   const dashRef = useRef<Dash>({ x: 160, y: 150, tx: null, ty: null, face: "down", moving: false, phase: 0, carry: false, onArrive: null });
@@ -253,6 +262,10 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     setNewsSources([]);
     setNewsPicker(NEWS_PICKER_IDLE);
     setNewsWriter(NEWS_WRITER_IDLE);
+    postieRef.current.visible = false;
+    postieRef.current.carry = false;
+    doorOpenRef.current = false;
+    if (doorElRef.current) doorElRef.current.classList.remove("open");
   }, []);
 
   const upsertNewsSource = useCallback((key: string, text: string, status: NewsSourceRow["status"]) => {
@@ -366,13 +379,20 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     const dashB = badgesRef.current[4];
     if (dashB) { dashB.style.left = (160 / 320 * 100) + "%"; dashB.style.top = ((150 - 20) / 240 * 100) + "%"; }
 
+    function drawDoorRight() {
+      const open = doorOpenRef.current;
+      R(305, 114, 15, 40, "#5f4527");
+      R(307, 116, 11, 36, open ? "#1a120a" : "#6b4a2e");
+      if (open) { R(307, 116, 3, 36, "#39d353"); R(315, 116, 3, 36, "#39d353"); }
+    }
     function drawFloor() {
       R(0, 52, W, H - 52, "#7a5636");
       for (let y = 52; y < H; y += 10) R(0, y, W, 1, "#6b4a2e");
-      for (let x = 0; x < W; x += 40) R(x, 52, 1, H - 52, "#6e4d30");
+      for (let x = 0; x < W - 14; x += 40) R(x, 52, 1, H - 52, "#6e4d30");
       R(140, 52, 40, H - 52, "#946f49");
       for (let y = 52; y < H; y += 10) R(140, y, 40, 1, "#845f3d");
       R(139, 52, 1, H - 52, "#5f4527"); R(180, 52, 1, H - 52, "#5f4527");
+      drawDoorRight();
     }
     function drawWalls() {
       R(0, 0, W, 52, "#2e2116"); R(0, 50, W, 2, "#1c140c");
@@ -509,6 +529,12 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       drawScreen(dx - 7, dy - 7, 14, 8, NEWS_AGENTS[i].screen, st, now);
       drawWorker(i, now);
     }
+    function drawDoorLeft() {
+      const open = doorOpenRef.current;
+      R(0, 114, 15, 40, "#5f4527");
+      R(2, 116, 11, 36, open ? "#1a120a" : "#6b4a2e");
+      if (open) { R(2, 116, 3, 36, "#39d353"); R(10, 116, 3, 36, "#39d353"); }
+    }
     function drawBg() {
       R(0, 0, W, H, "#2e2116");
       R(0, 52, W, H - 52, "#7a5636");
@@ -516,6 +542,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       R(0, 0, W, 52, "#1e3a5f");
       R(8, 8, 304, 36, "#152a45");
       X.fillStyle = "#39d353"; X.font = "8px monospace"; X.fillText("RSS · FB · YT · NewsData", 14, 30);
+      drawDoorLeft();
     }
     let raf = 0;
     const loop = (now: number) => {
@@ -527,7 +554,47 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  // ---- POSTIE overlay: walks news room → door → mailbox ----
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const p = postieRef.current;
+      const el = postieElRef.current;
+      if (!el) return;
+      if (!p.visible) { el.style.display = "none"; return; }
+      el.style.display = "block";
+      if (p.tx !== null && p.ty !== null) {
+        const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
+        if (d < 0.9) {
+          p.x = p.tx; p.y = p.ty; p.tx = null; p.ty = null;
+          const cb = p.onArrive; p.onArrive = null; if (cb) cb();
+        } else {
+          p.x += (dx / d) * 1.3; p.y += (dy / d) * 1.3;
+        }
+      }
+      el.style.left = `${p.x}%`;
+      el.style.top = `${p.y}%`;
+      el.className = `news-courier${p.carry ? " carry" : ""}`;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   // ---- courier walk helpers (touch only stable refs) ----
+  const walkPostie = useCallback(async (pts: number[][]) => {
+    for (const [px, py] of pts) {
+      await new Promise<void>((res) => {
+        const p = postieRef.current;
+        p.tx = px; p.ty = py; p.onArrive = res;
+      });
+    }
+  }, []);
+
+  const setDoorOpen = useCallback((open: boolean) => {
+    doorOpenRef.current = open;
+    if (doorElRef.current) doorElRef.current.classList.toggle("open", open);
+  }, []);
   const walkPath = useCallback(async (pts: number[][]) => {
     for (const [px, py] of pts) {
       await new Promise<void>((res) => { const d = dashRef.current; d.tx = px; d.ty = py; d.onArrive = res; });
@@ -559,6 +626,30 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     setAgent(4, "done");
   }, [log, setAgent, setCap, walkPath]);
 
+  const deliverNewsCourier = useCallback(async () => {
+    const p = postieRef.current;
+    p.visible = true;
+    p.carry = false;
+    p.x = 74;
+    p.y = 50;
+    setDoorOpen(true);
+    if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — รับสรุปจาก WRITER…";
+    log("  POSTIE รับสรุปข่าวจาก WRITER", "a");
+    await walkPostie([[74, 50], [66, 56], [53, 56]]);
+    await sleep(200);
+    p.carry = true;
+    if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — เดินผ่านประตูไปตู้จดหมาย…";
+    await walkPostie([[50, 56], [38, 68], [26, 84]]);
+    p.carry = false;
+    mailFlashRef.current = 60;
+    log("  POSTIE ใส่ข่าวในตู้จดหมาย ✓", "g");
+    if (capRef.current) capRef.current.innerHTML = "<b>ตู้จดหมาย</b> — ได้รับสรุปข่าวแล้ว · รอ DASH ส่ง LINE";
+    await sleep(350);
+    await walkPostie([[50, 56], [66, 50], [74, 48]]);
+    p.visible = false;
+    setDoorOpen(false);
+  }, [log, setDoorOpen, walkPostie]);
+
   // ---- play one trace's events in sequence ----
   const resetRoom = useCallback(() => {
     AGENTS.forEach((_, i) => setAgent(i, "idle"));
@@ -582,6 +673,11 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
     const llmFromLabel = parseLlm(e.label);
     updateNewsRoom(e);
+
+    if (/📰 สรุปเสร็จ/.test(e.label || "")) {
+      await deliverNewsCourier();
+    }
+
     if (llmFromLabel) {
       if (llmFromLabel.startsWith("NONE")) {
         setLlmHud("NONE · กฎ", false);
@@ -643,7 +739,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       await sleep(step === "fetch" ? 160 : 360);
       setAgent(idx, "done");
     }
-  }, [courierReply, log, resetNewsRoom, resetRoom, setAgent, setCap, setHud, setLlmHud, updateNewsRoom]);
+  }, [courierReply, deliverNewsCourier, log, resetNewsRoom, resetRoom, setAgent, setCap, setHud, setLlmHud, updateNewsRoom]);
 
   // ---- player: drains the queue in order with animation timing ----
   useEffect(() => {
@@ -782,7 +878,9 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
               </div>
               <div className="wing-cap" ref={capRef}>รอคำขอเข้ามา… (LINE / Web)</div>
             </div>
-            <div className="building-wall" aria-hidden="true" />
+            <div className="building-wall" aria-hidden="true">
+              <div className="door" ref={doorElRef} title="ประตูเชื่อม NEWS ROOM → THE OFFICE" />
+            </div>
             <div className="building-wing news-wing">
               <div className="room-frame">
                 <canvas id="news-room" ref={newsCanvasRef} width={320} height={240} />
@@ -798,37 +896,41 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                 ))}
               </div>
               <div className="wing-cap" ref={newsCapRef}>รอคำขอ “ข่าววันนี้”…</div>
-              <div className="news-grid">
-                <div className={`news-desk scout ${newsScoutStatus}`}>
-                  <div className="hd">
-                    <span className="nm">SCOUT · ดึงแหล่ง</span>
-                    <span className="st">{newsScoutStatus === "work" ? "WORKING" : newsScoutStatus === "done" ? "DONE" : newsScoutStatus === "error" ? "ERROR" : "IDLE"}</span>
-                  </div>
-                  <ul>
-                    {newsSources.length ? newsSources.map((s) => (
-                      <li key={s.key} className={s.status}>{s.text}</li>
-                    )) : (
-                      <li className="k">RSS · Facebook · YouTube · NewsData</li>
-                    )}
-                  </ul>
-                </div>
-                <div className={`news-desk picker ${newsPicker.status}`}>
-                  <div className="hd">
-                    <span className="nm">PICKER · AI เลือกเด่น</span>
-                    <span className="st">{newsPicker.status === "work" ? "WORKING" : newsPicker.status === "done" ? "DONE" : newsPicker.status === "error" ? "ERROR" : "IDLE"}</span>
-                  </div>
-                  <div className="ai">{newsPicker.ai}</div>
-                  <div className="cap">{newsPicker.detail}</div>
-                </div>
-                <div className={`news-desk writer ${newsWriter.status}`}>
-                  <div className="hd">
-                    <span className="nm">WRITER · AI สรุปประเด็น</span>
-                    <span className="st">{newsWriter.status === "work" ? "WORKING" : newsWriter.status === "done" ? "DONE" : newsWriter.status === "error" ? "ERROR" : "IDLE"}</span>
-                  </div>
-                  <div className="ai">{newsWriter.ai}</div>
-                  <div className="cap">{newsWriter.detail}</div>
-                </div>
+            </div>
+            <div className="news-courier" ref={postieElRef}>
+              <span className="nm">POSTIE</span>
+              <span className="body" />
+            </div>
+          </div>
+          <div className="news-grid">
+            <div className={`news-desk scout ${newsScoutStatus}`}>
+              <div className="hd">
+                <span className="nm">SCOUT · ดึงแหล่ง</span>
+                <span className="st">{newsScoutStatus === "work" ? "WORKING" : newsScoutStatus === "done" ? "DONE" : newsScoutStatus === "error" ? "ERROR" : "IDLE"}</span>
               </div>
+              <ul>
+                {newsSources.length ? newsSources.map((s) => (
+                  <li key={s.key} className={s.status}>{s.text}</li>
+                )) : (
+                  <li className="k">RSS · Facebook · YouTube · NewsData</li>
+                )}
+              </ul>
+            </div>
+            <div className={`news-desk picker ${newsPicker.status}`}>
+              <div className="hd">
+                <span className="nm">PICKER · AI เลือกเด่น</span>
+                <span className="st">{newsPicker.status === "work" ? "WORKING" : newsPicker.status === "done" ? "DONE" : newsPicker.status === "error" ? "ERROR" : "IDLE"}</span>
+              </div>
+              <div className="ai">{newsPicker.ai}</div>
+              <div className="cap">{newsPicker.detail}</div>
+            </div>
+            <div className={`news-desk writer ${newsWriter.status}`}>
+              <div className="hd">
+                <span className="nm">WRITER · AI สรุปประเด็น</span>
+                <span className="st">{newsWriter.status === "work" ? "WORKING" : newsWriter.status === "done" ? "DONE" : newsWriter.status === "error" ? "ERROR" : "IDLE"}</span>
+              </div>
+              <div className="ai">{newsWriter.ai}</div>
+              <div className="cap">{newsWriter.detail}</div>
             </div>
           </div>
         </div>
@@ -844,6 +946,10 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
                   <span><span className="rl">{a.role}</span> <span className="rc">— {a.cap}</span></span>
                 </div>
               ))}
+              <div className="row">
+                <span className="sw" style={{ background: "#0ea5e9" }} />
+                <span><span className="rl">POSTIE</span> <span className="rc">— ขนข่าวผ่านประตู → ตู้จดหมาย</span></span>
+              </div>
               {llmChain ? (
                 <div className="row" style={{ marginTop: 10, alignItems: "flex-start" }}>
                   <span className="sw" style={{ background: "#f0b429" }} />
