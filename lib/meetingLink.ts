@@ -1,6 +1,6 @@
 // Link OneDrive files / URLs to a calendar meeting for later morning prep.
 import { buildMorningAgenda, resolveAgendaEventId } from "@/lib/brief";
-import { canAccessDriveItem, getEvent, pushMaterialToOutlookEvent, searchFiles } from "@/lib/graph";
+import { attachBytesToOutlookEvent, canAccessDriveItem, getEvent, pushMaterialToOutlookEvent, searchFiles } from "@/lib/graph";
 import {
   addMeetingMaterial,
   formatMaterialsList,
@@ -9,6 +9,112 @@ import {
   removeMeetingMaterial,
   type MeetingMaterial,
 } from "@/lib/meetingMaterials";
+import { deleteSetting, getSetting, setSetting } from "@/lib/store";
+
+const LAST_BOOKED_KEY = "_last_booked_event";
+const PENDING_PHOTO_KEY = "_pending_meeting_photo";
+const BOOKED_TTL_MS = 45 * 60 * 1000;
+
+export async function saveLastBookedEvent(upn: string, eventId: string, subject: string): Promise<void> {
+  await setSetting(
+    upn,
+    LAST_BOOKED_KEY,
+    JSON.stringify({ eventId, subject: subject || "นัดหมาย", ts: Date.now() })
+  );
+}
+
+export async function markPendingMeetingPhoto(upn: string, meetingIndex = 1): Promise<void> {
+  await setSetting(upn, PENDING_PHOTO_KEY, JSON.stringify({ meeting_index: meetingIndex, ts: Date.now() }));
+}
+
+async function resolvePhotoTargetEvent(
+  upn: string,
+  meetingIndex = 1
+): Promise<{ eventId: string; subject: string } | null> {
+  try {
+    const raw = await getSetting(upn, LAST_BOOKED_KEY);
+    if (raw) {
+      const j = JSON.parse(raw) as { eventId?: string; subject?: string; ts?: number };
+      if (j.eventId && Date.now() - (j.ts || 0) < BOOKED_TTL_MS) {
+        return { eventId: j.eventId, subject: j.subject || "นัดหมาย" };
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  const eventId = await resolveAgendaEventId(upn, meetingIndex);
+  if (!eventId) return null;
+  try {
+    const ev = await getEvent(upn, eventId);
+    return { eventId, subject: (ev.subject || "").trim() || "นัดหมาย" };
+  } catch {
+    return { eventId, subject: "นัดหมาย" };
+  }
+}
+
+/** Attach a photo the user sent on LINE to their latest / numbered meeting. */
+export async function attachLineImageToMeeting(
+  upn: string,
+  imageBuffer: Buffer,
+  contentType: string
+): Promise<LinkCmdResult> {
+  let meetingIndex = 1;
+  try {
+    const raw = await getSetting(upn, PENDING_PHOTO_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as { meeting_index?: number; ts?: number };
+      if (Date.now() - (p.ts || 0) < BOOKED_TTL_MS) {
+        meetingIndex = p.meeting_index || 1;
+      }
+      await deleteSetting(upn, PENDING_PHOTO_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const target = await resolvePhotoTargetEvent(upn, meetingIndex);
+  if (!target) {
+    return {
+      intent: "link_meeting_file",
+      reply:
+        "ยังหานัดที่จะแนบรูปไม่เจอครับ — ลองพิมพ์ “สรุปตารางเช้า” แล้วใช้ “ผูกไฟล์นัด 1”\n" +
+        "หรือพิมพ์ “แนบรูปเพิ่ม” หลังส่งนัดไม่นาน แล้วส่งรูปอีกครั้ง",
+    };
+  }
+
+  if (imageBuffer.length > 2.5 * 1024 * 1024) {
+    return {
+      intent: "link_meeting_file",
+      reply: "รูปใหญ่เกินลิมิตแนบ Outlook (~2.5MB) ครับ — ลองส่งรูปที่เล็กลงหรืออัปโหลด OneDrive แล้วส่งลิงก์",
+    };
+  }
+
+  const ext = contentType.includes("png") ? "png" : contentType.includes("gif") ? "gif" : "jpg";
+  const name = `line-photo-${Date.now()}.${ext}`;
+  const ok = await attachBytesToOutlookEvent(upn, target.eventId, name, imageBuffer);
+  if (!ok) {
+    return {
+      intent: "link_meeting_file",
+      reply: `แนบรูปเข้า Outlook ไม่สำเร็จครับ — ลอง “ผูกไฟล์นัด ${meetingIndex}” หลังอัปโหลดรูปไป OneDrive`,
+    };
+  }
+
+  await addMeetingMaterial(upn, target.eventId, {
+    type: "file",
+    name,
+    url: `line://${name}`,
+    note: "รูปจาก LINE",
+  });
+
+  return {
+    intent: "link_meeting_file",
+    reply:
+      `✅ แนบรูปเข้า Outlook แล้วครับ\n` +
+      `📌 ${target.subject}\n` +
+      `📎 ${name}\n\n` +
+      `ผู้เข้าร่วมจะเห็นใน Attachments ของนัด`,
+  };
+}
 
 export type LinkCmdContext = {
   files?: { id?: string; name?: string; url?: string; is_folder?: boolean }[];
@@ -113,6 +219,11 @@ export function quickLinkMeetingIntent(
 ): { intent: string; params: Record<string, unknown> } | null {
   const t = text.trim().replace(/\s+/g, " ");
   if (!t) return null;
+
+  // ต้องการแนบรูปเพิ่ม / แนบรูปอีก — wait for next image (no LLM)
+  if (/^(?:ต้องการ)?แนบ(?:รูป|ภาพ|photo|image)(?:เพิ่ม|อีก)?$/i.test(t)) {
+    return { intent: "pending_meeting_photo", params: { meeting_index: 1 } };
+  }
 
   // เลิกแนบนัด 1 ไฟล์ 2
   const unlink = t.match(

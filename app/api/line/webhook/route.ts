@@ -1,7 +1,7 @@
 import { NextResponse, after } from "next/server";
 import crypto from "crypto";
 import { handleCommand, handleSelection, type CommandContext, type CommandResult } from "@/lib/commands";
-import { getUpnByLineId, getLineId, replyLine, replyLineMessages, showLineLoading, pushLineToId } from "@/lib/line";
+import { getUpnByLineId, getLineId, replyLine, replyLineMessages, showLineLoading, pushLineToId, downloadLineMessageContent } from "@/lib/line";
 import { llmUserErrorMessage } from "@/lib/llm";
 import {
   handleNewsOnboardingPostback,
@@ -16,6 +16,7 @@ import { createEvent, pushMaterialToOutlookEvent, resolveUser } from "@/lib/grap
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold, findLinkedLineAttendees } from "@/lib/meetingInvite";
 import { addMeetingMaterial } from "@/lib/meetingMaterials";
+import { attachLineImageToMeeting, saveLastBookedEvent } from "@/lib/meetingLink";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -47,7 +48,7 @@ type LineEvent = {
   type: string;
   replyToken?: string;
   source?: { type: string; userId?: string };
-  message?: { type: string; text?: string };
+  message?: { type: string; text?: string; id?: string };
   postback?: { data?: string };
 };
 
@@ -768,6 +769,9 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
         await replyLine(replyToken, calendarConsentNeededMessage());
         return;
       }
+      if (result.mode === "booked" && result.eventId) {
+        await saveLastBookedEvent(upn, result.eventId, draft.subject);
+      }
 
       const headline =
         result.mode === "proposed"
@@ -806,10 +810,9 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
                 setTimeout(() => rej(new Error("attach timeout")), 25_000)
               ),
             ]);
-            const note = pushed.result?.note || "";
-            attachNote = note
-              ? `📎 ${note}`
-              : `📎 แนบไฟล์แล้ว: ${file.name || "เอกสาร"}`;
+            attachNote = pushed.result?.fileAttached
+              ? `📎 แนบไฟล์แล้ว: ${file.name || "เอกสาร"}`
+              : `📎 ${(pushed.result?.note || "ใส่ลิงก์ในนัดแล้ว").replace(/https?:\/\/\S+/g, "").trim()}`;
             await addMeetingMaterial(upn, eventId, {
               type: "file",
               id: file.id,
@@ -898,6 +901,35 @@ async function handleDraftInput(upn: string, text: string, replyToken: string): 
   const extra = notFound.length ? `(หาไม่เจอ: ${notFound.join(", ")})\n\n` : "";
   await replyLineMessages(replyToken, [await confirmCardMessage(draft, `เพิ่มคนแล้ว ✅ ${extra}`, upn)]);
   return true;
+}
+
+async function handleImageMessage(ev: LineEvent): Promise<void> {
+  const userId = ev.source?.userId;
+  const messageId = ev.message?.id;
+  if (!ev.replyToken || !userId || !messageId) return;
+
+  const upn = await getUpnByLineId(userId);
+  if (!upn) {
+    await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
+    return;
+  }
+  setTraceUser(upn);
+  trace("receive", "รูปจาก LINE");
+  try {
+    await showLineLoading(userId, 30);
+    const { buffer, contentType } = await downloadLineMessageContent(messageId);
+    const { result: res } = await withDelegatedGraph(upn, () =>
+      attachLineImageToMeeting(upn, buffer, contentType)
+    );
+    await replyLine(ev.replyToken, res.reply || "แนบรูปแล้วครับ");
+    trace("reply", "แนบรูปเข้านัด");
+  } catch (e) {
+    console.error("[line] handleImageMessage", String(e).slice(0, 200));
+    await replyLine(
+      ev.replyToken,
+      `⚠️ แนบรูปไม่สำเร็จ: ${String(e).slice(0, 120)}\nลองพิมพ์ “แนบรูปเพิ่ม” แล้วส่งรูปอีกครั้ง`
+    );
+  }
 }
 
 async function handleTextMessage(ev: LineEvent): Promise<void> {
@@ -1193,6 +1225,8 @@ export async function POST(req: Request) {
       try {
         if (ev.type === "message" && ev.message?.type === "text") {
           await runWithTrace({ channel: "line" }, () => handleTextMessage(ev));
+        } else if (ev.type === "message" && ev.message?.type === "image") {
+          await runWithTrace({ channel: "line" }, () => handleImageMessage(ev));
         } else if (ev.type === "postback") {
           await runWithTrace({ channel: "line" }, () => handlePostback(ev));
         } else if (ev.type === "follow" && ev.replyToken) {

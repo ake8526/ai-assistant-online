@@ -391,6 +391,26 @@ export async function cleanTeamsEventBodyQuick(
   }
 }
 
+/** Push raw bytes as an Outlook event attachment (images from LINE, etc.). */
+export async function attachBytesToOutlookEvent(
+  userUpn: string,
+  eventId: string,
+  fileName: string,
+  bytes: Buffer
+): Promise<boolean> {
+  if (!bytes.length || bytes.length > OUTLOOK_FILE_ATTACH_MAX) return false;
+  const attachR = await graphFetch(`${outlookEventPath(userUpn, eventId)}/attachments`, {
+    method: "POST",
+    timeoutMs: 18_000,
+    body: {
+      "@odata.type": "#microsoft.graph.fileAttachment",
+      name: fileName.slice(0, 180),
+      contentBytes: bytes.toString("base64"),
+    },
+  });
+  return attachR.ok;
+}
+
 /**
  * Push a file/link into the real Outlook event: append HTML link in body,
  * and for small OneDrive files also add a fileAttachment attendees can open.

@@ -7,6 +7,7 @@ import {
   handleLinkMeetingUrl,
   handleListMeetingMaterials,
   handleUnlinkMeetingMaterial,
+  markPendingMeetingPhoto,
   quickLinkMeetingIntent,
 } from "@/lib/meetingLink";
 import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
@@ -1983,6 +1984,11 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   // Instant calendar list shortcuts BEFORE follow-up heuristics / LLM
   // (prevents “ดูประชุมเช้านี้” being eaten by last_meeting time-band follow-up)
   {
+    const linkQ = quickLinkMeetingIntent(text);
+    if (linkQ?.intent === "pending_meeting_photo") {
+      trace("parse", "★ AI:NONE · intent=pending_meeting_photo (กฎตายตัว ไม่เรียก API)");
+      return handleParsed(userUpn, text, context, lite, linkQ.intent, linkQ.params);
+    }
     const quick = quickFeedIntent(text);
     if (quick?.intent === "list_meetings" || quick?.intent === "get_brief" || quick?.intent === "ack") {
       trace("parse", `★ AI:NONE · intent=${quick.intent} (กฎตายตัว ไม่เรียก API)`);
@@ -2140,6 +2146,21 @@ async function handleParsed(
     const mi = Number(params.meeting_index || 0) || undefined;
     return mi ? { ...res, last_link_meeting_index: mi } : res;
   }
+
+  if (intent === "pending_meeting_photo") {
+    const denied = needCalendarConsent();
+    if (denied) return denied;
+    const mi = Number(params.meeting_index || 1) || 1;
+    await markPendingMeetingPhoto(userUpn, mi);
+    return {
+      intent,
+      reply:
+        "ส่งรูปมาในแชทได้เลยครับ 📷\n" +
+        `จะแนบเข้านัดล่าสุดที่เพิ่งสร้าง (หรือนัด ${mi} ในตารางวันนี้)\n` +
+        "หรือพิมพ์ “ผูกไฟล์นัด 1” ถ้ามีไฟล์ใน OneDrive แล้ว",
+    };
+  }
+
   if (intent === "link_meeting_url") {
     const denied = needCalendarConsent();
     if (denied) return denied;

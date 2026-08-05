@@ -45,6 +45,20 @@ export async function pushLineMessages(lineUserId: string, messages: object[]): 
   await linePost(PUSH_URL, { to: lineUserId, messages: messages.slice(0, 5) });
 }
 
+/** Download image/file the user sent on LINE (needs message.id). */
+export async function downloadLineMessageContent(
+  messageId: string
+): Promise<{ buffer: Buffer; contentType: string }> {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not set");
+  const r = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(`LINE content ${r.status}: ${(await r.text()).slice(0, 120)}`);
+  const contentType = r.headers.get("content-type") || "image/jpeg";
+  return { buffer: Buffer.from(await r.arrayBuffer()), contentType };
+}
+
 /** Reply via replyToken (free — no push quota). Tokens are single-use, short-lived. */
 export async function replyLine(replyToken: string, text: string): Promise<void> {
   const messages = chunk(text).slice(0, 5).map((c) => ({ type: "text", text: c }));

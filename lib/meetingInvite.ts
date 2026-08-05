@@ -642,15 +642,18 @@ export async function bookMeetingWithLineHold(opts: {
     eventId: ev?.id,
     joinUrl,
     note: opts.attendees.length
-      ? "\n\n📲 ผู้เข้าร่วมยังไม่ได้ผูก LINE — ส่งคำเชิญทาง Outlook แล้วครับ" +
-        (joinUrl ? `\n🔗 Teams: ${joinUrl}` : "\n⚠️ นัดมีใน Outlook แล้ว แต่ยังไม่เห็นลิงก์ Teams — เปิดนัดใน Outlook เช็กอีกครั้งได้ครับ")
-      : joinUrl
-        ? `\n\n🔗 Teams: ${joinUrl}`
-        : "",
+      ? "\n\n📲 ผู้เข้าร่วมยังไม่ได้ผูก LINE — ส่งคำเชิญทาง Outlook แล้วครับ" + teamsNoteForChat(joinUrl)
+      : teamsNoteForChat(joinUrl),
   };
 }
 
-function linkedAwaitList(rec: MeetingInviteRecord): string[] {
+function teamsNoteForChat(joinUrl?: string): string {
+  if (!joinUrl) return "\n\n⚠️ นัดมีใน Outlook แล้ว — เปิด Outlook เพื่อดูลิงก์ Teams";
+  const short = joinUrl.match(/https:\/\/teams\.microsoft\.com\/meet\/[^\s"'<>]+/i)?.[0];
+  if (short) return `\n\n🔗 Teams: ${short}`;
+  return "\n\n🔗 ดูลิงก์ Teams ใน Outlook / อีเมลคำเชิญ";
+}
+
   if (rec.awaitLine?.length) return rec.awaitLine.map((a) => a.toLowerCase());
   return (rec.attendees || []).map((a) => a.toLowerCase());
 }
