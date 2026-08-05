@@ -36,10 +36,15 @@ const AGENTS = [
 
 const NEWS_AGENTS = [
   { id: "scout", name: "SCOUT", role: "ดึงแหล่ง", shirt: "#14b8a6", hair: "#0f766e", screen: "search" },
-  { id: "picker", name: "PICKER", role: "เลือกเด่น", shirt: "#65a30d", hair: "#3f6212", screen: "filter" },
+  { id: "picker", name: "PICKER", role: "เลือกเด่น", shirt: "#b45309", hair: "#78350f", screen: "filter" },
   { id: "reader", name: "READER", role: "อ่านบทความ", shirt: "#ec4899", hair: "#9d174d", screen: "search" },
-  { id: "writer", name: "WRITER", role: "สรุป", shirt: "#c026d3", hair: "#86198f", screen: "render" },
+  { id: "writer", name: "WRITER", role: "สรุป", shirt: "#e879f9", hair: "#a21caf", screen: "render" },
 ] as const;
+
+/** WRITER desk (canvas px) — POSTIE picks here */
+const NEWS_WRITER_DESK = [250, 168] as const;
+const NEWS_WRITER_PICKUP = [218, 190] as const; // stand left of WRITER seat
+const NEWS_DOOR = [18, 140] as const;
 
 const STEP_TO_INDEX: Record<StageId, number> = { receive: 0, parse: 1, fetch: 2, compose: 3, reply: 4 };
 
@@ -177,6 +182,9 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
   });
   const mailFlashRef = useRef(0);
   const mailHasParcelRef = useRef(false);
+  const writerHasParcelRef = useRef(false);
+  const newsJobRef = useRef(false);
+  const newsDeliveredRef = useRef(false);
   const traceStartedAtRef = useRef(0);
 
   // event pipeline
@@ -282,6 +290,9 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     setNewsPicker(NEWS_PICKER_IDLE);
     setNewsReader(NEWS_READER_IDLE);
     setNewsWriter(NEWS_WRITER_IDLE);
+    writerHasParcelRef.current = false;
+    newsJobRef.current = false;
+    newsDeliveredRef.current = false;
     const p = postieRef.current;
     p.visible = false;
     p.carry = false;
@@ -290,6 +301,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     p.onArrive = null;
     doorOpenRef.current = false;
     if (doorElRef.current) doorElRef.current.classList.remove("open");
+    if (postieElRef.current) postieElRef.current.style.display = "none";
   }, []);
 
   const upsertNewsSource = useCallback((key: string, text: string, status: NewsSourceRow["status"]) => {
@@ -567,6 +579,42 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       drawScreen(dx - 7, dy - 7, 14, 8, NEWS_AGENTS[i].screen, st, now);
       drawWorker(i, now);
     }
+    function drawParcelOnWriter() {
+      if (!writerHasParcelRef.current) return;
+      const [dx, dy] = NEWS_WRITER_DESK;
+      R(dx + 10, dy - 6, 8, 6, "#e8e8e0");
+      R(dx + 10, dy - 6, 8, 2, "#39d353");
+      R(dx + 11, dy - 3, 6, 1, "#888");
+    }
+    function drawPostie(now: number) {
+      const p = postieRef.current;
+      if (!p.visible) return;
+      if (p.tx !== null && p.ty !== null) {
+        const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
+        const sp = 2.8;
+        if (d <= sp || d < 1.2) {
+          p.x = p.tx; p.y = p.ty; p.tx = null; p.ty = null;
+          const cb = p.onArrive; p.onArrive = null; if (cb) cb();
+        } else {
+          p.x += (dx / d) * sp; p.y += (dy / d) * sp;
+        }
+      }
+      const x = Math.round(p.x), y = Math.round(p.y);
+      const bob = Math.floor(now / 120) % 2;
+      X.fillStyle = "rgba(0,0,0,0.28)"; X.fillRect(x - 6, y + 1, 12, 2);
+      R(x - 4, y - 4 + bob, 3, 4, "#2b2b3a"); R(x + 1, y - 4 + (1 - bob), 3, 4, "#2b2b3a");
+      R(x - 5, y - 12, 10, 8, "#38bdf8"); R(x - 5, y - 12, 10, 2, "#0284c7");
+      if (p.carry) {
+        R(x - 4, y - 22, 8, 7, "#e8e8e0"); R(x - 4, y - 22, 8, 2, "#39d353");
+        R(x - 3, y - 18, 6, 1, "#888");
+      }
+      R(x - 5, y - 20, 10, 8, "#f0c090");
+      R(x - 5, y - 21, 10, 4, "#0c4a6e");
+      // name tag
+      X.fillStyle = "rgba(10,7,4,0.92)"; X.fillRect(x - 14, y - 32, 28, 9);
+      X.strokeStyle = "#38bdf8"; X.strokeRect(x - 14.5, y - 32.5, 29, 10);
+      X.fillStyle = "#38bdf8"; X.font = "6px monospace"; X.fillText("POSTIE", x - 11, y - 25);
+    }
     function drawDoorLeft() {
       const open = doorOpenRef.current;
       R(0, 114, 15, 40, "#5f4527");
@@ -587,36 +635,17 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       raf = requestAnimationFrame(loop);
       drawBg();
       for (let i = 0; i < 4; i++) drawDesk(i, now);
+      drawParcelOnWriter();
+      drawPostie(now);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // ---- POSTIE overlay: inside NEWS room-frame (coords = canvas px 320×240) ----
+  // HTML courier badge hidden — POSTIE is drawn on the news canvas now
   useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      raf = requestAnimationFrame(tick);
-      const p = postieRef.current;
-      const el = postieElRef.current;
-      if (!el) return;
-      if (!p.visible) { el.style.display = "none"; return; }
-      el.style.display = "block";
-      if (p.tx !== null && p.ty !== null) {
-        const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
-        if (d < 1.2) {
-          p.x = p.tx; p.y = p.ty; p.tx = null; p.ty = null;
-          const cb = p.onArrive; p.onArrive = null; if (cb) cb();
-        } else {
-          p.x += (dx / d) * 2.2; p.y += (dy / d) * 2.2;
-        }
-      }
-      el.style.left = `${(p.x / 320) * 100}%`;
-      el.style.top = `${(p.y / 240) * 100}%`;
-      el.className = `news-courier${p.carry ? " carry" : ""}`;
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const el = postieElRef.current;
+    if (el) el.style.display = "none";
   }, []);
 
   // ---- courier walk helpers (touch only stable refs) ----
@@ -625,12 +654,11 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       await new Promise<void>((res) => {
         const p = postieRef.current;
         p.tx = px; p.ty = py; p.onArrive = res;
-        // Safety: never leave POSTIE stuck waiting forever
         setTimeout(() => {
           if (p.onArrive === res) {
             p.x = px; p.y = py; p.tx = null; p.ty = null; p.onArrive = null; res();
           }
-        }, 8000);
+        }, 5000);
       });
     }
   }, []);
@@ -647,6 +675,7 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     p.tx = null;
     p.ty = null;
     p.onArrive = null;
+    if (postieElRef.current) postieElRef.current.style.display = "none";
     setDoorOpen(false);
   }, [setDoorOpen]);
   const walkPath = useCallback(async (pts: number[][], who: "dash" | "helper" = "dash") => {
@@ -674,14 +703,16 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
     const run = isBackendFast(atIso);
     setDashPace(dashRef.current, run);
     const verb = run ? "วิ่ง" : "เดิน";
+    const isNewsJob = newsJobRef.current || mailHasParcelRef.current || /news|ข่าว|get_news/i.test(intent);
 
-    // News already in mailbox — DASH just delivers from the box to LINE.
-    if (mailHasParcelRef.current) {
+    // News → always from mailbox. Never walk to BRAIN (green) / office desks.
+    if (isNewsJob) {
       setCap(`<b>DASH</b> (REPLY) — ${verb}ส่งข่าวจากตู้จดหมายไป LINE`);
-      log(`  DASH ${verb}ส่งข่าวจากตู้จดหมาย`, "a");
+      log(`  DASH ${verb}ส่งข่าวจากตู้จดหมาย (ไม่หยิบจากโต๊ะออฟฟิศ)`, "a");
       await walkPath([[160, 150], [160, 198]]);
       mailFlashRef.current = 60;
       mailHasParcelRef.current = false;
+      newsJobRef.current = false;
       dashRef.current.carry = false;
       log(`  ส่งคำตอบกลับแล้ว ✓ (${intent})`, "g");
       if (backlog) {
@@ -740,36 +771,34 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
   const deliverNewsCourier = useCallback(async () => {
     const p = postieRef.current;
-    // Canvas coords inside NEWS room-frame (320×240):
-    // WRITER = desk index 3 at [250,168] (ม่วง) — NOT PICKER [250,92] (เขียว)
+    newsJobRef.current = true;
+    writerHasParcelRef.current = true;
     p.visible = true;
     p.carry = false;
     p.x = 160;
-    p.y = 140;
+    p.y = 150;
     p.tx = null;
     p.ty = null;
     p.onArrive = null;
     setDoorOpen(true);
     try {
-      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — เดินไปหยิบสรุปที่โต๊ะ WRITER…";
-      log("  POSTIE เดินไปหยิบข่าวที่โต๊ะ WRITER (ม่วง)", "a");
-      // Aisle → left side of WRITER desk (bottom-right)
-      await walkPostie([[200, 160], [218, 178]]);
-      await sleep(300);
+      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — เดินไปหยิบที่โต๊ะ WRITER (ชมพูม่วง)…";
+      log("  POSTIE เดินไปหยิบข่าวที่โต๊ะ WRITER", "a");
+      await walkPostie([[200, 170], [NEWS_WRITER_PICKUP[0], NEWS_WRITER_PICKUP[1]]]);
+      await sleep(350);
+      writerHasParcelRef.current = false;
       p.carry = true;
       log("  POSTIE หยิบสรุปจากโต๊ะ WRITER ✓", "g");
-      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — ถือข่าวเดินไปประตู…";
-      await walkPostie([[180, 160], [40, 140], [16, 140]]);
+      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — ถือข่าวไปประตู…";
+      await walkPostie([[160, 160], [NEWS_DOOR[0], NEWS_DOOR[1]]]);
 
       setAgent(4, "work");
       setDashPace(dashRef.current, false);
-      setCap("<b>DASH</b> — รับข่าวจาก POSTIE แล้วใส่ตู้จดหมาย");
-      log("  DASH เดินไปรับข่าวที่ประตู", "a");
+      setCap("<b>DASH</b> — รับข่าวจาก POSTIE → ตู้จดหมาย");
+      log("  DASH รับข่าวที่ประตู (ไม่ใช่โต๊ะเขียว)", "a");
       await walkPath([[160, 150], [300, 140]]);
       p.carry = false;
       dashRef.current.carry = true;
-      log("  DASH รับพัสดุข่าวจาก POSTIE", "a");
-      if (capRef.current) capRef.current.innerHTML = "<b>DASH</b> — ใส่ข่าวลงตู้จดหมาย…";
       await walkPath([[200, 160], [160, 198]]);
       dashRef.current.carry = false;
       mailFlashRef.current = 60;
@@ -777,11 +806,12 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
       log("  DASH ใส่ข่าวในตู้จดหมาย ✓", "g");
       if (capRef.current) capRef.current.innerHTML = "<b>ตู้จดหมาย</b> — ได้สรุปข่าวแล้ว · รอส่ง LINE";
 
-      await walkPostie([[40, 140], [160, 140]]);
+      await walkPostie([[80, 140], [160, 150]]);
       await walkPath([[160, 150]]);
       setAgent(4, "idle");
     } finally {
       hidePostie();
+      writerHasParcelRef.current = false;
     }
   }, [hidePostie, log, setAgent, setCap, setDashPace, setDoorOpen, walkPath, walkPostie]);
 
@@ -814,9 +844,13 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
 
     const llmFromLabel = parseLlm(e.label);
     const isNews = /📰/.test(e.label || "");
+    if (isNews) newsJobRef.current = true;
     updateNewsRoom(e);
 
-    if (/📰 สรุปเสร็จ/.test(e.label || "")) {
+    // Hand off once when summary is ready
+    if (!newsDeliveredRef.current && /📰 สรุปเสร็จ|📰 สรุปข่าวภาษาไทย|📰 ได้ข่าว/.test(e.label || "")) {
+      newsDeliveredRef.current = true;
+      writerHasParcelRef.current = true;
       await deliverNewsCourier();
     }
 
