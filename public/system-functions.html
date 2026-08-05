@@ -185,25 +185,18 @@
   #office .sec-h { margin-bottom: 10px; }
   #office .sec-h h2 { font-size: clamp(26px, 3.2vw, 36px); }
   #office .sec-h p { font-size: clamp(14px, 1.5vw, 17px); max-width: 56ch; }
-  #office .office-panel {
-    flex: 1; min-height: 0; display: flex; flex-direction: column;
+  #office .office-panel,
+  #office .legend { display: none; }
+  #office .live-frame {
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0; margin-top: 0;
   }
-  #office .room-stage {
-    flex: 1; min-height: 0; align-items: center; justify-content: center;
+  #office .live-frame iframe {
+    flex: 1; width: 100%;
+    height: calc(100dvh - 168px);
+    min-height: 520px; border: 0; background: #0a0a0a;
   }
-  #office .room-frame {
-    max-width: min(1280px, 98%);
-    width: 100%;
-  }
-  #office #office-room {
-    width: 100%;
-    max-height: calc(100dvh - 200px);
-    object-fit: contain;
-  }
-  #office .live-frame { display: none; }
   #office details.more { margin-top: 8px; flex-shrink: 0; }
-  #office .legend { flex-shrink: 0; margin-top: 8px; }
-  #office .legend span { font-size: 14px; }
 
   /* QR big */
   .qr-grid {
@@ -902,55 +895,39 @@
       </div>
     </div>
 
-    <!-- OFFICE: real pixel room (same as /monitor) + live iframe -->
+    <!-- OFFICE: real /monitor embed -->
     <section class="block" id="office">
       <div class="sec-h">
-        <h2>AI ทำงานยังไง — เดโมทดสอบ THE OFFICE</h2>
-        <p>เดโมวน 4 แบบ: ใช้ครบ 4 โต๊ะ / แค่ 3 / แค่ 2 / แค่ 1 แล้วส่ง — โต๊ะที่ไม่เกี่ยวจะ IDLE</p>
+        <h2>AI ทำงานยังไง — หน้าจริง /monitor</h2>
+        <p>ห้อง LIVE จริง (OFFICE + NEWS + STAGES) · ไม่ใช่เดโมแคนวาส</p>
       </div>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
         <a class="btn primary" style="padding:8px 14px;font-size:13px" href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">เปิด /monitor เต็มจอ</a>
-        <a class="btn ghost" style="padding:8px 14px;font-size:13px" href="/monitor-stages-right.html" target="_blank" rel="noopener">พรีวิว STAGES ขวา</a>
-        <span style="color:var(--mute);font-size:13px">ด้านล่าง = เดโมวนทดสอบออฟไลน์</span>
-      </div>
-      <div class="office-panel">
-        <div class="ph"><span>THE OFFICE</span><span class="live">● DEMO</span></div>
-        <div class="room-stage">
-          <div class="room-frame" id="office-frame">
-            <canvas id="office-room" width="320" height="240"></canvas>
-            <div class="bdg done" data-i="0"><span class="nm">GATE</span><span class="stt">DONE</span></div>
-            <div class="bdg done" data-i="1"><span class="nm">BRAIN</span><span class="stt">DONE</span></div>
-            <div class="bdg idle" data-i="2"><span class="nm">RUNNER</span><span class="stt">IDLE</span></div>
-            <div class="bdg idle" data-i="3"><span class="nm">SCRIBE</span><span class="stt">IDLE</span></div>
-            <div class="bdg idle" data-i="4" id="dash-bdg"><span class="nm">DASH</span><span class="stt">IDLE</span></div>
-          </div>
-        </div>
-        <div class="office-caption" id="office-cap"><b>BRAIN</b> (PARSE) — แยกเจตนา (intent) ด้วย LLM</div>
+        <a class="btn ghost" style="padding:8px 14px;font-size:13px" href="https://ktis-ai-assistant.vercel.app/monitor-stages-right.html" target="_blank" rel="noopener">STAGES ชิดขวา</a>
+        <span style="color:var(--mute);font-size:13px">ด้านล่าง = หน้าจริงจากระบบ</span>
       </div>
 
-      <div class="legend">
-        <span><i style="background:#3a86ff"></i>GATE รับข้อความ</span>
-        <span><i style="background:#2f9e44"></i>BRAIN แยกเจตนา</span>
-        <span><i style="background:#f0b429"></i>RUNNER ดึง M365</span>
-        <span><i style="background:#7048e8"></i>SCRIBE เขียนข้อความตอบ</span>
-        <span><i style="background:#ee1b24"></i>DASH ส่งกลับ LINE</span>
-      </div>
-
-      <div class="live-frame">
+      <div class="live-frame" data-free-scroll>
         <div class="bar">
-          <span>เปิดห้อง LIVE เต็มจอเพื่อดู CONSOLE / STAGES แบบเรียลไทม์</span>
-          <a class="btn primary" style="padding:8px 12px;font-size:12px" href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">เปิด /monitor</a>
+          <span>หน้าจริง /monitor · CONSOLE / STAGES / สองห้อง</span>
+          <a class="btn primary" style="padding:8px 12px;font-size:12px" href="https://ktis-ai-assistant.vercel.app/monitor?layout=right" target="_blank" rel="noopener">เปิดเต็มแท็บ</a>
         </div>
+        <iframe
+          title="KTIS AI Assistant · Monitor"
+          src="https://ktis-ai-assistant.vercel.app/monitor?embed=1&layout=right"
+          loading="lazy"
+          allow="fullscreen"
+        ></iframe>
       </div>
 
       <details class="more">
         <summary>รายละเอียดสำหรับทีมเทคนิค (พับไว้)</summary>
         <div class="inner">
           <ul>
-            <li>ห้องด้านบน = render เดียวกับโค้ดหน้า <code>/monitor</code> (ออฟไลน์ได้)</li>
-            <li>หน้าจริง: <a href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">/monitor</a></li>
-            <li>พรีวิว STAGES ชิดขวา: <a href="/monitor-stages-right.html" target="_blank" rel="noopener">/monitor-stages-right.html</a></li>
+            <li>กรอบด้านบน = หน้า <code>/monitor</code> จริง (โหมด embed)</li>
+            <li>เต็มจอ: <a href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">/monitor</a></li>
+            <li>STAGES ขวา: <a href="https://ktis-ai-assistant.vercel.app/monitor-stages-right.html" target="_blank" rel="noopener">/monitor-stages-right.html</a></li>
           </ul>
         </div>
       </details>

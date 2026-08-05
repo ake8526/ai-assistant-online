@@ -3,183 +3,39 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>KTIS X · Monitor preview — STAGES ชิดขวา</title>
+<title>KTIS X · Monitor จริง — STAGES ชิดขวา</title>
 <style>
-  @import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap");
-  :root {
-    --bg: #0a0a0a; --panel: #121212; --panel2: #171717; --ink: #f5f5f5;
-    --dim: #7c7c7c; --red: #ee1b24; --green: #39d353; --amber: #f0b429; --hair: #262626;
-  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg); color: var(--ink); font-family: VT323, monospace;
-    height: 100vh; overflow: hidden; padding: 8px; display: flex; flex-direction: column;
+  html, body { height: 100%; background: #0a0a0a; color: #f5f5f5; font-family: system-ui, sans-serif; }
+  .bar {
+    height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 14px;
+    background: #121212; border-bottom: 1px solid #262626; flex-shrink: 0;
   }
-  body::before {
-    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 40;
-    background: repeating-linear-gradient(0deg, rgba(0,0,0,.14) 0 1px, transparent 1px 3px);
-    mix-blend-mode: multiply;
+  .bar b { font-size: 13px; }
+  .bar span { color: #7c7c7c; font-size: 12px; }
+  .bar a {
+    margin-left: auto; color: #7dd3fc; text-decoration: none; font-size: 12px;
+    border: 1px solid #38bdf8; padding: 4px 10px; border-radius: 6px;
   }
-  .note {
-    flex-shrink: 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
-    padding: 8px 12px; margin-bottom: 8px; border: 2px solid var(--hair); background: var(--panel);
-    font-size: 16px; color: var(--dim); z-index: 2; position: relative;
-  }
-  .note b { color: var(--amber); }
-  .note a { color: #7dd3fc; }
-  .layout {
-    flex: 1; min-height: 0; display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 8px; position: relative; z-index: 1;
-  }
-  @media (max-width: 900px) {
-    .layout { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-  }
-  .main { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
-  .building {
-    flex: 1; min-height: 0; border: 2px solid var(--hair); background: var(--panel);
-    display: flex; flex-direction: column; overflow: hidden;
-  }
-  .building-ph {
-    display: grid; grid-template-columns: 1fr 6px 1fr; padding: 6px 8px;
-    background: var(--panel2); border-bottom: 2px solid var(--hair);
-    font-family: "Press Start 2P", monospace; font-size: 8px; color: var(--dim);
-  }
-  .building-stage {
-    flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 6px 1fr;
-    background: #1a120a; padding: 6px;
-  }
-  .wing {
-    min-width: 0; display: flex; align-items: center; justify-content: center;
-  }
-  .room {
-    width: 100%; max-width: 520px; aspect-ratio: 320/240;
-    border: 2px solid #3a2a1a; background:
-      linear-gradient(#2e2116 0 22%, #7a5636 22%);
-    position: relative; image-rendering: pixelated;
-  }
-  .room.news { background: linear-gradient(#0a0a0c 0 22%, #7a5636 22%); }
-  .room .tag {
-    position: absolute; left: 50%; top: 58%; transform: translate(-50%, -100%);
-    background: rgba(10,7,4,.92); border: 2px solid var(--hair);
-    padding: 3px 6px; font-family: "Press Start 2P", monospace; font-size: 7px; text-align: center;
-  }
-  .room.news .tag { border-color: #38bdf8; color: #7dd3fc; }
-  .wall { background: #5f4527; }
-  .cap { text-align: center; font-size: 15px; color: var(--dim); padding: 4px; }
-  .cap b { color: var(--red); }
-  .news-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
-    border: 2px solid var(--hair); background: var(--panel); padding: 6px; flex-shrink: 0;
-  }
-  .desk {
-    border: 2px solid var(--hair); background: var(--panel2); padding: 6px 8px; font-size: 14px;
-  }
-  .desk .hd { display: flex; justify-content: space-between; color: var(--ink); }
-  .desk .job { color: #a3a3a3; font-size: 13px; }
-  .console {
-    height: 110px; border: 2px solid var(--hair); background: var(--panel);
-    display: flex; flex-direction: column; flex-shrink: 0;
-  }
-  .ph {
-    font-family: "Press Start 2P", monospace; font-size: 7px; color: var(--dim);
-    padding: 6px 8px; border-bottom: 2px solid var(--hair); background: var(--panel2);
-  }
-  .console .body { flex: 1; padding: 6px 8px; font-size: 13px; color: var(--amber); overflow: hidden; }
-  .stages {
-    border: 2px solid var(--hair); background: var(--panel);
-    display: flex; flex-direction: column; min-height: 0; overflow: hidden;
-  }
-  .stages .body {
-    flex: 1; overflow: auto; padding: 8px 10px; font-size: 14px; line-height: 1.25;
-  }
-  .leg-h { color: var(--amber); font-size: 15px; margin: 8px 0 4px; border-bottom: 1px solid var(--hair); padding-bottom: 2px; }
-  .leg-h:first-child { margin-top: 0; }
-  .row { display: flex; gap: 6px; align-items: flex-start; margin: 3px 0; }
-  .sw { width: 10px; height: 10px; border: 1px solid #000; flex: none; margin-top: 3px; }
-  .rl { color: var(--ink); font-weight: 700; }
-  .rc { color: #d4d4d4; }
-  .llm {
-    margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--hair);
-    color: var(--amber); font-size: 13px; line-height: 1.35;
+  .bar a.sec { margin-left: 8px; color: #a3a3a3; border-color: #404040; }
+  .bar a:hover { background: rgba(56,189,248,.12); }
+  iframe {
+    display: block; width: 100%; height: calc(100% - 44px); border: 0; background: #0a0a0a;
   }
 </style>
 </head>
 <body>
-  <div class="note">
-    <b>พรีวิวเลย์เอาต์</b>
-    <span>STAGES อยู่<span style="color:#fff">ขวาของห้อง</span> · CONSOLE อยู่ใต้ห้อง</span>
-    <a href="https://ktis-ai-assistant.vercel.app/monitor?layout=right">เปิดห้องจริงเลย์เอาต์นี้ →</a>
-    <a href="https://ktis-ai-assistant.vercel.app/monitor">← เลย์เอาต์ปัจจุบัน</a>
-    <a href="https://ktis-ai-assistant.vercel.app/system-functions.html#office">คู่มือ</a>
+  <div class="bar">
+    <b>หน้าจริง /monitor</b>
+    <span>เลย์เอาต์ STAGES ชิดขวา · ไม่ใช่ภาพจำลอง</span>
+    <a href="https://ktis-ai-assistant.vercel.app/monitor?layout=right" target="_blank" rel="noopener">เปิดเต็มแท็บ</a>
+    <a class="sec" href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">เลย์เอาต์ปกติ</a>
   </div>
-
-  <div class="layout">
-    <div class="main">
-      <div class="building">
-        <div class="building-ph">
-          <span>THE OFFICE</span>
-          <span></span>
-          <span>NEWS ROOM</span>
-        </div>
-        <div class="building-stage">
-          <div class="wing">
-            <div class="room">
-              <div class="tag">DASH<br><span style="color:#7c7c7c">IDLE</span></div>
-            </div>
-          </div>
-          <div class="wall"></div>
-          <div class="wing">
-            <div class="room news">
-              <div class="tag">POSTIE<br><span style="color:#7c7c7c">IDLE</span></div>
-            </div>
-          </div>
-        </div>
-        <div class="cap"><b>DASH</b> — พื้นที่ห้องใหญ่ขึ้นเมื่อ STAGES ย้ายไปขวา</div>
-      </div>
-
-      <div class="news-grid">
-        <div class="desk"><div class="hd"><span>SCOUT</span><span>IDLE</span></div><div class="job">ดึงข่าวจากแหล่ง</div></div>
-        <div class="desk"><div class="hd"><span>PICKER</span><span>IDLE</span></div><div class="job">AI คัดเลือกข่าวเด่น</div></div>
-        <div class="desk"><div class="hd"><span>READER</span><span>IDLE</span></div><div class="job">อ่านบทความเต็ม</div></div>
-        <div class="desk"><div class="hd"><span>WRITER</span><span>IDLE</span></div><div class="job">AI สรุปประเด็น</div></div>
-      </div>
-
-      <div class="console">
-        <div class="ph">CONSOLE</div>
-        <div class="body">
-          [GATE] รับข้อความ…<br>
-          ★ AI: QWEN · qwen2.5-plus<br>
-          พื้นที่ log กว้างเต็มความกว้างห้อง
-        </div>
-      </div>
-    </div>
-
-    <aside class="stages">
-      <div class="ph">STAGES</div>
-      <div class="body">
-        <div class="leg-h">THE OFFICE</div>
-        <div class="row"><span class="sw" style="background:#3a86ff"></span><span><span class="rl">GATE</span> <span class="rc">— รับข้อความ</span></span></div>
-        <div class="row"><span class="sw" style="background:#2f9e44"></span><span><span class="rl">BRAIN</span> <span class="rc">— แยกเจตนา</span></span></div>
-        <div class="row"><span class="sw" style="background:#f0b429"></span><span><span class="rl">RUNNER</span> <span class="rc">— ดึง M365</span></span></div>
-        <div class="row"><span class="sw" style="background:#7048e8"></span><span><span class="rl">SCRIBE</span> <span class="rc">— เขียนข้อความตอบจากข้อมูล</span></span></div>
-        <div class="row"><span class="sw" style="background:#ee1b24"></span><span><span class="rl">DASH</span> <span class="rc">— ส่ง LINE</span></span></div>
-        <div class="row"><span class="sw" style="background:#f97316"></span><span><span class="rl">HOP</span> <span class="rc">— คนช่วยส่งเมื่อมีคำสั่งซ้อน</span></span></div>
-
-        <div class="leg-h">NEWS ROOM</div>
-        <div class="row"><span class="sw" style="background:#14b8a6"></span><span><span class="rl">SCOUT</span> <span class="rc">— ดึงแหล่ง</span></span></div>
-        <div class="row"><span class="sw" style="background:#b45309"></span><span><span class="rl">PICKER</span> <span class="rc">— เลือกเด่น</span></span></div>
-        <div class="row"><span class="sw" style="background:#ec4899"></span><span><span class="rl">READER</span> <span class="rc">— อ่านบทความ</span></span></div>
-        <div class="row"><span class="sw" style="background:#e879f9"></span><span><span class="rl">WRITER</span> <span class="rc">— สรุป</span></span></div>
-        <div class="row"><span class="sw" style="background:#38bdf8"></span><span><span class="rl">POSTIE</span> <span class="rc">— ส่งต่อ DASH</span></span></div>
-
-        <div class="llm">
-          <span class="rl">LLM</span><br>
-          QWEN → GROQ → GEMINI<br>
-          <span class="rc">(ล้นลงมาได้เต็มคอลัมขวา ไม่แย่งพื้นที่ห้อง)</span>
-        </div>
-      </div>
-    </aside>
-  </div>
+  <!-- Absolute URL so this works even if the HTML is opened as a local file:// -->
+  <iframe
+    title="KTIS Monitor · STAGES right"
+    src="https://ktis-ai-assistant.vercel.app/monitor?embed=1&layout=right"
+    allow="fullscreen"
+  ></iframe>
 </body>
 </html>
