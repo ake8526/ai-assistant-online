@@ -54,7 +54,7 @@ const OFFICE_MAIL = [160, 198] as const;
 const STEP_TO_INDEX: Record<StageId, number> = { receive: 0, parse: 1, fetch: 2, compose: 3, reply: 4 };
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@500;700&family=Press+Start+2P&family=VT323&display=swap');
 .mon{--bg:#0a0a0a;--panel:#121212;--panel2:#171717;--ink:#f5f5f5;--dim:#7c7c7c;--red:#ee1b24;--green:#39d353;--amber:#f0b429;--hair:#262626;background:var(--bg);color:var(--ink);font-family:'VT323',monospace;height:100vh;overflow:hidden;padding:6px 8px;position:relative;display:flex;flex-direction:column}
 .mon *{margin:0;padding:0;box-sizing:border-box}
 .mon::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:60;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.14) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
@@ -94,9 +94,9 @@ const CSS = `
 .mon .news-courier .body{width:10px;height:10px;background:#38bdf8;margin:2px auto 0;border-top:2px solid #0284c7}
 .mon .news-courier.carry .body::after{content:"📰";font-size:8px;display:block;margin-top:-2px}
 .mon .wall-banner{position:absolute;left:0;top:0;width:100%;height:21.7%;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:4;padding:0 6px;box-sizing:border-box}
-.mon .wall-banner .msg{font-family:'Press Start 2P',monospace;font-size:clamp(9px,1.5vw,12px);color:#f3f4f6;background:rgba(2,6,23,.92);border:2px solid #6b7280;padding:8px 12px;line-height:1.45;text-align:center;letter-spacing:0.4px;white-space:nowrap;max-width:96%;overflow:hidden;text-overflow:ellipsis}
+.mon .wall-banner .msg{font-family:'VT323','IBM Plex Sans Thai',Tahoma,monospace;font-size:clamp(18px,2.4vw,24px);font-weight:700;color:#f3f4f6;background:rgba(2,6,23,.92);border:2px solid #6b7280;padding:8px 14px;line-height:1.2;text-align:center;letter-spacing:0.5px;white-space:nowrap;max-width:96%;overflow:hidden;text-overflow:ellipsis}
 .mon .wall-banner.live{top:18.3%;height:3.4%;padding:0}
-.mon .wall-banner.live .msg{width:100%;max-width:100%;font-size:clamp(7px,1.15vw,9px);padding:2px 6px;border:none;border-top:2px solid #f87171;border-radius:0;color:#fef08a;background:rgba(2,6,23,.95)}
+.mon .wall-banner.live .msg{width:100%;max-width:100%;font-size:clamp(14px,1.8vw,18px);padding:2px 8px;border:none;border-top:2px solid #f87171;border-radius:0;color:#fef08a;background:rgba(2,6,23,.95);font-weight:700}
 .mon .bdg.postie{border-color:#38bdf8;z-index:5}
 .mon .bdg.postie .nm{color:#7dd3fc}
 .mon .bdg{position:absolute;transform:translate(-50%,-100%);text-align:center;pointer-events:none;background:rgba(10,7,4,.92);border:2px solid var(--hair);padding:2px 4px 1px;white-space:nowrap;line-height:1;transition:left .05s linear,top .05s linear;z-index:2}
