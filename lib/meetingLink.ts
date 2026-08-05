@@ -13,7 +13,54 @@ import { deleteSetting, getSetting, setSetting } from "@/lib/store";
 
 const LAST_BOOKED_KEY = "_last_booked_event";
 const PENDING_PHOTO_KEY = "_pending_meeting_photo";
+const LINE_PHOTO_KEY = "_pending_line_photo_bytes";
 const BOOKED_TTL_MS = 45 * 60 * 1000;
+const LINE_PHOTO_TTL_MS = 30 * 60 * 1000;
+
+export type PendingLinePhoto = {
+  b64: string;
+  contentType: string;
+  name: string;
+  ts: number;
+};
+
+export async function savePendingLinePhoto(
+  upn: string,
+  imageBuffer: Buffer,
+  contentType: string
+): Promise<string> {
+  const ext = contentType.includes("png") ? "png" : contentType.includes("gif") ? "gif" : "jpg";
+  const name = `line-photo-${Date.now()}.${ext}`;
+  await setSetting(
+    upn,
+    LINE_PHOTO_KEY,
+    JSON.stringify({ b64: imageBuffer.toString("base64"), contentType, name, ts: Date.now() })
+  );
+  return name;
+}
+
+export async function loadPendingLinePhoto(upn: string): Promise<PendingLinePhoto | null> {
+  try {
+    const raw = await getSetting(upn, LINE_PHOTO_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as PendingLinePhoto;
+    if (!p.b64 || Date.now() - (p.ts || 0) > LINE_PHOTO_TTL_MS) {
+      await deleteSetting(upn, LINE_PHOTO_KEY);
+      return null;
+    }
+    return p;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearPendingLinePhoto(upn: string): Promise<void> {
+  try {
+    await deleteSetting(upn, LINE_PHOTO_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 export async function saveLastBookedEvent(upn: string, eventId: string, subject: string): Promise<void> {
   await setSetting(
@@ -29,7 +76,8 @@ export async function markPendingMeetingPhoto(upn: string, meetingIndex = 1): Pr
 
 async function resolvePhotoTargetEvent(
   upn: string,
-  meetingIndex = 1
+  meetingIndex = 1,
+  allowAgenda = false
 ): Promise<{ eventId: string; subject: string } | null> {
   try {
     const raw = await getSetting(upn, LAST_BOOKED_KEY);
@@ -42,6 +90,7 @@ async function resolvePhotoTargetEvent(
   } catch {
     /* ignore */
   }
+  if (!allowAgenda) return null;
   const eventId = await resolveAgendaEventId(upn, meetingIndex);
   if (!eventId) return null;
   try {
@@ -59,12 +108,14 @@ export async function attachLineImageToMeeting(
   contentType: string
 ): Promise<LinkCmdResult> {
   let meetingIndex = 1;
+  let allowAgenda = false;
   try {
     const raw = await getSetting(upn, PENDING_PHOTO_KEY);
     if (raw) {
       const p = JSON.parse(raw) as { meeting_index?: number; ts?: number };
       if (Date.now() - (p.ts || 0) < BOOKED_TTL_MS) {
         meetingIndex = p.meeting_index || 1;
+        allowAgenda = true;
       }
       await deleteSetting(upn, PENDING_PHOTO_KEY);
     }
@@ -72,13 +123,15 @@ export async function attachLineImageToMeeting(
     /* ignore */
   }
 
-  const target = await resolvePhotoTargetEvent(upn, meetingIndex);
+  const target = await resolvePhotoTargetEvent(upn, meetingIndex, allowAgenda);
   if (!target) {
+    const name = await savePendingLinePhoto(upn, imageBuffer, contentType);
     return {
       intent: "link_meeting_file",
       reply:
-        "ยังหานัดที่จะแนบรูปไม่เจอครับ — ลองพิมพ์ “สรุปตารางเช้า” แล้วใช้ “ผูกไฟล์นัด 1”\n" +
-        "หรือพิมพ์ “แนบรูปเพิ่ม” หลังส่งนัดไม่นาน แล้วส่งรูปอีกครั้ง",
+        `รับรูปแล้วครับ 📷 (${name})\n\n` +
+        `พิมพ์ “แนบรูป ส่งนัด …” แล้วกดยืนยัน — จะแนบรูปเข้านัดอัตโนมัติ\n` +
+        `หรือพิมพ์ “แนบรูปเพิ่ม” หลังส่งนัดแล้ว แล้วส่งรูปอีกครั้ง`,
     };
   }
 
@@ -93,9 +146,13 @@ export async function attachLineImageToMeeting(
   const name = `line-photo-${Date.now()}.${ext}`;
   const ok = await attachBytesToOutlookEvent(upn, target.eventId, name, imageBuffer);
   if (!ok) {
+    const saved = await savePendingLinePhoto(upn, imageBuffer, contentType);
     return {
       intent: "link_meeting_file",
-      reply: `แนบรูปเข้า Outlook ไม่สำเร็จครับ — ลอง “ผูกไฟล์นัด ${meetingIndex}” หลังอัปโหลดรูปไป OneDrive`,
+      reply:
+        `แนบเข้านัดเดิมไม่สำเร็จ — เก็บรูปไว้แล้ว 📷 (${saved})\n\n` +
+        `ลอง “แนบรูป ส่งนัด …” เพื่อสร้างนัดใหม่พร้อมแนบรูป\n` +
+        `หรือ “ผูกไฟล์นัด ${meetingIndex}” ถ้าอัปโหลดรูปไป OneDrive แล้ว`,
     };
   }
 

@@ -12,11 +12,11 @@ import {
 } from "@/lib/newsOnboarding";
 import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
-import { createEvent, pushMaterialToOutlookEvent, resolveUser } from "@/lib/graph";
+import { createEvent, pushMaterialToOutlookEvent, attachBytesToOutlookEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold, findLinkedLineAttendees } from "@/lib/meetingInvite";
 import { addMeetingMaterial } from "@/lib/meetingMaterials";
-import { attachLineImageToMeeting, saveLastBookedEvent } from "@/lib/meetingLink";
+import { attachLineImageToMeeting, clearPendingLinePhoto, loadPendingLinePhoto, saveLastBookedEvent, savePendingLinePhoto } from "@/lib/meetingLink";
 import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -353,6 +353,7 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
         attendees?: string[];
         subject?: string;
         attach_file?: { id?: string; name?: string; url?: string };
+        attach_line_photo?: boolean;
       }) || {};
     const draft: Draft = {
       start: s.start,
@@ -361,6 +362,7 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
       subject: meeting.subject || "ประชุม",
       detail: "",
       attachFile: meeting.attach_file?.url || meeting.attach_file?.id ? meeting.attach_file : undefined,
+      attachLinePhoto: !!meeting.attach_line_photo || !!(await loadPendingLinePhoto(upn)),
       ts: Date.now(),
     };
     await saveDraft(upn, draft);
@@ -416,6 +418,8 @@ type Draft = {
   durationMin?: number;
   /** Snapshot from last file search — attach to Outlook after confirm */
   attachFile?: { id?: string; name?: string; url?: string };
+  /** LINE photo to attach after confirm (bytes stored separately) */
+  attachLinePhoto?: boolean;
   ts: number;
 };
 
@@ -445,6 +449,7 @@ function draftWhen(d: Draft): string {
 async function confirmCardMessage(d: Draft, prefix = "", organizerUpn?: string): Promise<object> {
   const linked = await findLinkedLineAttendees(d.attendees, organizerUpn);
   const lineHold = linked.length > 0;
+  const pendingPhoto = d.attachLinePhoto ? await loadPendingLinePhoto(organizerUpn || "") : null;
   const hint = lineHold
     ? "ยืนยันเพื่อส่งคำขอนัด (รออีกฝั่งยืนยันก่อนเข้า Outlook)\nหรือตั้งหัวข้อ / รายละเอียด / เพิ่มคน ก่อนได้ครับ 👇"
     : "ยืนยันเพื่อส่งนัดประชุม\nหรือตั้งหัวข้อ / รายละเอียด / เพิ่มคน ก่อนได้ครับ 👇";
@@ -454,6 +459,11 @@ async function confirmCardMessage(d: Draft, prefix = "", organizerUpn?: string):
     `📌 หัวข้อ: ${d.subject}\n` +
     (d.detail ? `📝 รายละเอียด: ${d.detail}\n` : "") +
     (d.attachFile?.name ? `📎 ไฟล์แนบ: ${d.attachFile.name}\n` : "") +
+    (d.attachLinePhoto
+      ? pendingPhoto
+        ? `📷 รูปจาก LINE: ${pendingPhoto.name}\n`
+        : `📷 รูปจาก LINE: ส่งรูปในแชทได้เลย (จะแนบตอนยืนยัน)\n`
+      : "") +
     `👤 ผู้เข้าร่วม: ${d.attendees.length ? d.attendees.join(", ") : "(ยังไม่มี)"}\n\n` +
     hint;
   const items: object[] = [
@@ -581,6 +591,7 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
   if (act === "book") {
     const ctx = await loadCtx(upn);
     const attach = ctx?.last_meeting?.attach_file;
+    const lm = ctx?.last_meeting as { attach_line_photo?: boolean } | undefined;
     const draft: Draft = {
       start: params.get("s") || "",
       end: params.get("e") || "",
@@ -588,6 +599,7 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       subject: params.get("subj") || "ประชุม",
       detail: "",
       attachFile: attach?.url || attach?.id ? attach : undefined,
+      attachLinePhoto: !!lm?.attach_line_photo || !!(await loadPendingLinePhoto(upn)),
       ts: Date.now(),
     };
     await saveDraft(upn, draft);
@@ -779,6 +791,8 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
           : `✅ ส่งนัดประชุมแล้ว!\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}`;
 
       const pendingAttach = result.mode === "booked" && result.eventId && draft.attachFile?.url;
+      const pendingPhoto = result.mode === "booked" && result.eventId && draft.attachLinePhoto;
+      const linePhoto = pendingPhoto ? await loadPendingLinePhoto(upn) : null;
       await clearDraft(upn);
 
       // Reply LINE first — file attach runs in after() so webhook + monitor don't hang.
@@ -788,12 +802,21 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
           (draft.detail ? `\n📝 ${draft.detail}` : "") +
           `\n👤 ${draft.attendees.join(", ")}` +
           (pendingAttach ? `\n📎 กำลังแนบไฟล์ ${draft.attachFile!.name || "เอกสาร"}…` : "") +
+          (pendingPhoto && linePhoto ? `\n📷 กำลังแนบรูป ${linePhoto.name}…` : "") +
+          (pendingPhoto && !linePhoto
+            ? `\n📷 ยังไม่มีรูป — ส่งรูปแล้วพิมพ์ “แนบรูปเพิ่ม” ได้ครับ`
+            : "") +
           result.note
       );
-      trace("reply", pendingAttach ? "ส่งนัดแล้ว · แนบไฟล์ต่อในพื้นหลัง" : "ส่งนัดแล้ว");
+      trace(
+        "reply",
+        pendingAttach || (pendingPhoto && linePhoto)
+          ? "ส่งนัดแล้ว · แนบไฟล์ต่อในพื้นหลัง"
+          : "ส่งนัดแล้ว"
+      );
 
+      const eventId = result.eventId!;
       if (pendingAttach) {
-        const eventId = result.eventId!;
         const file = { ...draft.attachFile! };
         after(async () => {
           muteTrace();
@@ -825,6 +848,44 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
             attachNote = file.name
               ? `⚠️ แนบไฟล์ไม่สำเร็จ (${file.name}) — ลอง “ผูกไฟล์นัด 1” ทีหลังได้ครับ`
               : "⚠️ แนบไฟล์ไม่สำเร็จ";
+          }
+          const lineId = await getLineId(upn);
+          if (lineId && attachNote) {
+            await pushLineToId(lineId, attachNote);
+          }
+        });
+      }
+
+      if (pendingPhoto && linePhoto) {
+        const photo = { ...linePhoto };
+        after(async () => {
+          muteTrace();
+          let attachNote = "";
+          try {
+            const buf = Buffer.from(photo.b64, "base64");
+            const { result: ok } = await Promise.race([
+              withDelegatedGraph(upn, () =>
+                attachBytesToOutlookEvent(upn, eventId, photo.name, buf)
+              ),
+              new Promise<{ result: boolean; asUser: boolean }>((_, rej) =>
+                setTimeout(() => rej(new Error("photo attach timeout")), 20_000)
+              ),
+            ]);
+            if (ok) {
+              await clearPendingLinePhoto(upn);
+              await addMeetingMaterial(upn, eventId, {
+                type: "file",
+                name: photo.name,
+                url: `line://${photo.name}`,
+                note: "รูปจาก LINE",
+              });
+              attachNote = `📷 แนบรูปแล้ว: ${photo.name}`;
+            } else {
+              attachNote = `⚠️ แนบรูปไม่สำเร็จ — ลอง “แนบรูปเพิ่ม” แล้วส่งรูปอีกครั้ง`;
+            }
+          } catch (e) {
+            console.warn("[line] photo attach on book (after)", String(e).slice(0, 120));
+            attachNote = `⚠️ แนบรูปไม่สำเร็จ — ลอง “แนบรูปเพิ่ม” แล้วส่งรูปอีกครั้ง`;
           }
           const lineId = await getLineId(upn);
           if (lineId && attachNote) {
@@ -919,6 +980,17 @@ async function handleImageMessage(ev: LineEvent): Promise<void> {
   try {
     await showLineLoading(userId, 30);
     const { buffer, contentType } = await downloadLineMessageContent(messageId);
+
+    const draft = await loadDraft(upn);
+    if (draft?.attachLinePhoto) {
+      const name = await savePendingLinePhoto(upn, buffer, contentType);
+      await replyLineMessages(ev.replyToken, [
+        await confirmCardMessage(draft, `รับรูปแล้ว 📷 (${name})\n`, upn),
+      ]);
+      trace("reply", "รับรูปสำหรับ draft");
+      return;
+    }
+
     const { result: res } = await withDelegatedGraph(upn, () =>
       attachLineImageToMeeting(upn, buffer, contentType)
     );

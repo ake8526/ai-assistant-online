@@ -7,6 +7,7 @@ import {
   handleLinkMeetingUrl,
   handleListMeetingMaterials,
   handleUnlinkMeetingMaterial,
+  loadPendingLinePhoto,
   markPendingMeetingPhoto,
   quickLinkMeetingIntent,
 } from "@/lib/meetingLink";
@@ -129,6 +130,8 @@ export type CommandResult = {
     window?: { start: string; end: string; label: string };
     /** OneDrive file to attach when Outlook event is created */
     attach_file?: { id?: string; name?: string; url?: string };
+    /** LINE photo waiting to attach on confirm */
+    attach_line_photo?: boolean;
   };
   person?: { mail: string; displayName?: string };
   map_url?: string | null;
@@ -704,10 +707,16 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
 
   // “แนบไฟล์ 3 ส่งนัด …” → book + attach file from last search
   let file_index: number | undefined;
+  let pending_line_photo = false;
   const attachPrefix = t.match(/^(?:แนบ|ผูก)\s*(?:ไฟล์|อัน|ข้อ)\s*(\d{1,2})\s+/i);
   if (attachPrefix) {
     file_index = Number(attachPrefix[1]);
     t = t.slice(attachPrefix[0].length).trim();
+  }
+  const photoPrefix = t.match(/^แนบ(?:รูป|ภาพ)\s+/i);
+  if (photoPrefix) {
+    pending_line_photo = true;
+    t = t.slice(photoPrefix[0].length).trim();
   }
 
   // Bare day lists already handled above; don't steal them
@@ -830,6 +839,7 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
   else if (after) params.after = after;
   if (note) params.note = note;
   if (file_index) params.file_index = file_index;
+  if (pending_line_photo) params.pending_line_photo = true;
   return { intent: "find_meeting_time", params };
 }
 
@@ -1672,7 +1682,11 @@ export async function runFindMeeting(
   includeLunch = false,
   subject = "ประชุม",
   atMin: number | null = null,
-  opts?: { showMore?: boolean; attachFile?: { id?: string; name?: string; url?: string } }
+  opts?: {
+    showMore?: boolean;
+    attachFile?: { id?: string; name?: string; url?: string };
+    attachLinePhoto?: boolean;
+  }
 ): Promise<CommandResult> {
   const denied = needCalendarConsent();
   if (denied) return denied;
@@ -1809,6 +1823,7 @@ export async function runFindMeeting(
   const bandNote =
     resolvedAt != null ? ` ตอน ${fmtHHMM(resolvedAt)}` : band?.label ? ` ${band.label}` : "";
   const attachNote = opts?.attachFile?.name ? `\n📎 จะแนบไฟล์: ${opts.attachFile.name}` : "";
+  const photoNote = opts?.attachLinePhoto ? `\n📷 จะแนบรูปจาก LINE` : "";
   const meetingBase = (): NonNullable<CommandResult["meeting"]> => ({
     attendees: resolved,
     duration,
@@ -1817,6 +1832,7 @@ export async function runFindMeeting(
       ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
       : undefined,
     ...(opts?.attachFile ? { attach_file: opts.attachFile } : {}),
+    ...(opts?.attachLinePhoto ? { attach_line_photo: true } : {}),
   });
   if (!result.slots.length) {
     if (opts?.showMore && totalFound > 0 && offset >= totalFound) {
@@ -1892,6 +1908,7 @@ export async function runFindMeeting(
         `📌 ${subject}\n` +
         `🕐 ${exact.label}` +
         attachNote +
+        photoNote +
         pastNote +
         note,
       slots: [exact],
@@ -1908,6 +1925,7 @@ export async function runFindMeeting(
     `👤 ${who}\n` +
     (subject && subject !== "ประชุม" ? `📌 ${subject}\n` : "") +
     (attachNote ? attachNote.trimStart() + "\n" : "") +
+    (photoNote ? photoNote.trimStart() + "\n" : "") +
     `เลือกเวลาเริ่มประชุม (${duration} นาที) จากรายการด้านล่างได้เลย 👇` +
     afterHoursNote +
     note;
@@ -2252,8 +2270,8 @@ async function handleParsed(
       intent,
       reply:
         "ส่งรูปมาในแชทได้เลยครับ 📷\n" +
-        `จะแนบเข้านัดล่าสุดที่เพิ่งสร้าง (หรือนัด ${mi} ในตารางวันนี้)\n` +
-        "หรือพิมพ์ “ผูกไฟล์นัด 1” ถ้ามีไฟล์ใน OneDrive แล้ว",
+        `จะแนบเข้านัดล่าสุดที่เพิ่งสร้าง (หรือนัด ${mi} ในตารางวันนี้)\n\n` +
+        "หรือพิมพ์ “แนบรูป ส่งนัด …” เพื่อจองนัดใหม่พร้อมแนบรูป",
     };
   }
 
@@ -3167,6 +3185,11 @@ async function handleParsed(
       }
     }
 
+    const wantsLinePhoto =
+      !!params.pending_line_photo ||
+      /^แนบ(?:รูป|ภาพ)\b/i.test(text) ||
+      !!(await loadPendingLinePhoto(userUpn));
+
     return runFindMeeting(
       userUpn,
       attendees,
@@ -3176,7 +3199,7 @@ async function handleParsed(
       wantsLunchIncluded(text),
       subject,
       atMin,
-      { showMore: !!params.show_more, attachFile }
+      { showMore: !!params.show_more, attachFile, attachLinePhoto: wantsLinePhoto }
     );
   }
 
