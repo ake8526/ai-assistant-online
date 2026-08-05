@@ -164,10 +164,18 @@ async function run(req: Request) {
   try {
     assertConfigured();
     if (checkCronSecret(req)) {
-      const force = new URL(req.url).searchParams.get("force") === "1";
+      const url = new URL(req.url);
+      const force = url.searchParams.get("force") === "1";
       const only = parseOnly(req);
+      const onlyUpn = (url.searchParams.get("upn") || "").toLowerCase().trim();
+      const users = onlyUpn
+        ? (await linkedUsers()).filter((u) => u.toLowerCase() === onlyUpn)
+        : await linkedUsers();
+      if (onlyUpn && !users.length) {
+        return NextResponse.json({ ok: false, error: `upn not linked: ${onlyUpn}` }, { status: 404 });
+      }
       const results: Record<string, { brief: string; news: string }> = {};
-      for (const upn of await linkedUsers()) {
+      for (const upn of users) {
         try {
           results[upn] = await deliverMorningForUser(upn, force, only);
         } catch (e) {
