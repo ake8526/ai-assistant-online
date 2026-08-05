@@ -452,58 +452,127 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   trace("fetch", `📰 อ่านบทความ · ${withText.length} เรื่อง`);
   type StorySummary = { headline?: string; points?: string[]; blurb?: string; bullets?: string[] };
   const summaries: Record<string, StorySummary> = {};
-  // Smaller batches = less detail loss; YouTube alone so captions get full attention.
-  const BATCH = 2;
-  for (let offset = 0; offset < withText.length; offset += BATCH) {
-    const batch = withText.slice(offset, offset + BATCH);
-    const writerInput = batch
-      .map((it, j) => {
-        const globalIdx = offset + j;
-        const body = (it.full || it.summary || it.title || "").slice(0, 6000);
-        const thin = body.trim().length < 120 || body.trim() === (it.title || "").trim();
+
+  const similarToTitle = (text: string, title: string) => {
+    const a = text.toLowerCase().replace(/\s+/g, "");
+    const b = title.toLowerCase().replace(/\s+/g, "");
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (a.length >= 12 && (b.includes(a) || a.includes(b))) return true;
+    // Rough overlap: >60% of title tokens appear in headline
+    const tokens = title.split(/\s+/).filter((t) => t.length > 1);
+    if (tokens.length < 3) return false;
+    const hit = tokens.filter((t) => text.includes(t)).length;
+    return hit / tokens.length >= 0.7;
+  };
+
+  const NEWS_WRITER_SYSTEM =
+    "คุณเป็นบรรณาธิการสรุปข่าวให้หัวหน้าอ่านบน LINE เป็นภาษาไทย\n" +
+    "เป้าหมาย: อ่านแล้วรู้ว่าเกิดอะไร สำคัญยังไง มีตัวเลข/ผลกระทบอะไร — ห้ามแค่เขียนหัวข่าวใหม่\n" +
+    "ตอบ JSON เท่านั้น โดยใช้เลขตาม # ที่ให้มา:\n" +
+    '{"0":{"headline":"...","points":["...","..."]},"1":{...}}\n' +
+    "กติกา:\n" +
+    "- ทุกฟิลด์เป็นภาษาไทย (ยกเว้นชื่อเฉพาะ/ตัวเลข)\n" +
+    "- headline = 1 ประโยค สรุปเหตุการณ์จริงจากเนื้อหา + ทำไมควรรู้ (ห้ามคัดลอก/พาราเฟรสหัวข้อข่าว)\n" +
+    "- points = 3–5 ข้อ จากเนื้อหา: ข้อเท็จจริง ตัวเลข สาเหตุ/ผลกระทบ สิ่งที่ต้องจับตา\n" +
+    "- แต่ละ point เป็นประโยคสมบูรณ์ มีสาระ ไม่ซ้ำ headline และไม่ใช่ประโยคกลางๆ\n" +
+    "- ถ้าเนื้อหายาวพอ ห้ามสรุปสั้นเหลือ 1–2 บรรทัดลอยๆ\n" +
+    "- ห้ามเขียนว่า “ไม่มีรายละเอียด…” “ไม่ระบุ…” เด็ดขาด\n" +
+    "- ห้ามแต่งตัวเลข/เหตุการณ์ที่ไม่มีในเนื้อหา";
+
+  const YT_WRITER_SYSTEM =
+    "คุณสรุปคลิป YouTube ให้หัวหน้าอ่านบน LINE เป็นภาษาไทย\n" +
+    "เป้าหมาย: อ่านแล้วรู้ว่าคลิปนี้พูด/เล่า/โชว์อะไร เป็นเรื่องเกี่ยวกับอะไร โดยไม่ต้องเปิดดู\n" +
+    "ตอบ JSON เท่านั้น:\n" +
+    '{"0":{"headline":"...","points":["...","..."]}}\n' +
+    "กติกา:\n" +
+    "- ใช้ถอดเสียง/ซับไตเติลเป็นหลัก ถ้ามี — คำบรรยายเป็นข้อมูลเสริม\n" +
+    "- headline = คลิปนี้เกี่ยวกับอะไรใน 1 ประโยค (ห้ามคัดลอกชื่อคลิป)\n" +
+    "- points = 3–5 ข้อ: ประเด็นหลักที่พูดในคลิป ข้อเท็จจริง/ตัวอย่างที่ยก มุมสรุปท้ายคลิป\n" +
+    "- ห้ามสรุปเป็นแค่ชื่อช่อง/โปรโมต/ลิงก์โซเชียล\n" +
+    "- ถ้ามีแค่ชื่อคลิป: บอกตรงๆ ใน headline ว่าข้อมูลไม่พอสรุปสาระ แล้ว points 1 ข้อจากชื่อเท่านั้น\n" +
+    "- ห้ามเดาสาระที่ไม่มีในถอดเสียง/คำบรรยาย";
+
+  async function summarizeBatch(
+    items: { it: (typeof withText)[number]; i: number }[],
+    system: string,
+    quality: boolean
+  ) {
+    if (!items.length) return;
+    const writerInput = items
+      .map(({ it, i }) => {
+        const body = (it.full || it.summary || it.title || "").slice(0, 6500);
+        const thin = body.trim().length < 160 || body.trim() === (it.title || "").trim();
         const kindHint =
           it.kind === "youtube"
-            ? "ชนิด: คลิป YouTube — สรุปจากคำบรรยาย/ซับไตเติลว่าคลิปพูดถึงอะไร จุดเด่นคืออะไร\n"
-            : "ชนิด: ข่าว/บทความ\n";
+            ? "ชนิด: คลิป YouTube\n"
+            : "ชนิด: ข่าว/บทความ — สรุปสาระข่าว ไม่ใช่หัวข้อ\n";
         return (
-          `#${globalIdx}\n${kindHint}หัวข้อ: ${it.title}\nแหล่ง: ${it.feedLabel}\n` +
-          (thin ? "หมายเหตุ: เนื้อหาสั้น — สรุปเท่าที่มีอย่างตรงไปตรงมา ห้ามแต่งเติม\n" : "") +
-          `เนื้อหา: ${body}`
+          `#${i}\n${kindHint}หัวข้อต้นทาง: ${it.title}\nแหล่ง: ${it.feedLabel}\n` +
+          (thin ? "หมายเหตุ: เนื้อหาบางมาก — ห้ามแต่ง ห้ามพาราเฟรสหัวข้อให้ดูดี\n" : "") +
+          `เนื้อหา:\n${body}`
         );
       })
-      .join("\n\n");
+      .join("\n\n----\n\n");
     try {
-      trace("compose", `📰 สรุปประเด็น · ${batch.length} เรื่อง`, "start");
-      const raw = await chat(
-        "คุณเป็นบรรณาธิการสรุปข่าว/คลิปให้หัวหน้าอ่านบน LINE เป็นภาษาไทย\n" +
-          "เป้าหมาย: อ่านแล้วรู้เรื่องทันที — ไม่ใช่พาราเฟรสหัวข้อ และไม่ใช่ประโยคกลางๆ ที่เลื่อนลอย\n" +
-          "ตอบ JSON เท่านั้น โดยใช้เลขตาม # ที่ให้มา:\n" +
-          '{"0":{"headline":"...","points":["...","..."]},"1":{...}}\n' +
-          "กติกา:\n" +
-          "- ทุกฟิลด์ต้องเป็นภาษาไทย (ยกเว้นชื่อเฉพาะ/ตัวเลข/ชื่อช่อง)\n" +
-          "- headline = 1 ประโยค บอกสาระหลักว่าเกิดอะไร + ทำไมควรรู้ (ห้ามคัดลอกหัวข้อดิบ)\n" +
-          "- points = 3–5 ข้อ ดึงข้อเท็จจริง ตัวเลข ผลกระทบ มุมที่ควรจับตา จากเนื้อหา\n" +
-          "- แต่ละ point เป็นประโยคสมบูรณ์ อ่านแล้วได้ข้อมูล ไม่ซ้ำ headline\n" +
-          "- คลิป YouTube: สรุปว่าคลิปพูด/โชว์อะไร ไม่ใช่แค่ชื่อคลิป หรือคำโฆษณาในคำบรรยาย\n" +
-          "- ห้ามเขียนว่า “ไม่มีรายละเอียด…” “ไม่ระบุ…” “เนื้อหาไม่ได้บอก…” เด็ดขาด\n" +
-          "- ข้อมูลน้อย → headline สั้น + points 1–2 ข้อจากที่มี — ห้ามแต่งตัวเลข/เหตุการณ์",
-        writerInput,
-        {
-          json: true,
-          temperature: 0.25,
-          timeoutMs: 20000,
-          prefer: NEWS_LLM_PREFER || undefined,
-          // Prefer Groq-fast when no explicit prefer — LINE digest must finish.
-          fast: !NEWS_LLM_PREFER,
-          traceStep: "compose",
-          tracePrefix: "📰 สรุปประเด็น",
-        }
-      );
+      trace("compose", `📰 สรุปประเด็น · ${items.length} เรื่อง`, "start");
+      const raw = await chat(system, writerInput, {
+        json: true,
+        temperature: 0.2,
+        timeoutMs: quality ? 28000 : 18000,
+        prefer: NEWS_LLM_PREFER || (quality ? "qwen" : undefined),
+        fast: !quality && !NEWS_LLM_PREFER,
+        traceStep: "compose",
+        tracePrefix: "📰 สรุปประเด็น",
+      });
       const parsed = JSON.parse(raw) as Record<string, StorySummary>;
       Object.assign(summaries, parsed);
-      trace("compose", `📰 สรุปประเด็น · ${batch.length} เรื่อง ✓`);
+      trace("compose", `📰 สรุปประเด็น · ${items.length} เรื่อง ✓`);
     } catch {
-      /* keep whatever we have; fallbacks below */
+      /* fallbacks below */
+    }
+  }
+
+  // YouTube alone (captions need full attention); news in pairs with real indices.
+  const ytRows = withText
+    .map((it, i) => ({ it, i }))
+    .filter((x) => x.it.kind === "youtube");
+  const newsRows = withText
+    .map((it, i) => ({ it, i }))
+    .filter((x) => x.it.kind !== "youtube");
+
+  for (const row of ytRows) {
+    await summarizeBatch([row], YT_WRITER_SYSTEM, true);
+    const s = summaries[String(row.i)];
+    const hl = String(s?.headline || "").trim();
+    if (s && similarToTitle(hl, row.it.title)) {
+      await summarizeBatch(
+        [row],
+        YT_WRITER_SYSTEM + "\n\nรอบแก้: headline ห้ามคล้ายชื่อคลิป — บอกสาระจากถอดเสียงให้ชัด",
+        true
+      );
+    }
+  }
+
+  for (let n = 0; n < newsRows.length; n += 2) {
+    const chunk = newsRows.slice(n, n + 2);
+    await summarizeBatch(chunk, NEWS_WRITER_SYSTEM, true);
+  }
+
+  // Repair weak news summaries (title echo / too thin vs body length)
+  for (const row of newsRows) {
+    const s = summaries[String(row.i)];
+    const hl = String(s?.headline || "").trim();
+    const pts = (s?.points || s?.bullets || []).filter((b) => String(b || "").trim());
+    const bodyLen = (row.it.full || row.it.summary || "").length;
+    const weak = !hl || similarToTitle(hl, row.it.title) || (bodyLen > 400 && pts.length < 2);
+    if (weak) {
+      await summarizeBatch(
+        [row],
+        NEWS_WRITER_SYSTEM +
+          "\n\nรอบแก้: ห้ามเขียนคล้ายหัวข้อ — ต้องบอกว่าเกิดอะไร มีใครเกี่ยวข้อง ตัวเลข/ผลกระทบจากเนื้อหา อย่างน้อย 3 points",
+        true
+      );
     }
   }
 

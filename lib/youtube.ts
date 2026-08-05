@@ -136,71 +136,143 @@ function videoIdFromLink(link: string): string {
 /** Pull public / auto captions (Thai preferred, then English). Best-effort — empty if none. */
 export async function fetchCaptions(videoId: string): Promise<string> {
   if (!videoId) return "";
+  const fromTimedText = await fetchCaptionsTimedText(videoId);
+  if (fromTimedText.length >= 80) return fromTimedText;
+  const fromWatch = await fetchCaptionsFromWatchPage(videoId);
+  return fromWatch.length > fromTimedText.length ? fromWatch : fromTimedText;
+}
+
+async function fetchCaptionsTimedText(videoId: string): Promise<string> {
   try {
     const listUrl = `https://www.youtube.com/api/timedtext?type=list&v=${encodeURIComponent(videoId)}`;
     const listRes = await fetch(listUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; KTIS-AI/1.0)" },
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "th,en;q=0.9",
+      },
       signal: AbortSignal.timeout(8000),
     });
     if (!listRes.ok) return "";
     const listXml = await listRes.text();
-    const tracks: { lang: string; name: string }[] = [];
+    const tracks: { lang: string; name: string; kind: string }[] = [];
     const re = /<track\b[^>]*>/gi;
     let m: RegExpExecArray | null;
     while ((m = re.exec(listXml))) {
       const tag = m[0];
       const lang = (tag.match(/\blang_code="([^"]+)"/i) || [])[1] || "";
       const name = (tag.match(/\bname="([^"]*)"/i) || [])[1] || "";
-      if (lang) tracks.push({ lang, name });
+      const kind = (tag.match(/\bkind="([^"]*)"/i) || [])[1] || "";
+      if (lang) tracks.push({ lang, name, kind });
     }
     if (!tracks.length) return "";
 
-    const prefer = (a: { lang: string }) => {
+    const score = (a: { lang: string; kind: string }) => {
       const l = a.lang.toLowerCase();
-      if (l === "th" || l.startsWith("th-")) return 0;
-      if (l === "en" || l.startsWith("en")) return 1;
-      return 2;
+      let s = 10;
+      if (l === "th" || l.startsWith("th")) s = 0;
+      else if (l === "en" || l.startsWith("en")) s = 1;
+      // Prefer human captions slightly over ASR when same language
+      if (a.kind === "asr") s += 0.5;
+      return s;
     };
-    tracks.sort((a, b) => prefer(a) - prefer(b));
-    const pick = tracks[0]!;
+    tracks.sort((a, b) => score(a) - score(b));
 
-    const capUrl =
-      `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}` +
-      `&lang=${encodeURIComponent(pick.lang)}&fmt=json3` +
-      (pick.name ? `&name=${encodeURIComponent(pick.name)}` : "");
-    const capRes = await fetch(capUrl, {
+    for (const pick of tracks.slice(0, 4)) {
+      const params = new URLSearchParams({
+        v: videoId,
+        lang: pick.lang,
+        fmt: "json3",
+      });
+      if (pick.name) params.set("name", pick.name);
+      if (pick.kind) params.set("kind", pick.kind);
+      const capRes = await fetch(`https://www.youtube.com/api/timedtext?${params}`, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!capRes.ok) continue;
+      const text = await parseCaptionPayload(await capRes.text());
+      if (text.length >= 40) return text.slice(0, CAPTION_CAP);
+    }
+    return "";
+  } catch {
+    return "";
+  }
+}
+
+/** Fallback: scrape captionTracks from the watch page player config. */
+async function fetchCaptionsFromWatchPage(videoId: string): Promise<string> {
+  try {
+    const r = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&hl=th`, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "th,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!r.ok) return "";
+    const html = await r.text();
+    const idx = html.indexOf('"captionTracks"');
+    if (idx < 0) return "";
+    const slice = html.slice(idx, idx + 8000);
+    const urlMatch = slice.match(/"baseUrl":"(https:[^"]+timedtext[^"]+)"/);
+    if (!urlMatch?.[1]) return "";
+    const baseUrl = urlMatch[1].replace(/\\u0026/g, "&").replace(/\\\//g, "/");
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    const capRes = await fetch(`${baseUrl}${sep}fmt=json3`, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; KTIS-AI/1.0)" },
       signal: AbortSignal.timeout(10000),
     });
     if (!capRes.ok) return "";
-    const raw = await capRes.text();
-    // json3: { events: [{ segs: [{ utf8: "..." }] }] }
-    try {
-      const data = JSON.parse(raw) as { events?: { segs?: { utf8?: string }[] }[] };
-      const parts: string[] = [];
-      for (const ev of data.events || []) {
-        for (const seg of ev.segs || []) {
-          const t = (seg.utf8 || "").replace(/\n/g, " ").trim();
-          if (t && t !== "\n") parts.push(t);
-        }
-      }
-      return parts.join(" ").replace(/\s+/g, " ").trim().slice(0, CAPTION_CAP);
-    } catch {
-      // XML fallback: <text ...>caption</text>
-      return raw
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&#39;/g, "'")
-        .replace(/&quot;/g, '"')
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, CAPTION_CAP);
-    }
+    return (await parseCaptionPayload(await capRes.text())).slice(0, CAPTION_CAP);
   } catch {
     return "";
   }
+}
+
+async function parseCaptionPayload(raw: string): Promise<string> {
+  try {
+    const data = JSON.parse(raw) as { events?: { segs?: { utf8?: string }[] }[] };
+    const parts: string[] = [];
+    for (const ev of data.events || []) {
+      for (const seg of ev.segs || []) {
+        const t = (seg.utf8 || "").replace(/\n/g, " ").trim();
+        if (t && t !== "\n") parts.push(t);
+      }
+    }
+    return parts.join(" ").replace(/\s+/g, " ").trim();
+  } catch {
+    return raw
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+}
+
+/** Strip common YouTube description boilerplate (links, subscribe CTAs). */
+function cleanVideoDescription(desc: string): string {
+  return desc
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => {
+      if (!l) return false;
+      if (/^(https?:\/\/|www\.)/i.test(l)) return false;
+      if (/subscribe|ติดตาม|กดไลก์|กดกระดิ่ง|follow me|discord|patreon|timestamps?/i.test(l)) return false;
+      if (/^#\w+/.test(l)) return false;
+      return true;
+    })
+    .join("\n")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Merge description + captions into one body for the summarizer. */
@@ -211,13 +283,24 @@ export async function buildVideoBody(item: {
   link?: string;
 }): Promise<string> {
   const vid = item.videoId || videoIdFromLink(item.link || "");
-  const desc = (item.summary || "").trim();
+  const title = (item.title || "").trim();
+  const desc = cleanVideoDescription((item.summary || "").trim());
   const caps = vid ? await fetchCaptions(vid) : "";
   const chunks: string[] = [];
-  if (desc) chunks.push(`คำบรรยายวิดีโอ:\n${desc}`);
-  if (caps) chunks.push(`ถอดเสียง/ซับไตเติล:\n${caps}`);
-  if (!chunks.length) return (item.title || "").trim();
-  return chunks.join("\n\n").slice(0, DESC_CAP + CAPTION_CAP);
+  // Captions first — they carry what the video actually says.
+  if (caps.length >= 40) {
+    chunks.push(`ถอดเสียงจากคลิป (สำคัญที่สุด — สรุปจากส่วนนี้):\n${caps}`);
+  }
+  if (desc.length >= 40) {
+    chunks.push(`คำบรรยายวิดีโอ:\n${desc.slice(0, DESC_CAP)}`);
+  }
+  if (!chunks.length) {
+    return (
+      `หัวข้อคลิป: ${title}\n` +
+      `หมายเหตุ: ไม่มีซับไตเติล/คำบรรยายที่ใช้ได้ — บอกตรงๆ ว่าข้อมูลมีแค่ชื่อคลิป ห้ามเดาสาระ`
+    );
+  }
+  return `หัวข้อคลิป: ${title}\n\n${chunks.join("\n\n")}`.slice(0, DESC_CAP + CAPTION_CAP + 200);
 }
 
 /** Fill full descriptions via videos.list (playlistItems often truncates). */
