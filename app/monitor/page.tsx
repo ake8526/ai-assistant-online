@@ -100,21 +100,23 @@ const CSS = `
 .mon .bdg.error{border-color:var(--red)}.mon .bdg.error .stt{color:var(--red)}.mon .bdg.error .dot{background:var(--red)}
 @keyframes monpulse{50%{opacity:.2}}
 .mon .caption{font-size:19px;color:var(--dim);text-align:center;padding:9px}.mon .caption b{color:var(--red)}
-.mon .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,420px);gap:6px;align-items:stretch;flex-shrink:0;height:clamp(100px,18vh,150px);margin-bottom:0}
-@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:28vh}}
+.mon .cols{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,480px);gap:6px;align-items:stretch;flex-shrink:0;height:clamp(150px,24vh,210px);margin-bottom:0}
+@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:32vh}}
 .mon .cols > .panel{min-width:0;max-width:100%;overflow:hidden;margin-bottom:0;display:flex;flex-direction:column}
-.mon .cols > .panel .ph{flex-shrink:0}
-.mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:15px;line-height:1.15;padding:6px 8px}
+.mon .cols > .panel .ph{flex-shrink:0;padding:4px 8px}
+.mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:14px;line-height:1.15;padding:4px 8px}
 .mon #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .mon #log .t{color:var(--dim)}.mon #log .g{color:var(--green)}.mon #log .r{color:var(--red)}.mon #log .a{color:var(--amber)}.mon #log .b{color:#3a86ff}
-.mon #legend{flex:1;min-height:0;overflow-y:auto;padding:6px 8px;font-size:14px;line-height:1.35;display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;align-content:start}
-.mon #legend .row{display:flex;align-items:center;gap:6px;margin-bottom:0;min-width:0}
+.mon #legend{flex:1;min-height:0;overflow:hidden;padding:4px 6px;font-size:12px;line-height:1.15;display:grid;grid-template-columns:1fr 1fr;gap:0 12px;align-content:start}
+.mon #legend .leg-col{display:flex;flex-direction:column;gap:1px;min-width:0}
+.mon #legend .leg-h{font-family:'Press Start 2P';font-size:5px;color:var(--dim);margin:0 0 2px;letter-spacing:0.5px}
+.mon #legend .row{display:flex;align-items:center;gap:4px;margin:0;min-width:0;height:16px}
 .mon #legend .row > span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mon #legend .row.span2{grid-column:1 / -1;margin-top:6px;white-space:normal}
-.mon #legend .row.span2 > span:last-child{white-space:normal;overflow:visible;text-overflow:unset}
-.mon #legend .sw{width:10px;height:10px;flex:none;border:1px solid #000}
-.mon #legend .rl{font-family:'Press Start 2P';font-size:6px;color:var(--ink)}
-.mon #legend .rc{color:var(--dim);font-size:13px}
+.mon #legend .row.span2{grid-column:1 / -1;height:auto;min-height:16px;margin-top:3px;align-items:flex-start}
+.mon #legend .row.span2 > span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mon #legend .sw{width:8px;height:8px;flex:none;border:1px solid #000}
+.mon #legend .rl{font-family:'Press Start 2P';font-size:5px;color:var(--ink)}
+.mon #legend .rc{color:var(--dim);font-size:12px}
 .mon .foot{display:none}
 .mon .news-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px 8px 6px;border-top:2px solid var(--hair);flex-shrink:0}
 @media(max-width:1100px){.mon .news-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -1211,31 +1213,37 @@ function MonitorRoom({ getToken, account }: { getToken: () => Promise<string | n
           <div className="panel">
             <div className="ph"><span>STAGES</span></div>
             <div id="legend">
-              {AGENTS.map((a) => (
-                <div className="row" key={a.id}>
-                  <span className="sw" style={{ background: a.shirt }} />
-                  <span><span className="rl">{a.role}</span> <span className="rc">— {a.cap}</span></span>
+              <div className="leg-col">
+                <div className="leg-h">THE OFFICE</div>
+                {AGENTS.map((a) => (
+                  <div className="row" key={a.id}>
+                    <span className="sw" style={{ background: a.shirt }} />
+                    <span><span className="rl">{a.name}</span> <span className="rc">— {a.role}</span></span>
+                  </div>
+                ))}
+                <div className="row">
+                  <span className="sw" style={{ background: "#f97316" }} />
+                  <span><span className="rl">HOP</span> <span className="rc">— ช่วยส่งคิวซ้อน</span></span>
                 </div>
-              ))}
-              {NEWS_AGENTS.map((a) => (
-                <div className="row" key={a.id}>
-                  <span className="sw" style={{ background: a.shirt }} />
-                  <span><span className="rl">{a.name}</span> <span className="rc">— {a.role}</span></span>
-                </div>
-              ))}
-              <div className="row">
-                <span className="sw" style={{ background: "#38bdf8" }} />
-                <span><span className="rl">POSTIE</span> <span className="rc">— วิ่งตามทางเดิน หยิบ WRITER → ประตู</span></span>
               </div>
-              <div className="row">
-                <span className="sw" style={{ background: "#f97316" }} />
-                <span><span className="rl">HOP</span> <span className="rc">— ช่วยส่งเมื่อคิวซ้อน</span></span>
+              <div className="leg-col">
+                <div className="leg-h">NEWS ROOM</div>
+                {NEWS_AGENTS.map((a) => (
+                  <div className="row" key={a.id}>
+                    <span className="sw" style={{ background: a.shirt }} />
+                    <span><span className="rl">{a.name}</span> <span className="rc">— {a.role}</span></span>
+                  </div>
+                ))}
+                <div className="row">
+                  <span className="sw" style={{ background: "#38bdf8" }} />
+                  <span><span className="rl">POSTIE</span> <span className="rc">— วิ่งส่งข่าว</span></span>
+                </div>
               </div>
               {llmChain ? (
-                <div className="row span2" style={{ alignItems: "flex-start" }}>
+                <div className="row span2">
                   <span className="sw" style={{ background: "#f0b429" }} />
                   <span>
-                    <span className="rl">LLM KEYS</span>{" "}
+                    <span className="rl">LLM</span>{" "}
                     <span className="rc">— {llmChain}</span>
                   </span>
                 </div>
