@@ -2587,8 +2587,9 @@ async function handleParsed(
   if (intent === "get_news") {
     trace("fetch", "📰 ดึงข่าวจากแหล่งที่ติดตาม", "start");
 
-    // LINE webhook maxDuration≈60s — cannot finish digest there.
-    // Kick a separate function (maxDuration=300) that builds + pushes to LINE.
+    // LINE webhook maxDuration≈60s.
+    // 1) Try to finish digest inline (~40s) so the user gets news in the reply.
+    // 2) If not done in time, kick /api/digest/line-now (maxDuration=300) to push later.
     if (lite) {
       const upn = userUpn;
       const base = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(
@@ -2599,14 +2600,51 @@ async function handleParsed(
       const kickUrl =
         `${base}/api/digest/line-now?upn=${encodeURIComponent(upn)}` +
         (secret ? `&key=${encodeURIComponent(secret)}` : "");
-      after(() => {
-        // Fire-and-forget: the line-now invocation has its own 300s budget.
-        void fetch(kickUrl, {
+
+      const kickLineNow = () => {
+        const req = fetch(kickUrl, {
           method: "POST",
           cache: "no-store",
           headers: secret ? { "x-cron-secret": secret } : {},
-        }).catch((e) => console.warn("[get_news kick]", String(e).slice(0, 160)));
-      });
+        });
+        after(async () => {
+          try {
+            const r = await req;
+            console.warn("[get_news kick]", r.status);
+          } catch (e) {
+            console.warn("[get_news kick]", String(e).slice(0, 160));
+          }
+        });
+      };
+
+      const digestPromise = buildDigest(upn);
+      type Race = { done: true; digest: DigestResult } | { done: false };
+      const raced: Race = await Promise.race([
+        digestPromise.then((digest) => ({ done: true as const, digest })),
+        new Promise<Race>((resolve) => setTimeout(() => resolve({ done: false }), 40_000)),
+      ]);
+
+      if (raced.done) {
+        const digest = raced.digest;
+        trace("fetch", digest.stories.length ? `📰 ได้ข่าว ${digest.stories.length} เรื่อง` : "📰 ไม่มีข่าวใหม่");
+        if (!digest.stories.length) {
+          const extra = digest.skipped.length ? `\n(ข้าม: ${digest.skipped.join(", ")})` : "";
+          return {
+            intent,
+            reply:
+              (digest.note || "ยังไม่มีข่าวให้สรุปครับ") +
+              "\n\nพิมพ์ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ" +
+              extra,
+          };
+        }
+        const extra = digest.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${digest.skipped.join(", ")})` : "";
+        await rememberDeliveredStories(upn, digest.stories);
+        trace("compose", "📰 สรุปข่าวภาษาไทย");
+        return { intent, reply: formatStoriesText(digest.stories) + extra, data: digest.stories };
+      }
+
+      // Still running — finish + push on the long-running route.
+      kickLineNow();
       return {
         intent,
         reply:
