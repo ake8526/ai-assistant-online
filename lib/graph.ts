@@ -70,15 +70,34 @@ async function graphFetch(
     .replace(/root:\/[^?]*/i, "root:/…");
   const labelPath = shortPath.length > 72 ? shortPath.slice(0, 70) + "…" : shortPath;
   trace("fetch", `M365 ${opts.method || "GET"} ${labelPath}`);
-  return fetch(url, {
-    method: opts.method || "GET",
-    headers: {
-      Authorization: await authHeader(),
-      "Content-Type": "application/json",
-      ...(opts.headers || {}),
-    },
-    ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
-  });
+
+  // Without a timeout, Graph (esp. Teams online meeting create) can hang until
+  // the serverless function is killed — /monitor stays on RUNNER forever.
+  const timeoutMs = Math.max(
+    5_000,
+    Number(process.env.GRAPH_FETCH_TIMEOUT_MS || 25_000) || 25_000
+  );
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      method: opts.method || "GET",
+      signal: ac.signal,
+      headers: {
+        Authorization: await authHeader(),
+        "Content-Type": "application/json",
+        ...(opts.headers || {}),
+      },
+      ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
+    });
+  } catch (e) {
+    if (ac.signal.aborted || (e instanceof Error && e.name === "AbortError")) {
+      throw new Error(`Graph timeout after ${timeoutMs}ms ${opts.method || "GET"} ${labelPath}`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function graphGet(path: string, params?: Record<string, string>, headers?: Record<string, string>) {
@@ -1229,20 +1248,39 @@ export async function createEvent(
 ): Promise<GraphEvent & { id: string; webLink?: string }> {
   const asUser = !!getUserGraphToken();
   const path = asUser ? `/me/events` : `/users/${encodeURIComponent(organizerUpn)}/events`;
-  const r = await graphFetch(path, {
-    method: "POST",
-    body: {
-      subject,
-      ...(description ? { body: { contentType: "text", content: description } } : {}),
-      start: { dateTime: startIso, timeZone: TIMEZONE },
-      end: { dateTime: endIso, timeZone: TIMEZONE },
-      attendees: attendeeEmails.map((a) => ({ emailAddress: { address: a }, type: "required" })),
-      isOnlineMeeting: online,
-      onlineMeetingProvider: "teamsForBusiness",
-    },
-  });
-  if (!r.ok) throw new Error(`Graph createEvent ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  return r.json();
+
+  const post = async (withTeams: boolean) => {
+    const r = await graphFetch(path, {
+      method: "POST",
+      body: {
+        subject,
+        ...(description ? { body: { contentType: "text", content: description } } : {}),
+        start: { dateTime: startIso, timeZone: TIMEZONE },
+        end: { dateTime: endIso, timeZone: TIMEZONE },
+        attendees: attendeeEmails.map((a) => ({ emailAddress: { address: a }, type: "required" })),
+        ...(withTeams
+          ? { isOnlineMeeting: true, onlineMeetingProvider: "teamsForBusiness" }
+          : { isOnlineMeeting: false }),
+      },
+    });
+    if (!r.ok) throw new Error(`Graph createEvent ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    return r.json() as Promise<GraphEvent & { id: string; webLink?: string }>;
+  };
+
+  // Teams online meeting create is often the slow/hanging part — fall back to a plain event.
+  if (online) {
+    try {
+      return await post(true);
+    } catch (e) {
+      const msg = String(e);
+      if (/timeout|503|504|502|429/i.test(msg)) {
+        console.warn("[graph] createEvent Teams failed, retry without online meeting:", msg.slice(0, 160));
+        return await post(false);
+      }
+      throw e;
+    }
+  }
+  return post(false);
 }
 
 export async function deleteEvent(userUpn: string, eventId: string): Promise<void> {
