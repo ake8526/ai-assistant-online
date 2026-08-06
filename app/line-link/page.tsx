@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import Link from "next/link";
 import { UserCheck, LogIn, CheckCircle2, AlertTriangle, Settings } from "lucide-react";
+import SetupTestPanel from "@/components/SetupTestPanel";
+import SetupBriefPreviewPanel from "@/components/SetupBriefPreviewPanel";
 
 // LIFF is loaded from the CDN at runtime (no npm dep needed).
 type LiffProfile = { userId: string; displayName?: string };
@@ -58,6 +60,37 @@ function closeLiffSoon(delayMs = 1200) {
   }, delayMs);
 }
 
+function LineLinkRouter() {
+  const [view, setView] = useState<string | null>(null);
+
+  useEffect(() => {
+    const v = new URLSearchParams(window.location.search).get("view");
+    if (v === "setup-test") {
+      setView(v);
+      return;
+    }
+    if (v === "setup-brief") {
+      setView(v);
+      return;
+    }
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (next && next.startsWith("/") && !next.startsWith("//")) {
+      window.location.replace(next);
+      return;
+    }
+    setView("link");
+  }, []);
+
+  if (view === "setup-test") return <SetupTestPanel />;
+  if (view === "setup-brief") return <SetupBriefPreviewPanel />;
+  if (view === "link") return <LineLinkContent />;
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-400 flex items-center justify-center text-sm">
+      กำลังโหลด…
+    </div>
+  );
+}
+
 function LineLinkContent() {
   const { account, login, getToken } = useM365Auth();
   const [status, setStatus] = useState<Status>("init");
@@ -96,7 +129,14 @@ function LineLinkContent() {
           if (data.linked) {
             setLinkedUpn(data.upn || null);
             setStatus("linked");
-            setMsg(`เชื่อมต่อแล้ว${data.upn ? ` — ระบบจะส่งข้อความหา ${data.upn} ทาง LINE นี้` : ""}`);
+            const inLine = !!window.liff!.isInClient();
+            setInLiffClient(inLine);
+            setMsg(
+              inLine
+                ? `เชื่อมต่อแล้ว — กำลังปิดหน้าต่าง…`
+                : `เชื่อมต่อแล้ว${data.upn ? ` — ระบบจะส่งข้อความหา ${data.upn} ทาง LINE นี้` : ""}`
+            );
+            if (inLine) closeLiffSoon(1200);
             return;
           }
         } catch { /* เช็คสถานะไม่ได้/ช้า → ปล่อยให้ผูกบัญชีต่อ */ }
@@ -223,7 +263,15 @@ function LineLinkContent() {
 export default function LineLinkPage() {
   return (
     <M365AuthProvider>
-      <LineLinkContent />
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-slate-950 text-slate-400 flex items-center justify-center text-sm">
+            กำลังโหลด…
+          </div>
+        }
+      >
+        <LineLinkRouter />
+      </Suspense>
     </M365AuthProvider>
   );
 }

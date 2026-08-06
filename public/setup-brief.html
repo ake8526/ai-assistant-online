@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ตัวอย่าง — Morning Brief</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #020617;
+      color: #f1f5f9;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 1.25rem 1rem;
+      border-bottom: 1px solid #1e293b;
+      background: rgba(15, 23, 42, 0.95);
+    }
+    .badge { color: #fbbf24; font-size: 11px; font-weight: 700; margin-bottom: 0.35rem; }
+    h1 { font-size: 1.125rem; font-weight: 700; }
+    .sub { font-size: 12px; color: #94a3b8; margin-top: 0.35rem; line-height: 1.5; }
+    main { flex: 1; padding: 1rem; padding-bottom: 7rem; overflow-y: auto; }
+    .card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid #1e293b;
+      border-radius: 1rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .card.gold { border-color: rgba(251, 191, 36, 0.25); }
+    .card h2 { font-size: 12px; color: #cbd5e1; margin-bottom: 0.75rem; }
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
+    .toggle-row p { font-size: 12px; font-weight: 600; }
+    .toggle-row span { font-size: 11px; color: #94a3b8; display: block; margin-top: 0.2rem; font-weight: 400; }
+    .toggle {
+      width: 2.75rem; height: 1.5rem; border-radius: 999px; border: none; cursor: pointer;
+      background: #475569; position: relative; flex-shrink: 0;
+    }
+    .toggle.on { background: #f59e0b; }
+    .toggle::after {
+      content: ""; position: absolute; top: 2px; left: 2px; width: 1.25rem; height: 1.25rem;
+      border-radius: 50%; background: #fff; transition: transform 0.15s;
+    }
+    .toggle.on::after { transform: translateX(1.25rem); }
+    .row { display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: center; flex-wrap: wrap; }
+    select {
+      padding: 0.5rem 0.65rem; border-radius: 0.5rem; border: 1px solid #334155;
+      background: #020617; color: #f1f5f9; font-size: 14px;
+    }
+    .lbl { font-size: 12px; color: #cbd5e1; }
+    .day-grid { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+    .day {
+      width: 2.25rem; height: 2.25rem; border-radius: 0.5rem; font-size: 11px; font-weight: 700;
+      border: 1px solid #334155; background: rgba(2,6,23,0.4); color: #94a3b8; cursor: pointer;
+    }
+    .day.on { background: #f59e0b; color: #020617; border-color: #fbbf24; }
+    .muted { font-size: 11px; color: #64748b; margin-top: 0.5rem; }
+    .cal-link {
+      display: flex; gap: 0.75rem; padding: 0.75rem; border-radius: 0.75rem;
+      background: rgba(30, 41, 59, 0.6); border: 1px solid #334155; text-decoration: none; color: inherit;
+    }
+    .cal-link div { font-size: 11px; color: #94a3b8; margin-top: 0.15rem; }
+    .cal-link strong { font-size: 13px; color: #f1f5f9; }
+    pre.sample {
+      font-size: 11px; color: #cbd5e1; white-space: pre-wrap; line-height: 1.55;
+      font-family: inherit; margin-top: 0.35rem;
+    }
+    .warn { font-size: 10px; color: rgba(251, 191, 36, 0.85); padding: 0 0.25rem; }
+    .dim { opacity: 0.5; pointer-events: none; }
+    footer {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      padding: 1rem; background: rgba(2, 6, 23, 0.96); border-top: 1px solid #1e293b;
+    }
+    .actions { display: flex; gap: 0.5rem; max-width: 32rem; margin: 0 auto; }
+    .btn {
+      flex: 1; padding: 0.9rem; border-radius: 0.75rem;
+      font-size: 14px; font-weight: 700; border: none; cursor: pointer;
+    }
+    .btn-cancel { background: #1e293b; color: #e2e8f0; border: 1px solid #475569; }
+    .btn-save { background: #d97706; color: #020617; }
+    .foot-note { text-align: center; font-size: 10px; color: #64748b; margin-top: 0.5rem; }
+    #done {
+      display: none; position: fixed; inset: 0; z-index: 99999;
+      background: #020617; align-items: center; justify-content: center;
+      text-align: center; padding: 24px;
+    }
+    #done.show { display: flex; }
+    #done .icon { font-size: 3rem; margin-bottom: 12px; }
+    #done h2 { font-size: 1.125rem; margin-bottom: 8px; }
+    #done p { font-size: 0.875rem; color: #94a3b8; line-height: 1.6; }
+    #done b { color: #fff; font-size: 1.25rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="badge">🧪 ตัวอย่าง — Morning Brief</div>
+    <h1>☀️ สรุปตารางเช้า</h1>
+    <p class="sub">ส่งสรุปนัดประชุมวันนี้เข้า LINE ตอนเช้า — ต้องอนุญาตปฏิทินก่อน</p>
+  </header>
+
+  <main>
+    <section class="card gold">
+      <div class="toggle-row">
+        <div>
+          <p>Morning Brief</p>
+          <span>สรุปนัดวันนี้ + เวลาว่างโดยประมาณ</span>
+        </div>
+        <button type="button" class="toggle on" id="toggle" aria-label="เปิด Morning Brief"></button>
+      </div>
+      <div id="opts">
+        <div class="row" style="margin-top:0.75rem">
+          <span class="lbl">เวลาส่ง</span>
+          <select id="hour">
+            <option>06</option><option selected>07</option><option>08</option><option>09</option>
+          </select>
+          <span>:</span>
+          <select id="minute">
+            <option>00</option><option>15</option><option>30</option><option>45</option>
+          </select>
+          <span class="lbl">น.</span>
+        </div>
+        <p class="lbl" style="margin-top:0.75rem">วันที่ส่ง</p>
+        <div class="day-grid" id="days">
+          <button type="button" class="day on" data-d="1">จ</button>
+          <button type="button" class="day on" data-d="2">อ</button>
+          <button type="button" class="day on" data-d="3">พ</button>
+          <button type="button" class="day on" data-d="4">พฤ</button>
+          <button type="button" class="day on" data-d="5">ศ</button>
+          <button type="button" class="day" data-d="6">ส</button>
+          <button type="button" class="day" data-d="0">อา</button>
+        </div>
+        <p class="muted" id="summary">ส่งทุก 5 วัน/สัปดาห์ เวลา 07:00 น.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>ปฏิทิน M365 (จำเป็น)</h2>
+      <a class="cal-link" href="/account?ms=connected">
+        <span style="font-size:1.25rem">📅</span>
+        <div>
+          <strong>อนุญาตปฏิทิน</strong>
+          <div>✅ อนุญาตแล้ว — weerasak.pi@ktisgroup.com</div>
+        </div>
+      </a>
+    </section>
+
+    <section class="card" style="border-style:dashed">
+      <h2>ตัวอย่างข้อความใน LINE</h2>
+      <pre class="sample">☀️ Morning Brief — วันนี้ 6 ส.ค.
+📅 3 นัด · ว่างช่วงบ่าย
+
+09:00  Sync ทีม
+11:00  1:1 กับเบส
+14:00  Review Q3
+
+💡 ช่วงว่าง: 15:30–17:00</pre>
+    </section>
+
+    <p class="warn">🧪 หน้านี้เป็นตัวอย่าง UI — ยังไม่บันทึกจริง</p>
+  </main>
+
+  <footer>
+    <div class="actions">
+      <button type="button" class="btn btn-cancel" onclick="finishSetup()">ยกเลิก</button>
+      <button type="button" class="btn btn-save" onclick="finishSetup()">บันทึก (ตัวอย่าง)</button>
+    </div>
+    <p class="foot-note">กดบันทึกหรือยกเลิก → ปิดกลับแชท</p>
+  </footer>
+
+  <div id="done">
+    <div>
+      <div class="icon">✅</div>
+      <h2>เสร็จแล้ว</h2>
+      <p>กด <b>✕</b> มุมบนขวา<br>เพื่อกลับแชท LINE</p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var LIFF_ID = "2010856732-BFseuR2p";
+      var enabled = true;
+
+      function updateSummary() {
+        var h = document.getElementById("hour").value;
+        var m = document.getElementById("minute").value;
+        var days = document.querySelectorAll(".day.on").length;
+        var el = document.getElementById("summary");
+        if (!enabled) { el.textContent = "ปิด Morning Brief แล้ว"; return; }
+        el.textContent = "ส่งทุก " + days + " วัน/สัปดาห์ เวลา " + h + ":" + m + " น.";
+      }
+
+      document.getElementById("toggle").onclick = function () {
+        enabled = !enabled;
+        this.classList.toggle("on", enabled);
+        document.getElementById("opts").classList.toggle("dim", !enabled);
+        updateSummary();
+      };
+
+      document.getElementById("days").onclick = function (e) {
+        var btn = e.target.closest(".day");
+        if (!btn) return;
+        btn.classList.toggle("on");
+        updateSummary();
+      };
+      document.getElementById("hour").onchange = updateSummary;
+      document.getElementById("minute").onchange = updateSummary;
+
+      window.finishSetup = function () {
+        document.getElementById("done").className = "show";
+        function tryClose() {
+          try { if (window.liff && liff.closeWindow) liff.closeWindow(); } catch (x) {}
+          try { if (history.length > 1) history.back(); } catch (x) {}
+        }
+        tryClose();
+        if (window.liff) {
+          try { liff.init({ liffId: LIFF_ID }).then(tryClose).catch(function () {}); } catch (x) {}
+        }
+        setTimeout(tryClose, 300);
+        setTimeout(tryClose, 800);
+      };
+
+      if (window.liff) {
+        try { liff.init({ liffId: LIFF_ID }).catch(function () {}); } catch (x) {}
+      }
+    })();
+  </script>
+</body>
+</html>
