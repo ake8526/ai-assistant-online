@@ -21,6 +21,30 @@ import { admin } from "@/lib/supabaseServer";
 const APP_BASE = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/$/, "");
 const SETTINGS_URL = `${APP_BASE}/consents`;
 const ACCOUNT_URL = `${APP_BASE}/account`;
+export const SETUP_URL = `${APP_BASE}/setup`;
+
+/** Mark onboarding done after web setup + push summary to LINE. */
+export async function finishWebOnboarding(upn: string): Promise<void> {
+  await setNewsOnboardingDone(upn, true);
+  await clearNewsDraft(upn);
+  try {
+    await pushSetupCompleteSummary(upn);
+  } catch (e) {
+    console.warn("[onboarding] finishWebOnboarding push failed:", String(e).slice(0, 120));
+  }
+}
+
+function webSetupMessage(): object {
+  return {
+    type: "template",
+    altText: "เปิดหน้าตั้งค่าบนเว็บ",
+    template: {
+      type: "buttons",
+      text: "ตั้งค่าบนหน้าเว็บ — เลือกหัวข้อ เวลาแจ้ง ผูก YouTube/RSS และปฏิทินได้ในที่เดียว",
+      actions: [{ type: "uri", label: "เปิดหน้าตั้งค่า", uri: SETUP_URL }],
+    },
+  };
+}
 
 /** Linked ≥ 1 hour ago → returning user (skip full news wizard; ask meeting summary only). */
 async function isReturningLinkedUser(upn: string): Promise<boolean> {
@@ -947,6 +971,39 @@ export async function handleNewsOnboardingText(
   if (!draft) return false;
 
   const t = text.trim();
+  if (draft.step === "ask") {
+    if (/ไม่|ไม่เอา|ไม่ต้องการ/.test(t)) {
+      await setNewsInterested(upn, false);
+      await setNewsTopics(upn, []);
+      await saveNotifyKind(upn, "news", { enabled: false });
+      await saveNotifyKind(upn, "brief", { enabled: false }).catch(() => undefined);
+      await finishOnboardingQuiet(
+        upn,
+        replyToken,
+        "รับทราบครับ จะยังไม่ส่งสรุปข่าวให้อัตโนมัติ\n" +
+          "ถ้าเปลี่ยนใจ พิมพ์ “ตั้งค่าข่าว” ได้ตลอดครับ\n\n" +
+          "พร้อมใช้งานแล้ว — พิมพ์คำสั่งหรือกด / ได้เลยครับ"
+      );
+      return true;
+    }
+    if (/ใช่|ต้องการ|เอา|ตกลง|อยากติดตาม|ok/i.test(t)) {
+      await setNewsInterested(upn, true);
+      await saveNotifyKind(upn, "news", { enabled: true });
+      await clearNewsDraft(upn);
+      await replyLineMessages(replyToken, [
+        {
+          type: "text",
+          text:
+            "เยี่ยมครับ 👍\n\n" +
+            "ตั้งค่าบนหน้าเว็บจะสะดวกกว่า — กดปุ่มด้านล่างเพื่อเริ่มเลย\n\n" +
+            "เสร็จแล้วระบบจะส่งสรุปการตั้งค่ากลับมาใน LINE อัตโนมัติครับ",
+        },
+        webSetupMessage(),
+      ]);
+      return true;
+    }
+  }
+
   if (draft.step === "ask_summary") {
     if (/ไม่|ไม่เอา|ไม่ต้องการ|ไม่ส่ง/.test(t)) {
       await setMeetingSummaryEnabled(upn, false);
@@ -1222,9 +1279,17 @@ export async function handleNewsOnboardingPostback(
   if (a === "newsyes") {
     await setNewsInterested(upn, true);
     await saveNotifyKind(upn, "news", { enabled: true });
-    draft = { step: "topics", topics: draft.topics || [], ts: Date.now() };
-    await saveNewsDraft(upn, draft);
-    await replyLineMessages(replyToken, [topicsPrompt(draft.topics)]);
+    await clearNewsDraft(upn);
+    await replyLineMessages(replyToken, [
+      {
+        type: "text",
+        text:
+          "เยี่ยมครับ 👍\n\n" +
+          "ตั้งค่าบนหน้าเว็บจะสะดวกกว่า — กดปุ่มด้านล่างเพื่อเริ่มเลย\n\n" +
+          "เสร็จแล้วระบบจะส่งสรุปการตั้งค่ากลับมาใน LINE อัตโนมัติครับ",
+      },
+      webSetupMessage(),
+    ]);
     return true;
   }
 

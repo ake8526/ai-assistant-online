@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/:path(line-link|account|consents|settings)",
+        source: "/:path(line-link|account|consents|settings|setup)",
         headers: [
           { key: "Cache-Control", value: "no-store, must-revalidate" },
         ],
