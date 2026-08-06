@@ -423,10 +423,11 @@ function askSourcesMessage(): object {
     altText: "จะผูก YouTube หรือแหล่งข่าวอื่นไหม?",
     template: {
       type: "buttons",
-      text: "เลือกแหล่งที่อยากผูกเพิ่ม หรือกดข้ามได้ครับ",
+      text: "กด YouTube หรือ RSS/Facebook เพื่อเปิดหน้าผูกเลย หรือกดเสร็จแล้ว/ข้าม",
       actions: [
-        { type: "postback", label: "YouTube", data: "a=sourceyt", displayText: "ผูก YouTube" },
-        { type: "postback", label: "RSS / Facebook", data: "a=sourcerss", displayText: "ผูก RSS/Facebook" },
+        { type: "uri", label: "YouTube", uri: SETTINGS_URL },
+        { type: "uri", label: "RSS / Facebook", uri: SETTINGS_URL },
+        { type: "postback", label: "เสร็จแล้ว", data: "a=sourcesdone", displayText: "ผูกเสร็จแล้ว" },
         { type: "postback", label: "ข้าม", data: "a=sourceskip", displayText: "ไม่ผูกเพิ่ม" },
       ],
     },
@@ -437,14 +438,14 @@ function sourceLinkMessage(kind: "yt" | "rss"): object {
   const isYt = kind === "yt";
   return {
     type: "template",
-    altText: isYt ? "เปิดหน้าตั้งค่าเพื่อผูก YouTube" : "เปิดหน้าตั้งค่าเพื่อผูก RSS/Facebook",
+    altText: isYt ? "เปิดหน้าผูก YouTube" : "เปิดหน้าผูก RSS/Facebook",
     template: {
       type: "buttons",
       text: isYt
-        ? "เปิดหน้าตั้งค่า แล้วกดเชื่อม Google/YouTube ครับ"
-        : "เปิดหน้าตั้งค่า แล้วเพิ่ม RSS หรือเพจ Facebook ครับ",
+        ? "กดปุ่มด้านล่างเพื่อเปิดหน้าผูก Google/YouTube"
+        : "กดปุ่มด้านล่างเพื่อเพิ่ม RSS หรือเพจ Facebook",
       actions: [
-        { type: "uri", label: "เปิดหน้าตั้งค่า", uri: SETTINGS_URL },
+        { type: "uri", label: "เปิดหน้าผูก", uri: SETTINGS_URL },
         { type: "postback", label: "เสร็จแล้ว", data: "a=sourcesdone", displayText: "ผูกเสร็จแล้ว" },
         { type: "postback", label: "ข้าม", data: "a=sourceskip", displayText: "ข้าม" },
       ],
