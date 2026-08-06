@@ -42,6 +42,7 @@ import {
 import { getUserGraphToken } from "@/lib/graphAuth";
 import { chat, llmUserErrorMessage } from "@/lib/llm";
 import { gpsCapturePageUrl } from "@/lib/gpsCapture";
+import { listRecentOnline } from "@/lib/meetings";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { busyRanges, findCommonSlots, formatBusy, formatFree, freeRanges, wantsLunchIncluded } from "@/lib/scheduling";

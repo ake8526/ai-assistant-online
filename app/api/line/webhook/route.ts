@@ -1113,7 +1113,7 @@ async function handleLocationMessage(ev: LineEvent): Promise<void> {
             },
             {
               type: "action",
-              action: { type: "message", label: "เร็วๆนี้", text: "เร็วๆนี้" },
+              action: { type: "message", label: "ตั้งที่ทำงาน", text: "ตั้งที่ทำงาน" },
             },
           ],
         },
