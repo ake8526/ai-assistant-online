@@ -877,9 +877,10 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
     body = body.replace(rangeM[0], " ").replace(/\s+/g, " ").trim();
   } else {
     const timeM =
-      body.match(/(?:ตอน|เวลา|ที่)\s*(\d{1,2}:\d{2})/i) || body.match(/\b(\d{1,2}:\d{2})\b/);
+      body.match(/(?:ตอน|เวลา|ที่)\s*(\d{1,2}[:.]\d{2})/i) || body.match(/\b(\d{1,2}[:.]\d{2})\b/);
     if (timeM) {
-      at = timeM[1].length === 4 ? `0${timeM[1]}` : timeM[1].padStart(5, "0");
+      at = timeM[1].replace(".", ":").padStart(5, "0");
+      if (at.length === 4) at = `0${at}`;
       after = at;
       body = body.replace(timeM[0], " ").replace(/\s+/g, " ").trim();
     } else {
@@ -930,6 +931,7 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
     .replace(/^(?:นัด|จอง)(?:ประชุม)?(?:กับ|หา)?/i, "")
     .replace(/^หาเวลา(?:ว่าง)?(?:ตรงกัน)?(?:กับ)?/i, "")
     .replace(/^ขอ(?:นัด|จอง)(?:ประชุม)?(?:กับ)?/i, "")
+    .replace(/\b\d{1,2}[:.]\d{2}\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
