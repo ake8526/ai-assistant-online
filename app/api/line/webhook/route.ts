@@ -161,6 +161,17 @@ function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | 
         },
       });
     }
+  } else if (res.intent === "choose_meeting" && Array.isArray(res.choices)) {
+    let n = 0;
+    for (const c of res.choices as Choice[]) {
+      if (!c.event_id || items.length >= 12) continue;
+      n++;
+      const p = new URLSearchParams({ a: "sum", id: c.event_id });
+      const data = p.toString();
+      if (data.length > 300) continue;
+      // Numbered buttons; full titles are in the message body via detailText.
+      add(n, data, `สรุป ${n}) ${c.label || ""}`);
+    }
   } else if (res.intent === "choose_remove_feed" && Array.isArray(res.choices)) {
     let n = 0;
     for (const c of res.choices as Choice[]) {
@@ -263,6 +274,10 @@ function detailText(res: CommandResult, upn?: string): string {
     return "\n\n" + parts.join("\n");
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).filter((c) => c.event_id).map((c, i) => `${i + 1}) ${c.label || ""}`);
+  } else if (res.intent === "choose_meeting" && Array.isArray(res.choices)) {
+    lines = (res.choices as Choice[])
+      .filter((c) => c.event_id)
+      .map((c, i) => `${i + 1}) ${c.label || ""}`);
   } else if (res.intent === "choose_remove_feed" && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).filter((c) => c.feed_id).map((c, i) => `${i + 1}) ${c.label || ""}`);
   } else if (res.intent === "choose_prep" && Array.isArray(res.choices)) {

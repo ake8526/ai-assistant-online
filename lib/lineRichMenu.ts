@@ -245,20 +245,8 @@ export function richMenuReply(text: string): object[] | null {
   }
 
   if (t === "สรุปประชุม" || norm === "สรุปประชุม") {
-    return [
-      {
-        type: "text",
-        text:
-          "สรุปประชุม · มอบหมายงาน\n\n" +
-          "พิมพ์ เช่น «สรุปประชุมล่าสุด» หรือ «สรุปประชุมวันนี้»\n" +
-          "ระบบจะดึงจาก Teams แล้วช่วยมอบหมายงานทาง LINE ได้ครับ",
-        quickReply: qrItems([
-          { label: "สรุปประชุมล่าสุด", text: "สรุปประชุมล่าสุด" },
-          { label: "สรุปประชุมวันนี้", text: "สรุปประชุมวันนี้" },
-          { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
-        ]),
-      },
-    ];
+    // Let handleCommand list past meetings with LINE quick-replies (do not intercept).
+    return null;
   }
 
   if (t === "ไฟล์·นัด" || t === "ไฟล์นัด" || t === "ไฟล์-นัด" || norm === "ไฟล์นัด") {

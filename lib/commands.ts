@@ -18,7 +18,7 @@ import { sendLine } from "@/lib/line";
 import { runWithTrace, trace } from "@/lib/trace";
 import { after } from "next/server";
 import { waitUntil } from "@vercel/functions";
-import { normalizeDue, resolveResponsible } from "@/lib/followup";
+import { normalizeDue, resolveResponsible, ingestActionItems } from "@/lib/followup";
 import { createHash } from "crypto";
 import {
   GraphEvent,
@@ -2150,6 +2150,23 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
       if (!id) return { intent: "error", reply: "ไม่พบนัดที่จะยกเลิกครับ" };
       await deleteEvent(userUpn, id);
       return { intent: "cancelled", reply: "✅ ยกเลิกนัดแล้วครับ" };
+    }
+    if (a === "sum") {
+      const id = data.get("id") || "";
+      if (!id) return { intent: "error", reply: "ไม่พบนัดที่จะสรุปครับ" };
+      const { summarizeOne } = await import("@/lib/meetings");
+      const res = await summarizeOne(userUpn, id);
+      if (!res.ok) {
+        return { intent: "error", reply: `⚠️ ${res.reason || "สรุปไม่สำเร็จ"}` };
+      }
+      let reply = res.summary || `สรุป: ${res.subject}`;
+      try {
+        const added = await ingestActionItems(res.action_items || []);
+        if (added) reply += `\n\n(บันทึกงานติดตามใหม่ ${added} รายการ)`;
+      } catch {
+        /* ignore task ingest errors on LINE path */
+      }
+      return { intent: "meeting_summary", reply };
     }
     if (a === "findmt") {
       const { attendees, duration, window, after, before, atMin, subject, includeLunch, dnRef } = decodeMtAttendees(data);
