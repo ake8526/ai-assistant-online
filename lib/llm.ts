@@ -187,19 +187,29 @@ export async function chat(
     timeoutMs?: number;
     /** Force this provider first (others remain as fallback). */
     prefer?: Provider;
+    /** Use only this provider — no fallback (for mandated summary models). */
+    only?: Provider;
     /** Override pipeline stage for /monitor (e.g. news picker → fetch). */
     traceStep?: TraceStep;
     /** Prefix for monitor labels — use "📰 …" for the news room. */
     tracePrefix?: string;
   }
 ): Promise<string> {
-  let chain = providerChain(opts?.fast).filter((p) => settings(p));
-  if (opts?.prefer && settings(opts.prefer)) {
-    // Prefer healthy provider; if preferred is mid-cooldown, put it last.
-    if (!isRateLimited(opts.prefer)) {
-      chain = [opts.prefer, ...chain.filter((p) => p !== opts.prefer)];
-    } else {
-      chain = [...chain.filter((p) => p !== opts.prefer), opts.prefer];
+  let chain: Provider[];
+  if (opts?.only) {
+    if (!settings(opts.only)) {
+      throw new Error(`${opts.only} not configured (required for this summary task)`);
+    }
+    chain = [opts.only];
+  } else {
+    chain = providerChain(opts?.fast).filter((p) => settings(p));
+    if (opts?.prefer && settings(opts.prefer)) {
+      // Prefer healthy provider; if preferred is mid-cooldown, put it last.
+      if (!isRateLimited(opts.prefer)) {
+        chain = [opts.prefer, ...chain.filter((p) => p !== opts.prefer)];
+      } else {
+        chain = [...chain.filter((p) => p !== opts.prefer), opts.prefer];
+      }
     }
   }
   if (!chain.length) {
@@ -254,6 +264,15 @@ export async function chat(
   if (retry != null) return retry;
 
   throw new Error(`All LLM providers failed — ${errors.join(" | ")}`);
+}
+
+/** News + meeting summaries must use Gemini (no Qwen/Groq fallback). */
+export async function summaryChat(
+  system: string,
+  user: string,
+  opts?: Omit<NonNullable<Parameters<typeof chat>[2]>, "only" | "prefer">
+): Promise<string> {
+  return chat(system, user, { ...opts, only: "gemini" });
 }
 
 /** Safe (no secrets) LLM status for /monitor — which keys are configured + chain order. */

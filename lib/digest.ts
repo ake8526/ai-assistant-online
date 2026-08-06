@@ -5,15 +5,12 @@ import { createHash } from "crypto";
 import { admin } from "@/lib/supabaseServer";
 import { fetchFeed, fetchArticle, type FeedEntry } from "@/lib/rss";
 import { recentPosts as facebookPosts } from "@/lib/facebook";
-import { chat } from "@/lib/llm";
+import { summaryChat } from "@/lib/llm";
 import { getNewsCount, isNewsCountAll, NEWS_COUNT_ALL_CAP } from "@/lib/notify";
 import { nowWall, TZ_OFFSET_MIN } from "@/lib/time";
 import { loadSeenNewsKeys, newsStoryKey } from "@/lib/store";
 import { trace } from "@/lib/trace";
 import * as youtube from "@/lib/youtube";
-
-/** Trial: force Gemini for news pick + summarize. Set null to restore default chain. */
-const NEWS_LLM_PREFER: "gemini" | "qwen" | "groq" | null = null;
 
 export interface Story {
   id: string;
@@ -71,6 +68,40 @@ function isHollowBullet(b: string): boolean {
   );
 }
 
+/** True if text looks cut mid-sentence (bad for LINE). */
+function isTruncatedGarbage(b: string): boolean {
+  const t = b.trim();
+  if (!t) return true;
+  if (/\[\.\.\.\]/.test(t)) return true;
+  if (/\.\.\.\s*$|…\s*$/.test(t) && t.length > 40) return true;
+  return false;
+}
+
+/** Cut at sentence/word boundary — never mid-word with [...]. */
+function clipComplete(text: string, max = 320): string {
+  let t = (text || "")
+    .replace(/\s+/g, " ")
+    .replace(/\[\.\.\.\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!t) return "";
+  if (t.length <= max) return t;
+  const window = t.slice(0, max);
+  const marks = ["។", "．", "。", ".", "!", "?", " "].map((m) => window.lastIndexOf(m));
+  let cut = Math.max(...marks);
+  if (cut < max * 0.4) cut = max;
+  else if (window[cut] !== " ") cut = cut + 1;
+  return window.slice(0, cut).trim();
+}
+
+function cleanBullet(b: string): string {
+  return (b || "")
+    .replace(/\s+/g, " ")
+    .replace(/\[\.\.\.\]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function isPaywalledSnippet(s: string): boolean {
   return /ONLY AVAILABLE IN PAID PLANS/i.test(s || "");
 }
@@ -108,8 +139,10 @@ export function formatStoriesText(stories: Story[], note?: string): string {
     lines.push(`ℹ️ ${note}`, "");
   }
   stories.forEach((s, i) => {
-    const bullets = storyBullets(s).map((b) => b.trim()).filter((b) => b && !isHollowBullet(b));
-    const headline = bullets[0] || s.title;
+    const bullets = storyBullets(s)
+      .map((b) => cleanBullet(b))
+      .filter((b) => b && !isHollowBullet(b) && !isTruncatedGarbage(b));
+    const headline = bullets[0] || cleanBullet(s.title);
     const points = bullets.slice(1);
     const topic = (s.source || "").replace(/^หัวข้อ\s*·\s*/u, "").trim() || s.source;
     lines.push(`${i + 1}) ${topic}`);
@@ -121,8 +154,14 @@ export function formatStoriesText(stories: Story[], note?: string): string {
   return lines.join("\n").trim();
 }
 
-export async function buildDigest(upn: string): Promise<DigestResult> {
-  trace("fetch", "📰 เริ่มรวบรวมข่าว", "start");
+export type DigestOptions = {
+  /** Morning cron: finish under ~3 min — skip captions/repairs, shorter scrapes. */
+  fast?: boolean;
+};
+
+export async function buildDigest(upn: string, opts: DigestOptions = {}): Promise<DigestResult> {
+  const fast = !!opts.fast;
+  trace("fetch", fast ? "📰 เริ่มรวบรวมข่าว (เร็ว)" : "📰 เริ่มรวบรวมข่าว", "start");
   // 1) consents + feeds
   const { data: consentRows } = await admin.from("consents").select("capability, granted").eq("owner_upn", upn);
   const granted = new Set((consentRows || []).filter((r) => r.granted).map((r) => r.capability));
@@ -169,10 +208,16 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
         };
       }
       if (f.kind === "facebook") {
+        if (fast) {
+          return { skip: `${f.label || "Facebook"} (ข้ามในรอบเช้า — ใช้แหล่งอื่นก่อน)`, entries: [] as DigestItem[] };
+        }
         const fbLabel = (f.label || "Facebook").slice(0, 60);
         trace("fetch", `📰 Facebook · ${fbLabel}`, "start");
         try {
-          const entries = await facebookPosts(f.ref, 8);
+          const entries = await Promise.race([
+            facebookPosts(f.ref, 8),
+            new Promise<FeedEntry[]>((resolve) => setTimeout(() => resolve([]), 12_000)),
+          ]);
           trace("fetch", `📰 Facebook · ${fbLabel} · ${entries.length} โพสต์`);
           return {
             skip: entries.length ? null : `${f.label || "Facebook"} (ดึงโพสต์ไม่ได้ — ตรวจ App / สิทธิ์เพจ)`,
@@ -195,13 +240,18 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   }
 
   // 2b) YouTube — pull uploads; hard-cap to 2 newest in digest (never flood)
-  const YT_HARD_CAP = 2;
+  const YT_HARD_CAP = fast ? 1 : 2;
   if (granted.has("src_youtube") && youtube.isConfigured()) {
     const { data: tok } = await admin.from("oauth_tokens").select("refresh_token").eq("owner_upn", upn).eq("provider", "google").single();
     if (tok?.refresh_token) {
       try {
         trace("fetch", "📰 YouTube · subscriptions", "start");
-        const vids = await youtube.recentUploads(tok.refresh_token);
+        const vids = await Promise.race([
+          youtube.recentUploads(tok.refresh_token),
+          new Promise<Awaited<ReturnType<typeof youtube.recentUploads>>>((resolve) =>
+            setTimeout(() => resolve([]), fast ? 12_000 : 25_000)
+          ),
+        ]);
         trace("fetch", `📰 YouTube · subscriptions · ${Math.min(vids.length, YT_HARD_CAP)} คลิป`);
         vids
           .sort((a, b) => (b.published || "").localeCompare(a.published || ""))
@@ -307,10 +357,10 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
 
   items.sort((a, b) => (b.published || "").localeCompare(a.published || ""));
 
-  const wantAll = isNewsCountAll(newsCount);
+  const wantAll = !fast && isNewsCountAll(newsCount);
   const highlightN = wantAll
     ? NEWS_COUNT_ALL_CAP
-    : Math.max(1, Math.min(newsCount, 10));
+    : Math.max(1, Math.min(fast ? Math.min(newsCount || 3, 3) : newsCount, 10));
 
   // Balance: topics/feeds first; YouTube at most 1–2 when mixed with other news
   const topicItems = items.filter((it) => it.fromTopic);
@@ -389,8 +439,8 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
 
   // 3) pick highlights within the balanced pool
   let picks: number[] = [];
-  if (wantAll || pool.length <= highlightN) {
-    picks = pool.map((_, i) => i);
+  if (fast || wantAll || pool.length <= highlightN) {
+    picks = pool.map((_, i) => i).slice(0, highlightN);
   } else {
     const listing = pool
       .map((it, i) => {
@@ -401,13 +451,13 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
       .join("\n");
     try {
       trace("fetch", `📰 เลือกเด่น · ${Math.min(highlightN, pool.length)} เรื่อง`, "start");
-      const raw = await chat(
+      const raw = await summaryChat(
         `คุณเป็นบรรณาธิการข่าว — เลือกข่าว/คลิปที่ "เด่น สำคัญ หรือน่าสนใจที่สุด" ${Math.min(highlightN, pool.length)} อัน\n` +
           `ตอบ JSON เท่านั้น {"highlights":[index...]}\n` +
           `เลือกเรื่องที่มีประเด็นชัด มีผลกระทบ มีตัวเลข/เหตุการณ์เด่น หรือน่าติดตาม — ไม่ใช่แค่หัวข้อทั่วไป\n` +
           `ให้ความสำคัญกับรายการที่มีแท็ก [หัวข้อ] ก่อน — YouTube เลือกได้ไม่เกิน ${ytCap} อัน`,
         listing,
-        { json: true, temperature: 0, timeoutMs: 15000, prefer: NEWS_LLM_PREFER || undefined, traceStep: "fetch", tracePrefix: "📰 เลือกเด่น" }
+        { json: true, temperature: 0, timeoutMs: 15000, traceStep: "fetch", tracePrefix: "📰 เลือกเด่น" }
       );
       const d = JSON.parse(raw);
       picks = [...(d.highlights || [])].filter(
@@ -441,9 +491,15 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   // 4) fetch article / YouTube captions + stage 2 — write useful Thai key points
   const chosen = picks.map((i) => pool[i]).slice(0, highlightN);
   trace("fetch", `📰 อ่านบทความ · ${chosen.length} เรื่อง`, "start");
+      const scrapeMs = fast ? 8000 : 15000;
   const withText = await Promise.all(
     chosen.map(async (it) => {
       if (it.kind === "youtube") {
+        if (fast) {
+          // Morning: title + description only (captions are too slow for cron).
+          const full = [it.title, it.summary].filter(Boolean).join("\n").slice(0, 4000);
+          return { ...it, full };
+        }
         const full = await youtube.buildVideoBody({
           title: it.title,
           summary: it.summary,
@@ -454,7 +510,7 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
       }
       // Always scrape the article page — RSS/NewsData teasers alone make weak summaries.
       const sum = (it.summary || "").trim();
-      const scraped = await fetchArticle(it.link);
+      const scraped = await fetchArticle(it.link, scrapeMs);
       let full = bestArticleBody(it.title, isPaywalledSnippet(sum) ? "" : sum, scraped);
       if (isPaywalledSnippet(full)) full = (it.title || "").trim();
       return { ...it, full };
@@ -527,12 +583,10 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
       .join("\n\n----\n\n");
     try {
       trace("compose", `📰 สรุปประเด็น · ${items.length} เรื่อง`, "start");
-      const raw = await chat(system, writerInput, {
+      const raw = await summaryChat(system, writerInput, {
         json: true,
         temperature: 0.2,
-        timeoutMs: quality ? 28000 : 18000,
-        prefer: NEWS_LLM_PREFER || (quality ? "qwen" : undefined),
-        fast: !quality && !NEWS_LLM_PREFER,
+        timeoutMs: quality ? 28000 : 14000,
         traceStep: "compose",
         tracePrefix: "📰 สรุปประเด็น",
       });
@@ -557,38 +611,49 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
     .map((it, i) => ({ it, i }))
     .filter((x) => x.it.kind !== "youtube");
 
-  for (const row of ytRows) {
-    await summarizeBatch([row], YT_WRITER_SYSTEM, true);
-    const s = summaries[String(row.i)];
-    const hl = String(s?.headline || "").trim();
-    if (s && similarToTitle(hl, row.it.title)) {
-      await summarizeBatch(
-        [row],
-        YT_WRITER_SYSTEM + "\n\nรอบแก้: headline ห้ามคล้ายชื่อคลิป — บอกสาระจากถอดเสียงให้ชัด",
-        true
-      );
+  if (fast) {
+    // Morning: still use quality writer once (readable LINE). Speed comes from
+    // skipping Facebook / YouTube captions / repair loops — not from bad summaries.
+    for (let n = 0; n < newsRows.length; n += 2) {
+      await summarizeBatch(newsRows.slice(n, n + 2), NEWS_WRITER_SYSTEM, true);
     }
-  }
+    for (const row of ytRows) {
+      await summarizeBatch([row], YT_WRITER_SYSTEM, true);
+    }
+  } else {
+    for (const row of ytRows) {
+      await summarizeBatch([row], YT_WRITER_SYSTEM, true);
+      const s = summaries[String(row.i)];
+      const hl = String(s?.headline || "").trim();
+      if (s && similarToTitle(hl, row.it.title)) {
+        await summarizeBatch(
+          [row],
+          YT_WRITER_SYSTEM + "\n\nรอบแก้: headline ห้ามคล้ายชื่อคลิป — บอกสาระจากถอดเสียงให้ชัด",
+          true
+        );
+      }
+    }
 
-  for (let n = 0; n < newsRows.length; n += 2) {
-    const chunk = newsRows.slice(n, n + 2);
-    await summarizeBatch(chunk, NEWS_WRITER_SYSTEM, true);
-  }
+    for (let n = 0; n < newsRows.length; n += 2) {
+      const chunk = newsRows.slice(n, n + 2);
+      await summarizeBatch(chunk, NEWS_WRITER_SYSTEM, true);
+    }
 
-  // Repair weak news summaries (title echo / too thin vs body length)
-  for (const row of newsRows) {
-    const s = summaries[String(row.i)];
-    const hl = String(s?.headline || "").trim();
-    const pts = (s?.points || s?.bullets || []).filter((b) => String(b || "").trim());
-    const bodyLen = (row.it.full || row.it.summary || "").length;
-    const weak = !hl || similarToTitle(hl, row.it.title) || (bodyLen > 400 && pts.length < 2);
-    if (weak) {
-      await summarizeBatch(
-        [row],
-        NEWS_WRITER_SYSTEM +
-          "\n\nรอบแก้: ห้ามเขียนคล้ายหัวข้อ — ต้องบอกว่าเกิดอะไร มีใครเกี่ยวข้อง ตัวเลข/ผลกระทบจากเนื้อหา อย่างน้อย 3 points",
-        true
-      );
+    // Repair weak news summaries (title echo / too thin vs body length)
+    for (const row of newsRows) {
+      const s = summaries[String(row.i)];
+      const hl = String(s?.headline || "").trim();
+      const pts = (s?.points || s?.bullets || []).filter((b) => String(b || "").trim());
+      const bodyLen = (row.it.full || row.it.summary || "").length;
+      const weak = !hl || similarToTitle(hl, row.it.title) || (bodyLen > 400 && pts.length < 2);
+      if (weak) {
+        await summarizeBatch(
+          [row],
+          NEWS_WRITER_SYSTEM +
+            "\n\nรอบแก้: ห้ามเขียนคล้ายหัวข้อ — ต้องบอกว่าเกิดอะไร มีใครเกี่ยวข้อง ตัวเลข/ผลกระทบจากเนื้อหา อย่างน้อย 3 points",
+          true
+        );
+      }
     }
   }
 
@@ -597,15 +662,24 @@ export async function buildDigest(upn: string): Promise<DigestResult> {
   for (let i = 0; i < withText.length; i++) {
     const it = withText[i];
     const s = summaries[String(i)] || {};
-    const headline = String(s.headline || s.blurb || "").trim();
+    const headline = cleanBullet(String(s.headline || s.blurb || ""));
     const points = (s.points || s.bullets || [])
-      .map((b) => String(b || "").trim())
-      .filter((b) => b && !isHollowBullet(b));
-    let finalBullets = [headline, ...points].filter((b) => b && !isHollowBullet(b)).slice(0, 6);
+      .map((b) => cleanBullet(String(b || "")))
+      .filter((b) => b && !isHollowBullet(b) && !isTruncatedGarbage(b));
+    let finalBullets = [headline, ...points].filter((b) => b && !isHollowBullet(b) && !isTruncatedGarbage(b)).slice(0, 6);
     if (!finalBullets.length) {
-      const snip = (it.summary || it.full || "").replace(/\s+/g, " ").trim().slice(0, 220);
-      finalBullets = snip && snip !== it.title ? [snip] : [(it.title || "").trim()].filter(Boolean);
+      // Prefer 2–3 complete sentences from body — never hard-slice mid-word.
+      const raw = cleanBullet(it.summary || it.full || it.title || "");
+      const sentences = raw.split(/(?<=[.!?。])\s+/).filter((x) => x.trim().length > 12);
+      if (sentences.length >= 2) {
+        finalBullets = sentences.slice(0, 3).map((x) => clipComplete(x, 200));
+      } else {
+        const snip = clipComplete(raw, 280);
+        finalBullets = snip && snip !== it.title ? [snip] : [(it.title || "").trim()].filter(Boolean);
+      }
     }
+    // Cap each bullet length at a complete boundary (LINE readability).
+    finalBullets = finalBullets.map((b) => clipComplete(b, 280)).filter(Boolean);
     stories.push({
       id: createHash("sha1").update(it.link).digest("hex").slice(0, 8),
       title: it.title,

@@ -11,7 +11,7 @@ import {
   getUserId,
   listTranscripts,
 } from "@/lib/graph";
-import { chat } from "@/lib/llm";
+import { summaryChat } from "@/lib/llm";
 import { sendLine } from "@/lib/line";
 import { ActionItem, ingestActionItems } from "@/lib/followup";
 import { markMeetingSummarized, wasMeetingSummarized } from "@/lib/store";
@@ -135,9 +135,12 @@ function clip(text: string): { text: string; clipped: boolean } {
 
 export async function summarize(transcriptText: string, meetingSubject: string): Promise<SummaryResult> {
   const { text, clipped } = clip(transcriptText);
-  const raw = await chat(SUMMARY_SYSTEM, `หัวข้อประชุม: ${meetingSubject}\n\nTranscript:\n${text}`, {
+  const raw = await summaryChat(SUMMARY_SYSTEM, `หัวข้อประชุม: ${meetingSubject}\n\nTranscript:\n${text}`, {
     temperature: 0.2,
     json: true,
+    timeoutMs: 45000,
+    traceStep: "compose",
+    tracePrefix: "📋 สรุปประชุม",
   });
   let result: SummaryResult;
   try {
