@@ -1,7 +1,7 @@
 // LINE Rich Menu — 2×3 layout matching rich-menu-preview.html (draft B).
 // Note: do NOT import sharp at top-level — webhook imports this module on every message.
 
-export const RICH_MENU_NAME = "ktis-main-v4-full";
+export const RICH_MENU_NAME = "ktis-main-v5-full";
 
 /** Strip invisible chars LINE sometimes appends (ZWSP etc.) so menu taps match. */
 export function sanitizeMenuText(text: string): string {
@@ -44,11 +44,11 @@ export const RICH_MENU_AREAS: RichMenuArea[] = [
   },
   {
     bounds: { x: 0, y: ROW, width: COL, height: ROW2 },
-    action: { type: "message", label: "ไฟล์นัด", text: "ไฟล์·นัด" },
+    action: { type: "message", label: "ไฟล์", text: "ไฟล์" },
   },
   {
     bounds: { x: COL, y: ROW, width: COL, height: ROW2 },
-    action: { type: "message", label: "เดินทาง", text: "วางแผนเดินทาง" },
+    action: { type: "message", label: "เร็วๆนี้", text: "เร็วๆนี้" },
   },
   {
     bounds: { x: COL * 2, y: ROW, width: COL3, height: ROW2 },
@@ -207,8 +207,8 @@ export async function buildRichMenuPng(opts?: { force?: boolean }): Promise<Buff
   ${cellSvg(0, 0, COL, ROW, "#ffffff", "#e0f2f1", "cal", "ตาราง·จอง", "ติดตามนัด")}
   ${cellSvg(COL, 0, COL, ROW, "#ffffff", "#e0f2f1", "meet", "สรุปประชุม", "มอบหมายงาน")}
   ${cellSvg(COL * 2, 0, COL3, ROW, "#ffffff", "#e0f2f1", "news", "สรุปข่าว", "ที่ติดตาม")}
-  ${cellSvg(0, ROW, COL, ROW2, "#fff7ed", "#ffedd5", "file", "ไฟล์·นัด", "ค้น·ผูก·แนบ")}
-  ${cellSvg(COL, ROW, COL, ROW2, "#eff6ff", "#dbeafe", "car", "วางแผนเดินทาง", "ออกจากบ้านเมื่อไหร่")}
+  ${cellSvg(0, ROW, COL, ROW2, "#fff7ed", "#ffedd5", "file", "ไฟล์", "ค้น·ผูก·แนบ")}
+  ${cellSvg(COL, ROW, COL, ROW2, "#f1f5f9", "#e2e8f0", "car", "เร็วๆนี้", "รอระบบใหม่")}
   ${cellSvg(COL * 2, ROW, COL3, ROW2, "#ecfdf5", "#ccfbf1", "gear", "ตั้งค่า", "เปิดหน้าเว็บ")}
 </svg>`;
   const png = await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer();
@@ -258,11 +258,11 @@ export function richMenuReply(text: string): object[] | null {
     return null;
   }
 
-  if (t === "ไฟล์·นัด" || t === "ไฟล์นัด" || t === "ไฟล์-นัด" || norm === "ไฟล์นัด") {
+  if (t === "ไฟล์" || t === "ไฟล์·นัด" || t === "ไฟล์นัด" || t === "ไฟล์-นัด" || norm === "ไฟล์" || norm === "ไฟล์นัด") {
     return [
       {
         type: "text",
-        text: "ไฟล์ · นัด — ค้น OneDrive / ผูกไฟล์ / แนบตอนจอง — เลือกได้เลยครับ",
+        text: "ไฟล์ — ค้น OneDrive / ผูกไฟล์ / แนบตอนจอง — เลือกได้เลยครับ",
         quickReply: qrItems([
           { label: "ค้นไฟล์ OneDrive", text: "หาไฟล์" },
           { label: "ผูกไฟล์กับนัด", text: "ผูกไฟล์นัด 1" },
@@ -274,18 +274,20 @@ export function richMenuReply(text: string): object[] | null {
     ];
   }
 
-  if (t === "วางแผนเดินทาง" || norm === "วางแผนเดินทาง" || norm === "เดินทาง") {
+  if (
+    t === "เร็วๆนี้" ||
+    norm === "เร็วๆนี้" ||
+    t === "เร็วๆ นี้" ||
+    t === "วางแผนเดินทาง" ||
+    norm === "วางแผนเดินทาง" ||
+    norm === "เดินทาง"
+  ) {
     return [
       {
         type: "text",
-        text: "วางแผนเดินทาง — เลือกได้เลยครับ\n(ยังไม่มีที่ทำงาน? ส่งตำแหน่งจาก + แล้วกด «เป็นที่ทำงาน»)",
-        quickReply: qrItems([
-          { label: "ไปทำงานวันนี้", text: "วางแผนเดินทางไปทำงานวันนี้" },
-          { label: "ไปทำงานพรุ่งนี้", text: "วางแผนเดินทางไปทำงานพรุ่งนี้" },
-          { label: "กลับบ้าน", text: "วางแผนเดินทางกลับบ้าน" },
-          { label: "ตั้งที่ทำงาน", text: "ตั้งที่ทำงาน" },
-          { label: "เปิดแผนที่ไปทำงาน", text: "เปิดแผนที่ไปที่ทำงาน" },
-        ]),
+        text:
+          "🚧 เร็วๆนี้ — ฟีเจอร์วางแผนเดินทางกำลังอัปเกรดอยู่ครับ\n" +
+          "เดี๋ยวเปิดให้ใช้พร้อมระบบใหม่ — ตอนนี้ใช้เมนูอื่นได้ตามปกติครับ",
       },
     ];
   }
@@ -328,8 +330,6 @@ export function richMenuReply(text: string): object[] | null {
 /** Map rich-menu / shortcut taps to a normal command string for handleCommand. */
 export function richMenuRewrite(text: string): string | null {
   const t = sanitizeMenuText(text);
-  // Bare travel tap should be handled by richMenuReply; rewrite is a safety net.
-  if (t === "วางแผนเดินทาง" || t === "เดินทาง") return "วางแผนเดินทางไปทำงานวันนี้";
   if (t === "จองนัด") return "จองนัดประชุม";
   if (t === "หาไฟล์") return "หาไฟล์ใน OneDrive";
   if (t === "ไฟล์ที่ผูกกับนัด") return "ดูไฟล์ที่ผูกกับนัด";
