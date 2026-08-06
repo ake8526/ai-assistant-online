@@ -933,6 +933,20 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
     .replace(/\s+/g, " ")
     .trim();
 
+  // “นัดพี่นนท์ อัพเดท ai assistant วันนี้ 13:30” — no “เรื่อง”: first token = คน, rest = หัวข้อ
+  // (only when a single person — multi-person uses กับ/และ/,)
+  if (!note && body && !/(?:กับ|และ|,)/.test(body) && !extractEmails(body).length) {
+    const one = body.match(/^((?:พี่|คุณ|น้อง|อาจารย์)?[^\s]+)(?:\s+(.+))?$/u);
+    if (one?.[2]?.trim()) {
+      const rest = one[2].trim();
+      // Don't treat leftover schedule junk as a subject
+      if (!/^(วันนี้|พรุ่งนี้|มะรืน|นาที|โมง|ครึ่ง)/i.test(rest) && rest.length >= 2) {
+        note = rest.replace(/[.,]+$/g, "").trim();
+        body = one[1]!.trim();
+      }
+    }
+  }
+
   // Emails + nicknames in the same line: "ake@gmail.com กับเบส"
   const emails = extractEmails(body);
   const names = body
@@ -2318,7 +2332,11 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
 }
 
 async function handle(userUpn: string, text: string, context?: CommandContext, lite = false): Promise<CommandResult> {
-  text = (text || "").normalize("NFC").replace(/\s+/g, " ").trim();
+  text = (text || "")
+    .normalize("NFC")
+    .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
   // Instant calendar list shortcuts BEFORE follow-up heuristics / LLM
   // (prevents “ดูประชุมเช้านี้” being eaten by last_meeting time-band follow-up)
@@ -2334,6 +2352,10 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       quick?.intent === "get_brief" ||
       quick?.intent === "get_news" ||
       quick?.intent === "summarize_meetings" ||
+      quick?.intent === "find_meeting_time" ||
+      quick?.intent === "cancel_meeting" ||
+      quick?.intent === "my_availability" ||
+      quick?.intent === "prep_meeting" ||
       quick?.intent === "plan_commute" ||
       quick?.intent === "open_map" ||
       quick?.intent === "open_map_home" ||
