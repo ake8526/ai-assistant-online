@@ -265,6 +265,21 @@ export function richMenuReply(text: string): object[] | null {
     ];
   }
 
+  if (t === "วางแผนเดินทาง" || norm === "วางแผนเดินทาง") {
+    return [
+      {
+        type: "text",
+        text: "วางแผนเดินทาง — เลือกได้เลยครับ",
+        quickReply: qrItems([
+          { label: "ไปทำงานวันนี้", text: "วางแผนเดินทางไปทำงานวันนี้" },
+          { label: "ไปทำงานพรุ่งนี้", text: "วางแผนเดินทางไปทำงานพรุ่งนี้" },
+          { label: "กลับบ้าน", text: "วางแผนเดินทางกลับบ้าน" },
+          { label: "เปิดแผนที่ไปทำงาน", text: "เปิดแผนที่ไปที่ทำงาน" },
+        ]),
+      },
+    ];
+  }
+
   if (t === "ตั้งค่า" || norm === "ตั้งค่า") {
     const settingsUrl = settingsPageUrl();
     return [
@@ -300,10 +315,10 @@ export function richMenuReply(text: string): object[] | null {
   return null;
 }
 
-/** Map rich-menu travel tap to a normal command string for handleCommand. */
+/** Map rich-menu / shortcut taps to a normal command string for handleCommand. */
 export function richMenuRewrite(text: string): string | null {
   const t = text.trim();
-  if (t === "วางแผนเดินทาง") return "วางแผนเดินทางไปทำงานวันนี้";
+  // Travel tap is handled by richMenuReply submenu (no rewrite needed).
   if (t === "จองนัด") return "จองนัดประชุม";
   if (t === "หาไฟล์") return "หาไฟล์ใน OneDrive";
   if (t === "ไฟล์ที่ผูกกับนัด") return "ดูไฟล์ที่ผูกกับนัด";

@@ -574,6 +574,26 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     }
   }
 
+  // Commute / maps — rich-menu + typed shortcuts (no LLM)
+  {
+    if (/^เปิดแผนที่(ไป)?(ที่)?ทำงาน|^นำทาง(ไป)?(ที่)?ทำงาน/i.test(t)) {
+      return { intent: "open_map", params: {} };
+    }
+    if (/^เปิดแผนที่(กลับ)?บ้าน|^นำทาง(กลับ)?บ้าน/i.test(t)) {
+      return { intent: "open_map_home", params: {} };
+    }
+    if (
+      /วางแผนเดินทาง|ควรออก(จากบ้าน)?กี่โมง|เผื่อเวลา(เดินทาง|ไปทำงาน)|ออกจากบ้านเมื่อไหร่/i.test(t)
+    ) {
+      const home = /กลับบ้าน|ไปบ้าน|กลับบ้านเกิด/.test(t) && !/ไปทำงาน|ที่ทำงาน/.test(t);
+      const period = /พรุ่งนี้/.test(t) ? "tomorrow" : /วันนี้/.test(t) ? "today" : home ? "today" : "today";
+      return {
+        intent: "plan_commute",
+        params: { place: home ? "home" : "work", period },
+      };
+    }
+  }
+
   // Prep a numbered meeting from today's agenda
   const prep = t.match(/^(?:เตรียม|แนะนำ|ช่วยเตรียม)(?:ตัว)?(?:นัด|ประชุม)?\s*(?:หมายเลข|ที่|#)?\s*(\d+)\s*$/i);
   if (prep) return { intent: "prep_meeting", params: { meeting_index: Number(prep[1]) } };
@@ -2271,6 +2291,9 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       quick?.intent === "get_brief" ||
       quick?.intent === "get_news" ||
       quick?.intent === "summarize_meetings" ||
+      quick?.intent === "plan_commute" ||
+      quick?.intent === "open_map" ||
+      quick?.intent === "open_map_home" ||
       quick?.intent === "ack" ||
       quick?.intent === "search_files"
     ) {
@@ -3199,20 +3222,27 @@ async function handleParsed(
     const url = navUrl(place.location, place.lat, place.lng);
 
     const day = params.date ? resolveDay(String(params.date)) : null;
-    const { start, end, label: dayLabel } = day || periodRange((params.period as string) || "tomorrow");
+    const { start, end, label: dayLabel } = day || periodRange((params.period as string) || "today");
 
     let first: { m: number; subj: string } | null = null;
-    for (const ev of await getEventsRange(userUpn, wallIso(start), wallIso(end))) {
-      const m = eventStartMinutes(ev);
-      if (m === null) continue;
-      if (!first || m < first.m) {
-        const priv = ["private", "personal", "confidential"].includes((ev.sensitivity || "").toLowerCase());
-        first = { m, subj: priv ? "(นัดส่วนตัว)" : ev.subject || "(ไม่มีหัวข้อ)" };
+    try {
+      for (const ev of await getEventsRange(userUpn, wallIso(start), wallIso(end))) {
+        const m = eventStartMinutes(ev);
+        if (m === null) continue;
+        if (!first || m < first.m) {
+          const priv = ["private", "personal", "confidential"].includes((ev.sensitivity || "").toLowerCase());
+          first = { m, subj: priv ? "(นัดส่วนตัว)" : ev.subject || "(ไม่มีหัวข้อ)" };
+        }
       }
+    } catch (e) {
+      console.warn("[plan_commute] calendar lookup failed", String(e).slice(0, 160));
     }
 
-    const s = await allSettings(userUpn);
-    const workStart = s.work_start || `${String(WORK_START_HOUR).padStart(2, "0")}:00`;
+    let workStart = `${String(WORK_START_HOUR).padStart(2, "0")}:00`;
+    try {
+      const s = await allSettings(userUpn);
+      workStart = s.work_start || workStart;
+    } catch { /* keep default */ }
 
     const lines = [`🚗 วางแผนเดินทางไป${where} (${dayLabel})`, ""];
     if (category === "work") {
@@ -3222,6 +3252,8 @@ async function handleParsed(
         const fh = fmtHHMM(first.m);
         lines.push(`📌 นัดแรก ${fh} น. — ${first.subj}`);
         if (fh < workStart) arrive = fh;
+      } else {
+        lines.push("📌 ยังดึงนัดวันนั้นไม่ได้ — ใช้เวลาเข้างานเป็นหลักครับ");
       }
       lines.push("", `👉 ควรไปถึงก่อน ${arrive} น. เผื่อเวลาเดินทาง+หาที่จอดด้วยนะครับ`);
     } else {
