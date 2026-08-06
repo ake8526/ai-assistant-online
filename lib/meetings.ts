@@ -302,7 +302,12 @@ export async function summarizeOne(
   try {
     result = await summarize(text, subject);
   } catch (e) {
-    return { ok: false, subject, reason: `LLM error: ${String(e).slice(0, 200)}` };
+    const { llmUserErrorMessage } = await import("@/lib/llm");
+    return {
+      ok: false,
+      subject,
+      reason: `สรุป transcript ไม่สำเร็จ — ${llmUserErrorMessage(e)} (ลองเลือกประชุมเดิมอีกครั้งได้ครับ)`,
+    };
   }
   const message = formatSummary(subject, result);
   const attendees = attendeesOf(ev);

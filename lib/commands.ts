@@ -556,6 +556,24 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     return { intent: "get_news", params: {} };
   }
 
+  // Meeting summary — never require LLM for intent (avoids “หนาแน่น” when Groq/Qwen 429)
+  {
+    const sumNorm = t.replace(/[·•‧∙.\-–—_/]+/g, "").replace(/\s+/g, "");
+    if (
+      /^(สรุป)?ประชุม(ล่าสุด|วันนี้)?[!?.…]*$|^สรุป(การ)?ประชุม(ล่าสุด|วันนี้)?[!?.…]*$/i.test(t) ||
+      sumNorm === "สรุปประชุม" ||
+      sumNorm === "สรุปประชุมล่าสุด" ||
+      sumNorm === "สรุปประชุมวันนี้"
+    ) {
+      const latest = /ล่าสุด/.test(t) || sumNorm.includes("ล่าสุด");
+      const today = /วันนี้/.test(t) || sumNorm.includes("วันนี้");
+      return {
+        intent: "summarize_meetings",
+        params: latest ? { latest: true } : today ? { today: true } : {},
+      };
+    }
+  }
+
   // Prep a numbered meeting from today's agenda
   const prep = t.match(/^(?:เตรียม|แนะนำ|ช่วยเตรียม)(?:ตัว)?(?:นัด|ประชุม)?\s*(?:หมายเลข|ที่|#)?\s*(\d+)\s*$/i);
   if (prep) return { intent: "prep_meeting", params: { meeting_index: Number(prep[1]) } };
@@ -2100,7 +2118,21 @@ export async function handleCommand(
     return await handle(userUpn, text, context, lite);
   } catch (e) {
     console.error("[handleCommand]", String(e).slice(0, 300));
-    return { intent: "error", reply: `⚠️ ${llmUserErrorMessage(e)}` };
+    // Never strand the user on “หนาแน่น” — recover known commands without LLM.
+    try {
+      const quick = quickFeedIntent((text || "").normalize("NFC").replace(/\s+/g, " ").trim());
+      if (quick) {
+        trace("parse", `★ AI:NONE · recover intent=${quick.intent} after LLM failure`);
+        return await handleParsed(userUpn, text, context, lite, quick.intent, quick.params);
+      }
+    } catch (e2) {
+      console.error("[handleCommand] recover failed", String(e2).slice(0, 200));
+    }
+    return {
+      intent: "error",
+      reply:
+        "ขออภัยครับ ระบบ AI ติดขัดชั่วคราว แต่ยังสั่งงานหลักได้ เช่น «สรุปประชุม» «ข่าววันนี้» «ตารางวันนี้» หรือกดเมนูด้านล่างครับ",
+    };
   }
 }
 
@@ -2237,6 +2269,8 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     if (
       quick?.intent === "list_meetings" ||
       quick?.intent === "get_brief" ||
+      quick?.intent === "get_news" ||
+      quick?.intent === "summarize_meetings" ||
       quick?.intent === "ack" ||
       quick?.intent === "search_files"
     ) {
@@ -3347,7 +3381,31 @@ async function handleParsed(
   if (intent === "summarize_meetings") {
     const choices = await listRecentOnline(userUpn);
     if (!choices.length) return { intent, reply: "ไม่พบประชุมออนไลน์ที่จบไปแล้วใน 14 วันที่ผ่านมาครับ" };
-    return { intent: "choose_meeting", reply: "พบประชุมที่ผ่านมา เลือกอันที่ต้องการสรุปได้เลยครับ 👇", choices };
+    const wantLatest = !!(params as { latest?: boolean }).latest;
+    const wantToday = !!(params as { today?: boolean }).today;
+    let pick = choices;
+    if (wantToday) {
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: process.env.TIMEZONE || "Asia/Bangkok" });
+      const filtered = choices.filter((c) => (c.label || "").includes(today) || /\d{1,2}\/\d{1,2}/.test(c.label || ""));
+      // Prefer labels that look like today; fall back to all if filter empty
+      if (filtered.length) pick = filtered;
+    }
+    if (wantLatest || (wantToday && pick.length === 1)) {
+      const first = pick[0];
+      if (first?.event_id) {
+        const { summarizeOne } = await import("@/lib/meetings");
+        const { ingestActionItems } = await import("@/lib/followup");
+        const res = await summarizeOne(userUpn, first.event_id);
+        if (!res.ok) return { intent: "error", reply: `⚠️ ${res.reason || "สรุปไม่สำเร็จ"}` };
+        let reply = res.summary || `สรุป: ${res.subject}`;
+        try {
+          const added = await ingestActionItems(res.action_items || []);
+          if (added) reply += `\n\n(บันทึกงานติดตามใหม่ ${added} รายการ)`;
+        } catch { /* ignore */ }
+        return { intent: "meeting_summary", reply };
+      }
+    }
+    return { intent: "choose_meeting", reply: "พบประชุมที่ผ่านมา เลือกอันที่ต้องการสรุปได้เลยครับ 👇", choices: pick };
   }
 
   if (intent === "find_meeting_time") {

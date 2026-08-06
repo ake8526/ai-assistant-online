@@ -16,7 +16,7 @@ type Provider = "qwen" | "groq" | "gemini";
 /** Skip a provider briefly after 429 so the next LINE message hits a healthy one first. */
 const rateLimitedUntil = new Map<Provider, number>();
 
-function markRateLimited(provider: Provider, ms = 180_000) {
+function markRateLimited(provider: Provider, ms = 45_000) {
   rateLimitedUntil.set(provider, Date.now() + ms);
 }
 
@@ -163,10 +163,10 @@ async function callProvider(
 export function llmUserErrorMessage(err: unknown): string {
   const s = String(err || "");
   if (/All LLM providers failed|groq 429|qwen 429|gemini 429|rate limit.*(?:groq|qwen|gemini|llama|model)/i.test(s)) {
-    return "ระบบตอบคำถามหนาแน่นชั่วคราว ลองใหม่อีกสักครู่ครับ";
+    return "ระบบ AI ติดขัดชั่วคราว — ลองกดเมนูหรือพิมพ์คำสั่งหลักอีกครั้งได้ครับ";
   }
   if (/Graph\s*429|MailboxConcurrency|ApplicationThrottled|TooManyRequests/i.test(s)) {
-    return "Microsoft 365 หนาแน่นชั่วคราว ลองใหม่อีกสักครู่ครับ";
+    return "Microsoft 365 ช้าชั่วคราว — ระบบจะลองใหม่ให้อัตโนมัติ หรือพิมพ์คำสั่งเดิมอีกครั้งครับ";
   }
   if (/No LLM provider configured/i.test(s)) {
     return "ระบบ AI ยังไม่พร้อม ติดต่อแอดมินได้ครับ";
@@ -174,7 +174,7 @@ export function llmUserErrorMessage(err: unknown): string {
   if (/need_calendar_consent|calendar consent|ไม่ได้รับอนุญาตปฏิทิน/i.test(s)) {
     return "ยังไม่ได้เชื่อมปฏิทิน Microsoft 365 — กดอนุญาตปฏิทินก่อนนะครับ";
   }
-  return "เกิดข้อผิดพลาดชั่วคราว ลองใหม่อีกครั้งครับ";
+  return "เกิดข้อผิดพลาดชั่วคราว — พิมพ์คำสั่งเดิมอีกครั้ง หรือกดเมนูด้านล่างได้ครับ";
 }
 
 export async function chat(
@@ -213,32 +213,46 @@ export async function chat(
   const stage: TraceStep = opts?.traceStep ?? (opts?.json ? "parse" : "compose");
   const pfx = opts?.tracePrefix ? `${opts.tracePrefix} · ` : "";
   const errors: string[] = [];
-  for (let i = 0; i < chain.length; i++) {
-    const provider = chain[i];
-    const cfg = settings(provider)!;
-    try {
-      // Monitor Agent Room: show which API key/provider is actively calling.
-      trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model}`, "start");
-      const out = await callProvider(provider, system, user, opts);
-      if (opts?.json) {
-        trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model} ✓`);
-      } else {
-        trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model} · เขียนคำตอบ`);
-      }
-      return out;
-    } catch (e) {
-      const short =
-        e instanceof ProviderHttpError
-          ? `${e.provider} ${e.status}`
-          : String(e).slice(0, 120);
-      errors.push(short);
-      trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model} ✗ (${short})`, "error");
-      if (i + 1 < chain.length) {
-        console.warn(`[llm] ${provider} failed; trying ${chain[i + 1]} next — ${short}`);
-        trace(stage, `${pfx}★ AI:fallback → ${chain[i + 1]!.toUpperCase()}`, "start");
+
+  async function tryChain(providers: Provider[]): Promise<string | null> {
+    for (let i = 0; i < providers.length; i++) {
+      const provider = providers[i]!;
+      const cfg = settings(provider);
+      if (!cfg) continue;
+      try {
+        trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model}`, "start");
+        const out = await callProvider(provider, system, user, opts);
+        if (opts?.json) {
+          trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model} ✓`);
+        } else {
+          trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model} · เขียนคำตอบ`);
+        }
+        return out;
+      } catch (e) {
+        const short =
+          e instanceof ProviderHttpError
+            ? `${e.provider} ${e.status}`
+            : String(e).slice(0, 120);
+        errors.push(short);
+        trace(stage, `${pfx}★ AI:${provider.toUpperCase()} · ${cfg.model} ✗ (${short})`, "error");
+        if (i + 1 < providers.length) {
+          console.warn(`[llm] ${provider} failed; trying ${providers[i + 1]} next — ${short}`);
+          trace(stage, `${pfx}★ AI:fallback → ${providers[i + 1]!.toUpperCase()}`, "start");
+        }
       }
     }
+    return null;
   }
+
+  const first = await tryChain(chain);
+  if (first != null) return first;
+
+  // Last resort: brief pause then retry cooling providers (don't strand the user on LINE).
+  await new Promise((r) => setTimeout(r, 1200));
+  for (const p of chain) rateLimitedUntil.delete(p);
+  const retry = await tryChain(chain);
+  if (retry != null) return retry;
+
   throw new Error(`All LLM providers failed — ${errors.join(" | ")}`);
 }
 
