@@ -35,8 +35,8 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return [
-      // Serve public/system-functions.html at /home.html
-      { source: "/home.html", destination: "/system-functions.html" },
+      // Live home page — fetch latest HTML from GitHub (no redeploy for copy tweaks)
+      { source: "/home.html", destination: "/home-html" },
     ];
   },
 };
