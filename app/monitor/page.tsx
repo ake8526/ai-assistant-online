@@ -63,19 +63,22 @@ function formatAge(ms: number): string {
 
 // 4 desks + 1 courier — the courier (reply) walks the parcel to the LINE mailbox.
 const AGENTS = [
-  { id: "receive", name: "GATE", role: "รับข้อความเข้าจาก LINE / Web", shirt: "#3a86ff", hair: "#6b4a2e", screen: "search" },
-  { id: "parse", name: "BRAIN", role: "แยกเจตนาว่าผู้ใช้ต้องการอะไร (LLM)", shirt: "#2f9e44", hair: "#2a2a2a", screen: "filter" },
-  { id: "fetch", name: "RUNNER", role: "ดึงข้อมูลจาก Microsoft 365", shirt: "#f0b429", hair: "#caa15a", screen: "search" },
-  { id: "compose", name: "SCRIBE", role: "เอาข้อมูลที่ดึงมา เขียนเป็นข้อความตอบให้ผู้ใช้", shirt: "#7048e8", hair: "#7a4a2a", screen: "render" },
-  { id: "courier", name: "DASH", role: "ส่งคำตอบเข้าตู้จดหมาย → LINE", shirt: "#ee1b24", hair: "#141414", screen: "" },
+  { id: "receive", name: "ผู้รับเรื่อง", role: "รับข้อความเข้า", shirt: "#3a86ff", hair: "#6b4a2e", screen: "search" },
+  { id: "parse", name: "ผู้เข้าใจคำถาม", role: "ตีความว่าอยากได้อะไร", shirt: "#2f9e44", hair: "#2a2a2a", screen: "filter" },
+  { id: "fetch", name: "ผู้ค้นข้อมูล", role: "ดึงปฏิทิน/อีเมล/ไฟล์", shirt: "#f0b429", hair: "#caa15a", screen: "search" },
+  { id: "compose", name: "ผู้เขียนคำตอบ", role: "เรียบเรียงคำตอบไทย", shirt: "#7048e8", hair: "#7a4a2a", screen: "render" },
+  { id: "courier", name: "ผู้ส่งคำตอบ", role: "ส่งกลับเข้า LINE", shirt: "#ee1b24", hair: "#141414", screen: "" },
 ] as const;
 
 const NEWS_AGENTS = [
-  { id: "scout", name: "SCOUT", role: "ดึงข่าวจาก RSS / Facebook / YouTube / NewsData", shirt: "#14b8a6", hair: "#0f766e", screen: "search" },
-  { id: "picker", name: "PICKER", role: "AI คัดเลือกข่าวที่เด่น", shirt: "#b45309", hair: "#78350f", screen: "filter" },
-  { id: "reader", name: "READER", role: "อ่านเนื้อหาบทความเต็ม", shirt: "#ec4899", hair: "#9d174d", screen: "search" },
-  { id: "writer", name: "WRITER", role: "AI สรุปประเด็นเป็นภาษาไทย", shirt: "#e879f9", hair: "#a21caf", screen: "render" },
+  { id: "scout", name: "ผู้เก็บข่าว", role: "ดึงข่าวจากแหล่งต่าง ๆ", shirt: "#14b8a6", hair: "#0f766e", screen: "search" },
+  { id: "picker", name: "ผู้คัดข่าว", role: "เลือกข่าวเด่น", shirt: "#b45309", hair: "#78350f", screen: "filter" },
+  { id: "reader", name: "ผู้อ่านข่าว", role: "อ่านเนื้อหาเต็ม", shirt: "#ec4899", hair: "#9d174d", screen: "search" },
+  { id: "writer", name: "ผู้สรุปข่าว", role: "สรุปเป็นภาษาไทย", shirt: "#e879f9", hair: "#a21caf", screen: "render" },
 ] as const;
+
+const POSTIE = { name: "ผู้นำข่าว", role: "รับสรุปแล้วส่งต่อให้ผู้ส่งคำตอบ" } as const;
+const HOP = { name: "ผู้ช่วยส่ง", role: "ช่วยผู้ส่งคำตอบเมื่อมีคำสั่งซ้อนกัน" } as const;
 
 /** Desk centers (canvas px) for handoff beams — not used for DASH/POSTIE (they walk). */
 const OFFICE_DESK_XY = [[70, 92], [250, 92], [70, 168], [250, 168]] as const;
@@ -143,8 +146,8 @@ const CSS = `
 .mon .bdg.postie{border-color:#38bdf8;z-index:5}
 .mon .bdg.postie .nm{color:#7dd3fc}
 .mon .bdg{position:absolute;transform:translate(-50%,-100%);text-align:center;pointer-events:none;background:rgba(10,7,4,.92);border:2px solid var(--hair);padding:2px 4px 1px;white-space:nowrap;line-height:1;transition:left .05s linear,top .05s linear;z-index:2}
-.mon .bdg .nm{font-family:'Press Start 2P';font-size:8px;color:var(--ink);display:block;margin-bottom:2px}
-.mon .bdg .stt{font-family:'Press Start 2P';font-size:7px}
+.mon .bdg .nm{font-family:'IBM Plex Sans Thai','Kanit',Tahoma,sans-serif;font-size:10px;font-weight:600;color:var(--ink);display:block;margin-bottom:2px;line-height:1.15}
+.mon .bdg .stt{font-family:'Press Start 2P';font-size:6px}
 .mon .bdg .dot{display:inline-block;width:5px;height:5px;margin-right:3px;vertical-align:middle;background:var(--dim)}
 .mon .bdg.idle .stt{color:var(--dim)}.mon .bdg.idle .dot{background:var(--dim)}
 .mon .bdg.work{border-color:var(--amber)}.mon .bdg.work .stt{color:var(--amber)}.mon .bdg.work .dot{background:var(--amber);animation:monpulse .55s steps(1) infinite}
@@ -184,14 +187,14 @@ const CSS = `
 .mon #legend .row.span2{grid-column:1 / -1;height:auto;min-height:18px;margin-top:4px;align-items:flex-start;padding-top:4px;border-top:1px solid var(--hair)}
 .mon #legend .row.span2 > span:last-child{white-space:normal;overflow:visible;text-overflow:unset;line-height:1.25}
 .mon #legend .sw{width:10px;height:10px;flex:none;border:1px solid #000;margin-top:3px}
-.mon #legend .rl{font-family:'VT323',monospace;font-size:14px;color:var(--ink);font-weight:700}
-.mon #legend .rc{color:#d4d4d4;font-size:13px}
+.mon #legend .rl{font-family:'IBM Plex Sans Thai','Kanit',Tahoma,sans-serif;font-size:13px;color:var(--ink);font-weight:700}
+.mon #legend .rc{color:#d4d4d4;font-size:12px}
 .mon .foot{display:none}
 .mon .news-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:6px 8px 8px;border-top:2px solid var(--hair);flex-shrink:0;min-height:0}
 @media(max-width:1100px){.mon .news-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .mon .news-desk{border:2px solid var(--hair);background:var(--panel2);padding:5px 8px;min-width:0;min-height:0;display:flex;flex-direction:column;gap:2px}
 .mon .news-desk .hd{font-family:'VT323',monospace;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:0;min-width:0}
-.mon .news-desk .nm{color:var(--ink);font-size:14px;letter-spacing:0.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mon .news-desk .nm{font-family:'IBM Plex Sans Thai','Kanit',Tahoma,sans-serif;color:var(--ink);font-size:14px;font-weight:600;letter-spacing:0.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .mon .news-desk .nm .role{color:#a3a3a3;font-weight:400}
 .mon .news-desk .st{font-family:'VT323',monospace;font-size:12px;padding:1px 5px;border:1px solid var(--hair);color:var(--dim);flex:none}
 .mon .news-desk.work .st{color:var(--amber);border-color:var(--amber);animation:monpulse .55s steps(1) infinite}
@@ -343,10 +346,10 @@ function MonitorRoom({
       if (w) w.textContent = st === "work" ? "WORKING" : st === "done" ? "DONE" : st === "error" ? "ERROR" : "IDLE";
     });
     if (newsCapRef.current) {
-      if (newsScoutStatus === "work") newsCapRef.current.innerHTML = "<b>SCOUT</b> — กำลังดึงข่าวจากแหล่งที่ติดตาม…";
-      else if (newsPicker.status === "work") newsCapRef.current.innerHTML = `<b>PICKER</b> — AI เลือกข่าวเด่น · <b style="color:#f0b429">${newsPicker.ai}</b>`;
-      else if (newsReader.status === "work") newsCapRef.current.innerHTML = `<b>READER</b> — ${newsReader.detail}`;
-      else if (newsWriter.status === "work") newsCapRef.current.innerHTML = `<b>WRITER</b> — AI สรุปประเด็น · <b style="color:#f0b429">${newsWriter.ai}</b>`;
+      if (newsScoutStatus === "work") newsCapRef.current.innerHTML = `<b>${NEWS_AGENTS[0].name}</b> — กำลังดึงข่าวจากแหล่งที่ติดตาม…`;
+      else if (newsPicker.status === "work") newsCapRef.current.innerHTML = `<b>${NEWS_AGENTS[1].name}</b> — AI เลือกข่าวเด่น · <b style="color:#f0b429">${newsPicker.ai}</b>`;
+      else if (newsReader.status === "work") newsCapRef.current.innerHTML = `<b>${NEWS_AGENTS[2].name}</b> — ${newsReader.detail}`;
+      else if (newsWriter.status === "work") newsCapRef.current.innerHTML = `<b>${NEWS_AGENTS[3].name}</b> — AI สรุปประเด็น · <b style="color:#f0b429">${newsWriter.ai}</b>`;
       else if (newsWriter.status === "done") newsCapRef.current.innerHTML = `<b>เสร็จ</b> — สรุปข่าว ${newsWriter.detail.replace(/^📰 สรุปเสร็จ · /, "")}`;
       else newsCapRef.current.textContent = "รอคำขอ “ข่าววันนี้” จาก LINE / Web…";
     }
@@ -758,7 +761,7 @@ function MonitorRoom({
       }
       if (badgeIdx === 4) {
         const b = badgesRef.current[4];
-        if (b) { b.style.left = (dash.x / 320 * 100) + "%"; b.style.top = ((dash.y - 20) / 240 * 100) + "%"; }
+        if (b) { b.style.left = (dash.x / 320 * 100) + "%"; b.style.top = ((dash.y - 28) / 240 * 100) + "%"; }
       }
     }
     function drawDash(now: number) {
@@ -923,7 +926,7 @@ function MonitorRoom({
       const b = postieBadgeRef.current;
       if (b) {
         b.style.left = (x / W) * 100 + "%";
-        b.style.top = ((y - 18 + bob) / H) * 100 + "%";
+        b.style.top = ((y - 28 + bob) / H) * 100 + "%";
         b.style.visibility = "visible";
         const st = p.carry ? "work" : moving ? "work" : "idle";
         b.className = "bdg postie " + st;
@@ -1167,8 +1170,8 @@ function MonitorRoom({
     // News → always from mailbox along the aisle. Never walk to BRAIN / office desks.
     if (isNewsJob) {
       parkPostie();
-      setCap(`<b>DASH</b> (REPLY) — ${verb}ตามทางเดินส่งข่าวจากตู้จดหมาย`);
-      log(`  DASH ${verb}ตามทางเดิน → ตู้จดหมาย → LINE`, "a");
+      setCap(`<b>${AGENTS[4].name}</b> (REPLY) — ${verb}ตามทางเดินส่งข่าวจากตู้จดหมาย`);
+      log(`  ${AGENTS[4].name} ${verb}ตามทางเดิน → ตู้จดหมาย → LINE`, "a");
       await walkPath([
         [OFFICE_AISLE_X, 150],
         [OFFICE_MAIL[0], OFFICE_MAIL[1]],
@@ -1182,7 +1185,7 @@ function MonitorRoom({
         const h = helperRef.current;
         h.visible = true; h.x = 200; h.y = 120; h.carry = true;
         setDashPace(h, true);
-        log("  HOP ช่วยส่งคำสั่งถัดไป (มีงานซ้อน)", "a");
+        log(`  ${HOP.name} ช่วยส่งคำสั่งถัดไป (มีงานซ้อน)`, "a");
         void walkPath([[OFFICE_AISLE_X, 130], [OFFICE_MAIL[0], OFFICE_MAIL[1]], [200, 120]], "helper").then(() => {
           h.carry = false; h.visible = false; h.running = false; h.speed = 1.1;
         });
@@ -1194,7 +1197,7 @@ function MonitorRoom({
       return;
     }
 
-    setCap(`<b>DASH</b> (REPLY) — ${verb}ตามทางเดินเอาคำตอบไปส่ง`);
+    setCap(`<b>${AGENTS[4].name}</b> (REPLY) — ${verb}ตามทางเดินเอาคำตอบไปส่ง`);
     let last = 3;
     for (let i = 3; i >= 0; i--) {
       if (statusRef.current[i] === "done" || statusRef.current[i] === "work") { last = i; break; }
@@ -1207,7 +1210,7 @@ function MonitorRoom({
       const h = helperRef.current;
       h.visible = true; h.x = 200; h.y = 120; h.carry = false;
       setDashPace(h, run);
-      log("  HOP มาช่วยส่ง — มีคำสั่งซ้อนขณะ DASH ยังวิ่ง", "a");
+      log(`  ${HOP.name} มาช่วยส่ง — มีคำสั่งซ้อนขณะ ${AGENTS[4].name} ยังวิ่ง`, "a");
       void (async () => {
         await walkPath([[OFFICE_AISLE_X, ay], [left ? 218 : 102, ay]], "helper");
         h.carry = true;
@@ -1248,8 +1251,8 @@ function MonitorRoom({
     p.onArrive = null;
     setDoorOpen(true);
     try {
-      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — เดินตามทางไปโต๊ะ WRITER…";
-      log("  POSTIE เดินตามทางเดิน → โต๊ะ WRITER", "a");
+      if (newsCapRef.current) newsCapRef.current.innerHTML = `<b>${POSTIE.name}</b> — เดินตามทางไปโต๊ะ ${NEWS_AGENTS[3].name}…`;
+      log(`  ${POSTIE.name} เดินตามทางเดิน → โต๊ะ ${NEWS_AGENTS[3].name}`, "a");
       await walkPostie([
         [NEWS_AISLE_X, 190],
         [NEWS_WRITER_PICKUP[0], NEWS_WRITER_PICKUP[1]],
@@ -1258,8 +1261,8 @@ function MonitorRoom({
       writerHasParcelRef.current = false;
       p.carry = true;
       p.running = true;
-      log("  POSTIE วิ่งตามทางเดินไปประตู", "a");
-      if (newsCapRef.current) newsCapRef.current.innerHTML = "<b>POSTIE</b> — วิ่งตามทางเดินไปประตู…";
+      log(`  ${POSTIE.name} วิ่งตามทางเดินไปประตู`, "a");
+      if (newsCapRef.current) newsCapRef.current.innerHTML = `<b>${POSTIE.name}</b> — วิ่งตามทางเดินไปประตู…`;
       await walkPostie([
         [NEWS_AISLE_X, 190],
         [NEWS_AISLE_X, 140],
@@ -1274,8 +1277,8 @@ function MonitorRoom({
 
       setAgent(4, "work");
       setDashPace(dashRef.current, true);
-      setCap("<b>DASH</b> — วิ่งตามทางเดินรับข่าว → ตู้จดหมาย");
-      log("  DASH รับข่าวที่ประตู แล้ววิ่งไปตู้จดหมาย", "a");
+      setCap(`<b>${AGENTS[4].name}</b> — วิ่งตามทางเดินรับข่าว → ตู้จดหมาย`);
+      log(`  ${AGENTS[4].name} รับข่าวที่ประตู แล้ววิ่งไปตู้จดหมาย`, "a");
       dashRef.current.carry = true;
       await Promise.all([
         walkPostie([
@@ -1295,7 +1298,7 @@ function MonitorRoom({
       ]);
       dashRef.current.carry = false;
       mailFlashRef.current = 60;
-      log("  DASH ใส่ข่าวในตู้จดหมาย ✓", "g");
+      log(`  ${AGENTS[4].name} ใส่ข่าวในตู้จดหมาย ✓`, "g");
       if (capRef.current) capRef.current.innerHTML = "<b>ตู้จดหมาย</b> — ได้สรุปข่าวแล้ว · รอส่ง LINE";
       await walkPath([[OFFICE_AISLE_X, 150]]);
       setDashPace(dashRef.current, false);
@@ -1699,7 +1702,7 @@ function MonitorRoom({
                   ref={(el) => { postieBadgeRef.current = el; }}
                   style={{ left: "50%", top: "55%", visibility: "hidden" }}
                 >
-                  <span className="nm">POSTIE</span>
+                  <span className="nm">{POSTIE.name}</span>
                   <span className="stt"><span className="dot" /><span className="w">IDLE</span></span>
                 </div>
               </div>
@@ -1709,7 +1712,7 @@ function MonitorRoom({
           <div className="news-grid">
             <div className={`news-desk scout ${newsScoutStatus}`}>
               <div className="hd">
-                <span className="nm">SCOUT <span className="role">· ดึงข่าว</span></span>
+                <span className="nm">{NEWS_AGENTS[0].name} <span className="role">· ดึงข่าว</span></span>
                 <span className="st">{newsScoutStatus === "work" ? "WORKING" : newsScoutStatus === "done" ? "DONE" : newsScoutStatus === "error" ? "ERROR" : "IDLE"}</span>
               </div>
               <ul>
@@ -1722,7 +1725,7 @@ function MonitorRoom({
             </div>
             <div className={`news-desk picker ${newsPicker.status}`}>
               <div className="hd">
-                <span className="nm">PICKER <span className="role">· AI คัดข่าวเด่น</span></span>
+                <span className="nm">{NEWS_AGENTS[1].name} <span className="role">· AI คัดข่าวเด่น</span></span>
                 <span className="st">{newsPicker.status === "work" ? "WORKING" : newsPicker.status === "done" ? "DONE" : newsPicker.status === "error" ? "ERROR" : "IDLE"}</span>
               </div>
               {newsPicker.status !== "idle" && (newsPicker.ai !== "—" || newsPicker.detail) ? (
@@ -1735,7 +1738,7 @@ function MonitorRoom({
             </div>
             <div className={`news-desk reader ${newsReader.status}`}>
               <div className="hd">
-                <span className="nm">READER <span className="role">· อ่านบทความ</span></span>
+                <span className="nm">{NEWS_AGENTS[2].name} <span className="role">· อ่านบทความ</span></span>
                 <span className="st">{newsReader.status === "work" ? "WORKING" : newsReader.status === "done" ? "DONE" : newsReader.status === "error" ? "ERROR" : "IDLE"}</span>
               </div>
               {newsReader.status !== "idle" && (newsReader.ai !== "—" || newsReader.detail) ? (
@@ -1748,7 +1751,7 @@ function MonitorRoom({
             </div>
             <div className={`news-desk writer ${newsWriter.status}`}>
               <div className="hd">
-                <span className="nm">WRITER <span className="role">· AI สรุปไทย</span></span>
+                <span className="nm">{NEWS_AGENTS[3].name} <span className="role">· AI สรุปไทย</span></span>
                 <span className="st">{newsWriter.status === "work" ? "WORKING" : newsWriter.status === "done" ? "DONE" : newsWriter.status === "error" ? "ERROR" : "IDLE"}</span>
               </div>
               {newsWriter.status !== "idle" && (newsWriter.ai !== "—" || newsWriter.detail) ? (
@@ -1808,7 +1811,7 @@ function MonitorRoom({
                 ))}
                 <div className="row">
                   <span className="sw" style={{ background: "#f97316" }} />
-                  <span><span className="rl">HOP</span> <span className="rc">— คนช่วยส่งของ DASH โผล่เมื่อมีคำสั่งซ้อนกันหลายอัน</span></span>
+                  <span><span className="rl">{HOP.name}</span> <span className="rc">— {HOP.role}</span></span>
                 </div>
               </div>
               <div className="leg-col">
@@ -1821,7 +1824,7 @@ function MonitorRoom({
                 ))}
                 <div className="row">
                   <span className="sw" style={{ background: "#38bdf8" }} />
-                  <span><span className="rl">POSTIE</span> <span className="rc">— รับสรุปจาก WRITER แล้ววิ่งส่งต่อให้ DASH</span></span>
+                  <span><span className="rl">{POSTIE.name}</span> <span className="rc">— {POSTIE.role}</span></span>
                 </div>
               </div>
               <div className="row span2">
