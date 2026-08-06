@@ -41,7 +41,7 @@ import {
 } from "@/lib/graph";
 import { getUserGraphToken } from "@/lib/graphAuth";
 import { chat, llmUserErrorMessage } from "@/lib/llm";
-import { listRecentOnline } from "@/lib/meetings";
+import { gpsCapturePageUrl } from "@/lib/gpsCapture";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { busyRanges, findCommonSlots, formatBusy, formatFree, freeRanges, wantsLunchIncluded } from "@/lib/scheduling";
@@ -146,6 +146,8 @@ export type CommandResult = {
   person?: { mail: string; displayName?: string };
   map_url?: string | null;
   map_where?: string;
+  /** URI quick-replies / buttons (e.g. one-tap GPS capture). */
+  uri_actions?: { label: string; uri: string }[];
   /** LINE quick-reply follow-ups (message actions). */
   suggestions?: { label: string; text: string }[];
   /** Show OneDrive folder path in file list (detailText). */
@@ -3229,11 +3231,24 @@ async function handleParsed(
       }
 
       if (!addr) {
+        const gpsUrl = gpsCapturePageUrl(userUpn, isHome ? "home" : "work");
         return {
           intent,
           reply: isHome
-            ? "ยังไม่มีตำแหน่งล่าสุดครับ\nส่งตำแหน่งจาก LINE ก่อน (ปุ่ม + → ตำแหน่ง) แล้วพิมพ์ «เพิ่มตำแหน่งนี้เป็นบ้าน»\nหรือพิมพ์ “ตั้งบ้านเป็น …” ตามด้วยที่อยู่ได้เลย"
-            : "ยังไม่มีตำแหน่งล่าสุดครับ\nส่งตำแหน่งจาก LINE ก่อน (ปุ่ม + → ตำแหน่ง) แล้วพิมพ์ «เพิ่มตำแหน่งนี้เป็นที่ทำงาน»\nหรือพิมพ์ “ตั้งที่ทำงานเป็น …” ตามด้วยที่อยู่ได้เลย",
+            ? "ยังไม่มีตำแหน่งล่าสุดครับ\n\nบอทดึง GPS จากมือถือเองไม่ได้ ต้องให้คุณอนุญาตก่อน — กด «ดึง GPS เป็นบ้าน» ด้านล่างได้เลย\nหรือส่งพินจาก LINE (+ → ตำแหน่ง) แล้วพิมพ์ «เพิ่มตำแหน่งนี้เป็นบ้าน»"
+            : "ยังไม่มีตำแหน่งล่าสุดครับ\n\nบอทดึง GPS จากมือถือเองไม่ได้ ต้องให้คุณอนุญาตก่อน — กด «ดึง GPS เป็นที่ทำงาน» ด้านล่างได้เลย\nหรือส่งพินจาก LINE (+ → ตำแหน่ง) แล้วพิมพ์ «เพิ่มตำแหน่งนี้เป็นที่ทำงาน»",
+          uri_actions: [
+            {
+              label: isHome ? "ดึง GPS เป็นบ้าน" : "ดึง GPS เป็นที่ทำงาน",
+              uri: gpsUrl,
+            },
+          ],
+          suggestions: [
+            {
+              label: isHome ? "ตั้งบ้านเป็น…" : "ตั้งที่ทำงานเป็น…",
+              text: isHome ? "ตั้งบ้านเป็น " : "ตั้งที่ทำงานเป็น ",
+            },
+          ],
         };
       }
 

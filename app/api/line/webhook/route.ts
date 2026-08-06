@@ -247,6 +247,17 @@ function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | 
       });
     }
   }
+  // URI actions (GPS capture, settings, …) — append when there is room
+  if (Array.isArray(res.uri_actions)) {
+    for (const u of res.uri_actions) {
+      if (!u?.label || !u?.uri || items.length >= 13) break;
+      if (u.uri.length > 1000) continue;
+      items.push({
+        type: "action",
+        action: { type: "uri", label: truncate(u.label, 20), uri: u.uri },
+      });
+    }
+  }
   return items.length ? { items } : null;
 }
 
