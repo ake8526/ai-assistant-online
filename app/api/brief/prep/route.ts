@@ -4,6 +4,7 @@ import { buildMeetingPrep, resolveAgendaEntry } from "@/lib/brief";
 import { sendLine } from "@/lib/line";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { assertConfigured } from "@/lib/supabaseServer";
+import { runWithTrace, trace } from "@/lib/trace";
 
 export const maxDuration = 120;
 
@@ -18,16 +19,21 @@ async function run(req: Request) {
     if (!upn) return NextResponse.json({ error: "upn required" }, { status: 400 });
     if (!idx || idx < 1) return NextResponse.json({ error: "i (index) required" }, { status: 400 });
 
-    const entry = await resolveAgendaEntry(upn, idx);
-    if (!entry) {
-      return NextResponse.json({ ok: false, error: "agenda index not found — send morning brief first" }, { status: 404 });
-    }
-
-    const { result: reply } = await withDelegatedGraph(upn, () =>
-      buildMeetingPrep(upn, entry.eventId, entry.event)
-    );
-    await sendLine(upn, "", reply);
-    return NextResponse.json({ ok: true, upn, index: idx, subject: entry.event.subject || null });
+    return await runWithTrace({ upn, channel: "cron" }, async () => {
+      trace("receive", `cron · เตรียมประชุม #${idx}`);
+      const entry = await resolveAgendaEntry(upn, idx);
+      if (!entry) {
+        return NextResponse.json({ ok: false, error: "agenda index not found — send morning brief first" }, { status: 404 });
+      }
+      trace("fetch", "ดึงข้อมูลนัด + เตรียมวาระ", "start");
+      const { result: reply } = await withDelegatedGraph(upn, () =>
+        buildMeetingPrep(upn, entry.eventId, entry.event)
+      );
+      trace("compose", "สรุปเตรียมประชุม");
+      await sendLine(upn, "", reply);
+      trace("reply", "ส่งเตรียมประชุม LINE");
+      return NextResponse.json({ ok: true, upn, index: idx, subject: entry.event.subject || null });
+    });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 300) }, { status: 500 });
   }

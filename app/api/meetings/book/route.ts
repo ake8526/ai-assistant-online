@@ -4,6 +4,7 @@ import { createEvent } from "@/lib/graph";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { addMinutes, parseWall, wallIso } from "@/lib/time";
+import { runWithTrace, trace } from "@/lib/trace";
 
 export const maxDuration = 60;
 
@@ -20,20 +21,25 @@ export async function POST(req: Request) {
     const attendees = (body.attendees as string[]) || [];
     try {
       const live = typeof body.graphToken === "string" ? body.graphToken : "";
-      const held = await bookMeetingWithLineHold({
-        organizerUpn: upn,
-        subject,
-        startIso: wallIso(start),
-        endIso: wallIso(end),
-        attendees,
-        create: async () => {
-          const { result: ev } = await withDelegatedGraph(
-            upn,
-            () => createEvent(upn, subject, wallIso(start), wallIso(end), attendees),
-            live
-          );
-          return ev;
-        },
+      const held = await runWithTrace({ upn, channel: "web" }, async () => {
+        trace("receive", "เว็บ · จองประชุม");
+        const res = await bookMeetingWithLineHold({
+          organizerUpn: upn,
+          subject,
+          startIso: wallIso(start),
+          endIso: wallIso(end),
+          attendees,
+          create: async () => {
+            const { result: ev } = await withDelegatedGraph(
+              upn,
+              () => createEvent(upn, subject, wallIso(start), wallIso(end), attendees),
+              live
+            );
+            return ev;
+          },
+        });
+        trace("reply", res.mode === "proposed" ? "ส่งคำขอ LINE" : "จองปฏิทินแล้ว");
+        return res;
       });
       return NextResponse.json({
         ok: true,

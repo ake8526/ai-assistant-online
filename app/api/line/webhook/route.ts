@@ -1455,7 +1455,11 @@ export async function POST(req: Request) {
         } else if (ev.type === "postback") {
           await runWithTrace({ channel: "line" }, () => handlePostback(ev));
         } else if (ev.type === "follow" && ev.replyToken) {
-          await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
+          await runWithTrace({ channel: "line" }, async () => {
+            trace("receive", "LINE · เพิ่มเพื่อนใหม่");
+            await replyLineMessages(ev.replyToken!, [linkPromptMessage()]);
+            trace("reply", "ส่งลิงก์ลงทะเบียน");
+          });
         }
       } catch (e) {
         console.log(`line webhook event failed: ${e}`);

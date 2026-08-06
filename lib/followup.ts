@@ -138,9 +138,15 @@ export async function checkDue(): Promise<Record<string, number>> {
 
   const reminded: Record<string, number> = {};
   const deliveredIds = new Set<number>();
+  const { runWithTrace, trace } = await import("@/lib/trace");
   for (const [upn, tasks] of byRecipient) {
     try {
-      await sendLine(upn, "⏰ งานที่เลยกำหนด", formatReminder(tasks));
+      await runWithTrace({ upn, channel: "cron" }, async () => {
+        trace("receive", "cron · เตือนงานเลยกำหนด");
+        trace("compose", `งาน ${tasks.length} รายการ`);
+        await sendLine(upn, "⏰ งานที่เลยกำหนด", formatReminder(tasks));
+        trace("reply", "ส่งเตือน LINE");
+      });
       reminded[upn] = tasks.length;
       for (const t of tasks) deliveredIds.add(t.id);
     } catch (e) {

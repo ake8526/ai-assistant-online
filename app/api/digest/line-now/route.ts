@@ -6,6 +6,7 @@ import { resolveLinkedUpn, sendLine } from "@/lib/line";
 import { buildDigest, formatStoriesText, rememberDeliveredStories } from "@/lib/digest";
 import { digestKickSettingKey, type DigestKickPayload } from "@/lib/digestKick";
 import { deleteSetting, getSetting } from "@/lib/store";
+import { claimSend, clearInflight, markSent } from "@/lib/notify";
 import { runWithTrace, trace } from "@/lib/trace";
 import { assertConfigured } from "@/lib/supabaseServer";
 
@@ -46,40 +47,59 @@ async function run(req: Request) {
     if (!rawUpn) {
       return NextResponse.json({ error: "upn required" }, { status: 400 });
     }
+    const force = url.searchParams.get("force") === "1";
     const upn = (await resolveLinkedUpn(rawUpn)) || rawUpn.toLowerCase();
     if (!(await authorizeLineNow(req, upn, rawUpn))) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
-    const result = await runWithTrace({ upn, channel: "line" }, async () => {
+    const fromCron = checkCronSecret(req);
+    const result = await runWithTrace({ upn, channel: fromCron ? "cron" : "line" }, async () => {
       const { claimDigestPush, clearDigestClaim } = await import("@/lib/digestKick");
-      trace("fetch", "📰 ดึงข่าวจากแหล่งที่ติดตาม", "start");
-      const digest = await buildDigest(upn);
-      if (!(await claimDigestPush(upn))) {
-        trace("fetch", "📰 ข้ามส่ง — มีงานอื่นส่งแล้ว");
-        return { ok: true, delivered: 0, skipped: "claimed" };
-      }
-      try {
-        if (!digest.stories?.length) {
-          const why =
-            digest.note ||
-            (digest.skipped.length ? `ข้าม: ${digest.skipped.join(", ")}` : "ไม่มีข่าวใหม่ให้สรุป");
-          await sendLine(
-            upn,
-            "",
-            `สรุปข่าวแล้วยังไม่มีเรื่องส่งครับ (${why})\n\nลองพิมพ์ “ข่าววันนี้” อีกครั้ง หรือ “ดูแหล่งข่าว” ได้ครับ`
-          );
-          trace("reply", "📰 ตอบกลับ get_news (ว่าง)");
-          return { ok: true, delivered: 0, note: why };
+      if (fromCron) trace("receive", "cron · ส่งข่าว LINE");
+      // Morning cron: one news push per day. force=1 bypasses for manual re-send.
+      if (fromCron && !force) {
+        if (!(await claimSend(upn, "news"))) {
+          trace("fetch", "📰 ข้าม — ส่งข่าววันนี้ไปแล้ว / กำลังส่ง");
+          return { ok: true, delivered: 0, skipped: "not due or inflight" };
         }
-        const extra = digest.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${digest.skipped.join(", ")})` : "";
-        await sendLine(upn, "", formatStoriesText(digest.stories, digest.note) + extra);
-        await rememberDeliveredStories(upn, digest.stories);
-        trace("compose", "📰 สรุปข่าวภาษาไทย");
-        trace("reply", `📰 ตอบกลับ get_news (${digest.stories.length} เรื่อง)`);
-        return { ok: true, delivered: digest.stories.length };
-      } finally {
-        await clearDigestClaim(upn);
+      }
+      trace("fetch", "📰 ดึงข่าวจากแหล่งที่ติดตาม", "start");
+      try {
+        // line-now must finish <300s: gather fast, but summarize with quality writer.
+        const digest = await buildDigest(upn, { fast: true });
+        if (!(await claimDigestPush(upn))) {
+          trace("fetch", "📰 ข้ามส่ง — มีงานอื่นส่งแล้ว");
+          if (fromCron && !force) await clearInflight(upn, "news");
+          return { ok: true, delivered: 0, skipped: "claimed" };
+        }
+        try {
+          if (!digest.stories?.length) {
+            const why =
+              digest.note ||
+              (digest.skipped.length ? `ข้าม: ${digest.skipped.join(", ")}` : "ไม่มีข่าวใหม่ให้สรุป");
+            await sendLine(
+              upn,
+              "",
+              `สรุปข่าวแล้วยังไม่มีเรื่องส่งครับ (${why})\n\nลองพิมพ์ “ข่าววันนี้” อีกครั้ง หรือ “ดูแหล่งข่าว” ได้ครับ`
+            );
+            if (fromCron && !force) await markSent(upn, "news");
+            trace("reply", "📰 ตอบกลับ get_news (ว่าง)");
+            return { ok: true, delivered: 0, note: why };
+          }
+          const extra = digest.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${digest.skipped.join(", ")})` : "";
+          await sendLine(upn, "", formatStoriesText(digest.stories, digest.note) + extra);
+          await rememberDeliveredStories(upn, digest.stories);
+          if (fromCron && !force) await markSent(upn, "news");
+          trace("compose", "📰 สรุปข่าวภาษาไทย");
+          trace("reply", `📰 ตอบกลับ get_news (${digest.stories.length} เรื่อง)`);
+          return { ok: true, delivered: digest.stories.length };
+        } finally {
+          await clearDigestClaim(upn);
+        }
+      } catch (e) {
+        if (fromCron && !force) await clearInflight(upn, "news");
+        throw e;
       }
     });
 

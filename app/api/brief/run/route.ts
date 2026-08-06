@@ -5,7 +5,7 @@ import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestRe
 import { resolveLinkedUpn, sendLine } from "@/lib/line";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { claimSend, clearInflight, isDueNow, markSent } from "@/lib/notify";
-import { runWithTrace } from "@/lib/trace";
+import { runWithTrace, trace } from "@/lib/trace";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
 export const maxDuration = 300;
@@ -24,43 +24,52 @@ function parseOnly(req: Request): OnlyKind {
 }
 
 async function pushBrief(upn: string, force: boolean): Promise<string> {
-  if (!force && !(await isDueNow(upn, "brief"))) return "skip (not due)";
+  return runWithTrace({ upn, channel: "cron" }, async () => {
+    if (!force && !(await isDueNow(upn, "brief"))) return "skip (not due)";
+    trace("receive", "cron · สรุปตารางเช้า");
 
-  let agenda;
-  try {
-    const wrapped = await withDelegatedGraph(upn, () => buildMorningAgenda(upn));
-    agenda = wrapped.result;
-  } catch (e) {
-    const msg =
-      "🌅 สรุปตารางเช้า\n\nดึงตารางจาก Outlook ไม่สำเร็จตอนนี้ครับ\n" +
-      `เหตุผล: ${String(e).slice(0, 120)}\n\nพิมพ์ «สรุปตารางเช้า» เพื่อลองใหม่`;
+    let agenda;
     try {
-      if (force || (await claimSend(upn, "brief"))) {
-        await sendLine(upn, "", msg);
-        await markSent(upn, "brief");
-        return "delivered graph-error notice";
+      trace("fetch", "ดึงตาราง Outlook", "start");
+      const wrapped = await withDelegatedGraph(upn, () => buildMorningAgenda(upn));
+      agenda = wrapped.result;
+      trace("fetch", `ตารางเช้า · ${agenda.events.length} นัด`);
+    } catch (e) {
+      const msg =
+        "🌅 สรุปตารางเช้า\n\nดึงตารางจาก Outlook ไม่สำเร็จตอนนี้ครับ\n" +
+        `เหตุผล: ${String(e).slice(0, 120)}\n\nพิมพ์ «สรุปตารางเช้า» เพื่อลองใหม่`;
+      try {
+        if (force || (await claimSend(upn, "brief"))) {
+          await sendLine(upn, "", msg);
+          await markSent(upn, "brief");
+          trace("reply", "แจ้ง error กราฟ", "error");
+          return "delivered graph-error notice";
+        }
+        return "skip (inflight or sent)";
+      } catch {
+        return `ERROR: ${String(e).slice(0, 150)}`;
       }
-      return "skip (inflight or sent)";
-    } catch {
-      return `ERROR: ${String(e).slice(0, 150)}`;
     }
-  }
 
-  if (!force && !(await claimSend(upn, "brief"))) return "skip (inflight or sent)";
-  try {
-    await runForUser(upn, agenda);
-    await markSent(upn, "brief");
-    return `delivered agenda (${agenda.events.length})`;
-  } catch (e) {
+    if (!force && !(await claimSend(upn, "brief"))) return "skip (inflight or sent)";
     try {
-      await sendLine(upn, "🌅 สรุปตารางเช้า", agenda.text);
+      trace("compose", "สรุปตารางเช้า");
+      await runForUser(upn, agenda);
       await markSent(upn, "brief");
-      return "delivered text-fallback";
-    } catch {
-      await clearInflight(upn, "brief");
-      return `ERROR: ${String(e).slice(0, 150)}`;
+      trace("reply", `ส่งสรุปเช้า (${agenda.events.length} นัด)`);
+      return `delivered agenda (${agenda.events.length})`;
+    } catch (e) {
+      try {
+        await sendLine(upn, "🌅 สรุปตารางเช้า", agenda.text);
+        await markSent(upn, "brief");
+        trace("reply", "ส่งสรุปเช้า (text-fallback)");
+        return "delivered text-fallback";
+      } catch {
+        await clearInflight(upn, "brief");
+        return `ERROR: ${String(e).slice(0, 150)}`;
+      }
     }
-  }
+  });
 }
 
 async function sendBuiltNews(upn: string, force: boolean, d: DigestResult): Promise<string> {
@@ -87,8 +96,11 @@ async function pushNews(upn: string, force: boolean): Promise<string> {
   return runWithTrace({ upn, channel: "cron" }, async () => {
     if (!force && !(await isDueNow(upn, "news"))) return "skip (not due)";
     try {
-      const d = await buildDigest(upn);
-      return await sendBuiltNews(upn, force, d);
+      trace("receive", "cron · ส่งข่าวเช้า");
+      const d = await buildDigest(upn, { fast: true });
+      const status = await sendBuiltNews(upn, force, d);
+      if (status.startsWith("delivered")) trace("reply", status);
+      return status;
     } catch (e) {
       return `ERROR: ${String(e).slice(0, 150)}`;
     }

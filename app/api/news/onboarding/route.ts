@@ -9,6 +9,7 @@ import {
 import { getNewsPrefs, resetNewsOnboarding } from "@/lib/newsPrefs";
 import { resolveLinkedUpn } from "@/lib/line";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
+import { runWithTrace, trace } from "@/lib/trace";
 
 export const dynamic = "force-dynamic";
 
@@ -36,40 +37,54 @@ export async function POST(req: Request) {
         upn = data?.[0]?.upn || "";
       }
       if (!upn) return NextResponse.json({ error: "no linked user" }, { status: 400 });
+      return await runWithTrace({ upn, channel: "cron" }, async () => {
+        trace("receive", preview ? `cron · preview ${preview}` : "cron · onboarding ข่าว");
+        if (preview === "notify") {
+          await previewNewsNotifySetup(upn);
+          trace("reply", "preview notify");
+          return NextResponse.json({ ok: true, upn, mode: "preview_notify" });
+        }
+        if (preview === "brief") {
+          await previewBriefNotifySetup(upn);
+          trace("reply", "preview brief");
+          return NextResponse.json({ ok: true, upn, mode: "preview_brief" });
+        }
+        if (preview === "done") {
+          await pushSetupCompleteSummary(upn);
+          trace("reply", "preview done");
+          return NextResponse.json({ ok: true, upn, mode: "preview_done" });
+        }
+        if (reset) await resetNewsOnboarding(upn);
+        await startNewsOnboarding(upn, "push");
+        const prefs = await getNewsPrefs(upn);
+        trace("reply", "ส่ง onboarding");
+        return NextResponse.json({ ok: true, upn, prefs, mode: "simulated_new_user" });
+      });
+    }
+
+    const upn = await requireUser(req);
+    return await runWithTrace({ upn, channel: "web" }, async () => {
+      trace("receive", preview ? `เว็บ · preview ${preview}` : "เว็บ · onboarding ข่าว");
       if (preview === "notify") {
         await previewNewsNotifySetup(upn);
+        trace("reply", "preview notify");
         return NextResponse.json({ ok: true, upn, mode: "preview_notify" });
       }
       if (preview === "brief") {
         await previewBriefNotifySetup(upn);
+        trace("reply", "preview brief");
         return NextResponse.json({ ok: true, upn, mode: "preview_brief" });
       }
       if (preview === "done") {
         await pushSetupCompleteSummary(upn);
+        trace("reply", "preview done");
         return NextResponse.json({ ok: true, upn, mode: "preview_done" });
       }
       if (reset) await resetNewsOnboarding(upn);
       await startNewsOnboarding(upn, "push");
-      const prefs = await getNewsPrefs(upn);
-      return NextResponse.json({ ok: true, upn, prefs, mode: "simulated_new_user" });
-    }
-
-    const upn = await requireUser(req);
-    if (preview === "notify") {
-      await previewNewsNotifySetup(upn);
-      return NextResponse.json({ ok: true, upn, mode: "preview_notify" });
-    }
-    if (preview === "brief") {
-      await previewBriefNotifySetup(upn);
-      return NextResponse.json({ ok: true, upn, mode: "preview_brief" });
-    }
-    if (preview === "done") {
-      await pushSetupCompleteSummary(upn);
-      return NextResponse.json({ ok: true, upn, mode: "preview_done" });
-    }
-    if (reset) await resetNewsOnboarding(upn);
-    await startNewsOnboarding(upn, "push");
-    return NextResponse.json({ ok: true, upn });
+      trace("reply", "ส่ง onboarding");
+      return NextResponse.json({ ok: true, upn });
+    });
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
     return NextResponse.json({ error: String(e) }, { status: 500 });

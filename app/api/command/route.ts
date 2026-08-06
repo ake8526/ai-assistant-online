@@ -3,6 +3,7 @@ import { AuthError, requireUser } from "@/lib/auth";
 import { handleCommand } from "@/lib/commands";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { assertConfigured } from "@/lib/supabaseServer";
+import { runWithTrace, trace } from "@/lib/trace";
 
 export const maxDuration = 60;
 
@@ -17,11 +18,16 @@ export async function POST(req: Request) {
     if (!text) return NextResponse.json({ error: "text required" }, { status: 400 });
 
     const live = typeof body.graphToken === "string" ? body.graphToken : "";
-    const { result, asUser } = await withDelegatedGraph(
-      upn,
-      () => handleCommand(upn, text, body.context || undefined),
-      live
-    );
+    const { result, asUser } = await runWithTrace({ upn, channel: "web" }, async () => {
+      trace("receive", "ข้อความเข้าจากเว็บ");
+      const out = await withDelegatedGraph(
+        upn,
+        () => handleCommand(upn, text, body.context || undefined),
+        live
+      );
+      trace("reply", `ตอบกลับ (${out.result.intent})`);
+      return out;
+    });
     return NextResponse.json({ ...result, calendarAsUser: asUser });
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });

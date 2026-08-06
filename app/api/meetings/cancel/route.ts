@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { AuthError, requireUser } from "@/lib/auth";
 import { deleteEvent } from "@/lib/graph";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
+import { runWithTrace, trace } from "@/lib/trace";
 
 // POST { event_id, graphToken? } → cancel/delete a calendar event
 export async function POST(req: Request) {
@@ -12,7 +13,11 @@ export async function POST(req: Request) {
     if (!eventId) return NextResponse.json({ error: "event_id required" }, { status: 400 });
     try {
       const live = typeof body.graphToken === "string" ? body.graphToken : "";
-      await withDelegatedGraph(upn, () => deleteEvent(upn, eventId), live);
+      await runWithTrace({ upn, channel: "web" }, async () => {
+        trace("receive", "เว็บ · ยกเลิกนัด");
+        await withDelegatedGraph(upn, () => deleteEvent(upn, eventId), live);
+        trace("reply", "ยกเลิกนัดแล้ว");
+      });
       return NextResponse.json({ ok: true });
     } catch (e) {
       return NextResponse.json({ ok: false, error: String(e).slice(0, 200) });
