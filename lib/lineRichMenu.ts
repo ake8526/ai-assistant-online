@@ -1,7 +1,7 @@
 // LINE Rich Menu — 2×3 layout matching rich-menu-preview.html (draft B).
 // Note: do NOT import sharp at top-level — webhook imports this module on every message.
 
-export const RICH_MENU_NAME = "ktis-main-v5b-full";
+export const RICH_MENU_NAME = "ktis-main-v5c-full";
 
 /** Strip invisible chars LINE sometimes appends (ZWSP etc.) so menu taps match. */
 export function sanitizeMenuText(text: string): string {
@@ -217,7 +217,7 @@ export async function buildRichMenuPng(opts?: { force?: boolean }): Promise<Buff
   ${cellSvg(COL, 0, COL, ROW, "#ffffff", "#e0f2f1", "meet", "สรุปประชุม", "มอบหมายงาน")}
   ${cellSvg(COL * 2, 0, COL3, ROW, "#ffffff", "#e0f2f1", "news", "สรุปข่าว", "ที่ติดตาม")}
   ${cellSvg(0, ROW, COL, ROW2, "#fff7ed", "#ffedd5", "file", "ไฟล์", "ค้น·ผูก·แนบ")}
-  ${cellSvg(COL, ROW, COL, ROW2, "#f1f5f9", "#e2e8f0", "soon", "เร็วๆนี้", "รอระบบใหม่")}
+  ${cellSvg(COL, ROW, COL, ROW2, "#f1f5f9", "#e2e8f0", "soon", "เร็วๆนี้", "กำลังพัฒนา")}
   ${cellSvg(COL * 2, ROW, COL3, ROW2, "#ecfdf5", "#ccfbf1", "gear", "ตั้งค่า", "เปิดหน้าเว็บ")}
 </svg>`;
   const png = await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer();
