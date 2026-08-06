@@ -34,6 +34,7 @@ export type NewsOnboardingDraft = {
     | "ask"
     | "ask_summary"
     | "ask_sources"
+    | "ask_calendar"
     | "topics"
     | "count"
     | "time"

@@ -15,10 +15,12 @@ import {
 import { listManagedFeeds } from "@/lib/feeds";
 import { getLineId, pushLineMessages, replyLine, replyLineMessages } from "@/lib/line";
 import { setMeetingSummaryEnabled } from "@/lib/meetingSummaryPrefs";
+import { hasMicrosoftToken } from "@/lib/msGraphOAuth";
 import { admin } from "@/lib/supabaseServer";
 
 const APP_BASE = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/$/, "");
 const SETTINGS_URL = `${APP_BASE}/consents`;
+const ACCOUNT_URL = `${APP_BASE}/account`;
 
 /** Linked ≥ 1 hour ago → returning user (skip full news wizard; ask meeting summary only). */
 async function isReturningLinkedUser(upn: string): Promise<boolean> {
@@ -372,10 +374,9 @@ async function finishNewsNotify(
   await setNewsTopics(upn, draft.topics);
   await setNewsInterested(upn, true);
   await saveNotifyKind(upn, "news", { enabled: true, count, time, days });
-  await setNewsOnboardingDone(upn, true);
 
   const next: NewsOnboardingDraft = {
-    step: "brief_time",
+    step: "ask_sources",
     topics: draft.topics,
     count,
     time,
@@ -392,9 +393,10 @@ async function finishNewsNotify(
     `จำนวน: ${countLabel(count)}\n` +
     `เวลาส่ง: ${time} น.\n` +
     `วันที่ส่ง: ${formatDays(days)}\n\n` +
-    "ต่อไปตั้งสรุปตารางเช้า (Morning Brief) ครับ 👇";
+    "ต่อไป — จะผูก YouTube หรือแหล่งข่าวอื่นเพิ่มไหมครับ?\n" +
+    "(เช่น ช่อง YouTube ที่ติดตาม / RSS / เพจ Facebook)";
 
-  await replyLineMessages(replyToken, [{ type: "text", text: summary }, timePrompt("brief")]);
+  await replyLineMessages(replyToken, [{ type: "text", text: summary }, askSourcesMessage()]);
 }
 
 async function finishBriefNotify(
@@ -412,29 +414,7 @@ async function finishBriefNotify(
   const briefTime = draft.briefTime || "07:00";
   const briefDays = normalizeDays(draft.briefDays?.length ? draft.briefDays : [1, 2, 3, 4, 5]);
   await saveNotifyKind(upn, "brief", { enabled: true, time: briefTime, days: briefDays });
-
-  const next: NewsOnboardingDraft = {
-    step: "ask_sources",
-    topics: draft.topics,
-    count: draft.count,
-    time: draft.time,
-    days: draft.days,
-    briefTime,
-    briefDays,
-    ts: Date.now(),
-  };
-  await saveNewsDraft(upn, next);
-
-  await replyLineMessages(replyToken, [
-    {
-      type: "text",
-      text:
-        "✅ ตั้งสรุปตารางเช้าเรียบร้อยครับ\n\n" +
-        "ต่อไป — จะผูก YouTube หรือแหล่งข่าวอื่นเพิ่มไหมครับ?\n" +
-        "(เช่น ช่อง YouTube ที่ติดตาม / RSS / เพจ Facebook)",
-    },
-    askSourcesMessage(),
-  ]);
+  await completeOnboardingAfterSources(upn, { ...draft, briefTime, briefDays }, replyToken);
 }
 
 function askSourcesMessage(): object {
@@ -470,6 +450,109 @@ function sourceLinkMessage(kind: "yt" | "rss"): object {
       ],
     },
   };
+}
+
+function askCalendarMessage(): object {
+  return {
+    type: "template",
+    altText: "ผูกปฏิทิน Microsoft 365",
+    template: {
+      type: "buttons",
+      text: "กดอนุญาตปฏิทินที่หน้าบัญชี แล้วกดเสร็จแล้ว หรือข้ามได้ครับ",
+      actions: [
+        { type: "uri", label: "อนุญาตปฏิทิน", uri: ACCOUNT_URL },
+        { type: "postback", label: "เสร็จแล้ว", data: "a=caldone", displayText: "อนุญาตปฏิทินแล้ว" },
+        { type: "postback", label: "ข้าม", data: "a=calskip", displayText: "ข้ามผูกปฏิทิน" },
+      ],
+    },
+  };
+}
+
+async function proceedAfterSources(
+  upn: string,
+  draft: {
+    topics: string[];
+    count?: number;
+    time?: string;
+    days?: number[];
+    briefTime?: string;
+    briefDays?: number[];
+  },
+  replyToken: string,
+  prefix = ""
+): Promise<void> {
+  const linked = await hasMicrosoftToken(upn);
+  const next: NewsOnboardingDraft = {
+    step: "ask_calendar",
+    topics: draft.topics,
+    count: draft.count,
+    time: draft.time,
+    days: draft.days,
+    briefTime: draft.briefTime,
+    briefDays: draft.briefDays,
+    ts: Date.now(),
+  };
+  await saveNewsDraft(upn, next);
+
+  const intro = linked
+    ? prefix + "✅ ปฏิทิน Microsoft 365 เชื่อมแล้ว\n\nกดต่อไปเพื่อตั้งสรุปตารางเช้า (Morning Brief) ครับ"
+    : prefix +
+      "ต่อไป — ผูกปฏิทิน Microsoft 365 เพื่อดูตารางและส่งสรุปเช้าได้ครับ\n" +
+      "(ดูตารางเหมือนใน Outlook ตามสิทธิ์ของคุณ)";
+
+  await replyLineMessages(replyToken, [
+    { type: "text", text: intro },
+    linked ? askCalendarLinkedMessage() : askCalendarMessage(),
+  ]);
+}
+
+function askCalendarLinkedMessage(): object {
+  return {
+    type: "template",
+    altText: "ปฏิทินเชื่อมแล้ว — ต่อไปตั้ง Morning Brief",
+    template: {
+      type: "buttons",
+      text: "ปฏิทินพร้อมใช้งานแล้ว — กดต่อไปได้เลยครับ",
+      actions: [
+        { type: "postback", label: "ต่อไป", data: "a=caldone", displayText: "ต่อไปตั้ง Morning Brief" },
+        { type: "uri", label: "เปิดหน้าบัญชี", uri: ACCOUNT_URL },
+      ],
+    },
+  };
+}
+
+async function proceedToBrief(
+  upn: string,
+  draft: {
+    topics: string[];
+    count?: number;
+    time?: string;
+    days?: number[];
+    briefTime?: string;
+    briefDays?: number[];
+  },
+  replyToken: string,
+  prefix = ""
+): Promise<void> {
+  const next: NewsOnboardingDraft = {
+    step: "brief_time",
+    topics: draft.topics,
+    count: draft.count,
+    time: draft.time,
+    days: draft.days,
+    briefTime: draft.briefTime,
+    briefDays: draft.briefDays,
+    ts: Date.now(),
+  };
+  await saveNewsDraft(upn, next);
+
+  await replyLineMessages(replyToken, [
+    {
+      type: "text",
+      text: prefix + "ต่อไปตั้งสรุปตารางเช้า (Morning Brief) ครับ 👇",
+    },
+    timePrompt("brief"),
+  ]);
 }
 
 async function completeOnboardingAfterSources(
@@ -509,7 +592,7 @@ async function onboardingDoneMessage(
   }
 ): Promise<object> {
   const prefs = await getNewsPrefs(upn);
-  const [feeds, yt, notify] = await Promise.all([
+  const [feeds, yt, notify, calLinked] = await Promise.all([
     listManagedFeeds(upn).catch(() => []),
     getYouTubeFollowStatus(upn).catch(() => ({
       linked: false,
@@ -518,6 +601,7 @@ async function onboardingDoneMessage(
       granted: false,
     })),
     getNotifyConfig(upn).catch(() => null),
+    hasMicrosoftToken(upn).catch(() => false),
   ]);
 
   const newsOn = prefs.interested && notify?.news.enabled !== false;
@@ -554,6 +638,10 @@ async function onboardingDoneMessage(
   if (briefOn) {
     lines.push(`  • เวลาส่ง: ${briefTime} น. · ${formatDays(briefDays)}`);
   }
+  lines.push("");
+
+  lines.push("📆 ปฏิทิน Microsoft 365");
+  lines.push(calLinked ? "  • ✅ อนุญาตแล้ว — ดูตารางเหมือนใน Outlook" : "  • ยังไม่ได้อนุญาต");
   lines.push("");
 
   lines.push("แหล่งติดตาม");
@@ -770,7 +858,7 @@ export async function startNewsOnboarding(upn: string, via: "push" | "reply", re
   const prefs = await getNewsPrefs(upn);
   const existing = await loadNewsDraft(upn);
 
-  // Mid-wizard: ask YouTube / other sources (onboardingDone may already be true after news notify)
+  // Mid-wizard steps (before onboardingDone)
   if (existing?.step === "ask_sources") {
     await send(
       via,
@@ -781,6 +869,24 @@ export async function startNewsOnboarding(upn: string, via: "push" | "reply", re
           text: "จะผูก YouTube หรือแหล่งข่าวอื่นเพิ่มไหมครับ?\n(เช่น ช่อง YouTube ที่ติดตาม / RSS / เพจ Facebook)",
         },
         askSourcesMessage(),
+      ],
+      replyToken
+    );
+    return;
+  }
+  if (existing?.step === "ask_calendar") {
+    const linked = await hasMicrosoftToken(upn);
+    await send(
+      via,
+      upn,
+      [
+        {
+          type: "text",
+          text: linked
+            ? "✅ ปฏิทิน Microsoft 365 เชื่อมแล้ว\n\nกดต่อไปเพื่อตั้งสรุปตารางเช้า (Morning Brief) ครับ"
+            : "ผูกปฏิทิน Microsoft 365 เพื่อดูตารางและส่งสรุปเช้าได้ครับ\n(ดูตารางเหมือนใน Outlook ตามสิทธิ์ของคุณ)",
+        },
+        linked ? askCalendarLinkedMessage() : askCalendarMessage(),
       ],
       replyToken
     );
@@ -864,7 +970,7 @@ export async function handleNewsOnboardingText(
 
   if (draft.step === "ask_sources") {
     if (/ข้าม|ไม่|ไม่เอา|ไม่ผูก|ไม่เป็นไร/.test(t)) {
-      await completeOnboardingAfterSources(upn, draft, replyToken);
+      await proceedAfterSources(upn, draft, replyToken);
       return true;
     }
     if (/youtube|ยูทูบ|ยูทูป/i.test(t)) {
@@ -876,10 +982,29 @@ export async function handleNewsOnboardingText(
       return true;
     }
     if (/เสร็จ|เรียบร้อย|done|ok/i.test(t)) {
-      await completeOnboardingAfterSources(upn, draft, replyToken, "✅ รับทราบครับ\n\n");
+      await proceedAfterSources(upn, draft, replyToken, "✅ รับทราบครับ\n\n");
       return true;
     }
     await replyLineMessages(replyToken, [askSourcesMessage()]);
+    return true;
+  }
+
+  if (draft.step === "ask_calendar") {
+    if (/ข้าม|ไม่|ไม่เอา|ไม่ผูก|ไม่เป็นไร/.test(t)) {
+      await proceedToBrief(upn, draft, replyToken);
+      return true;
+    }
+    if (/ปฏิทิน|calendar|ตาราง|อนุญาต/i.test(t)) {
+      await replyLineMessages(replyToken, [askCalendarMessage()]);
+      return true;
+    }
+    if (/เสร็จ|เรียบร้อย|done|ok/i.test(t)) {
+      const linked = await hasMicrosoftToken(upn);
+      const prefix = linked ? "✅ อนุญาตปฏิทินเรียบร้อยแล้ว\n\n" : "รับทราบครับ\n\n";
+      await proceedToBrief(upn, draft, replyToken, prefix);
+      return true;
+    }
+    await replyLineMessages(replyToken, [askCalendarMessage()]);
     return true;
   }
 
@@ -921,6 +1046,8 @@ const NEWS_ACTIONS = new Set([
   "sourcerss",
   "sourceskip",
   "sourcesdone",
+  "calskip",
+  "caldone",
   "newsadd",
   "newsdel",
   "newsdeli",
@@ -1031,6 +1158,17 @@ export async function handleNewsOnboardingPostback(
   ) {
     draft = {
       step: "ask_sources",
+      topics: [...prefs.topics],
+      count: prefs.count,
+      ts: Date.now(),
+    };
+  }
+  if (
+    !draft &&
+    ["calskip", "caldone"].includes(a)
+  ) {
+    draft = {
+      step: "ask_calendar",
       topics: [...prefs.topics],
       count: prefs.count,
       ts: Date.now(),
@@ -1264,7 +1402,19 @@ export async function handleNewsOnboardingPostback(
 
   if (a === "sourceskip" || a === "sourcesdone") {
     const prefix = a === "sourcesdone" ? "✅ รับทราบครับ ผูกแหล่งข่าวเรียบร้อย\n\n" : "";
-    await completeOnboardingAfterSources(upn, draft, replyToken, prefix);
+    await proceedAfterSources(upn, draft, replyToken, prefix);
+    return true;
+  }
+
+  if (a === "calskip") {
+    await proceedToBrief(upn, draft, replyToken);
+    return true;
+  }
+
+  if (a === "caldone") {
+    const linked = await hasMicrosoftToken(upn);
+    const prefix = linked ? "✅ อนุญาตปฏิทินเรียบร้อยแล้ว\n\n" : "รับทราบครับ\n\n";
+    await proceedToBrief(upn, draft, replyToken, prefix);
     return true;
   }
 
