@@ -1304,19 +1304,6 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       }
       return;
     }
-    // First-time linked user → news onboarding before normal chat
-    {
-      const prefs = await getNewsPrefs(upn);
-      if (!prefs.onboardingDone) {
-        const draft = await loadNewsDraft(upn);
-        if (!draft) {
-          await startNewsOnboarding(upn, "reply", ev.replyToken);
-          return;
-        }
-        await startNewsOnboarding(upn, "reply", ev.replyToken);
-        return;
-      }
-    }
     const ctx = await loadCtx(upn);
     const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
     try {

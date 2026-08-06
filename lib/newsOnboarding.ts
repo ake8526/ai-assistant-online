@@ -46,6 +46,27 @@ function webSetupMessage(): object {
   };
 }
 
+/** Legacy LINE wizard steps — moved to /setup; do not hijack free-text chat. */
+const LEGACY_LINE_WIZARD = new Set([
+  "topics",
+  "count",
+  "time",
+  "days",
+  "brief_time",
+  "brief_days",
+]);
+
+/** Booking / calendar / attach — must not be swallowed as a “news topic”. */
+function looksLikeBotCommand(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (/^\/\S/.test(t)) return true;
+  if (/^(ยกเลิก|\/ยกเลิก|ตั้งค่าข่าว|อนุญาตปฏิทิน)/i.test(t)) return true;
+  if (/แนบรูป|แนบไฟล|ส่งนัด|จองนัด|นัดพ|นัดกับ|หางาน|ตาราง|ข่าววัน|สรุปประชุม|ไฟล์|ค้นหา|ล้างความจำ/i.test(t)) return true;
+  if (/\d{1,2}[.:]\d{2}/.test(t) && /นัด|ส่ง|ประชุม|เรื่อง|แนบ/i.test(t)) return true;
+  return false;
+}
+
 /** Linked ≥ 1 hour ago → returning user (skip full news wizard; ask meeting summary only). */
 async function isReturningLinkedUser(upn: string): Promise<boolean> {
   try {
@@ -937,18 +958,21 @@ export async function startNewsOnboarding(upn: string, via: "push" | "reply", re
   }
 
   let msg: object;
-  if (existing?.step === "topics") {
-    msg = topicsPrompt(existing.topics || []);
-  } else if (existing?.step === "count") {
-    msg = countPrompt();
-  } else if (existing?.step === "time") {
-    msg = timePrompt();
-  } else if (existing?.step === "days") {
-    msg = daysPrompt(existing.days || [], "news");
-  } else if (existing?.step === "brief_time") {
-    msg = timePrompt("brief");
-  } else if (existing?.step === "brief_days") {
-    msg = daysPrompt(existing.briefDays || [], "brief");
+  if (existing?.step && LEGACY_LINE_WIZARD.has(existing.step)) {
+    await clearNewsDraft(upn);
+    await send(
+      via,
+      upn,
+      [
+        {
+          type: "text",
+          text: "ตั้งค่าบนหน้าเว็บจะสะดวกกว่าครับ — กดปุ่มด้านล่างเพื่อเปิด /setup",
+        },
+        webSetupMessage(),
+      ],
+      replyToken
+    );
+    return;
   } else if (existing?.step === "ask_summary") {
     msg = askMeetingSummaryMessage();
   } else if (existing?.step === "delete" || existing?.step === "manage") {
@@ -971,6 +995,13 @@ export async function handleNewsOnboardingText(
   if (!draft) return false;
 
   const t = text.trim();
+  if (looksLikeBotCommand(t)) return false;
+
+  if (LEGACY_LINE_WIZARD.has(draft.step)) {
+    await clearNewsDraft(upn);
+    return false;
+  }
+
   if (draft.step === "ask") {
     if (/ไม่|ไม่เอา|ไม่ต้องการ/.test(t)) {
       await setNewsInterested(upn, false);
