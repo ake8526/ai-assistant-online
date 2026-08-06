@@ -18,7 +18,7 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/:path(home.html|homehtml|system-functions.html)",
+        source: "/:path(home.html|system-functions.html)",
         headers: [
           { key: "Cache-Control", value: "no-store, must-revalidate" },
         ],
@@ -31,8 +31,6 @@ const nextConfig: NextConfig = {
       { source: "/system-functions.html", destination: "/home.html", permanent: true },
       { source: "/functions.html", destination: "/home.html", permanent: true },
       { source: "/functions-th.html", destination: "/home.html", permanent: true },
-      // Typo short path from earlier
-      { source: "/homehtml", destination: "/home.html", permanent: true },
     ];
   },
   async rewrites() {
