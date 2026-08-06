@@ -2140,7 +2140,13 @@ export async function handleCommand(
     console.error("[handleCommand]", String(e).slice(0, 300));
     // Never strand the user on “หนาแน่น” — recover known commands without LLM.
     try {
-      const quick = quickFeedIntent((text || "").normalize("NFC").replace(/\s+/g, " ").trim());
+      const quick = quickFeedIntent(
+        (text || "")
+          .normalize("NFC")
+          .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, "")
+          .replace(/\s+/g, " ")
+          .trim()
+      );
       if (quick) {
         trace("parse", `★ AI:NONE · recover intent=${quick.intent} after LLM failure`);
         return await handleParsed(userUpn, text, context, lite, quick.intent, quick.params);
@@ -3213,54 +3219,72 @@ async function handleParsed(
   }
 
   if (intent === "plan_commute") {
-    const category = params.place === "home" ? "home" : "work";
-    const where = category === "home" ? "บ้าน" : "ที่ทำงาน";
-    const place = await getPrimaryPlace(userUpn, category);
-    if (!place) {
-      return { intent, reply: `ยังไม่ได้ตั้ง${where}ครับ ตั้งได้ที่เมนู ⚙️ ก่อนนะครับ แล้วผมจะช่วยวางแผนให้` };
-    }
-    const url = navUrl(place.location, place.lat, place.lng);
-
-    const day = params.date ? resolveDay(String(params.date)) : null;
-    const { start, end, label: dayLabel } = day || periodRange((params.period as string) || "today");
-
-    let first: { m: number; subj: string } | null = null;
     try {
-      for (const ev of await getEventsRange(userUpn, wallIso(start), wallIso(end))) {
-        const m = eventStartMinutes(ev);
-        if (m === null) continue;
-        if (!first || m < first.m) {
-          const priv = ["private", "personal", "confidential"].includes((ev.sensitivity || "").toLowerCase());
-          first = { m, subj: priv ? "(นัดส่วนตัว)" : ev.subject || "(ไม่มีหัวข้อ)" };
+      const category = params.place === "home" ? "home" : "work";
+      const where = category === "home" ? "บ้าน" : "ที่ทำงาน";
+      let place = null as Awaited<ReturnType<typeof getPrimaryPlace>>;
+      try {
+        place = await getPrimaryPlace(userUpn, category);
+      } catch (e) {
+        console.warn("[plan_commute] getPrimaryPlace", String(e).slice(0, 160));
+      }
+      if (!place) {
+        return {
+          intent,
+          reply:
+            `ยังไม่ได้ตั้ง${where}ครับ ตั้งได้ที่เมนู ⚙️ ก่อนนะครับ แล้วพิมพ์ «วางแผนเดินทาง» อีกครั้งได้เลย`,
+        };
+      }
+      const url = navUrl(place.location, place.lat, place.lng);
+
+      const day = params.date ? resolveDay(String(params.date)) : null;
+      const { start, end, label: dayLabel } = day || periodRange((params.period as string) || "today");
+
+      let first: { m: number; subj: string } | null = null;
+      try {
+        for (const ev of await getEventsRange(userUpn, wallIso(start), wallIso(end))) {
+          const m = eventStartMinutes(ev);
+          if (m === null) continue;
+          if (!first || m < first.m) {
+            const priv = ["private", "personal", "confidential"].includes((ev.sensitivity || "").toLowerCase());
+            first = { m, subj: priv ? "(นัดส่วนตัว)" : ev.subject || "(ไม่มีหัวข้อ)" };
+          }
         }
+      } catch (e) {
+        console.warn("[plan_commute] calendar lookup failed", String(e).slice(0, 160));
       }
-    } catch (e) {
-      console.warn("[plan_commute] calendar lookup failed", String(e).slice(0, 160));
-    }
 
-    let workStart = `${String(WORK_START_HOUR).padStart(2, "0")}:00`;
-    try {
-      const s = await allSettings(userUpn);
-      workStart = s.work_start || workStart;
-    } catch { /* keep default */ }
+      let workStart = `${String(WORK_START_HOUR).padStart(2, "0")}:00`;
+      try {
+        const s = await allSettings(userUpn);
+        workStart = s.work_start || workStart;
+      } catch { /* keep default */ }
 
-    const lines = [`🚗 วางแผนเดินทางไป${where} (${dayLabel})`, ""];
-    if (category === "work") {
-      let arrive = workStart;
-      lines.push(`🕗 เข้างาน ${workStart} น.`);
-      if (first) {
-        const fh = fmtHHMM(first.m);
-        lines.push(`📌 นัดแรก ${fh} น. — ${first.subj}`);
-        if (fh < workStart) arrive = fh;
+      const lines = [`🚗 วางแผนเดินทางไป${where} (${dayLabel})`, ""];
+      if (category === "work") {
+        let arrive = workStart;
+        lines.push(`🕗 เข้างาน ${workStart} น.`);
+        if (first) {
+          const fh = fmtHHMM(first.m);
+          lines.push(`📌 นัดแรก ${fh} น. — ${first.subj}`);
+          if (fh < workStart) arrive = fh;
+        } else {
+          lines.push("📌 ยังดึงนัดวันนั้นไม่ได้ — ใช้เวลาเข้างานเป็นหลักครับ");
+        }
+        lines.push("", `👉 ควรไปถึงก่อน ${arrive} น. เผื่อเวลาเดินทาง+หาที่จอดด้วยนะครับ`);
       } else {
-        lines.push("📌 ยังดึงนัดวันนั้นไม่ได้ — ใช้เวลาเข้างานเป็นหลักครับ");
+        lines.push("👉 กดปุ่มด้านล่างเพื่อดูเส้นทาง/สภาพจราจรก่อนออกเดินทางได้เลยครับ");
       }
-      lines.push("", `👉 ควรไปถึงก่อน ${arrive} น. เผื่อเวลาเดินทาง+หาที่จอดด้วยนะครับ`);
-    } else {
-      lines.push("👉 กดปุ่มด้านล่างเพื่อดูเส้นทาง/สภาพจราจรก่อนออกเดินทางได้เลยครับ");
+      lines.push(url ? "แตะปุ่มด้านล่างเพื่อเปิดเส้นทาง (ดูเวลาเดินทางจริงจากการจราจรได้)" : `(“${where}” ยังไม่มีพิกัด/ที่อยู่ครบ เปิดเส้นทางไม่ได้ — เพิ่มได้ที่ ⚙️)`);
+      return { intent, reply: lines.join("\n"), map_url: url, map_where: where };
+    } catch (e) {
+      console.error("[plan_commute]", String(e).slice(0, 200));
+      return {
+        intent: "plan_commute",
+        reply:
+          "🚗 วางแผนเดินทาง\n\nระบบช้าชั่วคราว — ตั้งที่ทำงาน/บ้านที่ ⚙️ แล้วกดเมนูอีกครั้งได้ครับ",
+      };
     }
-    lines.push(url ? "แตะปุ่มด้านล่างเพื่อเปิดเส้นทาง (ดูเวลาเดินทางจริงจากการจราจรได้)" : `(“${where}” ยังไม่มีพิกัด/ที่อยู่ครบ เปิดเส้นทางไม่ได้ — เพิ่มได้ที่ ⚙️)`);
-    return { intent, reply: lines.join("\n"), map_url: url, map_where: where };
   }
 
   if (intent === "file_locations") {

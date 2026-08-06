@@ -3,6 +3,15 @@
 
 export const RICH_MENU_NAME = "ktis-main-v4-full";
 
+/** Strip invisible chars LINE sometimes appends (ZWSP etc.) so menu taps match. */
+export function sanitizeMenuText(text: string): string {
+  return (text || "")
+    .normalize("NFC")
+    .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function settingsPageUrl(): string {
   const base = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/$/, "");
   return `${base}/settings`;
@@ -225,7 +234,7 @@ function qrItems(labels: { label: string; text: string }[]) {
  * Returns null if text is not a rich-menu trigger.
  */
 export function richMenuReply(text: string): object[] | null {
-  const t = text.trim();
+  const t = sanitizeMenuText(text);
   // Manager often uses ASCII hyphen; our artwork uses middle-dot ·
   const norm = t.replace(/[·•‧∙.\-–—_/]+/g, "").replace(/\s+/g, "");
 
@@ -265,7 +274,7 @@ export function richMenuReply(text: string): object[] | null {
     ];
   }
 
-  if (t === "วางแผนเดินทาง" || norm === "วางแผนเดินทาง") {
+  if (t === "วางแผนเดินทาง" || norm === "วางแผนเดินทาง" || norm === "เดินทาง") {
     return [
       {
         type: "text",
@@ -317,8 +326,9 @@ export function richMenuReply(text: string): object[] | null {
 
 /** Map rich-menu / shortcut taps to a normal command string for handleCommand. */
 export function richMenuRewrite(text: string): string | null {
-  const t = text.trim();
-  // Travel tap is handled by richMenuReply submenu (no rewrite needed).
+  const t = sanitizeMenuText(text);
+  // Bare travel tap should be handled by richMenuReply; rewrite is a safety net.
+  if (t === "วางแผนเดินทาง" || t === "เดินทาง") return "วางแผนเดินทางไปทำงานวันนี้";
   if (t === "จองนัด") return "จองนัดประชุม";
   if (t === "หาไฟล์") return "หาไฟล์ใน OneDrive";
   if (t === "ไฟล์ที่ผูกกับนัด") return "ดูไฟล์ที่ผูกกับนัด";

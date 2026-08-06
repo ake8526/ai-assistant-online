@@ -34,7 +34,7 @@ import {
   slashToUserText,
   textWithDraftEscape,
 } from "@/lib/slashCommands";
-import { richMenuReply, richMenuRewrite } from "@/lib/lineRichMenu";
+import { richMenuReply, richMenuRewrite, sanitizeMenuText } from "@/lib/lineRichMenu";
 import { assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace, setTraceUser, muteTrace } from "@/lib/trace";
 
@@ -1060,7 +1060,7 @@ async function handleImageMessage(ev: LineEvent): Promise<void> {
 
 async function handleTextMessage(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
-  let text = (ev.message?.text || "").trim();
+  let text = sanitizeMenuText(ev.message?.text || "");
   if (!ev.replyToken || !userId || !text) return;
 
   // LINE wraps long SharePoint URLs — collapse whitespace so quick-intent can match
