@@ -720,75 +720,76 @@
   #scan {
     min-height: 100dvh;
     max-height: 100dvh;
+    height: 100dvh;
     overflow: hidden;
-    padding: 48px 0 10px;
+    padding: 36px 0 6px;
     justify-content: center;
     gap: 0;
+    box-sizing: border-box;
   }
   #scan .sec-h {
-    margin-bottom: 6px;
+    margin-bottom: 4px;
   }
   #scan .sec-h h2 {
-    font-size: clamp(22px, 2.8vw, 32px);
-    line-height: 1.1;
+    font-size: clamp(20px, 2.6vw, 30px);
+    line-height: 1.05;
   }
   #scan .sec-h p {
-    font-size: 12px;
-    max-width: 48ch;
-    line-height: 1.35;
+    display: none;
   }
   #scan .qr-switch-wrap {
-    max-width: 460px;
+    max-width: 420px;
+    flex-shrink: 1;
+    min-height: 0;
   }
   #scan .qr-tabs {
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   #scan .qr-tab {
-    padding: 7px 14px;
-    font-size: 12px;
+    padding: 6px 12px;
+    font-size: 11px;
   }
   #scan .qr-card {
-    padding: 10px 14px 8px;
-    gap: 4px;
-    border-radius: 16px;
+    padding: 8px 12px 6px;
+    gap: 2px;
+    border-radius: 14px;
   }
   #scan .qr-card .step {
     display: none;
   }
   #scan .qr-card h3 {
-    font-size: clamp(16px, 1.8vw, 20px);
+    font-size: clamp(14px, 1.6vw, 18px);
     margin-bottom: 0;
   }
   #scan .qr-card p {
     display: none;
   }
   #scan .qr-frame {
-    width: min(100%, 150px);
-    padding: 8px;
+    width: min(100%, 132px);
+    padding: 6px;
     margin: 0 auto;
-    border-radius: 12px;
+    border-radius: 10px;
   }
   #scan .qr-card .url {
-    font-size: 10px;
-    padding: 4px 8px;
-    line-height: 1.3;
+    display: none;
   }
   #scan .story,
   #scan .story-path.is-active {
-    margin-top: 8px !important;
-    gap: 6px;
+    margin-top: 6px !important;
+    gap: 5px;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    flex-shrink: 0;
   }
   #scan .step-card {
-    padding: 8px 9px;
+    padding: 6px 7px;
     min-height: 0;
-    border-radius: 10px;
+    border-radius: 9px;
   }
   #scan .step-card .n {
-    width: 20px;
-    height: 20px;
-    font-size: 10px;
-    margin-bottom: 4px;
+    width: 18px;
+    height: 18px;
+    font-size: 9px;
+    margin-bottom: 3px;
   }
   #scan .step-card .badge,
   #scan .step-card p,
@@ -796,23 +797,31 @@
     display: none;
   }
   #scan .step-card h3 {
-    font-size: 12px;
+    font-size: 11px;
     margin-bottom: 0;
-    line-height: 1.25;
+    line-height: 1.2;
   }
   @media (max-height: 900px) {
     #scan {
-      padding: 44px 0 8px;
+      padding: 32px 0 4px;
     }
-    #scan .sec-h p {
-      display: none;
+    #scan .sec-h h2 {
+      font-size: clamp(18px, 2.4vw, 26px);
     }
     #scan .qr-frame {
-      width: min(100%, 136px);
-      padding: 6px;
+      width: min(100%, 120px);
+      padding: 5px;
     }
-    #scan .qr-card .url {
-      display: none;
+  }
+  @media (max-height: 740px) {
+    #scan {
+      padding: 28px 0 2px;
+    }
+    #scan .qr-frame {
+      width: min(100%, 108px);
+    }
+    #scan .step-card h3 {
+      font-size: 10px;
     }
   }
 
