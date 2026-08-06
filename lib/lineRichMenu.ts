@@ -1,7 +1,7 @@
 // LINE Rich Menu — 2×3 layout matching rich-menu-preview.html (draft B).
 // Note: do NOT import sharp at top-level — webhook imports this module on every message.
 
-export const RICH_MENU_NAME = "ktis-main-v5-full";
+export const RICH_MENU_NAME = "ktis-main-v5b-full";
 
 /** Strip invisible chars LINE sometimes appends (ZWSP etc.) so menu taps match. */
 export function sanitizeMenuText(text: string): string {
@@ -73,7 +73,7 @@ function cellSvg(
   h: number,
   bg: string,
   iconBg: string,
-  iconKind: "cal" | "meet" | "news" | "file" | "car" | "gear",
+  iconKind: "cal" | "meet" | "news" | "file" | "car" | "soon" | "gear",
   title: string,
   sub: string
 ): string {
@@ -135,6 +135,15 @@ function cellSvg(
       <path d="M${cx - iw * 0.32} ${iy + iw * 0.28} l${iw * 0.14} ${-iw * 0.2} h${iw * 0.36} l${iw * 0.14} ${iw * 0.2}" fill="#3b82f6"/>
       <circle cx="${cx - iw * 0.28}" cy="${iy + iw * 0.72}" r="${iw * 0.12}" fill="#1e3a8a"/>
       <circle cx="${cx + iw * 0.28}" cy="${iy + iw * 0.72}" r="${iw * 0.12}" fill="#1e3a8a"/>`;
+  } else if (iconKind === "soon") {
+    // Muted ellipsis — “coming soon”, no car
+    const r = Math.round(glyph * 0.11);
+    const cy = iy + Math.round(glyph * 0.42);
+    const gap = Math.round(glyph * 0.32);
+    icon = `<circle cx="${cx - gap}" cy="${cy}" r="${r}" fill="#94a3b8"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="#64748b"/>
+      <circle cx="${cx + gap}" cy="${cy}" r="${r}" fill="#94a3b8"/>
+      <rect x="${cx - Math.round(glyph * 0.38)}" y="${cy + Math.round(glyph * 0.28)}" width="${Math.round(glyph * 0.76)}" height="${Math.round(glyph * 0.08)}" rx="6" fill="#cbd5e1"/>`;
   } else {
     const r = Math.round(glyph * 0.38);
     icon = `<circle cx="${cx}" cy="${iy + r * 1.05}" r="${r}" fill="none" stroke="#0f766e" stroke-width="${Math.round(r * 0.32)}"/>
@@ -150,8 +159,8 @@ function cellSvg(
   <rect x="${x}" y="${y + h - 3}" width="${w}" height="3" fill="#e5e7eb"/>
   <rect x="${panelX}" y="${panelY}" width="${panelW}" height="${panelH}" rx="${panelRx}" fill="${iconBg}"/>
   ${icon}
-  <text x="${cx}" y="${titleY}" text-anchor="middle" font-size="${titleSize}" font-weight="700" fill="#111827" font-family="NotoThai, DejaVu Sans, Arial, sans-serif">${title}</text>
-  <text x="${cx}" y="${subY}" text-anchor="middle" font-size="${subSize}" fill="#4b5563" font-family="NotoThai, DejaVu Sans, Arial, sans-serif">${sub}</text>`;
+  <text x="${cx}" y="${titleY}" text-anchor="middle" font-size="${titleSize}" font-weight="700" fill="${iconKind === "soon" ? "#64748b" : "#111827"}" font-family="NotoThai, DejaVu Sans, Arial, sans-serif">${title}</text>
+  <text x="${cx}" y="${subY}" text-anchor="middle" font-size="${subSize}" fill="${iconKind === "soon" ? "#94a3b8" : "#4b5563"}" font-family="NotoThai, DejaVu Sans, Arial, sans-serif">${sub}</text>`;
 }
 
 /** PNG buffer for LINE rich menu upload (≤1MB, 2500×1686 full). */
@@ -208,7 +217,7 @@ export async function buildRichMenuPng(opts?: { force?: boolean }): Promise<Buff
   ${cellSvg(COL, 0, COL, ROW, "#ffffff", "#e0f2f1", "meet", "สรุปประชุม", "มอบหมายงาน")}
   ${cellSvg(COL * 2, 0, COL3, ROW, "#ffffff", "#e0f2f1", "news", "สรุปข่าว", "ที่ติดตาม")}
   ${cellSvg(0, ROW, COL, ROW2, "#fff7ed", "#ffedd5", "file", "ไฟล์", "ค้น·ผูก·แนบ")}
-  ${cellSvg(COL, ROW, COL, ROW2, "#f1f5f9", "#e2e8f0", "car", "เร็วๆนี้", "รอระบบใหม่")}
+  ${cellSvg(COL, ROW, COL, ROW2, "#f1f5f9", "#e2e8f0", "soon", "เร็วๆนี้", "รอระบบใหม่")}
   ${cellSvg(COL * 2, ROW, COL3, ROW2, "#ecfdf5", "#ccfbf1", "gear", "ตั้งค่า", "เปิดหน้าเว็บ")}
 </svg>`;
   const png = await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer();
