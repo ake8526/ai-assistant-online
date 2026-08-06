@@ -18,7 +18,7 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/:path(homehtml|system-functions.html)",
+        source: "/:path(home.html|homehtml|system-functions.html)",
         headers: [
           { key: "Cache-Control", value: "no-store, must-revalidate" },
         ],
@@ -27,16 +27,18 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     return [
-      // Old landing URL → new short path
-      { source: "/system-functions.html", destination: "/homehtml", permanent: true },
-      { source: "/functions.html", destination: "/homehtml", permanent: true },
-      { source: "/functions-th.html", destination: "/homehtml", permanent: true },
+      // Canonical landing page
+      { source: "/system-functions.html", destination: "/home.html", permanent: true },
+      { source: "/functions.html", destination: "/home.html", permanent: true },
+      { source: "/functions-th.html", destination: "/home.html", permanent: true },
+      // Typo short path from earlier
+      { source: "/homehtml", destination: "/home.html", permanent: true },
     ];
   },
   async rewrites() {
     return [
-      // Clean URL without .html — serves public/system-functions.html
-      { source: "/homehtml", destination: "/system-functions.html" },
+      // Serve public/system-functions.html at /home.html
+      { source: "/home.html", destination: "/system-functions.html" },
     ];
   },
 };
