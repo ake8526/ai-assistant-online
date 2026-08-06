@@ -1,7 +1,7 @@
 // LINE Rich Menu — 2×3 layout matching rich-menu-preview.html (draft B).
 // Note: do NOT import sharp at top-level — webhook imports this module on every message.
 
-export const RICH_MENU_NAME = "ktis-main-v5c-full";
+export const RICH_MENU_NAME = "ktis-main-v5d-full";
 
 /** Strip invisible chars LINE sometimes appends (ZWSP etc.) so menu taps match. */
 export function sanitizeMenuText(text: string): string {
@@ -46,10 +46,7 @@ export const RICH_MENU_AREAS: RichMenuArea[] = [
     bounds: { x: 0, y: ROW, width: COL, height: ROW2 },
     action: { type: "message", label: "ไฟล์", text: "ไฟล์" },
   },
-  {
-    bounds: { x: COL, y: ROW, width: COL, height: ROW2 },
-    action: { type: "message", label: "เร็วๆนี้", text: "เร็วๆนี้" },
-  },
+  // 「เร็วๆนี้」= visual only (no tap area) while travel is under development
   {
     bounds: { x: COL * 2, y: ROW, width: COL3, height: ROW2 },
     action: { type: "message", label: "ตั้งค่า", text: "ตั้งค่า" },
