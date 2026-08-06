@@ -209,13 +209,15 @@ export async function addPlace(
   category: string,
   label: string,
   location = "",
-  makePrimary = false
+  makePrimary = false,
+  coords?: { lat?: string | number | null; lng?: string | number | null }
 ): Promise<number> {
-  const { data, error } = await admin
-    .from("places")
-    .insert({ owner_upn: ownerUpn, category, label, location })
-    .select("id")
-    .single();
+  const row: Record<string, unknown> = { owner_upn: ownerUpn, category, label, location };
+  if (coords?.lat != null && coords?.lng != null && String(coords.lat) && String(coords.lng)) {
+    row.lat = String(coords.lat);
+    row.lng = String(coords.lng);
+  }
+  const { data, error } = await admin.from("places").insert(row).select("id").single();
   if (error || !data) throw new Error(`addPlace: ${error?.message}`);
   const { count } = await admin
     .from("places")
@@ -268,6 +270,50 @@ export async function getPrimaryPlace(ownerUpn: string, category: string): Promi
     .limit(1)
     .maybeSingle();
   return data || null;
+}
+
+const PENDING_LINE_LOCATION_KEY = "pending_line_location";
+
+export type PendingLineLocation = {
+  title?: string;
+  address?: string;
+  lat: number;
+  lng: number;
+  at: number;
+};
+
+export async function savePendingLineLocation(
+  ownerUpn: string,
+  loc: Omit<PendingLineLocation, "at">
+): Promise<void> {
+  await setSetting(
+    ownerUpn,
+    PENDING_LINE_LOCATION_KEY,
+    JSON.stringify({ ...loc, at: Date.now() } satisfies PendingLineLocation)
+  );
+}
+
+export async function loadPendingLineLocation(ownerUpn: string): Promise<PendingLineLocation | null> {
+  const raw = await getSetting(ownerUpn, PENDING_LINE_LOCATION_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as PendingLineLocation;
+    if (!parsed || typeof parsed.lat !== "number" || typeof parsed.lng !== "number") return null;
+    // Expire after 2 hours
+    if (parsed.at && Date.now() - parsed.at > 2 * 60 * 60 * 1000) {
+      await deleteSetting(ownerUpn, PENDING_LINE_LOCATION_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearPendingLineLocation(ownerUpn: string): Promise<void> {
+  try {
+    await deleteSetting(ownerUpn, PENDING_LINE_LOCATION_KEY);
+  } catch { /* ignore */ }
 }
 
 // ---------------------------------------------------------------------------

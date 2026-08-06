@@ -48,12 +48,14 @@ import { busyRanges, findCommonSlots, formatBusy, formatFree, freeRanges, wantsL
 import {
   addPlace,
   addTask,
+  clearPendingLineLocation,
   deletePlace,
   getPrimaryPlace,
   getSetting,
   incrementVisit,
   listPlaces,
   listTasks,
+  loadPendingLineLocation,
   allSettings,
   setSetting,
   updateTaskStatus,
@@ -591,6 +593,38 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
         intent: "plan_commute",
         params: { place: home ? "home" : "work", period },
       };
+    }
+
+    // Save work/home — including “เพิ่มตำแหน่งนี้เป็นที่ทำงาน” after sharing a LINE pin
+    const setWorkAddr = t.match(
+      /^(?:ตั้ง|บันทึก|เพิ่ม)(?:ที่อยู่)?(?:ที่)?ทำงาน(?:หลัก)?(?:เป็น|=|:)\s*(.+)$/i
+    );
+    if (setWorkAddr?.[1]?.trim() && !/ตำแหน่งนี้|โลเคชันนี้|location|ที่นี่|ตรงนี้/i.test(setWorkAddr[1])) {
+      return { intent: "set_work_location", params: { address: setWorkAddr[1].trim() } };
+    }
+    const setHomeAddr = t.match(/^(?:ตั้ง|บันทึก|เพิ่ม)(?:ที่อยู่)?บ้าน(?:เป็น|=|:)\s*(.+)$/i);
+    if (setHomeAddr?.[1]?.trim() && !/ตำแหน่งนี้|โลเคชันนี้|location|ที่นี่|ตรงนี้/i.test(setHomeAddr[1])) {
+      return { intent: "set_home_location", params: { address: setHomeAddr[1].trim() } };
+    }
+    if (
+      /(เพิ่ม|บันทึก|ตั้ง|ใช้).{0,12}(ตำแหน่ง|โลเคชัน|location|ที่นี่|ตรงนี้).{0,16}(ที่)?ทำงาน|(เป็น|ไว้เป็น|ให้เป็น)ที่ทำงาน|^ตั้งที่ทำงาน$|^บันทึกที่ทำงาน$|^เพิ่มที่ทำงาน$/i.test(
+        t
+      )
+    ) {
+      return { intent: "set_work_location", params: { from_pending: true } };
+    }
+    if (
+      /(เพิ่ม|บันทึก|ตั้ง|ใช้).{0,12}(ตำแหน่ง|โลเคชัน|location|ที่นี่|ตรงนี้).{0,16}บ้าน|(เป็น|ไว้เป็น|ให้เป็น)บ้าน(?!เกิด)|^ตั้งบ้าน$|^บันทึกบ้าน$|^เพิ่มบ้าน$/i.test(
+        t
+      )
+    ) {
+      return { intent: "set_home_location", params: { from_pending: true } };
+    }
+    if (/^(ดู|แสดง)?ที่ทำงาน(ที่ตั้งไว้)?$|^ที่ทำงานหลัก$/i.test(t)) {
+      return { intent: "show_work_location", params: {} };
+    }
+    if (/^(ลบ|เคลียร์|clear)ที่ทำงาน/i.test(t)) {
+      return { intent: "clear_work_location", params: {} };
     }
   }
 
@@ -2300,6 +2334,10 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       quick?.intent === "plan_commute" ||
       quick?.intent === "open_map" ||
       quick?.intent === "open_map_home" ||
+      quick?.intent === "set_work_location" ||
+      quick?.intent === "set_home_location" ||
+      quick?.intent === "show_work_location" ||
+      quick?.intent === "clear_work_location" ||
       quick?.intent === "ack" ||
       quick?.intent === "search_files"
     ) {
@@ -3171,18 +3209,49 @@ async function handleParsed(
   }
 
   if (intent === "set_work_location" || intent === "set_home_location") {
-    const isHome = intent === "set_home_location";
-    const addr = String(params.address || "").trim();
-    if (!addr) {
-      return { intent, reply: isHome ? "ระบุที่อยู่บ้านด้วยครับ เช่น “ตั้งบ้านเป็น ...”" : "ระบุที่อยู่ที่ทำงานด้วยครับ เช่น “ตั้งที่ทำงานเป็น ...”" };
+    try {
+      const isHome = intent === "set_home_location";
+      let addr = String(params.address || "").trim();
+      let lat: string | number | undefined;
+      let lng: string | number | undefined;
+      const wantPending = !!(params as { from_pending?: boolean }).from_pending || !addr;
+
+      if (wantPending) {
+        const pending = await loadPendingLineLocation(userUpn);
+        if (pending) {
+          addr =
+            (pending.address || "").trim() ||
+            (pending.title || "").trim() ||
+            `${pending.lat},${pending.lng}`;
+          lat = pending.lat;
+          lng = pending.lng;
+        }
+      }
+
+      if (!addr) {
+        return {
+          intent,
+          reply: isHome
+            ? "ยังไม่มีตำแหน่งล่าสุดครับ\nส่งตำแหน่งจาก LINE ก่อน (ปุ่ม + → ตำแหน่ง) แล้วพิมพ์ «เพิ่มตำแหน่งนี้เป็นบ้าน»\nหรือพิมพ์ “ตั้งบ้านเป็น …” ตามด้วยที่อยู่ได้เลย"
+            : "ยังไม่มีตำแหน่งล่าสุดครับ\nส่งตำแหน่งจาก LINE ก่อน (ปุ่ม + → ตำแหน่ง) แล้วพิมพ์ «เพิ่มตำแหน่งนี้เป็นที่ทำงาน»\nหรือพิมพ์ “ตั้งที่ทำงานเป็น …” ตามด้วยที่อยู่ได้เลย",
+        };
+      }
+
+      await addPlace(userUpn, isHome ? "home" : "work", addr, addr, true, { lat, lng });
+      await clearPendingLineLocation(userUpn);
+      return {
+        intent,
+        reply: isHome
+          ? `บันทึกบ้านแล้วครับ 🏠\n${addr}`
+          : `บันทึกที่ทำงานหลักแล้วครับ 📍\n${addr}\nต่อไปกด «วางแผนเดินทาง» หรือพิมพ์ “เปิดแผนที่ไปที่ทำงาน” ได้เลย`,
+      };
+    } catch (e) {
+      console.error("[set_location]", String(e).slice(0, 200));
+      return {
+        intent,
+        reply: "บันทึกตำแหน่งไม่สำเร็จชั่วคราว — ลองส่งตำแหน่งใหม่ หรือตั้งที่หน้าเว็บ ⚙️ ได้ครับ",
+      };
     }
-    await addPlace(userUpn, isHome ? "home" : "work", addr, addr, true);
-    return {
-      intent,
-      reply: isHome
-        ? `บันทึกบ้านแล้วครับ 🏠\n${addr}`
-        : `บันทึกที่ทำงานหลักแล้วครับ 📍\n${addr}\nต่อไปพิมพ์ “เปิดแผนที่ไปที่ทำงาน” ได้เลย`,
-    };
   }
 
   if (intent === "show_work_location") {

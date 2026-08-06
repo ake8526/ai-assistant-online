@@ -11,7 +11,7 @@ import {
   startNewsOnboarding,
 } from "@/lib/newsOnboarding";
 import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
-import { getSetting, setSetting, deleteSetting } from "@/lib/store";
+import { getSetting, setSetting, deleteSetting, savePendingLineLocation } from "@/lib/store";
 import { createEvent, pushMaterialToOutlookEvent, attachBytesToOutlookEvent, resolveUser } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold, findLinkedLineAttendees } from "@/lib/meetingInvite";
@@ -50,7 +50,15 @@ type LineEvent = {
   type: string;
   replyToken?: string;
   source?: { type: string; userId?: string };
-  message?: { type: string; text?: string; id?: string };
+  message?: {
+    type: string;
+    text?: string;
+    id?: string;
+    title?: string;
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+  };
   postback?: { data?: string };
 };
 
@@ -1058,6 +1066,55 @@ async function handleImageMessage(ev: LineEvent): Promise<void> {
   }
 }
 
+async function handleLocationMessage(ev: LineEvent): Promise<void> {
+  const userId = ev.source?.userId;
+  if (!ev.replyToken || !userId) return;
+  const upn = await getUpnByLineId(userId);
+  if (!upn) {
+    await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
+    return;
+  }
+  setTraceUser(upn);
+  const lat = Number(ev.message?.latitude);
+  const lng = Number(ev.message?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    await replyLine(ev.replyToken, "อ่านตำแหน่งไม่สำเร็จครับ ลองส่งใหม่อีกครั้งได้เลย");
+    return;
+  }
+  const title = (ev.message?.title || "").trim();
+  const address = (ev.message?.address || "").trim();
+  try {
+    await savePendingLineLocation(upn, { title, address, lat, lng });
+    const preview = address || title || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    await replyLineMessages(ev.replyToken, [
+      {
+        type: "text",
+        text: `รับตำแหน่งแล้วครับ 📍\n${preview}\n\nบันทึกเป็นอะไรดีครับ?`,
+        quickReply: {
+          items: [
+            {
+              type: "action",
+              action: { type: "message", label: "เป็นที่ทำงาน", text: "เพิ่มตำแหน่งนี้เป็นที่ทำงาน" },
+            },
+            {
+              type: "action",
+              action: { type: "message", label: "เป็นบ้าน", text: "เพิ่มตำแหน่งนี้เป็นบ้าน" },
+            },
+            {
+              type: "action",
+              action: { type: "message", label: "วางแผนเดินทาง", text: "วางแผนเดินทาง" },
+            },
+          ],
+        },
+      },
+    ]);
+    trace("reply", "รับตำแหน่ง LINE");
+  } catch (e) {
+    console.error("[line] handleLocationMessage", String(e).slice(0, 200));
+    await replyLine(ev.replyToken, "รับตำแหน่งไม่สำเร็จชั่วคราว — ลองส่งใหม่อีกครั้งครับ");
+  }
+}
+
 async function handleTextMessage(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
   let text = sanitizeMenuText(ev.message?.text || "");
@@ -1374,6 +1431,8 @@ export async function POST(req: Request) {
           await runWithTrace({ channel: "line" }, () => handleTextMessage(ev));
         } else if (ev.type === "message" && ev.message?.type === "image") {
           await runWithTrace({ channel: "line" }, () => handleImageMessage(ev));
+        } else if (ev.type === "message" && ev.message?.type === "location") {
+          await runWithTrace({ channel: "line" }, () => handleLocationMessage(ev));
         } else if (ev.type === "postback") {
           await runWithTrace({ channel: "line" }, () => handlePostback(ev));
         } else if (ev.type === "follow" && ev.replyToken) {
