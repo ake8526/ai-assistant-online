@@ -34,7 +34,7 @@ export async function fetchFeed(url: string): Promise<FeedEntry[]> {
 }
 
 /** Fetch an article page and return readable plain text (best-effort). */
-export async function fetchArticle(url: string): Promise<string> {
+export async function fetchArticle(url: string, timeoutMs = 15000): Promise<string> {
   if (!url.startsWith("http")) return "";
   try {
     const r = await fetch(url, {
@@ -44,7 +44,7 @@ export async function fetchArticle(url: string): Promise<string> {
         Accept: "text/html,application/xhtml+xml",
         "Accept-Language": "th,en;q=0.8",
       },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(Math.max(2000, timeoutMs)),
     });
     if (!r.ok) return "";
     let html = await r.text();
