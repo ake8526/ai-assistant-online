@@ -5,7 +5,7 @@ import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import Link from "next/link";
 import { UserCheck, LogIn, CheckCircle2, AlertTriangle, Settings } from "lucide-react";
 import SetupTestPanel from "@/components/SetupTestPanel";
-import SetupBriefPreviewPanel from "@/components/SetupBriefPreviewPanel";
+import SetupBriefPanel from "@/components/SetupBriefPanel";
 
 // LIFF is loaded from the CDN at runtime (no npm dep needed).
 type LiffProfile = { userId: string; displayName?: string };
@@ -64,7 +64,32 @@ function LineLinkRouter() {
   const [view, setView] = useState<string | null>(null);
 
   useEffect(() => {
-    const v = new URLSearchParams(window.location.search).get("view");
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("autoclose") === "1") {
+      setView("autoclose");
+      (async () => {
+        try {
+          await loadLiffSdk();
+          if (LIFF_ID && window.liff) {
+            await withTimeout(window.liff.init({ liffId: LIFF_ID }), 4000, "LIFF init");
+          }
+        } catch {
+          /* still try close */
+        }
+        try {
+          if (window.liff?.closeWindow) window.liff.closeWindow();
+        } catch {
+          /* ignore */
+        }
+        // Fallback: keep a clear close hint if LIFF cannot close
+        document.body.innerHTML =
+          '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#020617;color:#f1f5f9;font-family:system-ui;text-align:center;padding:24px">' +
+          '<div><div style="font-size:2.5rem">✅</div><p style="font-weight:700">เสร็จแล้ว</p>' +
+          '<p style="color:#94a3b8;font-size:14px">กด <b style="color:#f1f5f9">✕</b> มุมบนขวาเพื่อกลับแชท LINE</p></div></div>';
+      })();
+      return;
+    }
+    const v = params.get("view");
     if (v === "setup-test") {
       setView(v);
       return;
@@ -73,7 +98,7 @@ function LineLinkRouter() {
       setView(v);
       return;
     }
-    const next = new URLSearchParams(window.location.search).get("next");
+    const next = params.get("next");
     if (next && next.startsWith("/") && !next.startsWith("//")) {
       window.location.replace(next);
       return;
@@ -81,8 +106,15 @@ function LineLinkRouter() {
     setView("link");
   }, []);
 
+  if (view === "autoclose") {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center text-sm p-6 text-center">
+        เสร็จแล้ว — กำลังปิด…
+      </div>
+    );
+  }
   if (view === "setup-test") return <SetupTestPanel />;
-  if (view === "setup-brief") return <SetupBriefPreviewPanel />;
+  if (view === "setup-brief") return <SetupBriefPanel />;
   if (view === "link") return <LineLinkContent />;
   return (
     <div className="min-h-screen bg-slate-950 text-slate-400 flex items-center justify-center text-sm">

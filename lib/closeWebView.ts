@@ -11,6 +11,10 @@ function liffWin(): Window & { liff?: LiffApi } {
   return window as Window & { liff?: LiffApi };
 }
 
+function isLineUa(): boolean {
+  return /Line\//i.test(navigator.userAgent || "");
+}
+
 function loadLiffSdk(): Promise<void> {
   return new Promise((resolve, reject) => {
     if (liffWin().liff) return resolve();
@@ -71,7 +75,12 @@ export function showManualCloseHint(): void {
 function tryLiffClose(): boolean {
   try {
     const liff = liffWin().liff;
-    if (liff?.closeWindow) {
+    if (liff?.isInClient?.() && liff.closeWindow) {
+      liff.closeWindow();
+      return true;
+    }
+    // Some LINE builds expose closeWindow even when isInClient is flaky
+    if (liff?.closeWindow && isLineUa()) {
       liff.closeWindow();
       return true;
     }
@@ -81,28 +90,15 @@ function tryLiffClose(): boolean {
   return false;
 }
 
-function tryFallbackClose(): boolean {
+/** Bounce through LIFF endpoint so closeWindow works after OAuth left LIFF context. */
+function bounceToLiffAutoclose(): boolean {
+  if (!LIFF_ID || !isLineUa()) return false;
   try {
-    if (window.history.length > 1) {
-      window.history.back();
-      return true;
-    }
-  } catch {
-    /* ignore */
-  }
-  const ua = navigator.userAgent || "";
-  try {
-    if (/Android/i.test(ua)) {
-      window.location.href =
-        "intent://line.me#Intent;scheme=line;package=jp.naver.line.android;end";
-      return true;
-    }
-    window.location.href = "line://nv/chat";
+    window.location.href = `https://liff.line.me/${LIFF_ID}?autoclose=1`;
     return true;
   } catch {
-    /* ignore */
+    return false;
   }
-  return false;
 }
 
 export async function closeWebView(): Promise<boolean> {
@@ -117,7 +113,17 @@ export async function closeWebView(): Promise<boolean> {
   }
 
   if (tryLiffClose()) return true;
-  if (tryFallbackClose()) return true;
 
+  // OAuth / plain https://… opens lose LIFF context — re-enter LIFF then close.
+  if (bounceToLiffAutoclose()) return true;
+
+  showManualCloseHint();
   return false;
+}
+
+/** LIFF endpoint helper: open setup inside LIFF so close works. */
+export function liffSetupUrl(path = "/setup"): string {
+  if (!LIFF_ID) return path;
+  const next = path.startsWith("/") ? path : `/${path}`;
+  return `https://liff.line.me/${LIFF_ID}?next=${encodeURIComponent(next)}`;
 }

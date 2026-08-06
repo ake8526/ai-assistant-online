@@ -52,6 +52,14 @@ function AccountContent() {
     const params = new URLSearchParams(window.location.search);
     const q = params.get("ms");
     const detail = params.get("ms_detail");
+    const ret = params.get("return");
+    if (ret?.startsWith("/") && !ret.startsWith("//")) {
+      try {
+        sessionStorage.setItem("account_return", ret);
+      } catch {
+        /* ignore */
+      }
+    }
     if (!q) return;
     const map: Record<string, { text: string; ok?: boolean }> = {
       connected: { text: "✅ อนุญาตปฏิทินตามสิทธิ์ Microsoft 365 แล้ว — ดูตารางเหมือนใน Outlook", ok: true },
@@ -65,6 +73,21 @@ function AccountContent() {
     if (m) {
       setMsg(m.text);
       setMsgOk(!!m.ok);
+    }
+
+    // Came from /setup (or another page) → go back there, don't close the webview.
+    if (q === "connected") {
+      let back = "";
+      try {
+        back = sessionStorage.getItem("account_return") || "";
+        if (back) sessionStorage.removeItem("account_return");
+      } catch {
+        /* ignore */
+      }
+      if (back.startsWith("/") && !back.startsWith("//") && back !== "/account") {
+        window.location.replace(`${back}${back.includes("?") ? "&" : "?"}ms=connected`);
+        return;
+      }
     }
     window.history.replaceState({}, "", "/account");
   }, []);
@@ -119,7 +142,14 @@ function AccountContent() {
         setBusy(false);
         return;
       }
-      window.location.href = `/api/oauth/microsoft/start?token=${encodeURIComponent(token)}&back=/account`;
+      let back = "/account";
+      try {
+        const ret = sessionStorage.getItem("account_return");
+        if (ret?.startsWith("/") && !ret.startsWith("//")) back = ret;
+      } catch {
+        /* ignore */
+      }
+      window.location.href = `/api/oauth/microsoft/start?token=${encodeURIComponent(token)}&back=${encodeURIComponent(back)}`;
     } catch (e) {
       setMsg(String((e as Error).message));
       setMsgOk(false);

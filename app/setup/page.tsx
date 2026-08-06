@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
+import { closeWebView, prepareWebViewClose, showManualCloseHint } from "@/lib/closeWebView";
 import {
   ArrowLeft,
   Calendar,
@@ -12,6 +13,7 @@ import {
   Newspaper,
   Rss,
   Sparkles,
+  X,
   Youtube,
 } from "lucide-react";
 
@@ -37,7 +39,34 @@ const DAY_CHIPS: { label: string; d: number }[] = [
   { label: "อา", d: 0 },
 ];
 
+const DRAFT_KEY = "setup_draft_v1";
+
 type NotifyKindCfg = { enabled: boolean; time: string; days: number[]; count?: number };
+
+type SetupDraft = {
+  topics: string[];
+  customTopic: string;
+  news: NotifyKindCfg;
+  brief: NotifyKindCfg;
+};
+
+function readDraft(): SetupDraft | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as SetupDraft;
+  } catch {
+    return null;
+  }
+}
+
+function writeDraft(d: SetupDraft): void {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+  } catch {
+    /* ignore */
+  }
+}
 
 function ScheduleBlock({
   title,
@@ -169,9 +198,40 @@ function SetupContent() {
   const [busy, setBusy] = useState(false);
   const [needReauth, setNeedReauth] = useState(false);
   const [done, setDone] = useState(false);
+  const [draftHydrated, setDraftHydrated] = useState(false);
+
+  useEffect(() => {
+    const local = readDraft();
+    if (!local) {
+      setDraftHydrated(true);
+      return;
+    }
+    if (local.topics?.length) setTopics(local.topics);
+    if (local.customTopic) setCustomTopic(local.customTopic);
+    if (local.news) setNews((n) => ({ ...n, ...local.news }));
+    if (local.brief) setBrief((b) => ({ ...b, ...local.brief }));
+    setDraftHydrated(true);
+  }, []);
+
+  const persistDraft = useCallback(
+    (patch?: Partial<SetupDraft>) => {
+      writeDraft({
+        topics: patch?.topics ?? topics,
+        customTopic: patch?.customTopic ?? customTopic,
+        news: patch?.news ?? news,
+        brief: patch?.brief ?? brief,
+      });
+    },
+    [topics, customTopic, news, brief]
+  );
+
+  useEffect(() => {
+    if (!draftHydrated) return;
+    persistDraft();
+  }, [persistDraft, draftHydrated]);
 
   const load = useCallback(async () => {
-    if (!account) return;
+    if (!account || !draftHydrated) return;
     const token = await getToken();
     if (!token) {
       setNeedReauth(true);
@@ -185,27 +245,35 @@ function SetupContent() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setTopics(data.prefs?.topics || []);
+      // Prefer local draft (survives calendar OAuth round-trip)
+      const local = readDraft();
+      const hasLocal = !!(local && (local.topics?.length || local.news || local.brief));
+      if (!hasLocal) {
+        setTopics(data.prefs?.topics || []);
+        if (data.notify?.news) setNews((n) => ({ ...n, ...data.notify.news }));
+        if (data.notify?.brief) setBrief((b) => ({ ...b, ...data.notify.brief }));
+      }
       setCalLinked(!!data.calLinked);
-      if (data.notify?.news) setNews({ ...news, ...data.notify.news });
-      if (data.notify?.brief) setBrief({ ...brief, ...data.notify.brief });
       setDone(!!data.prefs?.onboardingDone);
     } catch (e) {
       setMsg(String((e as Error).message));
       setMsgOk(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account, getToken]);
+  }, [account, getToken, draftHydrated]);
 
   useEffect(() => {
-    if (!ready) return;
+    prepareWebViewClose();
+  }, []);
+
+  useEffect(() => {
+    if (!ready || !draftHydrated) return;
     load();
-  }, [ready, load]);
+  }, [ready, draftHydrated, load]);
 
   useEffect(() => {
     const ms = new URLSearchParams(window.location.search).get("ms");
     if (ms === "connected") {
-      setMsg("✅ อนุญาตปฏิทินเรียบร้อยแล้ว");
+      setMsg("✅ อนุญาตปฏิทินเรียบร้อยแล้ว — ตั้งค่าต่อได้เลย");
       setMsgOk(true);
       setCalLinked(true);
       window.history.replaceState({}, "", "/setup");
@@ -221,6 +289,25 @@ function SetupContent() {
     if (!t || topics.includes(t)) return;
     setTopics((cur) => [...cur, t]);
     setCustomTopic("");
+  };
+
+  const connectCalendar = async () => {
+    setBusy(true);
+    setMsg("");
+    try {
+      persistDraft();
+      const token = await getToken();
+      if (!token) {
+        setNeedReauth(true);
+        throw new Error("กรุณาเข้าสู่ระบบก่อน");
+      }
+      // Return here (not /account) so form state + section ④ stay intact
+      window.location.href = `/api/oauth/microsoft/start?token=${encodeURIComponent(token)}&back=/setup`;
+    } catch (e) {
+      setMsg(String((e as Error).message));
+      setMsgOk(false);
+      setBusy(false);
+    }
   };
 
   const save = async (complete: boolean) => {
@@ -251,13 +338,20 @@ function SetupContent() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setCalLinked(!!data.calLinked);
+      try {
+        sessionStorage.removeItem(DRAFT_KEY);
+      } catch {
+        /* ignore */
+      }
       if (complete) {
         setDone(true);
-        setMsg("✅ บันทึกเรียบร้อย — สรุปการตั้งค่าถูกส่งไปที่ LINE แล้วครับ");
-        setMsgOk(true);
+        const closed = await closeWebView();
+        if (!closed) showManualCloseHint();
       } else {
-        setMsg("บันทึกชั่วคราวแล้ว — กด “เสร็จสิ้น” เมื่อพร้อม");
+        setMsg("บันทึกชั่วคราวแล้ว");
         setMsgOk(true);
+        const closed = await closeWebView();
+        if (!closed) showManualCloseHint();
       }
     } catch (e) {
       setMsg(String((e as Error).message));
@@ -358,10 +452,13 @@ function SetupContent() {
 
             <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
               <h2 className="text-sm font-bold text-slate-200">③ ผูกแหล่งข่าว & ปฏิทิน</h2>
-              <p className="text-xs text-slate-400">เปิดหน้าย่อยแล้วกลับมากด “เสร็จสิ้น” ด้านล่าง</p>
+              <p className="text-xs text-slate-400">
+                อนุญาตปฏิทินแล้วระบบพากลับหน้านี้ทันที · YouTube/RSS เปิดแล้วกดกลับมาได้
+              </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 <Link
                   href="/consents"
+                  onClick={() => persistDraft()}
                   className="flex items-center gap-3 p-4 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-sky-500/50 transition"
                 >
                   <Youtube className="w-5 h-5 text-red-400" />
@@ -371,33 +468,52 @@ function SetupContent() {
                   </div>
                   <Rss className="w-4 h-4 text-slate-500 ml-auto" />
                 </Link>
-                <Link
-                  href="/account"
-                  className="flex items-center gap-3 p-4 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-sky-500/50 transition"
+                <button
+                  type="button"
+                  disabled={busy || calLinked}
+                  onClick={() => void connectCalendar()}
+                  className="flex items-center gap-3 p-4 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-sky-500/50 transition text-left disabled:opacity-80"
                 >
                   <Calendar className="w-5 h-5 text-emerald-400" />
                   <div>
                     <div className="text-sm font-semibold">ปฏิทิน M365</div>
                     <div className="text-[11px] text-slate-400">
-                      {calLinked ? "✅ อนุญาตแล้ว" : "ยังไม่ได้อนุญาต — กดเพื่อเปิด"}
+                      {calLinked ? "✅ อนุญาตแล้ว" : busy ? "กำลังเปิด Microsoft…" : "กดเพื่ออนุญาต — แล้วกลับมาที่นี่"}
                     </div>
                   </div>
-                </Link>
+                </button>
               </div>
             </section>
 
-            <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
-              <h2 className="text-sm font-bold text-slate-200">④ สรุปตารางเช้า (Morning Brief)</h2>
-              <ScheduleBlock
-                title="Morning Brief"
-                hint="สรุปนัดประชุมวันนี้ — ต้องอนุญาตปฏิทินก่อน"
-                icon={<Calendar className="w-5 h-5" />}
-                cfg={brief}
-                onChange={(patch) => setBrief((c) => ({ ...c, ...patch }))}
-              />
-            </section>
+            {calLinked ? (
+              <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
+                <h2 className="text-sm font-bold text-slate-200">④ สรุปตารางเช้า (Morning Brief)</h2>
+                <ScheduleBlock
+                  title="Morning Brief"
+                  hint="สรุปนัดประชุมวันนี้ — ต้องอนุญาตปฏิทินก่อน"
+                  icon={<Calendar className="w-5 h-5" />}
+                  cfg={brief}
+                  onChange={(patch) => setBrief((c) => ({ ...c, ...patch }))}
+                />
+              </section>
+            ) : (
+              <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-2">
+                <h2 className="text-sm font-bold text-slate-200">④ สรุปตารางเช้า (Morning Brief)</h2>
+                <p className="text-xs text-slate-400">
+                  ซ่อนอยู่ชั่วคราว — อนุญาตปฏิทิน M365 ในข้อ ③ ก่อน แล้วส่วนนี้จะแสดงอัตโนมัติ
+                </p>
+              </section>
+            )}
 
             <div className="flex flex-col sm:flex-row gap-2 pb-8">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => closeWebView()}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 border border-slate-600 hover:bg-slate-700 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              >
+                <X className="w-4 h-4" /> ยกเลิก
+              </button>
               <button
                 type="button"
                 disabled={busy}

@@ -21,7 +21,11 @@ import { admin } from "@/lib/supabaseServer";
 const APP_BASE = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/$/, "");
 const SETTINGS_URL = `${APP_BASE}/consents`;
 const ACCOUNT_URL = `${APP_BASE}/account`;
-export const SETUP_URL = `${APP_BASE}/setup`;
+const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "2010856732-BFseuR2p";
+/** Open setup via LIFF so “ปิดหน้า” works after save. */
+export const SETUP_URL = LIFF_ID
+  ? `https://liff.line.me/${LIFF_ID}?next=${encodeURIComponent("/setup")}`
+  : `${APP_BASE}/setup`;
 
 /** Mark onboarding done after web setup + push summary to LINE. */
 export async function finishWebOnboarding(upn: string): Promise<void> {
