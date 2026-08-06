@@ -12,7 +12,7 @@ import {
 } from "@/lib/newsOnboarding";
 import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting, savePendingLineLocation } from "@/lib/store";
-import { createEvent, pushMaterialToOutlookEvent, attachBytesToOutlookEvent, resolveUser } from "@/lib/graph";
+import { createEvent, pushMaterialToOutlookEvent, attachBytesToOutlookEvent, resolveUser, resolveUserInfo } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold, findLinkedLineAttendees } from "@/lib/meetingInvite";
 import { addMeetingMaterial } from "@/lib/meetingMaterials";
@@ -514,6 +514,25 @@ function draftWhen(d: Draft): string {
   return s && e ? `${fmtDateTime(s)}-${fmtTime(e)}` : `${d.start} - ${d.end}`;
 }
 
+/** Show Graph displayName · mail (not mail-only) on confirm / booked cards. */
+async function formatDraftAttendees(emails: string[]): Promise<string> {
+  const lines: string[] = [];
+  for (const raw of emails) {
+    const mail = (raw || "").trim().toLowerCase();
+    if (!mail) continue;
+    let name = "";
+    try {
+      const info = await resolveUserInfo(mail);
+      const dn = (info?.displayName || "").trim();
+      if (dn && dn.toLowerCase() !== mail && !dn.includes("@")) name = dn;
+    } catch {
+      /* keep mail-only */
+    }
+    lines.push(name ? `${name} · ${mail}` : mail);
+  }
+  return lines.join("\n👤 ") || "(ยังไม่มี)";
+}
+
 // A text message that shows the draft and offers confirm/edit quick replies.
 // Organizer always confirms first. LINE-linked attendees → wait for their accept;
 // no LINE in system → Outlook invite goes out right after organizer confirms
@@ -522,6 +541,7 @@ async function confirmCardMessage(d: Draft, prefix = "", organizerUpn?: string):
   const linked = await findLinkedLineAttendees(d.attendees, organizerUpn);
   const lineHold = linked.length > 0;
   const pendingPhoto = d.attachLinePhoto ? await loadPendingLinePhoto(organizerUpn || "") : null;
+  const who = await formatDraftAttendees(d.attendees);
   const hint = lineHold
     ? "ยืนยันเพื่อส่งคำขอนัด (รออีกฝั่งยืนยันก่อนเข้า Outlook)\nหรือตั้งหัวข้อ / รายละเอียด / เพิ่มคน ก่อนได้ครับ 👇"
     : "ยืนยันเพื่อส่งนัดประชุม\nหรือตั้งหัวข้อ / รายละเอียด / เพิ่มคน ก่อนได้ครับ 👇";
@@ -536,7 +556,7 @@ async function confirmCardMessage(d: Draft, prefix = "", organizerUpn?: string):
         ? `📷 รูปจาก LINE: ${pendingPhoto.name}\n`
         : `📷 รูปจาก LINE: ส่งรูปในแชทได้เลย (จะแนบตอนยืนยัน)\n`
       : "") +
-    `👤 ผู้เข้าร่วม: ${d.attendees.length ? d.attendees.join(", ") : "(ยังไม่มี)"}\n\n` +
+    `👤 ผู้เข้าร่วม: ${who}\n\n` +
     hint;
   const items: object[] = [
     {
@@ -868,11 +888,12 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       await clearDraft(upn);
 
       // Reply LINE first — file attach runs in after() so webhook + monitor don't hang.
+      const whoLine = await formatDraftAttendees(draft.attendees);
       await replyLine(
         replyToken,
         headline +
           (draft.detail ? `\n📝 ${draft.detail}` : "") +
-          `\n👤 ${draft.attendees.join(", ")}` +
+          `\n👤 ${whoLine}` +
           (pendingAttach ? `\n📎 กำลังแนบไฟล์ ${draft.attachFile!.name || "เอกสาร"}…` : "") +
           (pendingPhoto && linePhoto ? `\n📷 กำลังแนบรูป ${linePhoto.name}…` : "") +
           (pendingPhoto && !linePhoto
