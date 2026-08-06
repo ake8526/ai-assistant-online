@@ -513,6 +513,14 @@
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
     margin-top: 8px; width: 100%;
   }
+  /* display:grid overrides UA [hidden] — force hide inactive path */
+  .story[hidden],
+  .story-path:not(.is-active) {
+    display: none !important;
+  }
+  .story-path.is-active {
+    display: grid;
+  }
   .step-card {
     background: rgba(255,255,255,.03); border: 1px solid var(--line);
     border-radius: 16px; padding: 16px; min-height: 140px;
@@ -986,7 +994,7 @@
         </div>
       </div>
 
-      <div class="story story-path" data-path="line" style="margin-top:18px">
+      <div class="story story-path is-active" data-path="line" style="margin-top:18px">
         <button type="button" class="step-card" data-demo="howto1">
           <div class="n">1</div>
           <span class="badge">จำเป็น</span>
@@ -1066,6 +1074,7 @@
       });
       paths.forEach((story) => {
         const on = story.getAttribute("data-path") === id;
+        story.classList.toggle("is-active", on);
         story.hidden = !on;
       });
       if (lede && LEDES[id]) lede.textContent = LEDES[id];
@@ -1073,6 +1082,9 @@
     tabs.forEach((tab) => {
       tab.addEventListener("click", () => showPanel(tab.getAttribute("data-qr-panel")));
     });
+    // Sync steps to the initially selected tab
+    const initial = wrap.querySelector(".qr-tab.is-active")?.getAttribute("data-qr-panel") || "line";
+    showPanel(initial);
   }
 
   const lb = document.getElementById("qr-lightbox");
