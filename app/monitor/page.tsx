@@ -25,6 +25,42 @@ type MonEvent = {
   at: string;
 };
 
+type FloorJob = {
+  traceId: string;
+  user: string;
+  channel: string;
+  step: string;
+  label: string;
+  phase: "active" | "done" | "error";
+  kind: "office" | "news";
+  startedAt: number;
+  updatedAt: number;
+};
+
+const STEP_TH: Record<string, string> = {
+  receive: "รับข้อความ",
+  parse: "แยกเจตนา",
+  fetch: "ดึงข้อมูล",
+  compose: "เขียนตอบ",
+  reply: "ส่ง LINE",
+  error: "ล้มเหลว",
+};
+
+function channelLabel(ch: string): string {
+  if (ch === "line") return "LINE";
+  if (ch === "web") return "Web";
+  if (ch === "cron") return "Cron";
+  return ch || "?";
+}
+
+function formatAge(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}m${r.toString().padStart(2, "0")}s`;
+}
+
 // 4 desks + 1 courier — the courier (reply) walks the parcel to the LINE mailbox.
 const AGENTS = [
   { id: "receive", name: "GATE", role: "รับข้อความเข้าจาก LINE / Web", shirt: "#3a86ff", hair: "#6b4a2e", screen: "search" },
@@ -73,6 +109,7 @@ const CSS = `
 .mon .badge{font-size:14px;color:var(--dim);border:1px solid var(--hair);padding:2px 6px}.mon .badge b{color:var(--green)}
 .mon .badge.llm b{color:var(--amber)}
 .mon .badge.llm.hot b{color:#fff;animation:monpulse .7s steps(1) infinite}
+.mon .badge.hot b{color:var(--red);animation:monpulse .7s steps(1) infinite}
 .mon .badges{display:flex;gap:6px;flex-wrap:nowrap;align-items:center}
 .mon .panel{border:2px solid var(--hair);background:var(--panel);margin-bottom:6px}
 .mon .ph{font-family:'Press Start 2P';font-size:8px;color:var(--dim);padding:6px 9px;border-bottom:2px solid var(--hair);background:var(--panel2);display:flex;justify-content:space-between}
@@ -115,13 +152,30 @@ const CSS = `
 .mon .bdg.error{border-color:var(--red)}.mon .bdg.error .stt{color:var(--red)}.mon .bdg.error .dot{background:var(--red)}
 @keyframes monpulse{50%{opacity:.2}}
 .mon .caption{font-size:19px;color:var(--dim);text-align:center;padding:9px}.mon .caption b{color:var(--red)}
-.mon .cols{display:grid;grid-template-columns:1.15fr 0.85fr;gap:6px;align-items:stretch;flex-shrink:0;height:clamp(130px,18vh,170px);margin-bottom:0}
-@media(max-width:900px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:28vh}}
+.mon .cols{display:grid;grid-template-columns:1fr 1.1fr 0.9fr;gap:6px;align-items:stretch;flex-shrink:0;height:clamp(150px,22vh,200px);margin-bottom:0}
+@media(max-width:1100px){.mon .cols{grid-template-columns:minmax(0,1fr);height:auto;max-height:40vh}}
 .mon .cols > .panel{min-width:0;max-width:100%;overflow:hidden;margin-bottom:0;display:flex;flex-direction:column}
 .mon .cols > .panel .ph{flex-shrink:0;padding:4px 8px;font-size:7px}
 .mon #log{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;font-size:13px;line-height:1.2;padding:4px 8px}
 .mon #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .mon #log .t{color:var(--dim)}.mon #log .g{color:var(--green)}.mon #log .r{color:var(--red)}.mon #log .a{color:var(--amber)}.mon #log .b{color:#3a86ff}
+.mon #floor{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;padding:4px 6px;font-size:13px;line-height:1.25}
+.mon #floor .job{border:1px solid var(--hair);background:var(--panel2);padding:4px 6px;margin-bottom:4px;display:grid;grid-template-columns:auto 1fr auto;gap:2px 8px;align-items:center}
+.mon #floor .job.focus{border-color:var(--amber);box-shadow:inset 0 0 0 1px #f0b42955}
+.mon #floor .job.done{opacity:.55}
+.mon #floor .job.error{border-color:var(--red)}
+.mon #floor .who{font-family:'Press Start 2P',monospace;font-size:7px;color:var(--ink)}
+.mon #floor .ch{font-size:12px;color:var(--dim)}
+.mon #floor .stage{grid-column:1 / -1;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mon #floor .job.done .stage{color:var(--green)}
+.mon #floor .job.error .stage{color:var(--red)}
+.mon #floor .to{font-size:12px;color:#93c5fd;justify-self:end}
+.mon #floor .age{font-size:11px;color:var(--dim);justify-self:end}
+.mon #floor .empty{color:var(--dim);padding:8px 4px}
+.mon .loadbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mon .loadbar .meter{font-size:13px;color:var(--dim)}
+.mon .loadbar .meter b{color:var(--amber)}
+.mon .loadbar .meter.hot b{color:var(--red);animation:monpulse .7s steps(1) infinite}
 .mon #legend{flex:1;min-height:0;overflow:auto;padding:6px 8px;font-size:13px;line-height:1.2;display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;align-content:start}
 .mon #legend .leg-col{display:flex;flex-direction:column;gap:2px;min-width:0}
 .mon #legend .leg-h{font-family:'VT323',monospace;font-size:14px;color:var(--amber);margin:0 0 2px;letter-spacing:1px;border-bottom:1px solid var(--hair);padding-bottom:2px}
@@ -151,12 +205,13 @@ const CSS = `
 .mon .center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:60vh;text-align:center}
 
 /* —— Layout: STAGES on the right of the rooms (real preview) —— */
-.mon.stages-right .wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,280px);grid-template-rows:auto minmax(0,1fr) auto;gap:6px;height:100%;align-content:stretch}
+.mon.stages-right .wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,280px);grid-template-rows:auto minmax(0,1fr) auto auto;gap:6px;height:100%;align-content:stretch}
 .mon.stages-right header{grid-column:1/-1;grid-row:1;margin-bottom:0}
 .mon.stages-right .building{grid-column:1;grid-row:2;margin-bottom:0;min-height:0;height:100%}
 .mon.stages-right .cols{display:contents}
-.mon.stages-right .cols > .panel:first-child{grid-column:1;grid-row:3;height:clamp(96px,13vh,130px);margin:0}
-.mon.stages-right .cols > .panel:last-child{grid-column:2;grid-row:2/4;margin:0;height:auto;min-height:0;align-self:stretch}
+.mon.stages-right .cols > .panel:nth-child(1){grid-column:1;grid-row:3;height:clamp(80px,11vh,110px);margin:0}
+.mon.stages-right .cols > .panel:nth-child(2){grid-column:1;grid-row:4;height:clamp(100px,14vh,140px);margin:0}
+.mon.stages-right .cols > .panel:nth-child(3){grid-column:2;grid-row:2/5;margin:0;height:auto;min-height:0;align-self:stretch}
 .mon.stages-right #legend{grid-template-columns:1fr;gap:2px 0}
 .mon.stages-right #legend .row.span2{margin-top:6px}
 .mon.stages-right .layout-switch{font-size:12px;color:#7dd3fc;border:1px solid #38bdf8;padding:2px 8px;text-decoration:none}
@@ -259,6 +314,8 @@ function MonitorRoom({
   const seenEventIdsRef = useRef<Set<number>>(new Set());
   const cursorRef = useRef(0);
   const curTraceRef = useRef<string | null>(null);
+  const focusPhaseRef = useRef<"idle" | "active" | "done">("idle");
+  const jobsMapRef = useRef<Map<string, FloorJob>>(new Map());
   const busyRef = useRef(false);
   const primedRef = useRef(false);
   const [status, setStatus] = useState("IDLE");
@@ -271,6 +328,9 @@ function MonitorRoom({
   const [newsPicker, setNewsPicker] = useState<NewsDesk>(NEWS_PICKER_IDLE);
   const [newsReader, setNewsReader] = useState<NewsDesk>(NEWS_READER_IDLE);
   const [newsWriter, setNewsWriter] = useState<NewsDesk>(NEWS_WRITER_IDLE);
+  const [floorJobs, setFloorJobs] = useState<FloorJob[]>([]);
+  const [loadStats, setLoadStats] = useState({ active: 0, queued: 0, doneRecent: 0 });
+  const [, setTick] = useState(0);
 
   useEffect(() => {
     newsStatusRef.current = [newsScoutStatus, newsPicker.status, newsReader.status, newsWriter.status];
@@ -328,6 +388,28 @@ function MonitorRoom({
     el.appendChild(d);
     while (el.children.length > 40) el.removeChild(el.firstChild!);
     el.scrollTop = el.scrollHeight;
+  }, []);
+
+  const syncFloor = useCallback(() => {
+    const now = Date.now();
+    const all = [...jobsMapRef.current.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+    // Drop finished jobs older than 3 minutes to keep the board readable.
+    for (const j of all) {
+      if (j.phase !== "active" && now - j.updatedAt > 180_000) jobsMapRef.current.delete(j.traceId);
+    }
+    const live = [...jobsMapRef.current.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 14);
+    setFloorJobs(live);
+    const active = live.filter((j) => j.phase === "active").length;
+    const doneRecent = live.filter((j) => j.phase === "done").length;
+    setLoadStats({ active, queued: queueRef.current.length, doneRecent });
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTick((n) => n + 1);
+      setLoadStats((s) => ({ ...s, queued: queueRef.current.length }));
+    }, 1000);
+    return () => clearInterval(id);
   }, []);
 
   const setAgent = useCallback((i: number, st: string) => {
@@ -1239,23 +1321,86 @@ function MonitorRoom({
   }, [setAgent]);
 
   const applyEvent = useCallback(async (e: MonEvent) => {
-    // new trace → fresh room
+    const isNews = /📰/.test(e.label || "");
+    const now = e.at ? new Date(e.at).getTime() : Date.now();
+    const map = jobsMapRef.current;
+    let job = map.get(e.traceId);
+    const isNewJob = !job;
+    if (!job) {
+      job = {
+        traceId: e.traceId,
+        user: e.user || "?",
+        channel: e.channel || "?",
+        step: e.step,
+        label: e.label || "",
+        phase: e.step === "error" ? "error" : e.step === "reply" && e.status !== "start" ? "done" : "active",
+        kind: isNews ? "news" : "office",
+        startedAt: now,
+        updatedAt: now,
+      };
+      map.set(e.traceId, job);
+    } else {
+      job.user = e.user || job.user;
+      job.channel = e.channel || job.channel;
+      job.step = e.step;
+      job.label = e.label || job.label;
+      job.updatedAt = now;
+      if (isNews) job.kind = "news";
+      if (e.step === "error") job.phase = "error";
+      else if (e.step === "reply" && e.status !== "start") job.phase = "done";
+      else if (job.phase !== "error") job.phase = "active";
+    }
+
+    const focusIdle =
+      !curTraceRef.current ||
+      focusPhaseRef.current === "idle" ||
+      focusPhaseRef.current === "done";
+    const isFocus = e.traceId === curTraceRef.current;
+
+    // New concurrent work: insert into the floor board — do NOT restart the room.
+    if (isNewJob && !focusIdle && !isFocus) {
+      log(
+        `+ แทรกงาน ${job.user} · ${channelLabel(job.channel)} · ${STEP_TH[e.step] || e.step} → ส่งให้ ${job.user}`,
+        "b"
+      );
+      syncFloor();
+      return;
+    }
+
+    // Background updates for non-focus jobs (while focus is still working).
+    if (!isFocus && !focusIdle && curTraceRef.current) {
+      const stage = STEP_TH[e.step] || e.step;
+      if (e.step === "reply" && e.status !== "start") {
+        log(`  ✓ [${job.user}] ส่ง LINE ถึง ${job.user} แล้ว · ${e.label || stage}`, "g");
+      } else if (e.step === "error") {
+        log(`  ! [${job.user}] ${e.label || stage}`, "r");
+      } else {
+        log(`  · [${job.user}] ${stage}${e.label ? ` · ${e.label}` : ""}`, "t");
+      }
+      syncFloor();
+      return;
+    }
+
+    // Take / keep focus for this trace (room animation follows focus only).
     if (e.traceId !== curTraceRef.current) {
       curTraceRef.current = e.traceId;
+      focusPhaseRef.current = "active";
       resetRoom();
       resetNewsRoom();
-      traceStartedAtRef.current = e.at ? new Date(e.at).getTime() : Date.now();
-      // Placeholder: keep the internal "last LLM used" state,
-      // but hide the visible "LLM —" until we actually parse a label.
+      traceStartedAtRef.current = now;
       lastLlmRef.current = "—";
       setLlmLabel("");
       setLlmHot(false);
-      log(`> คำขอใหม่จาก ${e.user} (${e.channel})`, "b");
+      if (isNewJob) {
+        log(`> โฟกัสงาน ${e.user} (${channelLabel(e.channel)}) → จะส่งให้ ${e.user}`, "b");
+      } else {
+        log(`> สลับโฟกัสมาที่ ${e.user} · ${STEP_TH[e.step] || e.step}`, "b");
+      }
       setHud("WORKING", "var(--amber)");
     }
+    syncFloor();
 
     const llmFromLabel = parseLlm(e.label);
-    const isNews = /📰/.test(e.label || "");
     if (isNews) {
       newsJobRef.current = true;
       // Park OFFICE desks (esp. green BRAIN) — news work belongs in NEWS ROOM.
@@ -1294,6 +1439,10 @@ function MonitorRoom({
       setAgent(i, "idle");
       setHud("ERROR", "var(--red)");
       log(`  ! ${e.label}`, "r");
+      focusPhaseRef.current = "done";
+      const j = jobsMapRef.current.get(e.traceId);
+      if (j) { j.phase = "error"; j.updatedAt = Date.now(); }
+      syncFloor();
       return;
     }
     const idx = STEP_TO_INDEX[step];
@@ -1311,6 +1460,7 @@ function MonitorRoom({
         }
         log(`  NEWS: รอสรุปหลังบ้าน…`, "a");
         setHud("WORKING", "var(--amber)");
+        syncFloor();
         return;
       }
       for (let i = 0; i < 4; i++) if (statusRef.current[i] === "work") setAgent(i, "done");
@@ -1324,8 +1474,8 @@ function MonitorRoom({
             ? " · AI: ไม่ใช้ LLM"
             : ` · AI: ${used}`;
       setLlmHud(used === "—" ? "NONE · รอบนี้" : used, false);
-      setCap(`<b>เสร็จ</b> — ส่งคำตอบให้ ${e.user} แล้ว${aiBit}`);
-      log(`  ★ สรุป AI รอบนี้: ${used === "—" ? "ไม่ได้เรียก LLM" : used}`, used.startsWith("NONE") || used === "—" ? "t" : "g");
+      setCap(`<b>เสร็จ</b> — ส่งให้ <b style="color:#93c5fd">${e.user}</b> แล้ว${aiBit}`);
+      log(`  ★ ส่งให้ ${e.user} · AI: ${used === "—" ? "ไม่ได้เรียก LLM" : used}`, used.startsWith("NONE") || used === "—" ? "t" : "g");
       // After LINE reply: clear SCOUT (เขียวอ่อน) / news desks so nobody stays WORKING.
       // If digest is still running in background, later 📰 events will light them again.
       if (isNewsReply) {
@@ -1337,6 +1487,10 @@ function MonitorRoom({
         await sleep(800);
         for (let i = 0; i < 5; i++) setAgent(i, "idle");
       }
+      focusPhaseRef.current = "done";
+      const jDone = jobsMapRef.current.get(e.traceId);
+      if (jDone) { jDone.phase = "done"; jDone.step = "reply"; jDone.updatedAt = Date.now(); }
+      syncFloor();
       return;
     }
 
@@ -1344,6 +1498,7 @@ function MonitorRoom({
     if (isNews) {
       log(`  NEWS: ${e.label}`, e.status === "start" ? "a" : "g");
       await sleep(e.status === "start" ? 140 : step === "fetch" ? 100 : 220);
+      syncFloor();
       return;
     }
 
@@ -1353,8 +1508,8 @@ function MonitorRoom({
       if (idx >= 1 && idx <= 3 && !/★ AI:/.test(e.label || "")) fireOfficeBeam(idx - 1, idx);
       setAgent(idx, "work");
       const capExtra = llmFromLabel ? ` · <b style="color:#f0b429">${llmFromLabel}</b>` : "";
-      setCap(`<b>${a.name}</b> — ${a.role}${capExtra}`);
-      log(`[${a.name}] ${e.label}`, "a");
+      setCap(`<b>${a.name}</b> — ${a.role}${capExtra} · <span style="color:#93c5fd">${e.user}</span>`);
+      log(`[${a.name}] ${e.user}: ${e.label}`, "a");
       await sleep(220);
     } else if (e.status === "error" || /✗/.test(e.label || "")) {
       officeBeamsRef.current = [];
@@ -1364,12 +1519,13 @@ function MonitorRoom({
     } else {
       setAgent(idx, "work");
       const capExtra = llmFromLabel ? ` · <b style="color:#f0b429">${llmFromLabel}</b>` : "";
-      setCap(`<b>${a.name}</b> — ${a.role}${capExtra}`);
+      setCap(`<b>${a.name}</b> — ${a.role}${capExtra} · <span style="color:#93c5fd">${e.user}</span>`);
       log(`  ${a.name}: ${e.label}`, step === "fetch" ? "t" : "g");
       await sleep(step === "fetch" ? 160 : 360);
       setAgent(idx, "done");
     }
-  }, [armNewsIdleWatch, courierReply, deliverNewsCourier, fireOfficeBeam, idleNewsDesks, log, resetNewsRoom, resetRoom, setAgent, setCap, setHud, setLlmHud, updateNewsRoom]);
+    syncFloor();
+  }, [armNewsIdleWatch, courierReply, deliverNewsCourier, fireOfficeBeam, idleNewsDesks, log, resetNewsRoom, resetRoom, setAgent, setCap, setHud, setLlmHud, syncFloor, updateNewsRoom]);
 
   // ---- player: drains the queue in order with animation timing ----
   useEffect(() => {
@@ -1474,6 +1630,12 @@ function MonitorRoom({
           <div className="badges">
             <div className={`badge llm${llmHot ? " hot" : ""}`} title={llmChain || "AI API provider"}>
               LLM <b>{llmLabel}</b>
+            </div>
+            <div className={`badge${loadStats.active >= 3 ? " hot" : ""}`} title="งานที่กำลังทำพร้อมกัน">
+              FLOOR <b>{loadStats.active}</b>
+            </div>
+            <div className={`badge${loadStats.queued >= 8 ? " hot" : ""}`} title="คิว event รอเล่นในห้อง">
+              QUEUE <b>{loadStats.queued}</b>
             </div>
             <div className="badge">STATUS <b ref={(el) => { hudRef.current = el; }}>{status}</b></div>
             {stagesRight ? (
@@ -1602,6 +1764,37 @@ function MonitorRoom({
 
         <div className="cols">
           <div className="panel"><div className="ph"><span>CONSOLE</span></div><div id="log" ref={logRef} /></div>
+          <div className="panel">
+            <div className="ph">
+              <span>FLOOR · ใครทำอะไร</span>
+              <span className="live">
+                {loadStats.active} กำลังทำ · คิว {loadStats.queued}
+              </span>
+            </div>
+            <div id="floor">
+              {!floorJobs.length ? (
+                <div className="empty">ยังไม่มีงานบนพื้น — รอคำขอจาก LINE / Web</div>
+              ) : (
+                floorJobs.map((j) => {
+                  const focus = j.traceId === curTraceRef.current;
+                  const age = formatAge(Date.now() - j.startedAt);
+                  const stage = `${STEP_TH[j.step] || j.step}${j.label ? ` · ${j.label}` : ""}`;
+                  return (
+                    <div
+                      key={j.traceId}
+                      className={`job${focus ? " focus" : ""}${j.phase === "done" ? " done" : ""}${j.phase === "error" ? " error" : ""}`}
+                    >
+                      <span className="who">{j.user}</span>
+                      <span className="ch">{channelLabel(j.channel)}{j.kind === "news" ? " · NEWS" : ""}</span>
+                      <span className="age">{age}</span>
+                      <span className="stage">{stage}</span>
+                      <span className="to">→ {j.user}</span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
           <div className="panel">
             <div className="ph"><span>STAGES</span></div>
             <div id="legend">
