@@ -1725,21 +1725,216 @@ export async function listTranscripts(ownerId: string, onlineMeetingId: string):
   }
 }
 
-/** Download one transcript's VTT content (tries Accept header first, then $format). */
+/** Download one transcript's VTT/text content.
+ * Tries speaker-attributed VTT first; if tenant disables attribution, falls back
+ * to application/vnd.microsoft.graph.transcript+text (unattributed).
+ */
 export async function getTranscriptContent(
   ownerId: string,
   onlineMeetingId: string,
   transcriptId: string
 ): Promise<string | null> {
   const base = `/users/${ownerId}/onlineMeetings/${onlineMeetingId}/transcripts/${transcriptId}/content`;
-  for (const params of [undefined, { $format: "text/vtt" }]) {
-    const r = await graphFetch(base, { params, headers: { Accept: "text/vtt" } });
+  const attempts: { params?: Record<string, string>; accept: string }[] = [
+    { accept: "text/vtt" },
+    { params: { $format: "text/vtt" }, accept: "text/vtt" },
+    { accept: "application/vnd.microsoft.graph.transcript+text" },
+  ];
+  for (const a of attempts) {
+    const r = await graphFetch(base, { params: a.params, headers: { Accept: a.accept } });
     if (r.ok) {
       const text = await r.text();
       if (text.trim()) return text;
     }
   }
   return null;
+}
+
+/** Probe-friendly Graph list result (keeps HTTP status instead of swallowing errors). */
+export type GraphProbeListResult<T> = {
+  ok: boolean;
+  status: number;
+  error?: string;
+  items: T[];
+};
+
+export type GraphProbeContentResult = {
+  ok: boolean;
+  status: number;
+  error?: string;
+  chars?: number;
+  bytes?: number;
+  contentType?: string | null;
+  preview?: string;
+};
+
+async function probeList<T>(path: string): Promise<GraphProbeListResult<T>> {
+  try {
+    const r = await graphFetch(path);
+    const text = await r.text();
+    if (!r.ok) {
+      return { ok: false, status: r.status, error: text.slice(0, 400), items: [] };
+    }
+    let data: { value?: T[] } = {};
+    try {
+      data = JSON.parse(text) as { value?: T[] };
+    } catch {
+      return { ok: false, status: r.status, error: `non-JSON: ${text.slice(0, 200)}`, items: [] };
+    }
+    return { ok: true, status: r.status, items: data.value || [] };
+  } catch (e) {
+    return { ok: false, status: 0, error: String(e).slice(0, 400), items: [] };
+  }
+}
+
+/** List transcripts with status (for probe / diagnose). */
+export async function listTranscriptsProbe(
+  ownerId: string,
+  onlineMeetingId: string
+): Promise<GraphProbeListResult<{ id: string; createdDateTime?: string }>> {
+  return probeList(`/users/${ownerId}/onlineMeetings/${onlineMeetingId}/transcripts`);
+}
+
+/** Download transcript content and report length (does not throw). */
+export async function getTranscriptContentProbe(
+  ownerId: string,
+  onlineMeetingId: string,
+  transcriptId: string
+): Promise<GraphProbeContentResult> {
+  const base = `/users/${ownerId}/onlineMeetings/${onlineMeetingId}/transcripts/${transcriptId}/content`;
+  const attempts: { params?: Record<string, string>; accept: string; label: string }[] = [
+    { accept: "text/vtt", label: "vtt" },
+    { params: { $format: "text/vtt" }, accept: "text/vtt", label: "vtt+$format" },
+    { accept: "application/vnd.microsoft.graph.transcript+text", label: "unattributed" },
+  ];
+  let last: GraphProbeContentResult = { ok: false, status: 0, error: "no attempt" };
+  for (const a of attempts) {
+    try {
+      const r = await graphFetch(base, { params: a.params, headers: { Accept: a.accept } });
+      const text = await r.text();
+      if (!r.ok) {
+        last = { ok: false, status: r.status, error: `[${a.label}] ${text.slice(0, 350)}` };
+        continue;
+      }
+      if (!text.trim()) {
+        last = { ok: false, status: r.status, error: `[${a.label}] empty body`, chars: 0 };
+        continue;
+      }
+      return {
+        ok: true,
+        status: r.status,
+        chars: text.length,
+        contentType: r.headers.get("content-type") || a.accept,
+        preview: text.slice(0, 120).replace(/\s+/g, " "),
+      };
+    } catch (e) {
+      last = { ok: false, status: 0, error: `[${a.label}] ${String(e).slice(0, 350)}` };
+    }
+  }
+  return last;
+}
+
+/**
+ * List meeting recordings (OnlineMeetingRecording.Read.All / Artifact).
+ * GET /users/{id}/onlineMeetings/{mid}/recordings
+ */
+export async function listRecordings(
+  ownerId: string,
+  onlineMeetingId: string
+): Promise<GraphProbeListResult<{ id: string; createdDateTime?: string; recordingContentUrl?: string }>> {
+  return probeList(`/users/${ownerId}/onlineMeetings/${onlineMeetingId}/recordings`);
+}
+
+/**
+ * Probe recording content endpoint without buffering the full MP4.
+ * Checks status + Content-Length / Content-Type only.
+ */
+export async function probeRecordingContent(
+  ownerId: string,
+  onlineMeetingId: string,
+  recordingId: string
+): Promise<GraphProbeContentResult> {
+  const path = `/users/${ownerId}/onlineMeetings/${onlineMeetingId}/recordings/${recordingId}/content`;
+  try {
+    const r = await graphFetch(path, { timeoutMs: 30_000 });
+    const lenHeader = r.headers.get("content-length");
+    const contentType = r.headers.get("content-type");
+    if (!r.ok) {
+      const errText = await r.text().catch(() => "");
+      return {
+        ok: false,
+        status: r.status,
+        error: (errText || `recording content HTTP ${r.status}`).slice(0, 400),
+        contentType,
+        bytes: lenHeader ? Number(lenHeader) : undefined,
+      };
+    }
+    // Success: do not buffer the MP4 — cancel the stream after reading headers.
+    try {
+      await r.body?.cancel();
+    } catch {
+      /* ignore */
+    }
+    return {
+      ok: true,
+      status: r.status,
+      contentType,
+      bytes: lenHeader ? Number(lenHeader) : undefined,
+    };
+  } catch (e) {
+    return { ok: false, status: 0, error: String(e).slice(0, 400) };
+  }
+}
+
+/**
+ * List Copilot meeting AI insights (needs OnlineMeetingAiInsight.Read.All + Copilot license).
+ * GET /copilot/users/{id}/onlineMeetings/{mid}/aiInsights
+ */
+export async function listAiInsights(
+  ownerId: string,
+  onlineMeetingId: string
+): Promise<
+  GraphProbeListResult<{
+    id: string;
+    callId?: string;
+    createdDateTime?: string;
+    endDateTime?: string;
+  }>
+> {
+  return probeList(`/copilot/users/${ownerId}/onlineMeetings/${onlineMeetingId}/aiInsights`);
+}
+
+/** Fetch one AI insight object (summary fields if present). */
+export async function getAiInsight(
+  ownerId: string,
+  onlineMeetingId: string,
+  insightId: string
+): Promise<GraphProbeContentResult & { jsonKeys?: string[] }> {
+  const path = `/copilot/users/${ownerId}/onlineMeetings/${onlineMeetingId}/aiInsights/${encodeURIComponent(insightId)}`;
+  try {
+    const r = await graphFetch(path);
+    const text = await r.text();
+    if (!r.ok) {
+      return { ok: false, status: r.status, error: text.slice(0, 400) };
+    }
+    let keys: string[] = [];
+    try {
+      const obj = JSON.parse(text) as Record<string, unknown>;
+      keys = Object.keys(obj);
+    } catch {
+      /* ignore */
+    }
+    return {
+      ok: true,
+      status: r.status,
+      chars: text.length,
+      contentType: r.headers.get("content-type"),
+      preview: text.slice(0, 160).replace(/\s+/g, " "),
+      jsonKeys: keys.slice(0, 30),
+    };
+  } catch (e) {
+    return { ok: false, status: 0, error: String(e).slice(0, 400) };
+  }
 }
 
 // ---------------------------------------------------------------------------
