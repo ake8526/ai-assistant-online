@@ -34,6 +34,7 @@ import {
   slashToUserText,
   textWithDraftEscape,
 } from "@/lib/slashCommands";
+import { richMenuReply, richMenuRewrite } from "@/lib/lineRichMenu";
 import { assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace, setTraceUser, muteTrace } from "@/lib/trace";
 
@@ -1115,6 +1116,17 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       await replyLineMessages(ev.replyToken, [slashMenuMessage()]);
       return;
     }
+
+    // Rich Menu taps (exact labels) — show submenus / settings URI without LLM
+    const richMsgs = richMenuReply(text);
+    if (richMsgs) {
+      await replyLineMessages(ev.replyToken, richMsgs);
+      trace("reply", "ตอบกลับ (rich_menu)");
+      return;
+    }
+    const rewritten = richMenuRewrite(text);
+    if (rewritten) text = rewritten;
+
     const slashBody = parseSlashCommand(text);
     if (slashBody) {
       const cmd = matchSlashCommand(slashBody);
