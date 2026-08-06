@@ -45,6 +45,19 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
+/** Inside LINE app → close LIFF after a short success beat. */
+function closeLiffSoon(delayMs = 1200) {
+  setTimeout(() => {
+    try {
+      if (window.liff?.isInClient?.() && typeof window.liff.closeWindow === "function") {
+        window.liff.closeWindow();
+      }
+    } catch {
+      /* ignore */
+    }
+  }, delayMs);
+}
+
 function LineLinkContent() {
   const { account, login, getToken } = useM365Auth();
   const [status, setStatus] = useState<Status>("init");
@@ -52,6 +65,7 @@ function LineLinkContent() {
   const [profile, setProfile] = useState<LiffProfile | null>(null);
   // upn this LINE account is currently linked to (from the server), if any
   const [linkedUpn, setLinkedUpn] = useState<string | null>(null);
+  const [inLiffClient, setInLiffClient] = useState(false);
 
   useEffect(() => {
     document.title = "ผูกบัญชี Microsoft 365 กับ LINE";
@@ -62,6 +76,7 @@ function LineLinkContent() {
         await withTimeout(loadLiffSdk(), 10000, "โหลด LINE SDK");
         setMsg("กำลังเริ่ม LIFF…");
         await withTimeout(window.liff!.init({ liffId: LIFF_ID }), 10000, "เริ่ม LIFF");
+        setInLiffClient(!!window.liff!.isInClient());
         if (!window.liff!.isLoggedIn()) {
           setMsg("กำลังพาไปเข้าสู่ระบบ LINE…");
           window.liff!.login();      // redirects to LINE, then returns here
@@ -114,7 +129,14 @@ function LineLinkContent() {
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
       setLinkedUpn(data.upn || upn);
       setStatus("linked");
-      setMsg(`เชื่อมสำเร็จ! ระบบจะส่งข้อความหา ${data.upn || upn} ทาง LINE นี้`);
+      const inLine = !!window.liff?.isInClient?.();
+      setInLiffClient(inLine);
+      setMsg(
+        inLine
+          ? `เชื่อมสำเร็จ! กำลังปิดหน้าต่าง…`
+          : `เชื่อมสำเร็จ! ระบบจะส่งข้อความหา ${data.upn || upn} ทาง LINE นี้`
+      );
+      if (inLine) closeLiffSoon(1200);
     } catch (e) {
       setStatus("error"); setMsg("ผูกบัญชีไม่สำเร็จ: " + (e as Error).message);
     }
@@ -151,12 +173,16 @@ function LineLinkContent() {
             <div className="w-full flex items-center justify-center gap-2 p-3.5 rounded-xl font-semibold text-sm bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-3">
               <CheckCircle2 className="w-4 h-4" /> เชื่อมต่อแล้ว
             </div>
-            <Link
-              href="/account"
-              className="w-full flex items-center justify-center gap-2 p-3 rounded-xl font-semibold text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-            >
-              <Settings className="w-4 h-4" /> จัดการบัญชี / ยกเลิก
-            </Link>
+            {inLiffClient ? (
+              <p className="text-xs text-slate-500 mb-3">หน้าต่างจะปิดอัตโนมัติ — หรือกด ✕ มุมบนขวา</p>
+            ) : (
+              <Link
+                href="/account"
+                className="w-full flex items-center justify-center gap-2 p-3 rounded-xl font-semibold text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+              >
+                <Settings className="w-4 h-4" /> จัดการบัญชี / ยกเลิก
+              </Link>
+            )}
           </>
         )}
 
