@@ -33,6 +33,7 @@ export type NewsOnboardingDraft = {
   step:
     | "ask"
     | "ask_summary"
+    | "ask_sources"
     | "topics"
     | "count"
     | "time"

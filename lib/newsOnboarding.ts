@@ -412,10 +412,88 @@ async function finishBriefNotify(
   const briefTime = draft.briefTime || "07:00";
   const briefDays = normalizeDays(draft.briefDays?.length ? draft.briefDays : [1, 2, 3, 4, 5]);
   await saveNotifyKind(upn, "brief", { enabled: true, time: briefTime, days: briefDays });
+
+  const next: NewsOnboardingDraft = {
+    step: "ask_sources",
+    topics: draft.topics,
+    count: draft.count,
+    time: draft.time,
+    days: draft.days,
+    briefTime,
+    briefDays,
+    ts: Date.now(),
+  };
+  await saveNewsDraft(upn, next);
+
+  await replyLineMessages(replyToken, [
+    {
+      type: "text",
+      text:
+        "✅ ตั้งสรุปตารางเช้าเรียบร้อยครับ\n\n" +
+        "ต่อไป — จะผูก YouTube หรือแหล่งข่าวอื่นเพิ่มไหมครับ?\n" +
+        "(เช่น ช่อง YouTube ที่ติดตาม / RSS / เพจ Facebook)",
+    },
+    askSourcesMessage(),
+  ]);
+}
+
+function askSourcesMessage(): object {
+  return {
+    type: "template",
+    altText: "จะผูก YouTube หรือแหล่งข่าวอื่นไหม?",
+    template: {
+      type: "buttons",
+      text: "เลือกแหล่งที่อยากผูกเพิ่ม หรือกดข้ามได้ครับ",
+      actions: [
+        { type: "postback", label: "YouTube", data: "a=sourceyt", displayText: "ผูก YouTube" },
+        { type: "postback", label: "RSS / Facebook", data: "a=sourcerss", displayText: "ผูก RSS/Facebook" },
+        { type: "postback", label: "ข้าม", data: "a=sourceskip", displayText: "ไม่ผูกเพิ่ม" },
+      ],
+    },
+  };
+}
+
+function sourceLinkMessage(kind: "yt" | "rss"): object {
+  const isYt = kind === "yt";
+  return {
+    type: "template",
+    altText: isYt ? "เปิดหน้าตั้งค่าเพื่อผูก YouTube" : "เปิดหน้าตั้งค่าเพื่อผูก RSS/Facebook",
+    template: {
+      type: "buttons",
+      text: isYt
+        ? "เปิดหน้าตั้งค่า แล้วกดเชื่อม Google/YouTube ครับ"
+        : "เปิดหน้าตั้งค่า แล้วเพิ่ม RSS หรือเพจ Facebook ครับ",
+      actions: [
+        { type: "uri", label: "เปิดหน้าตั้งค่า", uri: SETTINGS_URL },
+        { type: "postback", label: "เสร็จแล้ว", data: "a=sourcesdone", displayText: "ผูกเสร็จแล้ว" },
+        { type: "postback", label: "ข้าม", data: "a=sourceskip", displayText: "ข้าม" },
+      ],
+    },
+  };
+}
+
+async function completeOnboardingAfterSources(
+  upn: string,
+  draft: {
+    topics: string[];
+    count?: number;
+    time?: string;
+    days?: number[];
+    briefTime?: string;
+    briefDays?: number[];
+  },
+  replyToken: string,
+  prefix = ""
+): Promise<void> {
   await setNewsOnboardingDone(upn, true);
   await clearNewsDraft(upn);
-
-  await replyLineMessages(replyToken, [await onboardingDoneMessage(upn, draft)]);
+  const done = await onboardingDoneMessage(upn, draft);
+  if (prefix && typeof done === "object" && done && "text" in done) {
+    const msg = done as { type: string; text: string; quickReply?: object };
+    await replyLineMessages(replyToken, [{ ...msg, text: prefix + msg.text }]);
+    return;
+  }
+  await replyLineMessages(replyToken, [done]);
 }
 
 /** Full summary after finishing notify setup + ask edit follows vs other help. */
@@ -690,6 +768,25 @@ export async function pushSetupCompleteSummary(upn: string): Promise<void> {
 /** Start or resume first-time onboarding. */
 export async function startNewsOnboarding(upn: string, via: "push" | "reply", replyToken?: string): Promise<void> {
   const prefs = await getNewsPrefs(upn);
+  const existing = await loadNewsDraft(upn);
+
+  // Mid-wizard: ask YouTube / other sources (onboardingDone may already be true after news notify)
+  if (existing?.step === "ask_sources") {
+    await send(
+      via,
+      upn,
+      [
+        {
+          type: "text",
+          text: "จะผูก YouTube หรือแหล่งข่าวอื่นเพิ่มไหมครับ?\n(เช่น ช่อง YouTube ที่ติดตาม / RSS / เพจ Facebook)",
+        },
+        askSourcesMessage(),
+      ],
+      replyToken
+    );
+    return;
+  }
+
   // Already set up → show manage menu instead of welcome again
   if (prefs.onboardingDone) {
     await openNewsSettings(upn, via, replyToken);
@@ -698,7 +795,6 @@ export async function startNewsOnboarding(upn: string, via: "push" | "reply", re
 
   // Returning linked users: only ask about meeting summaries (no news/brief wizard)
   if (await isReturningLinkedUser(upn)) {
-    const existing = await loadNewsDraft(upn);
     if (existing?.step === "ask_summary") {
       await send(via, upn, [askMeetingSummaryMessage()], replyToken);
       return;
@@ -709,7 +805,6 @@ export async function startNewsOnboarding(upn: string, via: "push" | "reply", re
     return;
   }
 
-  const existing = await loadNewsDraft(upn);
   let msg: object;
   if (existing?.step === "topics") {
     msg = topicsPrompt(existing.topics || []);
@@ -767,6 +862,27 @@ export async function handleNewsOnboardingText(
     }
   }
 
+  if (draft.step === "ask_sources") {
+    if (/ข้าม|ไม่|ไม่เอา|ไม่ผูก|ไม่เป็นไร/.test(t)) {
+      await completeOnboardingAfterSources(upn, draft, replyToken);
+      return true;
+    }
+    if (/youtube|ยูทูบ|ยูทูป/i.test(t)) {
+      await replyLineMessages(replyToken, [sourceLinkMessage("yt")]);
+      return true;
+    }
+    if (/rss|facebook|เฟซ|ข่าวอื่น|แหล่ง/i.test(t)) {
+      await replyLineMessages(replyToken, [sourceLinkMessage("rss")]);
+      return true;
+    }
+    if (/เสร็จ|เรียบร้อย|done|ok/i.test(t)) {
+      await completeOnboardingAfterSources(upn, draft, replyToken, "✅ รับทราบครับ\n\n");
+      return true;
+    }
+    await replyLineMessages(replyToken, [askSourcesMessage()]);
+    return true;
+  }
+
   if (draft.step === "topics" || draft.step === "manage") {
     // Only treat as custom topic when mid topics-pick, or manage after "กำหนดเอง"
     if (draft.step === "manage") return false;
@@ -801,6 +917,10 @@ const NEWS_ACTIONS = new Set([
   "briefdaysdone",
   "briefskip",
   "briefschedule",
+  "sourceyt",
+  "sourcerss",
+  "sourceskip",
+  "sourcesdone",
   "newsadd",
   "newsdel",
   "newsdeli",
@@ -904,6 +1024,17 @@ export async function handleNewsOnboardingPostback(
     ["brieftime", "briefdays", "briefdaysdone", "briefskip"].includes(a)
   ) {
     draft = { step: "brief_time", topics: [...prefs.topics], ts: Date.now() };
+  }
+  if (
+    !draft &&
+    ["sourceyt", "sourcerss", "sourceskip", "sourcesdone"].includes(a)
+  ) {
+    draft = {
+      step: "ask_sources",
+      topics: [...prefs.topics],
+      count: prefs.count,
+      ts: Date.now(),
+    };
   }
   if (!draft) {
     await openNewsSettings(upn, "reply", replyToken);
@@ -1114,6 +1245,26 @@ export async function handleNewsOnboardingPostback(
       return true;
     }
     await finishBriefNotify(upn, draft, replyToken);
+    return true;
+  }
+
+  if (a === "sourceyt") {
+    draft.step = "ask_sources";
+    await saveNewsDraft(upn, draft);
+    await replyLineMessages(replyToken, [sourceLinkMessage("yt")]);
+    return true;
+  }
+
+  if (a === "sourcerss") {
+    draft.step = "ask_sources";
+    await saveNewsDraft(upn, draft);
+    await replyLineMessages(replyToken, [sourceLinkMessage("rss")]);
+    return true;
+  }
+
+  if (a === "sourceskip" || a === "sourcesdone") {
+    const prefix = a === "sourcesdone" ? "✅ รับทราบครับ ผูกแหล่งข่าวเรียบร้อย\n\n" : "";
+    await completeOnboardingAfterSources(upn, draft, replyToken, prefix);
     return true;
   }
 
