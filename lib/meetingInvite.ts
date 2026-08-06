@@ -347,14 +347,16 @@ export async function findLinkedLineAttendees(
   emails: string[],
   excludeUpn?: string
 ): Promise<{ upn: string; lineUserId: string }[]> {
-  const wanted = Array.from(
-    new Set(emails.map((e) => e.trim().toLowerCase()).filter((e) => e.includes("@")))
-  ).filter((e) => !excludeUpn || e !== excludeUpn.toLowerCase());
-  if (!wanted.length) return [];
+  const wanted = new Set(
+    emails.map((e) => e.trim().toLowerCase()).filter((e) => e.includes("@"))
+  );
+  if (excludeUpn) wanted.delete(excludeUpn.trim().toLowerCase());
+  if (!wanted.size) return [];
 
-  const { data } = await admin.from("line_links").select("upn, line_user_id").in("upn", wanted);
+  // Case-insensitive match: Graph emails / DB upns may differ in casing.
+  const { data } = await admin.from("line_links").select("upn, line_user_id");
   return (data || [])
-    .filter((r) => r.upn && r.line_user_id)
+    .filter((r) => r.upn && r.line_user_id && wanted.has(String(r.upn).toLowerCase()))
     .map((r) => ({ upn: String(r.upn).toLowerCase(), lineUserId: String(r.line_user_id) }));
 }
 

@@ -1,5 +1,6 @@
 // Meeting transcripts + summaries — ported from morning_brief/transcripts.py,
 // summary_llm.py and meeting_summary.py.
+import { createHash } from "crypto";
 import {
   Attendee,
   GraphEvent,
@@ -15,6 +16,7 @@ import { sendLine } from "@/lib/line";
 import { ActionItem, ingestActionItems } from "@/lib/followup";
 import { markMeetingSummarized, wasMeetingSummarized } from "@/lib/store";
 import { isMeetingSummaryEnabled } from "@/lib/meetingSummaryPrefs";
+import { findLinkedLineAttendees } from "@/lib/meetingInvite";
 import { addMinutes, fmtDateTime, nowWall, parseWall, wallIso } from "@/lib/time";
 
 const TRANSCRIPT_LOOKBACK_HOURS = Number(process.env.TRANSCRIPT_LOOKBACK_HOURS || 24);
@@ -172,10 +174,57 @@ function attendeesOf(ev: GraphEvent): Attendee[] {
     if (a.emailAddress?.address) people.push({ name: a.emailAddress.name, email: a.emailAddress.address });
   }
   const org = ev.organizer?.emailAddress;
-  if (org?.address && !people.some((p) => p.email === org.address)) {
+  if (org?.address && !people.some((p) => p.email?.toLowerCase() === org.address?.toLowerCase())) {
     people.push({ name: org.name, email: org.address });
   }
   return people;
+}
+
+/** Stable seen_meetings key so the same Teams meeting is only summarized once across calendars. */
+function seenKeyForMeeting(ev: GraphEvent, eventId: string): string {
+  const join = ev.onlineMeeting?.joinUrl?.trim();
+  if (join) {
+    const hash = createHash("sha256").update(join.toLowerCase()).digest("hex").slice(0, 48);
+    return `jm:${hash}`;
+  }
+  return eventId;
+}
+
+/**
+ * Push the summary to every calendar attendee/organizer who linked LINE
+ * and has not opted out of meeting_summary_line.
+ */
+export async function deliverSummaryToLinkedAttendees(
+  ev: GraphEvent,
+  message: string,
+  extraUpns: string[] = []
+): Promise<{ sent: string[]; skipped: string[] }> {
+  const emails = [
+    ...attendeesOf(ev).map((a) => a.email || ""),
+    ...extraUpns,
+  ].filter(Boolean);
+  const linked = await findLinkedLineAttendees(emails);
+  const sent: string[] = [];
+  const skipped: string[] = [];
+  const seen = new Set<string>();
+
+  for (const { upn } of linked) {
+    const key = upn.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      if (!(await isMeetingSummaryEnabled(upn))) {
+        skipped.push(upn);
+        continue;
+      }
+      await sendLine(upn, "", message);
+      sent.push(upn);
+    } catch (e) {
+      console.log(`summary delivery failed for ${upn}: ${e}`);
+      skipped.push(upn);
+    }
+  }
+  return { sent, skipped };
 }
 
 export type SummarizeRunResult = {
@@ -184,6 +233,7 @@ export type SummarizeRunResult = {
   action_items: ActionItem[];
   no_transcript: string[];
   skipped: number;
+  delivered?: string[];
 };
 
 /** Summarize each finished online meeting that has a transcript. */
@@ -193,12 +243,20 @@ export async function summarizeRecent(
 ): Promise<SummarizeRunResult> {
   const lookback = opts.lookbackHours ?? TRANSCRIPT_LOOKBACK_HOURS;
   const events = await getRecentOnlineEvents(userUpn, lookback);
-  const out: SummarizeRunResult = { checked: events.length, summaries: [], action_items: [], no_transcript: [], skipped: 0 };
+  const out: SummarizeRunResult = {
+    checked: events.length,
+    summaries: [],
+    action_items: [],
+    no_transcript: [],
+    skipped: 0,
+    delivered: [],
+  };
 
   for (const ev of events) {
     const subject = ev.subject || "(ไม่มีหัวข้อ)";
     const eventId = (ev as { id?: string }).id || "";
-    if (opts.skipSummarized && (await wasMeetingSummarized(eventId))) {
+    const seenKey = seenKeyForMeeting(ev, eventId);
+    if (opts.skipSummarized && (await wasMeetingSummarized(seenKey))) {
       out.skipped += 1;
       continue;
     }
@@ -211,19 +269,14 @@ export async function summarizeRecent(
     const message = formatSummary(subject, result);
     out.summaries.push(message);
     if (opts.deliver) {
-      try {
-        if (await isMeetingSummaryEnabled(userUpn)) {
-          await sendLine(userUpn, `📋 สรุปประชุม: ${subject}`, message);
-        }
-      } catch (e) {
-        console.log(`summary delivery failed for ${userUpn}: ${e}`);
-      }
+      const fanout = await deliverSummaryToLinkedAttendees(ev, message, [userUpn]);
+      out.delivered!.push(...fanout.sent);
     }
     const attendees = attendeesOf(ev);
     for (const item of result.action_items || []) {
       out.action_items.push({ ...item, _meeting: subject, _owner_user: userUpn, _attendees: attendees });
     }
-    if (opts.skipSummarized) await markMeetingSummarized(eventId, userUpn, subject);
+    if (opts.skipSummarized) await markMeetingSummarized(seenKey, userUpn, subject);
   }
   return out;
 }
