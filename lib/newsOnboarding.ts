@@ -979,9 +979,24 @@ export async function startNewsOnboarding(upn: string, via: "push" | "reply", re
     await openNewsSettings(upn, via, replyToken);
     return;
   } else {
-    await saveNewsDraft(upn, { step: "ask", topics: existing?.topics || [], ts: Date.now() });
+    await clearNewsDraft(upn);
     await setNewsOnboardingDone(upn, false);
-    msg = askInterestedMessage();
+    await send(
+      via,
+      upn,
+      [
+        {
+          type: "text",
+          text:
+            "ยินดีต้อนรับครับ 👋\n\n" +
+            "ตั้งค่าบนหน้าเว็บจะสะดวกที่สุด — เลือกหัวข้อข่าว เวลาแจ้ง ผูก YouTube/RSS และปฏิทินได้ในที่เดียว\n\n" +
+            "ระหว่างตั้งค่า ยังพิมพ์จองนัด / ดูตาราง ในแชทได้ตามปกติครับ",
+        },
+        webSetupMessage(),
+      ],
+      replyToken
+    );
+    return;
   }
   await send(via, upn, [msg], replyToken);
 }
@@ -995,7 +1010,12 @@ export async function handleNewsOnboardingText(
   if (!draft) return false;
 
   const t = text.trim();
-  if (looksLikeBotCommand(t)) return false;
+  if (looksLikeBotCommand(t)) {
+    if (draft.step === "ask" || LEGACY_LINE_WIZARD.has(draft.step)) {
+      await clearNewsDraft(upn);
+    }
+    return false;
+  }
 
   if (LEGACY_LINE_WIZARD.has(draft.step)) {
     await clearNewsDraft(upn);

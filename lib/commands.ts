@@ -824,7 +824,7 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
     file_index = Number(attachPrefix[1]);
     t = t.slice(attachPrefix[0].length).trim();
   }
-  const photoPrefix = t.match(/^แนบ(?:รูป|ภาพ)\s+/i);
+  const photoPrefix = t.match(/^แนบ(?:รูป|ภาพ)\s*/i);
   if (photoPrefix) {
     pending_line_photo = true;
     t = t.slice(photoPrefix[0].length).trim();
