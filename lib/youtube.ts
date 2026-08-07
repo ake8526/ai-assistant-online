@@ -303,6 +303,21 @@ export async function buildVideoBody(item: {
   return `หัวข้อคลิป: ${title}\n\n${chunks.join("\n\n")}`.slice(0, DESC_CAP + CAPTION_CAP + 200);
 }
 
+/**
+ * True when the body has enough real content to summarize.
+ * Title-only / “ไม่มีซับ” stubs are not usable — digest should try another clip.
+ */
+export function isUsableVideoBody(full: string, title?: string): boolean {
+  const t = (full || "").trim();
+  if (t.length < 100) return false;
+  if (/ไม่มีซับไตเติล|ข้อมูลมีแค่ชื่อคลิป|ห้ามเดาสาระ/i.test(t)) return false;
+  if (/ถอดเสียงจากคลิป/i.test(t) && t.length >= 140) return true;
+  if (/คำบรรยายวิดีโอ/i.test(t) && t.length >= 140) return true;
+  const titleLen = (title || "").trim().length;
+  // Fast-path body = title + description joined (no caption markers)
+  return t.length >= Math.max(120, titleLen + 80);
+}
+
 /** Fill full descriptions via videos.list (playlistItems often truncates). */
 async function enrichDescriptions(token: string, items: YtItem[]): Promise<void> {
   const ids = items.map((it) => it.videoId).filter(Boolean) as string[];

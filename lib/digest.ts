@@ -239,8 +239,11 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
     items.push(...r.entries);
   }
 
-  // 2b) YouTube — pull uploads; hard-cap to 2 newest in digest (never flood)
+  // 2b) YouTube — pull uploads; keep extras as replacements when a clip has no captions
   const YT_HARD_CAP = fast ? 1 : 2;
+  /** Extra clips to try when the primary has no usable captions/body (per slot). */
+  const YT_REPLACE_MAX = 3;
+  const YT_CANDIDATE_CAP = YT_HARD_CAP + YT_REPLACE_MAX * YT_HARD_CAP;
   if (granted.has("src_youtube") && youtube.isConfigured()) {
     const { data: tok } = await admin.from("oauth_tokens").select("refresh_token").eq("owner_upn", upn).eq("provider", "google").single();
     if (tok?.refresh_token) {
@@ -252,22 +255,24 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
             setTimeout(() => resolve([]), fast ? 12_000 : 25_000)
           ),
         ]);
-        trace("fetch", `📰 YouTube · subscriptions · ${Math.min(vids.length, YT_HARD_CAP)} คลิป`);
-        vids
-          .sort((a, b) => (b.published || "").localeCompare(a.published || ""))
-          .slice(0, YT_HARD_CAP)
-          .forEach((v) =>
-            items.push({
-              title: v.title,
-              link: v.link,
-              published: v.published,
-              summary: v.summary,
-              source: v.source,
-              kind: "youtube",
-              feedLabel: v.source,
-              videoId: v.videoId,
-            })
-          );
+        const sorted = [...vids].sort((a, b) => (b.published || "").localeCompare(a.published || ""));
+        const candidates = sorted.slice(0, YT_CANDIDATE_CAP);
+        trace(
+          "fetch",
+          `📰 YouTube · subscriptions · ใช้ได้ถึง ${YT_HARD_CAP} · สำรอง ${Math.max(0, candidates.length - YT_HARD_CAP)} คลิป`
+        );
+        for (const v of candidates) {
+          items.push({
+            title: v.title,
+            link: v.link,
+            published: v.published,
+            summary: v.summary,
+            source: v.source,
+            kind: "youtube",
+            feedLabel: v.source,
+            videoId: v.videoId,
+          });
+        }
       } catch (e) {
         skipped.push(`YouTube (ดึงไม่สำเร็จ: ${String(e).slice(0, 60)})`);
       }
@@ -491,31 +496,85 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
   // 4) fetch article / YouTube captions + stage 2 — write useful Thai key points
   const chosen = picks.map((i) => pool[i]).slice(0, highlightN);
   trace("fetch", `📰 อ่านบทความ · ${chosen.length} เรื่อง`, "start");
-      const scrapeMs = fast ? 8000 : 15000;
-  const withText = await Promise.all(
-    chosen.map(async (it) => {
-      if (it.kind === "youtube") {
-        if (fast) {
-          // Morning: title + description only (captions are too slow for cron).
-          const full = [it.title, it.summary].filter(Boolean).join("\n").slice(0, 4000);
-          return { ...it, full };
+  const scrapeMs = fast ? 8000 : 15000;
+
+  // YouTube not in the final pick list — used as replacements when captions fail
+  const chosenKeys = new Set(chosen.map((it) => (it.link || it.title || "").toLowerCase()).filter(Boolean));
+  const ytSpare: DigestItem[] = ytItems.filter((it) => {
+    const k = (it.link || it.title || "").toLowerCase();
+    return k && !chosenKeys.has(k);
+  });
+
+  async function loadYtBody(it: DigestItem): Promise<string> {
+    if (fast) {
+      // Morning cron: description only (captions too slow). Thin desc → try next clip.
+      return [it.title, it.summary].filter(Boolean).join("\n").slice(0, 4000);
+    }
+    return youtube.buildVideoBody({
+      title: it.title,
+      summary: it.summary,
+      videoId: it.videoId,
+      link: it.link,
+    });
+  }
+
+  /** Try primary clip, then up to YT_REPLACE_MAX alternates; skip slot if all fail. */
+  async function resolveYoutube(it: DigestItem): Promise<(DigestItem & { full: string }) | null> {
+    let cur = it;
+    let replacements = 0;
+    const tried = new Set<string>();
+    while (true) {
+      const key = (cur.link || cur.title || "").toLowerCase();
+      if (key) tried.add(key);
+      const full = await loadYtBody(cur);
+      if (youtube.isUsableVideoBody(full, cur.title)) {
+        if (replacements > 0) {
+          trace("fetch", `📰 YouTube · ใช้คลิปแทน #${replacements} · ${(cur.title || "").slice(0, 40)}`);
         }
-        const full = await youtube.buildVideoBody({
-          title: it.title,
-          summary: it.summary,
-          videoId: it.videoId,
-          link: it.link,
-        });
-        return { ...it, full };
+        return { ...cur, full };
       }
-      // Always scrape the article page — RSS/NewsData teasers alone make weak summaries.
+      if (replacements >= YT_REPLACE_MAX) {
+        skipped.push(`YouTube · ข้าม (ลอง ${replacements + 1} คลิปแล้วยังไม่มีซับ/สรุปไม่ได้)`);
+        trace("fetch", `📰 YouTube · ข้ามหลังลอง ${replacements + 1} คลิป`, "error");
+        return null;
+      }
+      const nextIdx = ytSpare.findIndex((s) => {
+        const k = (s.link || s.title || "").toLowerCase();
+        return k && !tried.has(k);
+      });
+      if (nextIdx < 0) {
+        skipped.push(`YouTube · ข้าม (${(cur.title || "คลิป").slice(0, 40)} — ไม่มีคลิปสำรอง)`);
+        trace("fetch", "📰 YouTube · ข้าม — หมดคลิปสำรอง", "error");
+        return null;
+      }
+      const [next] = ytSpare.splice(nextIdx, 1);
+      replacements += 1;
+      trace(
+        "fetch",
+        `📰 YouTube · คลิปใช้ไม่ได้ · ลองแทน ${replacements}/${YT_REPLACE_MAX} · ${(next.title || "").slice(0, 36)}`
+      );
+      cur = next!;
+    }
+  }
+
+  // News in parallel; YouTube sequential so spare clips aren't double-claimed
+  type WithFull = DigestItem & { full: string };
+  const resolved: (WithFull | null)[] = new Array(chosen.length).fill(null);
+  await Promise.all(
+    chosen.map(async (it, i) => {
+      if (it.kind === "youtube") return;
       const sum = (it.summary || "").trim();
       const scraped = await fetchArticle(it.link, scrapeMs);
       let full = bestArticleBody(it.title, isPaywalledSnippet(sum) ? "" : sum, scraped);
       if (isPaywalledSnippet(full)) full = (it.title || "").trim();
-      return { ...it, full };
+      resolved[i] = { ...it, full };
     })
   );
+  for (let i = 0; i < chosen.length; i++) {
+    if (chosen[i]!.kind !== "youtube") continue;
+    resolved[i] = await resolveYoutube(chosen[i]!);
+  }
+  const withText = resolved.filter((x): x is WithFull => !!x);
   trace("fetch", `📰 อ่านบทความ · ${withText.length} เรื่อง`);
   type StorySummary = { headline?: string; points?: string[]; blurb?: string; bullets?: string[] };
   const summaries: Record<string, StorySummary> = {};
