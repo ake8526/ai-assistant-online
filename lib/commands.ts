@@ -1703,9 +1703,10 @@ type MtWindow = { start: Date; end: Date; label: string };
 
 /** Extract a day hint from free text even if the LLM missed weekday/date params. */
 function dayHintFromText(text: string): MtWindow | null {
-  if (/\bวันนี้\b|เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้/.test(text || "")) return periodRange("today");
-  if (/\bพรุ่งนี้\b/.test(text || "")) return periodRange("tomorrow");
-  if (/\bมะรืน(?:นี้)?\b/.test(text || "")) {
+  // No \b — Thai word boundaries are unreliable in JS
+  if (/วันนี้|เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้/.test(text || "")) return periodRange("today");
+  if (/พรุ่งนี้/.test(text || "")) return periodRange("tomorrow");
+  if (/มะรืน(?:นี้)?/.test(text || "")) {
     const d = addDays(startOfDay(nowWall()), 2);
     return { start: d, end: endOfDay(d), label: "มะรืนนี้" };
   }
@@ -1795,8 +1796,12 @@ function timeBandFromText(text: string): { after: number | null; before: number 
 function isTimeFollowUp(text: string): boolean {
   const t = text.trim().replace(/\s+/g, " ");
   if (!t) return false;
-  if (personFromText(t)) return false;
-  if (dayHintFromText(t)) return false;
+  // Day-only follow-ups (“พรุ่งนี้ล่ะ”) are handled separately — keep attendees, change day.
+  if (isDayFollowUp(t)) return false;
+  const who = personFromText(t);
+  // Leftover particles after stripping day words must not count as a person
+  if (who && !/^(?:ล่ะ|ละ|วะ|ไหม|มั้ย|นะ|จ้า|ที)$/u.test(who)) return false;
+  if (dayHintFromText(t) && !isDayFollowUp(t)) return false;
   // “ดูประชุมเช้านี้ / นัดเช้า / ตารางวันนี้” = list meetings, NOT a band follow-up
   if (/^(ดู|ขอดู|เช็ค|เช็ก)?(ประชุม|นัด|ตาราง)/.test(t)) return false;
   if (/มี(นัด|ประชุม)|รายการ(นัด|ประชุม)/.test(t)) return false;
@@ -1808,6 +1813,33 @@ function isTimeFollowUp(text: string): boolean {
     /^(?:แล้ว)?(?:ก่อน|หลัง)(?:เที่ยง|บ่าย|เย็น)(?:\s*ว่าง)?(?:ไหม|มั้ย|ล่ะ|ละ)?[!?.…]*$/i.test(t) ||
     /^(?:แล้ว)?ว่าง(?:ไหม|มั้ย|รึเปล่า|หรือเปล่า|บ้าง)?[!?.…]*$/i.test(t)
   );
+}
+
+/** “พรุ่งนี้ล่ะ” / “แล้ววันนี้” — same people, new calendar day. */
+function isDayFollowUp(text: string): boolean {
+  const t = text.trim().replace(/\s+/g, " ");
+  if (!t) return false;
+  return (
+    /^(?:แล้ว)?(?:วัน)?พรุ่งนี้(?:\s*(?:ล่ะ|ละ|ไหม|มั้ย|วะ|นะ))?[!?.…]*$/u.test(t) ||
+    /^(?:แล้ว)?(?:วัน)?มะรืน(?:นี้)?(?:\s*(?:ล่ะ|ละ|ไหม|มั้ย|วะ|นะ))?[!?.…]*$/u.test(t) ||
+    /^(?:แล้ว)?วันนี้(?:\s*(?:ล่ะ|ละ|ไหม|มั้ย|วะ|นะ))?[!?.…]*$/u.test(t) ||
+    /^(?:แล้ว)?วัน(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)(?:นี้|หน้า)?(?:\s*(?:ล่ะ|ละ|ไหม|มั้ย))?[!?.…]*$/u.test(
+      t
+    )
+  );
+}
+
+function windowFromDayFollowUp(text: string): MtWindow | null {
+  const t = text.trim();
+  if (/พรุ่งนี้/.test(t)) return periodRange("tomorrow");
+  if (/มะรืน/.test(t)) {
+    const d = addDays(startOfDay(nowWall()), 2);
+    return { start: d, end: endOfDay(d), label: "มะรืนนี้" };
+  }
+  if (/วันนี้/.test(t)) return periodRange("today");
+  const m = t.match(/วัน?(จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(นี้|หน้า)?/);
+  if (m) return resolveWeekday(m[1] + (m[2] || ""));
+  return null;
 }
 
 function windowFromStored(m?: CommandContext["last_meeting"]): MtWindow | null {
@@ -2428,18 +2460,25 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     if (booked) return booked;
   }
 
-  // Follow-up on a multi-person search: "ตอนเย็นว่างไหม" keeps the same attendees + day.
-  if (context?.last_meeting?.attendees?.length && isTimeFollowUp(text)) {
-    const band = timeBandFromText(text);
-    const window = windowFromStored(context.last_meeting) || dayHintFromText(text);
-    trace("parse", `★ AI:NONE · intent=find_meeting_time (ติดตามเวลา ไม่เรียก API)`);
+  // Follow-up on a multi-person search: keep the same attendees.
+  // “ตอนเย็นว่างไหม” = same day + time band; “พรุ่งนี้ล่ะ” = new day, same people.
+  if (context?.last_meeting?.attendees?.length && (isTimeFollowUp(text) || isDayFollowUp(text))) {
+    const band = isDayFollowUp(text) ? null : timeBandFromText(text);
+    const window = isDayFollowUp(text)
+      ? windowFromDayFollowUp(text)
+      : windowFromStored(context.last_meeting) || dayHintFromText(text);
+    trace(
+      "parse",
+      `★ AI:NONE · intent=find_meeting_time (${isDayFollowUp(text) ? "ติดตามวัน" : "ติดตามเวลา"} ไม่เรียก API)`
+    );
     return runFindMeeting(
       userUpn,
       context.last_meeting.attendees.map((mail) => ({ mail })),
       context.last_meeting.duration || 30,
       window,
       band,
-      wantsLunchIncluded(text)
+      wantsLunchIncluded(text),
+      context.last_meeting.subject || "ประชุม"
     );
   }
 
@@ -3633,6 +3672,10 @@ async function handleParsed(
         30
     );
     let window = resolveFindWindow(params, text);
+    // Day-only follow-up (“พรุ่งนี้ล่ะ”) — never let LLM swap attendees
+    if (isDayFollowUp(text) && context?.last_meeting?.attendees?.length) {
+      window = windowFromDayFollowUp(text) || window;
+    }
     // Only reuse last meeting day for short time follow-ups (“แล้วบ่ายล่ะ”) — not for a new “ดูตาราง A กับ B”
     if (!window && isTimeFollowUp(text)) {
       window = windowFromStored(context?.last_meeting);
@@ -3659,6 +3702,9 @@ async function handleParsed(
         ...nameTokensBesideEmails(text),
       ]);
       if (!attendeeTokens.length) attendeeTokens = [...emailsInText];
+    } else if (isDayFollowUp(text) && context?.last_meeting?.attendees?.length) {
+      // Keep Em+Non etc. — do not re-resolve nicknames (เอ็ม↔เอก)
+      attendeeTokens = context.last_meeting.attendees.map(String);
     } else if (!attendeeTokens.length) {
       attendeeTokens = (context?.last_meeting?.attendees || []).map(String);
     }
