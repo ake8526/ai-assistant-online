@@ -58,20 +58,12 @@ function searchWindow(
       start = addMinutes(rounded, INTERVAL);
       if (start < now) start = addMinutes(start, INTERVAL);
     }
-    // Late in the day → also search following days, but KEEP remaining today
-    // Allow evening suggestions until 20:00 when looking for common free time
-    const eveningEnd = new Date(start);
-    eveningEnd.setUTCHours(Math.max(WORK_END_HOUR, 20), 0, 0, 0);
-    const remainingWork = eveningEnd.getTime() - start.getTime();
-    if (remainingWork < durationMin * 60_000 || start >= eveningEnd) {
-      end = addDays(startOfDay(now), Math.max(SCHEDULE_DAYS_AHEAD, 3));
-      if (end < override.end) end = override.end;
-    } else if (override.end.getTime() - startOfDay(now).getTime() < 36 * 3600_000) {
-      // Single-day window late afternoon: still peek into next days for more options
-      const peek = addDays(startOfDay(now), Math.max(SCHEDULE_DAYS_AHEAD, 3));
-      if (peek > end) end = peek;
+    // Explicit day (วันนี้ / พรุ่งนี้ / วันที่…) — never peek into other days.
+    // (Old peek-ahead made replies say “วันนี้” while listing next Monday’s slots.)
+    if (start > end) {
+      // Past the end of the requested day (e.g. late evening) → empty search range
+      start = end;
     }
-    if (start > end) start = end;
     return { start, end };
   }
   const now = nowWall();

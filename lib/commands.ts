@@ -89,6 +89,7 @@ import {
   resolveDay,
   resolveWeekday,
   startOfDay,
+  endOfDay,
   wallIso,
 } from "@/lib/time";
 
@@ -1671,6 +1672,12 @@ type MtWindow = { start: Date; end: Date; label: string };
 
 /** Extract a day hint from free text even if the LLM missed weekday/date params. */
 function dayHintFromText(text: string): MtWindow | null {
+  if (/\bวันนี้\b|เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้/.test(text || "")) return periodRange("today");
+  if (/\bพรุ่งนี้\b/.test(text || "")) return periodRange("tomorrow");
+  if (/\bมะรืน(?:นี้)?\b/.test(text || "")) {
+    const d = addDays(startOfDay(nowWall()), 2);
+    return { start: d, end: endOfDay(d), label: "มะรืนนี้" };
+  }
   const m = text.match(/วัน?(จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(นี้|หน้า)?/);
   if (m) return resolveWeekday(m[1] + (m[2] || ""));
   const dm = text.match(/วันที่\s*(\d{1,2}(?:\/\d{1,2}(?:\/\d{2,4})?)?|\d{4}-\d{2}-\d{2})/);
@@ -2004,10 +2011,19 @@ export async function runFindMeeting(
   const SHOW_CAP = 8;
   const offset = opts?.showMore ? SHOW_CAP : 0;
   // Strip any legacy "· หลังเลิกงาน" on labels — explain once in the reply instead
-  const cleaned = result.slots.map((s) => ({
+  let cleaned = result.slots.map((s) => ({
     ...s,
     label: (s.label || "").replace(/\s*·\s*หลังเลิกงาน/g, ""),
   }));
+  // Hard guard: if user asked a specific day, never list slots outside that day
+  if (window) {
+    const w0 = window.start.getTime();
+    const w1 = window.end.getTime();
+    cleaned = cleaned.filter((s) => {
+      const t = parseWall(s.start)?.getTime();
+      return t != null && t >= w0 && t < w1;
+    });
+  }
   const todayKey = fmtDate(nowWall());
   const todayFirst = [
     ...cleaned.filter((s) => (s.label || "").startsWith(todayKey)),
@@ -2053,7 +2069,9 @@ export async function runFindMeeting(
     const hint =
       resolvedAt != null
         ? `\n\nช่วง ${fmtHHMM(resolvedAt)} อาจผ่านไปแล้วหรือติด — ลองดูตารางว่าง หรือระบุเวลาใหม่ได้ครับ`
-        : "";
+        : window
+          ? `\n\n${window.label}ยังไม่มีช่วงว่างตรงกัน ${duration} นาทีครับ — ลองพิมพ์ “พรุ่งนี้” หรือวันอื่นได้ครับ`
+          : "";
     return {
       intent: "find_meeting_time",
       reply: formatBusy(result.busy) + note + hint + `\n(ค้นของ:\n👤 ${who}${dayNote}${bandNote})`,
