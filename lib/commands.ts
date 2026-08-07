@@ -340,6 +340,41 @@ const NAME_SUFFIX = [
 const SELF_WORDS = new Set(["", "ฉัน", "ผม", "ดิฉัน", "ตัวเอง", "เรา", "ของฉัน", "ของผม"]);
 const SELF_HINT = ["ของฉัน", "ของผม", "ตัวเอง", "ตัวฉัน", "ผมเอง", "ฉันเอง", "ตารางฉัน", "ตารางผม", "ฉันว่าง", "ผมว่าง", "ของตัวเอง"];
 
+/**
+ * Peel command / duration / day words so “30 นาทีของพี่เอ็มกับพี่นนท์” → “พี่เอ็มกับพี่นนท์”.
+ * (Without this, “นาทีของพี่เอ็ม” is one token and gets dropped as noise → เอ็มหาย)
+ */
+function peelSchedulePhrases(text: string): string {
+  let s = (text || "").replace(/\s+/g, " ").trim();
+  s = s
+    .replace(/\d+\s*(?:นาที|min)\s*/gi, " ")
+    .replace(/\d+\s*(?:ชม\.?|ชั่วโมง|hr|hour)\s*/gi, " ")
+    .replace(/ครึ่ง\s*(?:ชม\.?|ชั่วโมง)\s*/gi, " ")
+    .replace(/หาเวลา(?:ว่าง)?(?:ตรงกัน)?(?:กับ)?/gi, " ")
+    .replace(/(?:ว่าง)?ตรงกัน/gi, " ")
+    // No \b — Thai word boundaries are unreliable
+    .replace(/วันนี้|พรุ่งนี้|มะรืนนี้|มะรืน/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  // “ของพี่เอ็ม” / leftover “ของ …” after peeling duration
+  s = s.replace(/^ของ\s*/u, "").replace(/\s+ของ\s+/gu, " ").trim();
+  return s;
+}
+
+/** Normalize a person token: strip ของ/honorific; drop pure schedule junk. */
+function cleanPersonToken(raw: string): string {
+  let n = String(raw || "").trim();
+  n = n.replace(/^ของ/u, "").trim();
+  n = n.replace(/(?:วันนี้|พรุ่งนี้|มะรืนนี้|มะรืน)\s*$/u, "").trim();
+  n = stripHonorificPublic(n).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim();
+  n = n.replace(/^(?:นัด|จอง|เชิญ|invite|กับ|และ|หา)\s+/i, "").trim();
+  if (!n || n.includes("@")) return "";
+  if (/^(?:วันนี้|พรุ่งนี้|มะรืน|นาที|โมง|ทุ่ม|เรื่อง|ตอน|บ่าย|เช้า|เย็น|เที่ยง|ชั่วโมง|ช่วง|เวลา|ว่าง|ตรงกัน|หาเวลาว่าง|หาเวลา|\d+)$/i.test(n)) {
+    return "";
+  }
+  return n;
+}
+
 function calendarSuggestions(kind: "meetings" | "free", period?: string): { label: string; text: string }[] {
   const day =
     period === "tomorrow" ? "พรุ่งนี้" : period === "today" ? "วันนี้" : period === "week" ? "สัปดาห์นี้" : "";
@@ -429,7 +464,7 @@ function personFromText(text: string): string {
 
 /** Split “เบสกับพี่แบง” / “พี่เอม พี่แบง พี่นน เบส” into separate people. */
 function peopleFromText(text: string): string[] {
-  let body = (text || "").trim().replace(/\s+/g, " ");
+  let body = peelSchedulePhrases(text || "");
   let changed = true;
   while (changed && body) {
     changed = false;
@@ -449,7 +484,7 @@ function peopleFromText(text: string): string[] {
       }
     }
   }
-  body = body.replace(/\s+/g, " ").trim();
+  body = peelSchedulePhrases(body);
   if (!body) return [];
 
   const splitChunk = (chunk: string): string[] => {
@@ -461,7 +496,7 @@ function peopleFromText(text: string): string[] {
     const pieces = byHonor.length >= 2 ? byHonor : [chunk];
     const out: string[] = [];
     for (const piece of pieces) {
-      const stripped = (stripHonorificPublic(piece) || piece).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim();
+      const stripped = cleanPersonToken(piece);
       if (!stripped) continue;
       const toks = stripped.split(/\s+/).filter(Boolean);
       // "เอม แบง นน เบส" or leftover "นน เบส" after honorific split
@@ -474,7 +509,7 @@ function peopleFromText(text: string): string[] {
             !/^(วันนี้|พรุ่งนี้|ตาราง|ว่าง|ประชุม|นัด|จอง|ตรงกัน)$/i.test(t)
         )
       ) {
-        out.push(...toks);
+        out.push(...toks.map((t) => cleanPersonToken(t)).filter(Boolean));
       } else {
         out.push(stripped);
       }
@@ -489,8 +524,8 @@ function peopleFromText(text: string): string[] {
 
   parts = parts.flatMap((p) => splitChunk(p));
   parts = parts
-    .map((s) => (stripHonorificPublic(s) || s).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
-    .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง|ตาราง|ว่าง|ตรงกัน)$/i.test(s));
+    .map((s) => cleanPersonToken(s))
+    .filter((s) => s && !SELF_WORDS.has(s));
 
   // Dedupe while preserving order
   const seen = new Set<string>();
@@ -846,6 +881,12 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
   let body = t;
   let note: string | undefined;
 
+  // Capture day before peelSchedulePhrases strips วันนี้/พรุ่งนี้
+  let period: string | undefined;
+  if (/วันนี้/.test(t)) period = "today";
+  else if (/พรุ่งนี้/.test(t)) period = "tomorrow";
+  else if (/มะรืน(นี้)?/.test(t)) period = "week";
+
   let duration_min = 30;
   const halfHr = body.match(/ครึ่ง\s*(?:ชม\.?|ชั่วโมง|hr|hour)/i);
   if (halfHr) {
@@ -861,6 +902,8 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
     duration_min = Math.max(5, Number(durMin[1]));
     body = body.replace(durMin[0], " ").replace(/\s+/g, " ").trim();
   }
+  // “30นาทีของพี่เอ็ม” (no space) — still peel duration so ของพี่เอ็ม survives
+  body = peelSchedulePhrases(body);
 
   let after: string | undefined;
   let at: string | undefined;
@@ -907,17 +950,6 @@ function quickBookIntent(text: string): { intent: string; params: Record<string,
     }
   }
 
-  let period: string | undefined;
-  if (/วันนี้/.test(body)) {
-    period = "today";
-    body = body.replace(/วันนี้/g, " ");
-  } else if (/พรุ่งนี้/.test(body)) {
-    period = "tomorrow";
-    body = body.replace(/พรุ่งนี้/g, " ");
-  } else if (/มะรืน(นี้)?/.test(body)) {
-    period = "week";
-    body = body.replace(/มะรืน(นี้)?/g, " ");
-  }
   body = body.replace(/\s+/g, " ").trim();
 
   // Subject after peeling day/time so “เรื่อง test วันนี้ 17:30-18:00” → note=test
@@ -984,9 +1016,9 @@ function sanitizeAttendeeTokens(tokens: string[]): string[] {
   const out: string[] = [];
   const seenMail = new Set<string>();
   const seenName = new Set<string>();
-  // Leftover schedule phrases must never become "people"
-  const noise =
-    /วันนี้|พรุ่งนี้|มะรืน|นาที|โมง|ทุ่ม|ตี\s*\d|เรื่อง|ตอน|บ่าย|เช้า|เย็น|เที่ยง|ชั่วโมง|\bmin\b|\bhour\b|\d{1,2}\s*[:.]\s*\d{2}|\d{2,}/i;
+  // Whole-token schedule junk only — never substring-kill “นาทีของพี่เอ็ม”
+  const noiseWhole =
+    /^(?:วันนี้|พรุ่งนี้|มะรืน|นาที|โมง|ทุ่ม|เรื่อง|ตอน|บ่าย|เช้า|เย็น|เที่ยง|ชั่วโมง|ช่วง|เวลา|ว่าง|ตรงกัน|หาเวลาว่าง|หาเวลา|\d{1,2}(?::\d{2})?)$/i;
 
   const pushMail = (e: string) => {
     const m = e.trim().toLowerCase();
@@ -995,13 +1027,12 @@ function sanitizeAttendeeTokens(tokens: string[]): string[] {
     out.push(m);
   };
   const pushName = (raw: string) => {
-    let n = stripHonorificPublic(raw).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim();
-    n = n.replace(/^(?:นัด|จอง|เชิญ|invite|กับ|และ|หา)\s+/i, "").trim();
-    if (!n || n.includes("@")) return;
-    if (noise.test(n)) return;
+    let n = cleanPersonToken(raw);
+    if (!n) return;
+    if (noiseWhole.test(n)) return;
+    if (SELF_WORDS.has(n) || /^(ประชุม|นัด|จอง|หา|ส่ง)$/i.test(n)) return;
     if (n.split(/\s+/).length > 2) return;
     if (n.length > 32) return;
-    if (SELF_WORDS.has(n) || /^(ประชุม|นัด|จอง|หา|ส่ง|ตอน|เวลา|ช่วง|ว่าง|ตรงกัน)$/i.test(n)) return;
     const key = n.toLowerCase();
     if (seenName.has(key) || seenMail.has(key)) return;
     seenName.add(key);
@@ -1009,7 +1040,7 @@ function sanitizeAttendeeTokens(tokens: string[]): string[] {
   };
 
   for (const raw of tokens) {
-    const s = String(raw || "").trim();
+    const s = peelSchedulePhrases(String(raw || "").trim());
     if (!s) continue;
     const emails = extractEmails(s);
     if (emails.length) {
@@ -1019,7 +1050,7 @@ function sanitizeAttendeeTokens(tokens: string[]): string[] {
         .replace(/^(?:นัด|จอง|เชิญ|invite|กับ|และ|หา)\s+/i, " ")
         .replace(/\s+/g, " ")
         .trim();
-      if (rest && !noise.test(rest)) {
+      if (rest && !noiseWhole.test(rest)) {
         for (const part of rest.split(/\s*(?:กับ|และ|,)\s*/)) pushName(part);
       }
       continue;
