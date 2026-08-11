@@ -464,7 +464,8 @@ function withCalendarNext(res: CommandResult, kind: "meetings" | "free"): Comman
 }
 
 function hasDayHint(text: string): boolean {
-  return /วันนี้|พรุ่งนี้|มะรืน|เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้|สัปดาห์นี้|อาทิตย์นี้|เดือนนี้|วัน(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)|วันที่\s*\d|\d{1,2}\/\d{1,2}/.test(
+  // "วัน" is optional — people write "เสาร์นี้" as often as "วันเสาร์นี้".
+  return /วันนี้|พรุ่งนี้|มะรืน|เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้|สัปดาห์นี้|อาทิตย์นี้|เดือนนี้|(?:วัน)?(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)|วันที่\s*\d|\d{1,2}\/\d{1,2}/.test(
     text || ""
   );
 }
@@ -1017,8 +1018,9 @@ function selfBookReason(text: string): string | undefined {
   const drop: RegExp[] = [
     /วันที่\s*\d{1,2}(?:\/\d{1,2}(?:\/\d{2,4})?)?/g,
     /\d{4}-\d{2}-\d{2}/g,
-    /วัน?(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(?:นี้|หน้า)?/g,
+    /(?:วัน)?(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(?:นี้|หน้า)?/g,
     /(?:วันนี้|พรุ่งนี้|มะรืนนี้|มะรืน|สัปดาห์นี้|อาทิตย์นี้)/g,
+    /\d{1,2}\s*(?:โมง|ทุ่ม)(?:\s*(?:เช้า|เย็น|ครึ่ง))?/g,
     /(?:ทั้งวัน|ตลอดวัน|all\s*day)/gi,
     // Whole ranges first, otherwise "เวลา 9:00" is eaten by the marker rule
     // below and the "-12:00" tail survives.
@@ -1051,6 +1053,8 @@ function selfBookReason(text: string): string | undefined {
     .replace(/\s[-–—]+\s/g, " ")
     .replace(/^\s*[-–—]+\s*|\s*[-–—]+\s*$/g, " ")
     .replace(/^\s*(?:ให้|ไป|มา|ติด|เพื่อ|กัน)\s+/u, " ")
+    // "มีไปทำฟัน" → "ไปทำฟัน": the "have" verb is not part of the activity.
+    .replace(/^\s*มี(?=[ก-๙])/u, " ")
     .replace(/\s+/g, " ")
     .trim();
   return s.length >= 2 ? s.slice(0, 200) : undefined;
@@ -1071,6 +1075,24 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
     !/^นัด(?:ประชุม)?(?:\s*)?(?:กับ|หา|เชิญ)\s/i.test(t) &&
     (hasDayHint(t) || /(?:ตอน|เวลา|ที่)/i.test(t));
 
+  // Statements of a commitment carry no booking verb at all — "เสาร์นี้มีไปทำฟัน
+  // 10โมง" means "block that slot for me". Requires a day, a have/must verb and
+  // nobody else named; questions about the calendar ("พรุ่งนี้มีประชุมไหม",
+  // "วันนี้มีอะไรบ้าง") are excluded because they ask rather than declare.
+  // A real activity must survive after the day/time words are removed, so bare
+  // "วันนี้มีประชุม" (asking what is on the calendar) is not treated as booking.
+  const commitmentActivity = (selfBookReason(t) || "").replace(/^มี\s*/u, "").trim();
+  const commitment =
+    hasDayHint(t) &&
+    /(?:มี|ติด|ต้อง|จะไป)/.test(t) &&
+    !/(?:ไหม|มั้ย|บ้าง|อะไร|กี่|หรือเปล่า|รึเปล่า|ว่าง|ยัง)/.test(t) &&
+    !/กับ\s*\S/.test(t) &&
+    !/^(?:ดู|ขอดู|เช็ค|เช็ก|สรุป)/.test(t) &&
+    commitmentActivity.length >= 3 &&
+    // "วันนี้มีประชุม" names no actual activity — that is a question about the
+    // calendar, not something to block.
+    !/^(?:ประชุม|นัด|นัดหมาย|ตาราง|งาน|อะไร)$/u.test(commitmentActivity);
+
   // No trailing \s required: Thai runs words together, so "จองตารางวันศุกร์นี้"
   // must match just like the spaced "จองตาราง วันศุกร์นี้".
   const isSelfBook =
@@ -1079,6 +1101,7 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
     /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*วันที่/i.test(t) ||
     // "จองนัดให้ที …" — booking an appointment for yourself, no attendees.
     /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*นัด/i.test(t) ||
+    commitment ||
     /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*(?:block|บล็อก|บล๊อค|บล็อค|กัน)\s*(?:ตาราง|เวลา|time)/i.test(t) ||
     soloMeet;
   if (!isSelfBook) return null;
@@ -1103,6 +1126,7 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
   if (
     !soloMeet &&
     !saidForSelf &&
+    !commitment &&
     afterPrefix &&
     !/^(?:ตัวเอง|ของ(?:ฉัน|ผม)|วันที่|วัน(?:นี้|พรุ่งนี้|มะรืน)?|ว?(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(?:นี้|หน้า)?|เวลา|ตอน|เรื่อง|\d)/i.test(
       afterPrefix
@@ -1594,10 +1618,33 @@ async function parseIntent(
   const raw = await chat(INTENT_SYSTEM, prompt, { temperature: 0, json: true, fast: true });
   try {
     const parsed = JSON.parse(raw);
-    return { intent: parsed.intent || "unknown", params: parsed.params || {}, source: "llm" };
+    const params = sanitizeParsedParams(parsed.params || {});
+    return { intent: parsed.intent || "unknown", params, source: "llm" };
   } catch {
     return { intent: "unknown", params: {}, source: "llm" };
   }
+}
+
+/**
+ * The model sometimes drops a whole sentence into `person` ("เสาร์นี้มีไปทำฟัน
+ * 10โมง"), which then gets looked up in the directory and fails. A name is
+ * short and carries no day/time words — anything else is the user talking about
+ * their own schedule, so drop the field and let the request resolve to self.
+ */
+function sanitizeParsedParams(params: Record<string, unknown>): Record<string, unknown> {
+  const person = typeof params.person === "string" ? params.person.trim() : "";
+  if (!person) return params;
+  const hasDayOrTime =
+    /(?:วันนี้|พรุ่งนี้|มะรืน|สัปดาห์|อาทิตย์นี้|จันทร์|อังคาร|พุธ|พฤหัส|ศุกร์|เสาร์|อาทิตย์|เช้า|บ่าย|เย็น|ค่ำ|โมง|ทุ่ม|เที่ยง|ครึ่ง|ทั้งวัน|\d{1,2}[:.]\d{2}|\d+\s*(?:นาที|ชม|ชั่วโมง))/i.test(
+      person
+    );
+  const tooLong = person.replace(/\s+/g, " ").split(" ").length > 4 || person.length > 40;
+  if (hasDayOrTime || tooLong) {
+    const { person: _dropped, ...rest } = params;
+    void _dropped;
+    return rest;
+  }
+  return params;
 }
 
 async function continuedPerson(
