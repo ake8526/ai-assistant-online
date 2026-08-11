@@ -27,6 +27,7 @@ import {
   deleteEvent,
   downloadDriveText,
   findDuplicateNicknames,
+  getEvent,
   getEventsRange,
   nowLocal,
   resolveUser,
@@ -3379,7 +3380,7 @@ export async function handleCommand(
 export async function handleSelection(userUpn: string, data: URLSearchParams): Promise<CommandResult> {
   const a = data.get("a") || "";
   try {
-    if (a === "avail" || a === "book" || a === "cancel" || a === "findmt") {
+    if (a === "avail" || a === "book" || a === "cancel" || a === "cancelok" || a === "findmt") {
       const denied = needCalendarConsent();
       if (denied) return denied;
     }
@@ -3436,7 +3437,47 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
         reply: headline + (attendees.length ? `\n👤 ${attendees.join(", ")}` : "") + held.note,
       };
     }
+    // Deleting a meeting cannot be undone, so always show what is about to go
+    // and wait for an explicit confirm.
     if (a === "cancel") {
+      const id = data.get("id") || "";
+      if (!id) return { intent: "error", reply: "ไม่พบนัดที่จะยกเลิกครับ" };
+      let ev: GraphEvent | null = null;
+      try {
+        ev = await getEvent(userUpn, id);
+      } catch {
+        ev = null;
+      }
+      const lines = ["🗑️ ยืนยันยกเลิกนัด", ""];
+      if (ev) {
+        const s = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+        const e = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
+        lines.push(`📌 ${(ev.subject || "(ไม่มีหัวข้อ)").trim()}`);
+        if (s) lines.push(`🕐 ${fmtDateTime(s)}${e ? `-${fmtTime(e)}` : ""}`);
+        const where = ev.location?.displayName || (ev.onlineMeeting ? "ออนไลน์ (Teams)" : "");
+        if (where) lines.push(`📍 ${where}`);
+        const people = (ev.attendees || [])
+          .map((at) => at.emailAddress?.name || at.emailAddress?.address || "")
+          .filter(Boolean)
+          .slice(0, 5);
+        if (people.length) lines.push(`👤 ${people.join(", ")}`);
+      } else {
+        lines.push("(ดึงรายละเอียดนัดไม่ได้ — ตรวจสอบให้แน่ใจก่อนยืนยันนะครับ)");
+      }
+      lines.push("", "ยกเลิกแล้วกู้คืนไม่ได้ ยืนยันไหมครับ? 👇");
+      return {
+        intent: "confirm_cancel",
+        reply: lines.join("\n"),
+        choices: [
+          { data: `a=cancelok&id=${encodeURIComponent(id)}`, label: "✅ ยืนยันยกเลิก" },
+          { data: "a=cancelkeep", label: "↩️ ไม่ยกเลิก" },
+        ],
+      };
+    }
+    if (a === "cancelkeep") {
+      return { intent: "cancel_aborted", reply: "โอเคครับ — ไม่ได้ยกเลิกนัด ทุกอย่างยังอยู่ตามเดิม 👍" };
+    }
+    if (a === "cancelok") {
       const id = data.get("id") || "";
       if (!id) return { intent: "error", reply: "ไม่พบนัดที่จะยกเลิกครับ" };
       await deleteEvent(userUpn, id);

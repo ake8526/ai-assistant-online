@@ -196,6 +196,21 @@ function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | 
       // Numbered buttons; full titles are in the message body via detailText.
       add(n, data, `สรุป ${n}) ${c.label || ""}`);
     }
+  } else if (res.intent === "confirm_cancel" && Array.isArray(res.choices)) {
+    // Confirm / abort a meeting deletion — the summary sits in the message body.
+    for (const c of res.choices as Choice[]) {
+      if (!c.data || items.length >= 12) continue;
+      const label = c.label || "ยืนยัน";
+      items.push({
+        type: "action",
+        action: {
+          type: "postback",
+          label: truncate(label, 20),
+          data: c.data.slice(0, 300),
+          displayText: truncate(label, 60),
+        },
+      });
+    }
   } else if (res.intent === "choose_remove_feed" && Array.isArray(res.choices)) {
     let n = 0;
     for (const c of res.choices as Choice[]) {
