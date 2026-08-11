@@ -221,7 +221,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
 
 {
-  "intent": "<หนึ่งใน: get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
+  "intent": "<หนึ่งใน: get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | book_self_calendar | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
   "params": { ... }
 }
 
@@ -233,6 +233,9 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - add_feed = เพิ่มแหล่งข่าว Facebook หรือ RSS — เช่น "เพิ่มแหล่งข่าว https://...", "ติดตามเพจ https://facebook.com/...", "เพิ่ม RSS https://... ชื่อ Extreme"
 - remove_feed = ลบแหล่งข่าว — เช่น "ลบแหล่งข่าว", "เลิกติดตามเพจ", "ลบฟีด 1", "ลบแหล่งข่าวหมายเลข 2"
 - edit_feed = แก้ชื่อหรือลิงก์แหล่งข่าว — เช่น "แก้ชื่อแหล่งข่าว 1 เป็น Extreme IT", "เปลี่ยนลิงก์แหล่ง 2 เป็น https://..."
+- book_self_calendar = กันเวลา/บล็อกปฏิทิน "ของตัวเอง" โดยไม่มีคนอื่นร่วม (ไม่ใช่การนัดประชุม จึงห้ามถามหาชื่อคนเด็ดขาด) — เช่น "จองตารางให้เราหน่อยวันศุกร์นี้ทั้งวัน ออกรายการ", "บล็อกเวลาพรุ่งนี้บ่าย ติดธุระ", "กันเวลาวันจันทร์ 9-12 ทำรายงาน", "จองวันที่ 20 ทั้งวัน ลาพักร้อน"
+  ให้ใช้ intent นี้เมื่อผู้ใช้สั่งให้จอง/กัน/บล็อกเวลา แล้ว "ไม่ได้เอ่ยชื่อคนอื่น" — คำว่า "ให้เรา/ให้ฉัน/ให้ผม/ตัวเอง" คือการบอกว่าทำให้ตัวเอง ห้ามตีความเป็นชื่อคน
+  params: { "date": "YYYY-MM-DD", "all_day": true/false, "at": "HH:MM (ถ้าระบุเวลาเริ่ม)", "duration_min": ตัวเลขนาที (ถ้าระบุ), "subject": "เหตุผล/กิจกรรม เช่น ออกรายการ, ลาพักร้อน, ติดธุระ" }
 - list_meetings = ดู "รายการประชุม/นัด" ในปฏิทิน (วันนี้/พรุ่งนี้/สัปดาห์นี้/เดือนนี้)
 - my_availability = ดู "เวลาว่างของตัวเอง" ในปฏิทิน (ช่วงไหนว่าง/ตารางว่าง)
 - list_tasks = ดูงานที่ต้องติดตาม (ไม่ใช่ประชุม)
@@ -970,8 +973,74 @@ function soloMeetActivitySubject(text: string): string | undefined {
   return s.length >= 2 ? s.slice(0, 200) : undefined;
 }
 
+/**
+ * Thai is written without spaces between words, so a keyword is often glued to
+ * what follows ("จองตารางให้เราหน่อยวันศุกร์นี้"). Strip benefactive + polite
+ * particles so the rest parses like the spaced form, and report when the user
+ * explicitly said "for me" — that is a self-booking signal, never a person name.
+ */
+function stripThaiPoliteness(text: string): { text: string; forSelf: boolean } {
+  // No lookahead here: Thai glues words together, so "ให้เรา" is normally
+  // followed by another Thai word ("ให้เราหน่อย…") — the phrase is unambiguous.
+  const benefactive = /ให้\s*(?:เรา|ฉัน|ผม|หนู|ดิฉัน|กระผม)/g;
+  // Use match() rather than the /g regex's stateful test() — test() would leave
+  // lastIndex behind and make repeat calls flip-flop.
+  const forSelf = text.match(benefactive) !== null;
+  const cleaned = text
+    .replace(benefactive, " ")
+    // Distinctive particles can be stripped anywhere (Thai glues them to the
+    // next word: "หน่อยวันศุกร์"). Short ones that also live inside real words
+    // ("คะ" in "คะแนน") only count at a word end, hence the lookahead.
+    .replace(/(?:ซะหน่อย|สักหน่อย|หน่อย|นะครับ|นะคะ|คร้าบ)/g, " ")
+    .replace(/(?:ครับ|ค่ะ|คะ|จ้า|จ้ะ)(?![ก-๙])/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return { text: cleaned, forSelf };
+}
+
+/**
+ * The reason for blocking the calendar is whatever is left after removing the
+ * booking verb, the day, the time and the duration ("...ทั้งวันไป ออกรายการ"
+ * → "ออกรายการ"). Generic leftover extraction beats listing every activity.
+ */
+function selfBookReason(text: string): string | undefined {
+  let s = ` ${text} `;
+  // Order matters: strip dates/times FIRST, otherwise the verb pattern eats the
+  // "วันที่" of "จองวันที่ 20" and leaves a bare "20" behind.
+  const drop: RegExp[] = [
+    /วันที่\s*\d{1,2}(?:\/\d{1,2}(?:\/\d{2,4})?)?/g,
+    /\d{4}-\d{2}-\d{2}/g,
+    /วัน?(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(?:นี้|หน้า)?/g,
+    /(?:วันนี้|พรุ่งนี้|มะรืนนี้|มะรืน|สัปดาห์นี้|อาทิตย์นี้)/g,
+    /(?:ทั้งวัน|ตลอดวัน|all\s*day)/gi,
+    /(?:ตอน|เวลา|ที่)\s*\d{1,2}[:.]\d{2}/g,
+    /\d{1,2}[:.]\d{2}(?:\s*(?:[-–—]|ถึง)\s*\d{1,2}[:.]\d{2})?/g,
+    /\d+\s*(?:ชม\.?|ชั่วโมง|นาที|hr|hour|min)/gi,
+    /ครึ่ง\s*(?:ชม\.?|ชั่วโมง)?/g,
+    /(?:เช้า|บ่าย|เย็น|ค่ำ|กลางวัน)/g,
+    /(?:ขอ|อยาก|ช่วย|โปรด)/g,
+    /จอง\s*(?:ตาราง|เวลา?|วันที่)?/g,
+    /นัด(?:ประชุม)?/g,
+    /(?:block|บล็อก|บล๊อค|บล็อค)\s*(?:ตาราง|เวลา|time)?/gi,
+    /กัน\s*(?:ตาราง|เวลา)/g,
+    /(?:ตัวเอง|ของ(?:ฉัน|ผม))/g,
+    /\sเรื่อง\s/g,
+    // Connectives that only glue the reason on — require spaces so we never cut
+    // into a real word (e.g. "ไป" inside "ไปรษณีย์").
+    /\s(?:ไป|มา|ติด|เพื่อ|เพราะ|เนื่องจาก|ว่า)\s/g,
+    // Any day-of-month digits left over once their "วันที่" marker is gone.
+    /^\s*\d{1,2}(?![:.\d])/,
+  ];
+  for (const re of drop) s = s.replace(re, " ");
+  s = s.replace(/[.,]+/g, " ").replace(/\s+/g, " ").trim();
+  return s.length >= 2 ? s.slice(0, 200) : undefined;
+}
+
 function quickSelfBookIntent(text: string): { intent: string; params: Record<string, unknown> } | null {
-  let t = text.trim().replace(/\s+/g, " ");
+  const polite = stripThaiPoliteness(text.trim().replace(/\s+/g, " "));
+  // "จองตารางให้เราหน่อย…" — the benefactive already says this is for the user.
+  const saidForSelf = polite.forSelf;
+  let t = polite.text;
   if (!t) return null;
 
   // Bare “นัดวันนี้” = list meetings — not self block
@@ -982,11 +1051,13 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
     !/^นัด(?:ประชุม)?(?:\s*)?(?:กับ|หา|เชิญ)\s/i.test(t) &&
     (hasDayHint(t) || /(?:ตอน|เวลา|ที่)/i.test(t));
 
+  // No trailing \s required: Thai runs words together, so "จองตารางวันศุกร์นี้"
+  // must match just like the spaced "จองตาราง วันศุกร์นี้".
   const isSelfBook =
-    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*ตาราง(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?(?:\s|$)/i.test(t) ||
-    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*เวล(?:า)?(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?(?:\s|$)/i.test(t) ||
-    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*วันที่(?:\s|$)/i.test(t) ||
-    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*block\s+(?:ตาราง|เวลา|time)(?:\s|$)/i.test(t) ||
+    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*ตาราง(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?/i.test(t) ||
+    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*เวล(?:า)?(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?/i.test(t) ||
+    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*วันที่/i.test(t) ||
+    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*(?:block|บล็อก|บล๊อค|บล็อค|กัน)\s*(?:ตาราง|เวลา|time)/i.test(t) ||
     soloMeet;
   if (!isSelfBook) return null;
 
@@ -1008,6 +1079,7 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
   // “นัดวันเสาร์นี้ …” — วันเสาร์นี้ is a day, not a person name
   if (
     !soloMeet &&
+    !saidForSelf &&
     afterPrefix &&
     !/^(?:ตัวเอง|ของ(?:ฉัน|ผม)|วันที่|วัน(?:นี้|พรุ่งนี้|มะรืน)?|ว?(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(?:นี้|หน้า)?|เวลา|ตอน|เรื่อง|\d)/i.test(
       afterPrefix
@@ -1065,7 +1137,8 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
   }
 
   let subject = "จองเวลา";
-  const subjM = t.match(/\sเรื่อง\s*(.+)$/i);
+  // No leading \s before เรื่อง — Thai may glue it to the previous word.
+  const subjM = t.match(/เรื่อง\s*(.+)$/i);
   if (subjM) {
     subject =
       subjM[1]!
@@ -1075,7 +1148,9 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
         .trim()
         .slice(0, 200) || subject;
   } else {
-    const activity = soloMeetActivitySubject(t);
+    // Fall back to whatever the user typed beyond the date/time — that is the
+    // reason they are blocking the day ("…ทั้งวันไป ออกรายการ").
+    const activity = soloMeetActivitySubject(t) || selfBookReason(t);
     if (activity) subject = activity;
   }
 
