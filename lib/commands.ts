@@ -1406,6 +1406,16 @@ async function parseIntent(
     }
   }
 
+  // After a cancellation, user may say “ยังไม่ได้/อันนี้ไม่ได้” to cancel another item
+  // from the same previously shown list.
+  if (
+    context?.last_intent === "cancelled" &&
+    /^(ยังไม่ได้|อันนี้ไม่ได้|ไม่ใช่อันนี้|ไม่เอาอันนี้|ยกเลิกอันอื่น|เอาอันอื่น)\b/i.test(textClean)
+  ) {
+    const lp = context.last_period || "upcoming";
+    return { intent: "cancel_meeting", params: { period: lp }, source: "quick" };
+  }
+
   // Fast deterministic rule after a file search — summarize only, never steal booking lines
   if (context?.last_intent === "file_results" || (context?.files?.length && /อ่าน|สรุป/.test(textClean))) {
     const bookingish =
@@ -4673,6 +4683,13 @@ async function handleParsed(
     const denied = needCalendarConsent();
     if (denied) return denied;
     const period = String(params.period || "upcoming");
+    // Encoded exact scopes we may store in context.last_period
+    // e.g. "weekday:เสาร์", "date:12/08/2026"
+    const encodedWeekday = period.match(/^weekday:(.+)$/i)?.[1]?.trim();
+    const encodedDate = period.match(/^date:(.+)$/i)?.[1]?.trim();
+    if (encodedWeekday && !params.weekday) params.weekday = encodedWeekday;
+    if (encodedDate && !params.date) params.date = encodedDate;
+    const effectivePeriod = encodedWeekday || encodedDate ? "custom" : period;
     // Allow weekday/date cancellation to filter to exactly that day.
     const weekdayRaw = params.weekday ? String(params.weekday) : "";
     const dateRaw = params.date ? String(params.date) : "";
@@ -4686,13 +4703,13 @@ async function handleParsed(
         start = range.start;
         end = range.end;
         periodLabel = range.label;
-        scopePeriod = "custom";
+        scopePeriod = `weekday:${weekdayRaw}`;
       } else {
         const r = periodRange(period);
         start = r.start;
         end = r.end;
         periodLabel = r.label;
-        scopePeriod = period;
+        scopePeriod = effectivePeriod;
       }
     } else if (dateRaw) {
       const range = resolveDay(dateRaw);
@@ -4700,20 +4717,20 @@ async function handleParsed(
         start = range.start;
         end = range.end;
         periodLabel = range.label;
-        scopePeriod = "custom";
+        scopePeriod = `date:${dateRaw}`;
       } else {
         const r = periodRange(period);
         start = r.start;
         end = r.end;
         periodLabel = r.label;
-        scopePeriod = period;
+        scopePeriod = effectivePeriod;
       }
     } else {
       const r = periodRange(period);
       start = r.start;
       end = r.end;
       periodLabel = r.label;
-      scopePeriod = period;
+      scopePeriod = effectivePeriod;
     }
 
     let events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
