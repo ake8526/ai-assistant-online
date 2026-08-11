@@ -997,6 +997,9 @@ function stripThaiPoliteness(text: string): { text: string; forSelf: boolean } {
     // ("คะ" in "คะแนน") only count at a word end, hence the lookahead.
     .replace(/(?:ซะหน่อย|สักหน่อย|หน่อย|นะครับ|นะคะ|คร้าบ)/g, " ")
     .replace(/(?:ครับ|ค่ะ|คะ|จ้า|จ้ะ)(?![ก-๙])/g, " ")
+    // Standalone "ที" ("จองนัดให้ที") — the lookahead keeps "ที่" intact, and
+    // the leading space keeps it from cutting into a longer word.
+    .replace(/\s(?:ที|ด้วย|สิ|ซิ)(?![ก-๙])/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   return { text: cleaned, forSelf };
@@ -1074,6 +1077,8 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
     /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*ตาราง(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?/i.test(t) ||
     /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*เวล(?:า)?(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?/i.test(t) ||
     /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*วันที่/i.test(t) ||
+    // "จองนัดให้ที …" — booking an appointment for yourself, no attendees.
+    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*นัด/i.test(t) ||
     /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*(?:block|บล็อก|บล๊อค|บล็อค|กัน)\s*(?:ตาราง|เวลา|time)/i.test(t) ||
     soloMeet;
   if (!isSelfBook) return null;
@@ -1088,9 +1093,9 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
   }
 
   // “จองตารางกับเบส” / “นัดกับเบส” → meeting with others, not self block
-  if (/^(?:จอง\s*(?:ตาราง|วันที่)?|นัด(?:ประชุม)?(?:\s*)?)(?:กับ|หา|เชิญ)\s*/i.test(t)) return null;
+  if (/^(?:จอง\s*(?:ตาราง|วันที่|นัด|เวลา)?|นัด(?:ประชุม)?(?:\s*)?)(?:กับ|หา|เชิญ)\s*/i.test(t)) return null;
   const afterPrefix = t
-    .replace(/^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*(?:ตาราง|เวล(?:า)?|วันที่)\s*/i, "")
+    .replace(/^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*(?:ตาราง|เวล(?:า)?|วันที่|นัด)\s*/i, "")
     .replace(/^(?:ขอ|อยาก|ช่วย|โปรด)?\s*นัด(?:ประชุม)?(?:\s*)?/i, "")
     .replace(/^(?:ขอ|อยาก|ช่วย|โปรด)?\s*(?:block|บล็อก|บล๊อค|บล็อค|กัน)\s*(?:ตาราง|เวลา|time)?\s*/i, "")
     .trim();
@@ -1133,7 +1138,10 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
     const d = addDays(startOfDay(nowWall()), 2);
     window = { start: d, end: endOfDay(d), label: "มะรืนนี้" };
   } else {
-    const wd = t.match(/วัน?(จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(นี้|หน้า)?/);
+    // "วัน" is optional: people write "ศุกร์นี้" / "อาทิตย์นี้" just as often.
+    // Blocking your own calendar is always about one day, so the day reading of
+    // "อาทิตย์นี้" is the useful one here (the confirm card shows the date).
+    const wd = t.match(/(?:วัน)?(จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(นี้|หน้า)?/);
     if (wd) window = resolveWeekday(wd[1]! + (wd[2] || ""));
     else window = resolveThaiDateInText(t);
     if (!window) {
