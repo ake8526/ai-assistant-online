@@ -1029,7 +1029,9 @@ function selfBookReason(text: string): string | undefined {
     /(?:ตอน|เวลา)(?=\s|$)/g,
     /\d+\s*(?:ชม\.?|ชั่วโมง|นาที|hr|hour|min)/gi,
     /ครึ่ง\s*(?:ชม\.?|ชั่วโมง)?/g,
-    /(?:เช้า|บ่าย|เย็น|ค่ำ|กลางวัน)/g,
+    // Take the "ตอน/ช่วง" marker with the part of day, otherwise stripping
+    // "เย็น" out of "ตอนเย็น" leaves a dangling "ตอน" in the title.
+    /(?:ตอน|ช่วง)?\s*(?:เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|กลางคืน)/g,
     /(?:ขอ|อยาก|ช่วย|โปรด)/g,
     /จอง\s*(?:ตาราง|เวลา?|วันที่)?/g,
     /นัด(?:ประชุม)?/g,
@@ -1054,7 +1056,8 @@ function selfBookReason(text: string): string | undefined {
     .replace(/^\s*[-–—]+\s*|\s*[-–—]+\s*$/g, " ")
     .replace(/^\s*(?:ให้|ไป|มา|ติด|เพื่อ|กัน)\s+/u, " ")
     // "มีไปทำฟัน" → "ไปทำฟัน": the "have" verb is not part of the activity.
-    .replace(/^\s*มี(?=[ก-๙])/u, " ")
+    // Also matches when a removed word left a space behind ("มี ไปข้างนอก").
+    .replace(/^\s*มี(?=[ก-๙\s])/u, " ")
     .replace(/\s+/g, " ")
     .trim();
   return s.length >= 2 ? s.slice(0, 200) : undefined;
@@ -1204,6 +1207,26 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
     } else {
       atMin = 12 * 60;
       durationMin = Math.max(60, WORK_END_HOUR * 60 - atMin);
+    }
+  }
+
+  // "…วันเสาร์นี้ตอนเย็น" — a part of the day is a time too. Use the same bands
+  // the intent parser documents (เช้า 09-12, บ่าย 13-16, เย็น 16-18, ค่ำ 18-20)
+  // so the confirm card shows a concrete slot instead of asking for one.
+  if (atMin == null && !allDay) {
+    const band = t.match(/(?:ตอน|ช่วง)?\s*(เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางคืน)/);
+    const BANDS: Record<string, [number, number]> = {
+      เช้า: [WORK_START_HOUR * 60, 12 * 60],
+      สาย: [10 * 60, 12 * 60],
+      บ่าย: [13 * 60, 16 * 60],
+      เย็น: [16 * 60, 18 * 60],
+      ค่ำ: [18 * 60, 20 * 60],
+      กลางคืน: [19 * 60, 21 * 60],
+    };
+    const hit = band?.[1] ? BANDS[band[1]] : undefined;
+    if (hit) {
+      atMin = hit[0];
+      if (!durationMin) durationMin = Math.max(60, hit[1] - hit[0]);
     }
   }
 
