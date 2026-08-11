@@ -1412,7 +1412,7 @@ async function parseIntent(
     /cancel/i.test(String(context?.last_intent || "")) &&
     /(ยังไม่ได้|อันนี้ไม่ได้|ไม่ใช่อันนี้|ไม่เอาอันนี้|ยกเลิกอันอื่น|เอาอันอื่น)/i.test(textClean)
   ) {
-    const lp = context.last_period || "upcoming";
+    const lp = context?.last_period || "upcoming";
     return { intent: "cancel_meeting", params: { period: lp }, source: "quick" };
   }
 
