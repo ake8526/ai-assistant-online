@@ -976,10 +976,10 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
     (hasDayHint(t) || /(?:ตอน|เวลา|ที่)/i.test(t));
 
   const isSelfBook =
-    /^จอง\s*ตาราง(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?(?:\s|$)/i.test(t) ||
-    /^จอง\s*เวล(?:า)?(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?(?:\s|$)/i.test(t) ||
-    /^จอง\s*วันที่(?:\s|$)/i.test(t) ||
-    /^block\s+(?:ตาราง|เวลา|time)(?:\s|$)/i.test(t) ||
+    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*ตาราง(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?(?:\s|$)/i.test(t) ||
+    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*เวล(?:า)?(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?(?:\s|$)/i.test(t) ||
+    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*วันที่(?:\s|$)/i.test(t) ||
+    /^(?:ขอ|อยาก|ช่วย|โปรด)?\s*block\s+(?:ตาราง|เวลา|time)(?:\s|$)/i.test(t) ||
     soloMeet;
   if (!isSelfBook) return null;
 
@@ -995,8 +995,8 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
   // “จองตารางกับเบส” / “นัดกับเบส” → meeting with others, not self block
   if (/^(?:จอง\s*(?:ตาราง|วันที่)?|นัด(?:ประชุม)?(?:\s*)?)(?:กับ|หา|เชิญ)\s*/i.test(t)) return null;
   const afterPrefix = t
-    .replace(/^จอง\s*(?:ตาราง|เวล(?:า)?|วันที่)\s*/i, "")
-    .replace(/^นัด(?:ประชุม)?(?:\s*)?/i, "")
+    .replace(/^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*(?:ตาราง|เวล(?:า)?|วันที่)\s*/i, "")
+    .replace(/^(?:ขอ|อยาก|ช่วย|โปรด)?\s*นัด(?:ประชุม)?(?:\s*)?/i, "")
     .trim();
   // “นัดวันเสาร์นี้ …” — วันเสาร์นี้ is a day, not a person name
   if (
