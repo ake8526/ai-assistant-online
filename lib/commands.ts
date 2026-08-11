@@ -948,23 +948,56 @@ function parseDurationMinutes(text: string): number | null {
 }
 
 /**
- * “จองตาราง วันที่ 5 กันยา เวลา 9โมง” — block own calendar, no attendees.
+ * “จองตาราง / จองวันที่ / นัดวันเสาร์นี้ …” — block own calendar, no attendees.
  * If duration is missing, handler asks “กี่นาที/ชม.” before confirm.
  */
+function soloMeetActivitySubject(text: string): string | undefined {
+  const t = (text || "").trim().replace(/\s+/g, " ");
+  const m = t.match(/^นัด(?:ประชุม)?(?:\s*)*.+?\s+(.+?)\s+(?:ตอน|เวลา|ที่)\s*/i);
+  if (!m?.[1]) return undefined;
+  const s = m[1]
+    .trim()
+    .replace(/\s*(?:ทั้งวัน|ตลอดวัน)\s*$/i, "")
+    .replace(/[.,]+$/g, "")
+    .trim();
+  return s.length >= 2 ? s.slice(0, 200) : undefined;
+}
+
 function quickSelfBookIntent(text: string): { intent: string; params: Record<string, unknown> } | null {
   let t = text.trim().replace(/\s+/g, " ");
   if (!t) return null;
+
+  // Bare “นัดวันนี้” = list meetings — not self block
+  if (/^(?:นัด|ประชุม|ตาราง)(วัน)?(วันนี้|พรุ่งนี้|สัปดาห์นี้|อาทิตย์นี้)$/i.test(t)) return null;
+
+  const soloMeet =
+    /^นัด(?:ประชุม)?/i.test(t) &&
+    !/^นัด(?:ประชุม)?(?:\s*)?(?:กับ|หา|เชิญ)\s/i.test(t) &&
+    (hasDayHint(t) || /(?:ตอน|เวลา|ที่)/i.test(t));
 
   const isSelfBook =
     /^จอง\s*ตาราง(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?(?:\s|$)/i.test(t) ||
     /^จอง\s*เวล(?:า)?(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?(?:\s|$)/i.test(t) ||
     /^จอง\s*วันที่(?:\s|$)/i.test(t) ||
-    /^block\s+(?:ตาราง|เวลา|time)(?:\s|$)/i.test(t);
+    /^block\s+(?:ตาราง|เวลา|time)(?:\s|$)/i.test(t) ||
+    soloMeet;
   if (!isSelfBook) return null;
 
-  // “จองตารางกับเบส” / “จองกับเบส” → meeting with others, not self block
-  if (/^จอง\s*(?:ตาราง|วันที่)?\s*(?:กับ|หา|เชิญ)\s*/i.test(t)) return null;
-  const afterPrefix = t.replace(/^จอง\s*(?:ตาราง|เวล(?:า)?|วันที่)\s*/i, "").trim();
+  // “นัดเบส…” / “นัดพี่นนท์ …” — book with someone else
+  if (
+    /^นัด(?:ประชุม)?(?:\s*)?(?!วัน(?:นี้|พรุ่งนี้|มะรืน|ที่|\s*(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)))(?:พี่|คุณ|น้อง|[a-z0-9._%+-]+@|[ก-๙a-z]{2,})/i.test(
+      t
+    )
+  ) {
+    return null;
+  }
+
+  // “จองตารางกับเบส” / “นัดกับเบส” → meeting with others, not self block
+  if (/^(?:จอง\s*(?:ตาราง|วันที่)?|นัด(?:ประชุม)?(?:\s*)?)(?:กับ|หา|เชิญ)\s*/i.test(t)) return null;
+  const afterPrefix = t
+    .replace(/^จอง\s*(?:ตาราง|เวล(?:า)?|วันที่)\s*/i, "")
+    .replace(/^นัด(?:ประชุม)?(?:\s*)?/i, "")
+    .trim();
   if (
     afterPrefix &&
     !/^(?:ตัวเอง|ของ(?:ฉัน|ผม)|วันที่|วันนี้|พรุ่งนี้|มะรืน|เวลา|ตอน|เรื่อง|\d)/i.test(afterPrefix)
@@ -1030,6 +1063,9 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
         .replace(/[.,]+$/g, "")
         .trim()
         .slice(0, 200) || subject;
+  } else {
+    const activity = soloMeetActivitySubject(t);
+    if (activity) subject = activity;
   }
 
   const params: Record<string, unknown> = { subject };
