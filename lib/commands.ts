@@ -998,9 +998,13 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
     .replace(/^จอง\s*(?:ตาราง|เวล(?:า)?|วันที่)\s*/i, "")
     .replace(/^นัด(?:ประชุม)?(?:\s*)?/i, "")
     .trim();
+  // “นัดวันเสาร์นี้ …” — วันเสาร์นี้ is a day, not a person name
   if (
+    !soloMeet &&
     afterPrefix &&
-    !/^(?:ตัวเอง|ของ(?:ฉัน|ผม)|วันที่|วันนี้|พรุ่งนี้|มะรืน|เวลา|ตอน|เรื่อง|\d)/i.test(afterPrefix)
+    !/^(?:ตัวเอง|ของ(?:ฉัน|ผม)|วันที่|วัน(?:นี้|พรุ่งนี้|มะรืน)?|ว?(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(?:นี้|หน้า)?|เวลา|ตอน|เรื่อง|\d)/i.test(
+      afterPrefix
+    )
   ) {
     const first = afterPrefix.split(/\s+/)[0] || "";
     const who = personFromText(first);
@@ -3507,6 +3511,13 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       wantsLunchIncluded(text),
       context.last_meeting.subject || "ประชุม"
     );
+  }
+
+  // Self-book / solo นัด — always try before LLM (even inside find_meeting_time path)
+  const selfBookEarly = quickSelfBookIntent(text);
+  if (selfBookEarly?.intent === "book_self_calendar") {
+    trace("parse", "★ AI:NONE · intent=book_self_calendar (กฎตายตัว ไม่เรียก API)");
+    return await handleParsed(userUpn, text, context, lite, selfBookEarly.intent, selfBookEarly.params);
   }
 
   trace("parse", "แยกเจตนา (intent)", "start");
