@@ -980,9 +980,13 @@ function soloMeetActivitySubject(text: string): string | undefined {
  * explicitly said "for me" — that is a self-booking signal, never a person name.
  */
 function stripThaiPoliteness(text: string): { text: string; forSelf: boolean } {
-  // No lookahead here: Thai glues words together, so "ให้เรา" is normally
-  // followed by another Thai word ("ให้เราหน่อย…") — the phrase is unambiguous.
-  const benefactive = /ให้\s*(?:เรา|ฉัน|ผม|หนู|ดิฉัน|กระผม)/g;
+  // "ให้" only means "for me" when no recipient is named after it. Compare
+  // "จองตารางให้หน่อย" (for me) with "จองตารางให้เบส" (for Bass) — so treat it
+  // as self only when a pronoun, a politeness particle, a day/time, or the end
+  // of the message follows. No lookahead on the pronoun form: Thai glues words
+  // together ("ให้เราหน่อย…") and that phrase is already unambiguous.
+  const benefactive =
+    /ให้\s*(?:เรา|ฉัน|ผม|หนู|ดิฉัน|กระผม)|ให้\s*(?=(?:ซะหน่อย|สักหน่อย|หน่อย|ที|ด้วย|สิ|ซิ|นะ|ครับ|ค่ะ|คะ)|วัน|พรุ่งนี้|มะรืน|ตอน|เวลา|เช้า|บ่าย|เย็น|ค่ำ|ครึ่ง|\d|$)/g;
   // Use match() rather than the /g regex's stateful test() — test() would leave
   // lastIndex behind and make repeat calls flip-flop.
   const forSelf = text.match(benefactive) !== null;
@@ -1013,8 +1017,11 @@ function selfBookReason(text: string): string | undefined {
     /วัน?(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(?:นี้|หน้า)?/g,
     /(?:วันนี้|พรุ่งนี้|มะรืนนี้|มะรืน|สัปดาห์นี้|อาทิตย์นี้)/g,
     /(?:ทั้งวัน|ตลอดวัน|all\s*day)/gi,
-    /(?:ตอน|เวลา|ที่)\s*\d{1,2}[:.]\d{2}/g,
+    // Whole ranges first, otherwise "เวลา 9:00" is eaten by the marker rule
+    // below and the "-12:00" tail survives.
     /\d{1,2}[:.]\d{2}(?:\s*(?:[-–—]|ถึง)\s*\d{1,2}[:.]\d{2})?/g,
+    /(?:ตอน|เวลา|ที่)\s*\d{1,2}[:.]\d{2}/g,
+    /(?:ตอน|เวลา)(?=\s|$)/g,
     /\d+\s*(?:ชม\.?|ชั่วโมง|นาที|hr|hour|min)/gi,
     /ครึ่ง\s*(?:ชม\.?|ชั่วโมง)?/g,
     /(?:เช้า|บ่าย|เย็น|ค่ำ|กลางวัน)/g,
@@ -1025,6 +1032,8 @@ function selfBookReason(text: string): string | undefined {
     /กัน\s*(?:ตาราง|เวลา)/g,
     /(?:ตัวเอง|ของ(?:ฉัน|ผม))/g,
     /\sเรื่อง\s/g,
+    // Dangling benefactive left behind once its particle was stripped.
+    /\sให้(?=\s|$)/g,
     // Connectives that only glue the reason on — require spaces so we never cut
     // into a real word (e.g. "ไป" inside "ไปรษณีย์").
     /\s(?:ไป|มา|ติด|เพื่อ|เพราะ|เนื่องจาก|ว่า)\s/g,
@@ -1032,7 +1041,15 @@ function selfBookReason(text: string): string | undefined {
     /^\s*\d{1,2}(?![:.\d])/,
   ];
   for (const re of drop) s = s.replace(re, " ");
-  s = s.replace(/[.,]+/g, " ").replace(/\s+/g, " ").trim();
+  s = s
+    .replace(/[.,]+/g, " ")
+    // Dashes orphaned by a removed time range, and any leading connective left
+    // exposed once the words around it went away.
+    .replace(/\s[-–—]+\s/g, " ")
+    .replace(/^\s*[-–—]+\s*|\s*[-–—]+\s*$/g, " ")
+    .replace(/^\s*(?:ให้|ไป|มา|ติด|เพื่อ|กัน)\s+/u, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return s.length >= 2 ? s.slice(0, 200) : undefined;
 }
 
@@ -1075,6 +1092,7 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
   const afterPrefix = t
     .replace(/^(?:ขอ|อยาก|ช่วย|โปรด)?\s*จอง\s*(?:ตาราง|เวล(?:า)?|วันที่)\s*/i, "")
     .replace(/^(?:ขอ|อยาก|ช่วย|โปรด)?\s*นัด(?:ประชุม)?(?:\s*)?/i, "")
+    .replace(/^(?:ขอ|อยาก|ช่วย|โปรด)?\s*(?:block|บล็อก|บล๊อค|บล็อค|กัน)\s*(?:ตาราง|เวลา|time)?\s*/i, "")
     .trim();
   // “นัดวันเสาร์นี้ …” — วันเสาร์นี้ is a day, not a person name
   if (
@@ -1086,11 +1104,20 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
     )
   ) {
     const first = afterPrefix.split(/\s+/)[0] || "";
-    const who = personFromText(first);
+    // Thai function words survive the strips above ("จองตารางให้ วันเสาร์นี้")
+    // and must never be mistaken for someone's name.
+    const isFunctionWord = /^(?:ให้|ไป|มา|ที่|ของ|เพื่อ|ติด|กับ|และ|แล้ว|ก็|จะ|ๆ)$/u.test(first);
+    // Reuse the date/time vocabulary instead of maintaining a second whitelist:
+    // if nothing survives stripping, the token was a day/time ("พรุ่งนี้บ่าย"),
+    // not a name. A real name ("เบส") survives and still blocks self-booking.
+    const isDateOrTime = !selfBookReason(first);
+    const who = isFunctionWord || isDateOrTime ? null : personFromText(first);
     if (who && !SELF_WORDS.has(who.toLowerCase())) return null;
   }
 
   let durationMin: number | undefined;
+  // "ครึ่งเช้า" / "ครึ่งบ่าย" = block half the working day, not a 30-minute slot.
+  const halfDay = t.match(/ครึ่ง\s*(เช้า|บ่าย)/);
   const allDay = /(?:ทั้งวัน|ตลอดวัน|all\s*day)/i.test(t);
   const halfHr = t.match(/ครึ่ง\s*(?:ชม\.?|ชั่วโมง|hr|hour)/i);
   if (halfHr) durationMin = 30;
@@ -1133,6 +1160,18 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
     } else {
       const thaiClock = parseThaiClockToHHMM(t);
       if (thaiClock) atMin = parseHHMM(thaiClock);
+    }
+  }
+
+  // Half-day requests carry their own window when no explicit time was given:
+  // morning = work start → noon, afternoon = noon → work end.
+  if (halfDay && atMin == null) {
+    if (halfDay[1] === "เช้า") {
+      atMin = WORK_START_HOUR * 60;
+      durationMin = Math.max(60, 12 * 60 - atMin);
+    } else {
+      atMin = 12 * 60;
+      durationMin = Math.max(60, WORK_END_HOUR * 60 - atMin);
     }
   }
 
