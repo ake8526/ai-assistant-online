@@ -58,6 +58,122 @@ export function fmtDateTime(d: Date): string {
   return `${fmtDate(d)} ${fmtTime(d)}`;
 }
 
+const THAI_WEEKDAY_NAMES = [
+  "วันอาทิตย์",
+  "วันจันทร์",
+  "วันอังคาร",
+  "วันพุธ",
+  "วันพฤหัสบดี",
+  "วันศุกร์",
+  "วันเสาร์",
+] as const;
+
+export function thaiWeekday(d: Date): string {
+  return THAI_WEEKDAY_NAMES[d.getUTCDay()] || "";
+}
+
+export function isWeekend(d: Date): boolean {
+  const dow = d.getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
+/** Fixed Thai public / observed holidays (YYYY-MM-DD → name). Extend yearly as needed. */
+const THAI_HOLIDAYS: Record<string, string> = {
+  "2025-01-01": "วันขึ้นปีใหม่",
+  "2025-02-12": "วันมาฆบูชา",
+  "2025-04-06": "วันจักรี",
+  "2025-04-07": "ชดเชยวันจักรี",
+  "2025-04-13": "วันสงกรานต์",
+  "2025-04-14": "วันสงกรานต์",
+  "2025-04-15": "วันสงกรานต์",
+  "2025-04-16": "ชดเชยวันสงกรานต์",
+  "2025-05-01": "วันแรงงานแห่งชาติ",
+  "2025-05-05": "วันฉัตรมงคล",
+  "2025-05-09": "วันพืชมงคล",
+  "2025-05-12": "วันวิสาขบูชา",
+  "2025-06-02": "ชดเชยวันเฉลิมพระชนมพรรษา สมเด็จพระนางเจ้าสุทิดา",
+  "2025-06-03": "วันเฉลิมพระชนมพรรษา สมเด็จพระนางเจ้าสุทิดา",
+  "2025-07-10": "วันอาสาฬหบูชา",
+  "2025-07-11": "วันเข้าพรรษา",
+  "2025-07-28": "วันเฉลิมพระชนมพรรษา ร.10",
+  "2025-08-11": "ชดเชยวันแม่แห่งชาติ",
+  "2025-08-12": "วันแม่แห่งชาติ",
+  "2025-10-13": "วันคล้ายวันสวรรคต ร.9",
+  "2025-10-23": "วันปิยมหาราช",
+  "2025-12-05": "วันพ่อแห่งชาติ",
+  "2025-12-10": "วันรัฐธรรมนูญ",
+  "2025-12-31": "วันสิ้นปี",
+  "2026-01-01": "วันขึ้นปีใหม่",
+  "2026-01-02": "ชดเชยวันขึ้นปีใหม่",
+  "2026-03-03": "วันมาฆบูชา",
+  "2026-04-06": "วันจักรี",
+  "2026-04-13": "วันสงกรานต์",
+  "2026-04-14": "วันสงกรานต์",
+  "2026-04-15": "วันสงกรานต์",
+  "2026-05-01": "วันแรงงานแห่งชาติ",
+  "2026-05-04": "ชดเชยวันฉัตรมงคล",
+  "2026-05-05": "วันฉัตรมงคล",
+  "2026-05-11": "วันพืชมงคล",
+  "2026-06-01": "วันวิสาขบูชา",
+  "2026-06-03": "วันเฉลิมพระชนมพรรษา สมเด็จพระนางเจ้าสุทิดา",
+  "2026-06-29": "วันอาสาฬหบูชา",
+  "2026-06-30": "วันเข้าพรรษา",
+  "2026-07-28": "วันเฉลิมพระชนมพรรษา ร.10",
+  "2026-08-12": "วันแม่แห่งชาติ",
+  "2026-10-13": "วันคล้ายวันสวรรคต ร.9",
+  "2026-10-23": "วันปิยมหาราช",
+  "2026-12-05": "วันพ่อแห่งชาติ",
+  "2026-12-07": "ชดเชยวันพ่อแห่งชาติ",
+  "2026-12-10": "วันรัฐธรรมนูญ",
+  "2026-12-31": "วันสิ้นปี",
+};
+
+function ymdKey(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function thaiHolidayName(d: Date): string | null {
+  return THAI_HOLIDAYS[ymdKey(d)] || null;
+}
+
+/**
+ * Non-work-day tag for replies: "วันเสาร์", "วันอาทิตย์", "วันหยุด (…)",
+ * or "วันเสาร์ · วันหยุด (…)" when both apply. Null on a normal weekday.
+ */
+export function nonWorkDayNote(d: Date): string | null {
+  const hol = thaiHolidayName(d);
+  const wk = isWeekend(d) ? thaiWeekday(d) : "";
+  if (hol && wk) return `${wk} · วันหยุด (${hol})`;
+  if (hol) return `วันหยุด (${hol})`;
+  if (wk) return wk;
+  return null;
+}
+
+/** Append weekend/holiday to a day label like "พรุ่งนี้" → "พรุ่งนี้ · วันเสาร์". */
+export function enrichDayLabel(base: string, d: Date): string {
+  const note = nonWorkDayNote(d);
+  if (!note) return base;
+  if (!base) return note;
+  if (base.includes(note) || /วันเสาร์|วันอาทิตย์|วันหยุด/.test(base)) return base;
+  return `${base} · ${note}`;
+}
+
+/** Slot line: "08/08/2026 วันเสาร์ 09:00-09:30" when Sat/Sun/holiday. */
+export function fmtSlotRange(start: Date, end: Date): string {
+  const note = nonWorkDayNote(start);
+  if (note) return `${fmtDate(start)} ${note} ${fmtTime(start)}-${fmtTime(end)}`;
+  return `${fmtDateTime(start)}-${fmtTime(end)}`;
+}
+
+/** Date header for lists: "13/08/2026" or "08/08/2026 วันเสาร์". */
+export function fmtDayHeader(d: Date): string {
+  const note = nonWorkDayNote(d);
+  return note ? `${fmtDate(d)} ${note}` : fmtDate(d);
+}
+
 export function startOfDay(d: Date): Date {
   const r = new Date(d);
   r.setUTCHours(0, 0, 0, 0);
@@ -120,6 +236,92 @@ export function resolveDay(dateStr: string): { start: Date; end: Date; label: st
   }
   if (!d || isNaN(d.getTime())) return null;
   return { start: d, end: endOfDay(d), label: fmtDate(d) };
+}
+
+/** Map Thai month aliases (short/long) to 1–12. */
+function thaiMonthNum(token: string): number | null {
+  const s = (token || "").replace(/\./g, "").replace(/\s+/g, "").toLowerCase();
+  const map: Record<string, number> = {
+    มค: 1,
+    มกรา: 1,
+    มกราคม: 1,
+    กพ: 2,
+    กุมภา: 2,
+    กุมภาพันธ์: 2,
+    มีค: 3,
+    มีนา: 3,
+    มีนาคม: 3,
+    เมย: 4,
+    เมษา: 4,
+    เมษายน: 4,
+    พค: 5,
+    พฤษภา: 5,
+    พฤษภาคม: 5,
+    มิย: 6,
+    มิถุนา: 6,
+    มิถุนายน: 6,
+    กค: 7,
+    กรกฎา: 7,
+    กรกฎาคม: 7,
+    สค: 8,
+    สิงหา: 8,
+    สิงหาคม: 8,
+    กย: 9,
+    กันยา: 9,
+    กันยายน: 9,
+    ตค: 10,
+    ตุลา: 10,
+    ตุลาคม: 10,
+    พย: 11,
+    พฤศจิกา: 11,
+    พฤศจิกายน: 11,
+    ธค: 12,
+    ธันวา: 12,
+    ธันวาคม: 12,
+  };
+  return map[s] ?? null;
+}
+
+/**
+ * Parse Thai calendar dates in free text — e.g. "วันที่ 5 กันยา", "5 ก.ย. 2569", "5/9".
+ * Returns null when no concrete date is found.
+ */
+export function resolveThaiDateInText(text: string): { start: Date; end: Date; label: string } | null {
+  const t = (text || "").trim();
+  if (!t) return null;
+
+  const slash = t.match(/(?:วันที่\s*)?(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+  if (slash) {
+    const day = Number(slash[1]);
+    const mo = Number(slash[2]);
+    let y = slash[3] ? Number(slash[3]) : nowWall().getUTCFullYear();
+    if (y < 100) y += y > 50 ? 1900 : 2000;
+    const d = new Date(Date.UTC(y, mo - 1, day));
+    if (!isNaN(d.getTime())) return { start: d, end: endOfDay(d), label: fmtDate(d) };
+  }
+
+  const iso = t.match(/(?:วันที่\s*)?(\d{4}-\d{2}-\d{2})/);
+  if (iso) return resolveDay(iso[1]!);
+
+  const thai = t.match(
+    /(?:วันที่\s*)?(\d{1,2})\s*(ม\.?ค\.?|ก\.?พ\.?|มี\.?ค\.?|เม\.?ย\.?|พ\.?ค\.?|มิ\.?ย\.?|ก\.?ค\.?|ส\.?ค\.?|ก\.?ย\.?|ต\.?ค\.?|พ\.?ย\.?|ธ\.?ค\.?|มกร(?:า(?:คม)?)?|กุมภ(?:า(?:พันธ์)?)?|มีน(?:า(?:คม)?)?|เมษ(?:า(?:ยน)?)?|พฤษ(?:ภ(?:า(?:คม)?)?)?|มิถุ(?:น(?:า(?:ยน)?)?)?|กรก(?:ฎ(?:า(?:คม)?)?)?|สิงห(?:า(?:คม)?)?|กันย(?:า(?:ยน)?)?|ตุล(?:า(?:คม)?)?|พฤศ(?:จ(?:ิ(?:ก(?:า(?:ยน)?)?)?)?)?|ธันว(?:า(?:คม)?)?)(?:\s*(?:พ\.?\s*ศ\.?\s*)?(\d{4}|\d{2}))?/iu
+  );
+  if (thai) {
+    const day = Number(thai[1]);
+    const mo = thaiMonthNum(thai[2]!);
+    if (mo && day >= 1 && day <= 31) {
+      let y = thai[3] ? Number(thai[3]) : nowWall().getUTCFullYear();
+      if (y > 2400) y -= 543;
+      else if (y < 100) y += y > 50 ? 1900 : 2000;
+      const d = new Date(Date.UTC(y, mo - 1, day));
+      if (!isNaN(d.getTime())) return { start: d, end: endOfDay(d), label: fmtDate(d) };
+    }
+  }
+
+  const bare = t.match(/(?:วันที่\s*)(\d{1,2})(?!\s*[\/\-]|\s*(?:ม\.?ค|ก\.?พ|มี\.?ค|เม\.?ย|พ\.?ค|มิ\.?ย|ก\.?ค|ส\.?ค|ก\.?ย|ต\.?ค|พ\.?ย|ธ\.?ค|มกร|กุมภ|มีน|เมษ|พฤษ|มิถุ|กรก|สิงห|กันย|ตุล|พฤศ|ธันว))/iu);
+  if (bare) return resolveDay(bare[1]!);
+
+  return null;
 }
 
 const WEEKDAYS: Record<string, number> = {

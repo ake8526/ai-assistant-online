@@ -12,7 +12,7 @@ import {
   markPendingMeetingPhoto,
   quickLinkMeetingIntent,
 } from "@/lib/meetingLink";
-import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
+import { buildDigest, formatDigestSkippedNote, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
 import { claimDigestPush, clearDigestClaim, kickLineDigest } from "@/lib/digestKick";
 import { sendLine } from "@/lib/line";
 import { runWithTrace, trace } from "@/lib/trace";
@@ -75,9 +75,12 @@ import {
 import {
   addDays,
   addMinutes,
+  enrichDayLabel,
   fmtDate,
   fmtDateTime,
+  fmtDayHeader,
   fmtHHMM,
+  fmtSlotRange,
   fmtTime,
   minutesOfDay,
   nowWall,
@@ -87,6 +90,7 @@ import {
   parseWall,
   periodRange,
   resolveDay,
+  resolveThaiDateInText,
   resolveWeekday,
   startOfDay,
   endOfDay,
@@ -120,6 +124,48 @@ export type CommandContext = {
   nick_dup_offset?: number;
   /** Last meeting index used when linking files (for bare SharePoint URL follow-up). */
   last_link_meeting_index?: number;
+  /**
+   * Pending “เลือกคน” for find-meeting (เบสกับพี่เบส).
+   * Lets the user type “1” or “1กับ2” instead of only tapping buttons.
+   */
+  pending_mt_pick?: PendingMtPick;
+  /** Pending “เลือกคน” for single-person ดูตารางเบส (choose_person). */
+  pending_avail_pick?: PendingAvailPick;
+  /** Pending self calendar block — waiting for duration (minutes/hours). */
+  pending_self_book?: PendingSelfBook;
+};
+
+export type PendingSelfBook = {
+  dayStart: string;
+  dateLabel: string;
+  atMin?: number;
+  subject?: string;
+  allDay?: boolean;
+};
+
+export type PendingMtPick = {
+  attendees: { mail?: string; name?: string }[];
+  choices: { mail: string; displayName: string }[];
+  duration: number;
+  window?: { start: string; end: string; label: string } | null;
+  after?: number | null;
+  before?: number | null;
+  atMin?: number | null;
+  subject?: string;
+  includeLunch?: boolean;
+};
+
+export type PendingAvailPick = {
+  choices: { mail: string; displayName: string }[];
+  period: string;
+  date?: string;
+  lunch?: boolean;
+  query?: string;
+  /** free = ดูตารางว่าง; busy = ดูนัด/ประชุม */
+  mode?: "free" | "busy";
+  after?: number | null;
+  before?: number | null;
+  at?: number | null;
 };
 
 export type CommandResult = {
@@ -135,6 +181,12 @@ export type CommandResult = {
   /** Persist paging cursor for duplicate nicknames. */
   nick_dup_offset?: number;
   last_link_meeting_index?: number;
+  /** Persist so typed “1กับ2” works after choose_mt_person. */
+  pending_mt_pick?: PendingMtPick | null;
+  /** Persist so typed “ทั้งหมด” works after choose_person (ดูตารางเบส). */
+  pending_avail_pick?: PendingAvailPick | null;
+  /** Persist while waiting for “30 นาที” / “1 ชม.” after จองตาราง. */
+  pending_self_book?: PendingSelfBook | null;
   meeting?: {
     attendees: string[];
     duration: number;
@@ -144,6 +196,7 @@ export type CommandResult = {
     attach_file?: { id?: string; name?: string; url?: string };
     /** LINE photo waiting to attach on confirm */
     attach_line_photo?: boolean;
+    all_day?: boolean;
   };
   person?: { mail: string; displayName?: string };
   map_url?: string | null;
@@ -322,7 +375,9 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 // ---------------------------------------------------------------------------
 const NAME_PREFIX = [
   "ขอดูตารางว่าง", "ขอดูตาราง", "ดูตารางว่างของ", "ดูตารางว่าง", "ดูตารางของ", "ดูตาราง",
-  "ตารางว่างของ", "ตารางว่าง", "ตารางของ", "ตาราง", "ขอเช็คตาราง", "เช็คตาราง", "ขอดู", "ขอเช็ค",
+  "ตารางว่างของ", "ตารางว่าง", "ตารางของ", "ตาราง", "ขอเช็คตาราง", "เช็คตาราง",
+  "ดูนัดของ", "ดูนัด", "ขอดูนัด", "เช็คนัด", "เช็กนัด", "ดูประชุมของ", "ดูประชุม", "ขอดูประชุม",
+  "ขอดู", "ขอเช็ค",
   "เช็ค", "เช็ก", "ดูให้", "ดู", "ขอ", "มีนัดกับ", "มีประชุมกับ", "มีนัด", "มีประชุม", "มี",
   "วันนี้", "พรุ่งนี้", "มะรืนนี้", "มะรืน", "สัปดาห์นี้", "อาทิตย์นี้", "เดือนนี้", "ของ",
 ];
@@ -459,6 +514,8 @@ function personFromText(text: string): string {
     }
   }
   s = s ? stripHonorificPublic(s).replace(/^[ .,/-]+|[ .,/-]+$/g, "") : "";
+  // leftover “นัดเบส” / “ประชุมเบส” after peeling ดู
+  s = s.replace(/^(?:นัด|ประชุม)\s*/u, "").trim();
   return SELF_WORDS.has(s) ? "" : s;
 }
 
@@ -527,11 +584,17 @@ function peopleFromText(text: string): string[] {
     .map((s) => cleanPersonToken(s))
     .filter((s) => s && !SELF_WORDS.has(s));
 
-  // Dedupe while preserving order
+  // Dedupe while preserving order — BUT keep duplicate nicknames when the user
+  // listed multiple people with กับ/และ (e.g. “เบสกับพี่เบส” = two Bases).
+  const connectorSlots = body
+    .split(/\s*(?:กับ|และ|,|\/|&)\s*/)
+    .map((s) => s.replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim())
+    .filter((s) => s && !SELF_WORDS.has(s) && !/^(ประชุม|นัด|จอง|ตาราง|ว่าง|ตรงกัน)$/i.test(s));
+  const keepDupNicks = connectorSlots.length >= 2;
   const seen = new Set<string>();
   parts = parts.filter((p) => {
     const k = p.toLowerCase();
-    if (seen.has(k)) return false;
+    if (seen.has(k)) return keepDupNicks;
     seen.add(k);
     return true;
   });
@@ -701,7 +764,7 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     return { intent: "clear_memory", params: {} };
   }
 
-  // "ดูตารางพี่นนท์" → one person (multi-person already handled above)
+  // "ดูตารางพี่นนท์" → free time; "ดูนัดเบส" → that person's meetings
   if (/^(ดู|ขอดู|เช็ค|เช็ก)?ตาราง/.test(t)) {
     const people = peopleFromText(t);
     const who = people[0] || personFromText(t);
@@ -711,6 +774,23 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
         intent: "my_availability",
         params: period ? { person: who, period } : { person: who },
       };
+    }
+  }
+  if (
+    /^(ดู|ขอดู|เช็ค|เช็ก)?(นัด|ประชุม)/.test(t) &&
+    !/^(?:นัด|จอง|ส่งนัด)/.test(t) &&
+    !/^(นัด|ประชุม|ตาราง)(วัน)?(วันนี้|พรุ่งนี้)$/i.test(t)
+  ) {
+    const who = personFromText(t);
+    if (who) {
+      const period = /พรุ่งนี้/.test(t)
+        ? "tomorrow"
+        : /วันนี้/.test(t)
+          ? "today"
+          : /สัปดาห์|อาทิตย์/.test(t)
+            ? "week"
+            : "upcoming";
+      return { intent: "list_meetings", params: { person: who, period } };
     }
   }
 
@@ -790,6 +870,9 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   }
 
   // "นัดเบสวันนี้ 10นาทีตอน 13:50 เรื่อง X" → book/find meeting (not add_task)
+  const selfBook = quickSelfBookIntent(t);
+  if (selfBook) return selfBook;
+
   const book = quickBookIntent(t);
   if (book) return book;
 
@@ -845,6 +928,119 @@ function quickCancelIntent(text: string): { intent: string; params: Record<strin
   if (period) params.period = period;
   if (rest && !/^(วันนี้|พรุ่งนี้|มะรืน|ทั้งหมด|นี้)$/i.test(rest)) params.person = rest;
   return { intent: "cancel_meeting", params };
+}
+
+/** Parse “30 นาที”, “1 ชม.”, or bare “30” / “1” when answering a duration question. */
+function parseDurationMinutes(text: string): number | null {
+  const t = (text || "").trim().replace(/\s+/g, " ");
+  if (!t) return null;
+  if (/ครึ่ง\s*(?:ชม\.?|ชั่วโมง)/i.test(t)) return 30;
+  const hr = t.match(/(\d+(?:\.\d+)?)\s*(?:ชม\.?|ชั่วโมง|hr|hour)/i);
+  if (hr) return Math.max(15, Math.round(Number(hr[1]) * 60));
+  const min = t.match(/(\d+)\s*(?:นาที|min)/i);
+  if (min) return Math.max(5, Number(min[1]));
+  if (/^\d+$/.test(t)) {
+    const n = Number(t);
+    if (n >= 5 && n <= 240) return n;
+    if (n >= 1 && n <= 8) return n * 60;
+  }
+  return null;
+}
+
+/**
+ * “จองตาราง วันที่ 5 กันยา เวลา 9โมง” — block own calendar, no attendees.
+ * If duration is missing, handler asks “กี่นาที/ชม.” before confirm.
+ */
+function quickSelfBookIntent(text: string): { intent: string; params: Record<string, unknown> } | null {
+  let t = text.trim().replace(/\s+/g, " ");
+  if (!t) return null;
+
+  const isSelfBook =
+    /^จอง\s*ตาราง(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?(?:\s|$)/i.test(t) ||
+    /^จอง\s*เวล(?:า)?(?:\s*(?:ตัวเอง|ของ(?:ฉัน|ผม)))?(?:\s|$)/i.test(t) ||
+    /^จอง\s*วันที่(?:\s|$)/i.test(t) ||
+    /^block\s+(?:ตาราง|เวลา|time)(?:\s|$)/i.test(t);
+  if (!isSelfBook) return null;
+
+  // “จองตารางกับเบส” / “จองกับเบส” → meeting with others, not self block
+  if (/^จอง\s*(?:ตาราง|วันที่)?\s*(?:กับ|หา|เชิญ)\s*/i.test(t)) return null;
+  const afterPrefix = t.replace(/^จอง\s*(?:ตาราง|เวล(?:า)?|วันที่)\s*/i, "").trim();
+  if (
+    afterPrefix &&
+    !/^(?:ตัวเอง|ของ(?:ฉัน|ผม)|วันที่|วันนี้|พรุ่งนี้|มะรืน|เวลา|ตอน|เรื่อง|\d)/i.test(afterPrefix)
+  ) {
+    const first = afterPrefix.split(/\s+/)[0] || "";
+    const who = personFromText(first);
+    if (who && !SELF_WORDS.has(who.toLowerCase())) return null;
+  }
+
+  let durationMin: number | undefined;
+  const allDay = /(?:ทั้งวัน|ตลอดวัน|all\s*day)/i.test(t);
+  const halfHr = t.match(/ครึ่ง\s*(?:ชม\.?|ชั่วโมง|hr|hour)/i);
+  if (halfHr) durationMin = 30;
+  const durHr = t.match(/(\d+)\s*(?:ชม\.?|ชั่วโมง|hr|hour)/i);
+  const durMin = t.match(/(\d+)\s*(?:นาที|min)/i);
+  if (durHr) durationMin = Math.max(15, Number(durHr[1]) * 60);
+  else if (durMin) durationMin = Math.max(5, Number(durMin[1]));
+
+  let window: { start: Date; end: Date; label: string } | null = null;
+  if (/วันนี้/.test(t)) window = periodRange("today");
+  else if (/พรุ่งนี้/.test(t)) window = periodRange("tomorrow");
+  else if (/มะรืน(?:นี้)?/.test(t)) {
+    const d = addDays(startOfDay(nowWall()), 2);
+    window = { start: d, end: endOfDay(d), label: "มะรืนนี้" };
+  } else {
+    const wd = t.match(/วัน?(จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(นี้|หน้า)?/);
+    if (wd) window = resolveWeekday(wd[1]! + (wd[2] || ""));
+    else window = resolveThaiDateInText(t);
+    if (!window) {
+      const dm = t.match(/วันที่\s*(\d{1,2}(?:\/\d{1,2}(?:\/\d{2,4})?)?|\d{4}-\d{2}-\d{2})/);
+      if (dm) window = resolveDay(dm[1]!);
+    }
+  }
+
+  let atMin: number | null = null;
+  const rangeM = t.match(/(\d{1,2})[:.](\d{2})\s*(?:[-–—]|ถึง)\s*(\d{1,2})[:.](\d{2})/);
+  if (rangeM) {
+    const sh = Number(rangeM[1]);
+    const sm = Number(rangeM[2]);
+    const eh = Number(rangeM[3]);
+    const em = Number(rangeM[4]);
+    atMin = sh * 60 + sm;
+    const span = eh * 60 + em - atMin;
+    if (span >= 5 && span <= 8 * 60) durationMin = span;
+  } else {
+    const timeM =
+      t.match(/(?:ตอน|เวลา|ที่)\s*(\d{1,2}[:.]\d{2})/i) || t.match(/\b(\d{1,2}[:.]\d{2})\b/);
+    if (timeM) {
+      atMin = parseHHMM(timeM[1]!.replace(".", ":"));
+    } else {
+      const thaiClock = parseThaiClockToHHMM(t);
+      if (thaiClock) atMin = parseHHMM(thaiClock);
+    }
+  }
+
+  let subject = "จองเวลา";
+  const subjM = t.match(/\sเรื่อง\s*(.+)$/i);
+  if (subjM) {
+    subject =
+      subjM[1]!
+        .trim()
+        .replace(/\s*(?:ทั้งวัน|ตลอดวัน|all\s*day)\s*$/i, "")
+        .replace(/[.,]+$/g, "")
+        .trim()
+        .slice(0, 200) || subject;
+  }
+
+  const params: Record<string, unknown> = { subject };
+  if (window) {
+    params.day_start = wallIso(window.start);
+    params.date_label = window.label;
+  }
+  if (allDay) params.all_day = true;
+  if (atMin != null) params.at = fmtHHMM(atMin);
+  if (durationMin) params.duration_min = durationMin;
+  return { intent: "book_self_calendar", params };
 }
 
 /** Deterministic parse for “นัด/จอง + ชื่อคน (+ วัน/เวลา/เรื่อง)” — avoids LLM mistaking เรื่อง… as add_task. */
@@ -1010,15 +1206,27 @@ function extractEmails(text: string): string[] {
 
 /**
  * Normalize book-line tokens: pull clean emails out of "นัด ake@x.com",
- * drop command words, dedupe mail/name.
+ * drop command words. Dedupes mail; keeps duplicate nicknames when the input
+ * listed the same nick twice (e.g. “เบสกับพี่เบส”).
  */
 function sanitizeAttendeeTokens(tokens: string[]): string[] {
   const out: string[] = [];
   const seenMail = new Set<string>();
-  const seenName = new Set<string>();
   // Whole-token schedule junk only — never substring-kill “นาทีของพี่เอ็ม”
   const noiseWhole =
     /^(?:วันนี้|พรุ่งนี้|มะรืน|นาที|โมง|ทุ่ม|เรื่อง|ตอน|บ่าย|เช้า|เย็น|เที่ยง|ชั่วโมง|ช่วง|เวลา|ว่าง|ตรงกัน|หาเวลาว่าง|หาเวลา|\d{1,2}(?::\d{2})?)$/i;
+
+  // How many times each nick appears in the raw token list (เบส+พี่เบส → เบส×2)
+  const nickBudget = new Map<string, number>();
+  for (const raw of tokens) {
+    const s = peelSchedulePhrases(String(raw || "").trim());
+    if (!s || extractEmails(s).length) continue;
+    const n = cleanPersonToken(s);
+    if (!n || noiseWhole.test(n) || SELF_WORDS.has(n)) continue;
+    const key = n.toLowerCase();
+    nickBudget.set(key, (nickBudget.get(key) || 0) + 1);
+  }
+  const nickUsed = new Map<string, number>();
 
   const pushMail = (e: string) => {
     const m = e.trim().toLowerCase();
@@ -1034,8 +1242,11 @@ function sanitizeAttendeeTokens(tokens: string[]): string[] {
     if (n.split(/\s+/).length > 2) return;
     if (n.length > 32) return;
     const key = n.toLowerCase();
-    if (seenName.has(key) || seenMail.has(key)) return;
-    seenName.add(key);
+    if (seenMail.has(key)) return;
+    const used = nickUsed.get(key) || 0;
+    const budget = Math.max(1, nickBudget.get(key) || 1);
+    if (used >= budget) return;
+    nickUsed.set(key, used + 1);
     out.push(n);
   };
 
@@ -1322,7 +1533,7 @@ async function personBusyResponse(
     const lines = [`📌 ตารางของ ${who} (${label}):`, ""];
     let lastDay: string | null = null;
     for (const r of rows) {
-      const d = fmtDate(r.sd);
+      const d = fmtDayHeader(r.sd);
       if (d !== lastDay) {
         lines.push(`— ${d} —`);
         lastDay = d;
@@ -1346,7 +1557,7 @@ async function personBusyResponse(
     const lines = [`📌 ${who} ติดคิวช่วงนี้ครับ (${label}):`, "", "(ดูหัวข้อประชุมไม่ได้ — แสดงเฉพาะช่วงเวลาที่ไม่ว่าง)"];
     let lastDay: string | null = null;
     for (const r of ranges) {
-      const d = fmtDate(r.start);
+      const d = fmtDayHeader(r.start);
       if (d !== lastDay) {
         lines.push(`— ${d} —`);
         lastDay = d;
@@ -1368,7 +1579,7 @@ function formatEventsSimple(events: GraphEvent[], label: string): string {
     const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
     const ed = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
     const tt = sd && ed ? `${fmtTime(sd)}-${fmtTime(ed)}` : "?";
-    const d = sd ? fmtDate(sd) : "?";
+    const d = sd ? fmtDayHeader(sd) : "?";
     if (d !== lastDay) {
       lines.push(`— ${d} —`);
       lastDay = d;
@@ -1712,6 +1923,8 @@ function dayHintFromText(text: string): MtWindow | null {
   }
   const m = text.match(/วัน?(จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(นี้|หน้า)?/);
   if (m) return resolveWeekday(m[1] + (m[2] || ""));
+  const thaiDate = resolveThaiDateInText(text);
+  if (thaiDate) return thaiDate;
   const dm = text.match(/วันที่\s*(\d{1,2}(?:\/\d{1,2}(?:\/\d{2,4})?)?|\d{4}-\d{2}-\d{2})/);
   if (dm) return resolveDay(dm[1]);
   return null;
@@ -1727,11 +1940,12 @@ function resolveFindWindow(params: Record<string, unknown>, text: string): MtWin
 }
 
 function timeBandFromText(text: string): { after: number | null; before: number | null; label: string } | null {
-  // Typos: ช่าวง→ช่วง, เข้า(เมื่อคู่กับช่วง)→เช้า
+  // Typos: ช่าวง→ช่วง, เข้า(เมื่อคู่กับช่วง)→เช้า, เช้ส→เช้า
   const t = text
     .trim()
     .replace(/\s+/g, " ")
     .replace(/ช่าวง/g, "ช่วง")
+    .replace(/เช้ส/g, "เช้า")
     .replace(/ช่วง\s*เข้า/g, "ช่วงเช้า");
 
   // Exact clock in the message → leave to parseThaiClock* (unless ก่อน/หลัง…)
@@ -1817,7 +2031,7 @@ function isTimeFollowUp(text: string): boolean {
 
 /** “พรุ่งนี้ล่ะ” / “แล้ววันนี้” — same people, new calendar day. */
 function isDayFollowUp(text: string): boolean {
-  const t = text.trim().replace(/\s+/g, " ");
+  const t = text.trim().replace(/\s+/g, " ").replace(/เช้ส/g, "เช้า");
   if (!t) return false;
   return (
     /^(?:แล้ว)?(?:วัน)?พรุ่งนี้(?:\s*(?:ล่ะ|ละ|ไหม|มั้ย|วะ|นะ))?[!?.…]*$/u.test(t) ||
@@ -1829,8 +2043,25 @@ function isDayFollowUp(text: string): boolean {
   );
 }
 
+/**
+ * “แต่พรุ่งนี้เช้าว่างนะ” / “พรุ่งนี้เช้า” — keep attendees, change day + optional time band.
+ * (User insisting Outlook shows free time.)
+ */
+function isDayBandFollowUp(text: string): boolean {
+  const t = text.trim().replace(/\s+/g, " ").replace(/เช้ส/g, "เช้า");
+  if (!t) return false;
+  if (!/(?:วันนี้|พรุ่งนี้|มะรืน(?:นี้)?|วัน(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์))/u.test(t)) {
+    return false;
+  }
+  if (!/(?:เช้า|สาย|บ่าย|เย็น|ค่ำ|ว่าง)/u.test(t)) return false;
+  // New multi-person ask → not a follow-up
+  if (peopleFromText(t).length >= 2) return false;
+  if (/^(?:นัด|จอง|ส่งนัด)/u.test(t)) return false;
+  return true;
+}
+
 function windowFromDayFollowUp(text: string): MtWindow | null {
-  const t = text.trim();
+  const t = text.trim().replace(/เช้ส/g, "เช้า");
   if (/พรุ่งนี้/.test(t)) return periodRange("tomorrow");
   if (/มะรืน/.test(t)) {
     const d = addDays(startOfDay(nowWall()), 2);
@@ -1848,6 +2079,365 @@ function windowFromStored(m?: CommandContext["last_meeting"]): MtWindow | null {
   const end = parseWall(m.window.end);
   if (!start || !end) return null;
   return { start, end, label: m.window.label || fmtDate(start) };
+}
+
+/** “1” / “1กับ2” / “หนึ่งกับสอง” / “1 และ 2” → 1-based indices. */
+function parseChoiceIndices(text: string): number[] {
+  let t = text.trim().replace(/\s+/g, " ");
+  t = t.replace(/^เลือก\s*/u, "").replace(/[)）.]+$/u, "").trim();
+  // Strip trailing Thai particles
+  t = t.replace(/\s*(?:ครับ|ค่ะ|นะ|เลย)\s*$/u, "").trim();
+  if (!t) return [];
+
+  const WORD_TO_NUM: Record<string, number> = {
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "5": 5,
+    "6": 6,
+    "7": 7,
+    "8": 8,
+    "9": 9,
+    "10": 10,
+    "๑": 1,
+    "๒": 2,
+    "๓": 3,
+    "๔": 4,
+    "๕": 5,
+    "๖": 6,
+    "๗": 7,
+    "๘": 8,
+    "๙": 9,
+    "๑๐": 10,
+    หนึ่ง: 1,
+    เอ็ด: 1,
+    สอง: 2,
+    สาม: 3,
+    สี่: 4,
+    ห้า: 5,
+    หก: 6,
+    เจ็ด: 7,
+    แปด: 8,
+    เก้า: 9,
+    สิบ: 10,
+    first: 1,
+    second: 2,
+    third: 3,
+    one: 1,
+    two: 2,
+    three: 3,
+  };
+
+  const toNum = (tok: string): number | null => {
+    const s = tok.trim().toLowerCase();
+    if (!s) return null;
+    if (/^\d{1,2}$/.test(s)) {
+      const n = Number(s);
+      return n >= 1 && n <= 20 ? n : null;
+    }
+    return WORD_TO_NUM[s] ?? null;
+  };
+
+  // Split on connectors (keep Thai words intact)
+  const parts = t
+    .split(/\s*(?:กับ|และ|,|\/|&|\+|กับ)\s*/u)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  // Single token: "1" / "หนึ่ง" / "ข้อ2"
+  if (parts.length === 1) {
+    const alone = parts[0]!.replace(/^ข้อ\s*/u, "").replace(/^อัน\s*/u, "").trim();
+    const n = toNum(alone);
+    return n != null ? [n] : [];
+  }
+
+  const nums: number[] = [];
+  for (const p of parts) {
+    const n = toNum(p.replace(/^ข้อ\s*/u, "").replace(/^อัน\s*/u, "").trim());
+    if (n == null) return [];
+    nums.push(n);
+  }
+  return nums;
+}
+
+function looksLikeChoiceAttempt(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length > 40) return false;
+  if (parseChoiceIndices(t).length) return true;
+  // Thai/Arabic digits or number-words with connectors
+  return /(?:\d|[๑-๙]|หนึ่ง|สอง|สาม|สี่|ห้า|หก|เจ็ด|แปด|เก้า|สิบ)/u.test(t) &&
+    /(?:กับ|และ|,|\/|&|\+)/u.test(t);
+}
+
+/** “ทั้งหมด” / “ทุกคน” / “เอาทั้งหมด” while choosing from a name list. */
+function isSelectAllChoices(text: string): boolean {
+  const t = text
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/(?:ครับ|ค่ะ|นะ|เลย)$/u, "");
+  return /^(?:เลือก|เอา)?(?:ทั้งหมด|ทุกคน|ทุกรายการ|all)$/i.test(t);
+}
+
+function pendingWindowBand(pending: PendingMtPick): {
+  window: MtWindow | null;
+  band: { after: number | null; before: number | null } | null;
+} {
+  const ws = pending.window?.start ? parseWall(pending.window.start) : null;
+  const we = pending.window?.end ? parseWall(pending.window.end) : null;
+  const window =
+    ws && we ? { start: ws, end: we, label: pending.window?.label || fmtDate(ws) } : null;
+  const band =
+    pending.after != null || pending.before != null
+      ? { after: pending.after ?? null, before: pending.before ?? null }
+      : null;
+  return { window, band };
+}
+
+/** Pick every person on the current disambiguation list. */
+async function applyPendingMtPickAll(
+  userUpn: string,
+  pending: PendingMtPick
+): Promise<CommandResult> {
+  const choices = pending.choices || [];
+  if (!choices.length) {
+    return {
+      intent: "find_meeting_time",
+      reply: "ไม่มีรายชื่อให้เลือกครับ — พิมพ์ดูตารางใหม่อีกครั้งได้เลย",
+      pending_mt_pick: null,
+    };
+  }
+  const seen = new Set<string>();
+  const attendees: MtAttendee[] = [];
+  // Keep anyone already resolved, then add everyone on the list
+  for (const a of pending.attendees || []) {
+    const m = (a.mail || "").trim().toLowerCase();
+    if (!m || seen.has(m)) continue;
+    seen.add(m);
+    attendees.push({ mail: a.mail, name: a.name });
+  }
+  for (const c of choices) {
+    const m = (c.mail || "").trim().toLowerCase();
+    if (!m || seen.has(m)) continue;
+    seen.add(m);
+    attendees.push({ mail: c.mail, name: c.displayName || c.mail });
+  }
+  const { window, band } = pendingWindowBand(pending);
+  const res = await runFindMeeting(
+    userUpn,
+    attendees,
+    pending.duration || 30,
+    window,
+    band,
+    !!pending.includeLunch,
+    pending.subject || "ประชุม",
+    pending.atMin ?? null
+  );
+  if (res.intent !== "choose_mt_person" && res.pending_mt_pick === undefined) {
+    res.pending_mt_pick = null;
+  }
+  return res;
+}
+
+async function applyPendingAvailPicks(
+  userUpn: string,
+  pending: PendingAvailPick,
+  picks: number[] | "all"
+): Promise<CommandResult> {
+  const choices = pending.choices || [];
+  if (!choices.length) {
+    return {
+      intent: "my_availability",
+      reply: "ไม่มีรายชื่อให้เลือกครับ — พิมพ์ดูตารางใหม่อีกครั้งได้เลย",
+      pending_avail_pick: null,
+    };
+  }
+  const selected: { mail: string; displayName: string }[] = [];
+  if (picks === "all") {
+    for (const c of choices) {
+      if (c.mail) selected.push({ mail: c.mail, displayName: c.displayName || c.mail });
+    }
+  } else {
+    const used = new Set<string>();
+    for (const p of picks) {
+      const c = choices[p - 1];
+      if (!c?.mail) {
+        return {
+          intent: "choose_person",
+          reply: `ไม่มีข้อ ${p} ในรายการครับ — เลือก 1–${choices.length} หรือพิมพ์ ทั้งหมด ได้ครับ`,
+          pending_avail_pick: pending,
+          choices: choices.map((x) => ({
+            mail: x.mail,
+            displayName: x.displayName,
+            period: pending.period,
+            date: pending.date,
+            lunch: pending.lunch,
+          })),
+          period: pending.period,
+        };
+      }
+      const m = c.mail.toLowerCase();
+      if (used.has(m)) continue;
+      used.add(m);
+      selected.push({ mail: c.mail, displayName: c.displayName || c.mail });
+    }
+  }
+  if (!selected.length) {
+    return {
+      intent: "choose_person",
+      reply: "ยังไม่ได้เลือกใครครับ — พิมพ์เลขหรือ ทั้งหมด ได้เลย",
+      pending_avail_pick: pending,
+      choices: choices.map((x) => ({
+        mail: x.mail,
+        displayName: x.displayName,
+        period: pending.period,
+        date: pending.date,
+        lunch: pending.lunch,
+      })),
+      period: pending.period,
+    };
+  }
+
+  const dayRange = pending.date ? resolveDay(pending.date) : null;
+  const range = dayRange || periodRange(pending.period || "week");
+  const lunch = !!pending.lunch;
+  const mode = pending.mode || "free";
+
+  // ดูนัด / ดูประชุม → show that person's meetings
+  if (mode === "busy") {
+    if (selected.length === 1) {
+      const s = selected[0]!;
+      const busy = await personBusyResponse(
+        userUpn,
+        s.displayName || s.mail,
+        dayRange,
+        pending.period || "upcoming",
+        pending.after ?? null,
+        pending.before ?? null,
+        pending.at ?? null,
+        { mail: s.mail, displayName: s.displayName }
+      );
+      busy.pending_avail_pick = null;
+      return withCalendarNext({ ...busy, period: pending.period }, "meetings");
+    }
+    // Multiple: stack each person's agenda
+    const parts: string[] = [];
+    for (const s of selected.slice(0, 5)) {
+      const busy = await personBusyResponse(
+        userUpn,
+        s.displayName || s.mail,
+        dayRange,
+        pending.period || "upcoming",
+        pending.after ?? null,
+        pending.before ?? null,
+        pending.at ?? null,
+        { mail: s.mail, displayName: s.displayName }
+      );
+      parts.push(busy.reply);
+    }
+    return withCalendarNext(
+      {
+        intent: "list_meetings",
+        reply: parts.join("\n\n————\n\n"),
+        pending_avail_pick: null,
+        period: pending.period,
+      },
+      "meetings"
+    );
+  }
+
+  // One person → show that person's free slots (original ดูตาราง behavior)
+  if (selected.length === 1) {
+    const s = selected[0]!;
+    const res = await availabilityResponse(userUpn, s.mail, s.displayName, range, lunch);
+    res.pending_avail_pick = null;
+    return withCalendarNext({ ...res, period: pending.period }, "free");
+  }
+
+  // Multiple → common free time (ดูตารางเบส + ทั้งหมด / 1กับ2)
+  const res = await runFindMeeting(
+    userUpn,
+    selected.map((s) => ({ mail: s.mail, name: s.displayName })),
+    30,
+    range,
+    null,
+    lunch,
+    "ประชุม",
+    null
+  );
+  if (res.pending_avail_pick === undefined) res.pending_avail_pick = null;
+  return res;
+}
+
+async function applyPendingMtPicks(
+  userUpn: string,
+  pending: PendingMtPick,
+  picks: number[]
+): Promise<CommandResult> {
+  const choices = pending.choices || [];
+  const attendees: MtAttendee[] = (pending.attendees || []).map((a) => ({
+    mail: a.mail,
+    name: a.name,
+  }));
+  const unresolved = attendees
+    .map((a, i) => (!a.mail && a.name ? i : -1))
+    .filter((i) => i >= 0);
+  if (!unresolved.length) {
+    return {
+      intent: "find_meeting_time",
+      reply: "เลือกรายชื่อครบแล้วครับ — พิมพ์ดูตารางใหม่อีกครั้งได้เลย",
+      pending_mt_pick: null,
+    };
+  }
+  if (!picks.length) {
+    return {
+      intent: "choose_mt_person",
+      reply: "พิมพ์เลขจากรายการได้ครับ เช่น 1 หรือ 1กับ2 (เลือกสองคนพร้อมกัน)",
+      pending_mt_pick: pending,
+      choices: choices.map((c) => ({ mail: c.mail, displayName: c.displayName })),
+    };
+  }
+  const need = Math.min(picks.length, unresolved.length);
+  const used = new Set<string>();
+  for (let k = 0; k < need; k++) {
+    const idx = picks[k]! - 1;
+    const c = choices[idx];
+    if (!c?.mail) {
+      return {
+        intent: "choose_mt_person",
+        reply: `ไม่มีข้อ ${picks[k]} ในรายการครับ — เลือก 1–${choices.length} ได้ครับ (หรือพิมพ์ 1กับ2)`,
+        pending_mt_pick: pending,
+        choices: choices.map((x) => ({ mail: x.mail, displayName: x.displayName })),
+      };
+    }
+    const mail = c.mail.toLowerCase();
+    if (used.has(mail)) {
+      return {
+        intent: "choose_mt_person",
+        reply: "เลือกคนซ้ำกันครับ — ลองเลขคนละคน เช่น 1กับ2",
+        pending_mt_pick: pending,
+        choices: choices.map((x) => ({ mail: x.mail, displayName: x.displayName })),
+      };
+    }
+    used.add(mail);
+    attendees[unresolved[k]!] = { mail: c.mail, name: c.displayName || c.mail };
+  }
+  const { window, band } = pendingWindowBand(pending);
+  const res = await runFindMeeting(
+    userUpn,
+    attendees,
+    pending.duration || 30,
+    window,
+    band,
+    !!pending.includeLunch,
+    pending.subject || "ประชุม",
+    pending.atMin ?? null
+  );
+  // Clear pick state once resolved (or when asking the next person — runFindMeeting sets new pending)
+  if (res.intent !== "choose_mt_person" && res.pending_mt_pick === undefined) {
+    res.pending_mt_pick = null;
+  }
+  return res;
 }
 
 function encodeMtData(
@@ -1875,6 +2465,44 @@ function encodeMtData(
   if (subject && subject !== "ประชุม") q.set("subj", subject.slice(0, 80));
   if (includeLunch) q.set("ln", "1");
   return q.toString();
+}
+
+/** When postback would exceed LINE's 300-char limit, stash payload and return a short ref. */
+async function encodeMtDataSafe(
+  ownerUpn: string,
+  attendees: MtAttendee[],
+  duration: number,
+  window?: MtWindow | null,
+  band?: { after: number | null; before: number | null } | null,
+  includeLunch = false,
+  atMin?: number | null,
+  subject?: string,
+  dnRef?: string
+): Promise<string> {
+  const full = encodeMtData(attendees, duration, window, band, includeLunch, atMin, subject, dnRef);
+  if (full.length <= 280) return full;
+  const id = createHash("sha1")
+    .update(`${ownerUpn}|${Date.now()}|${full}`)
+    .digest("hex")
+    .slice(0, 12);
+  await setSetting(
+    ownerUpn,
+    `mt_find_${id}`,
+    JSON.stringify({
+      attendees,
+      duration,
+      window: window
+        ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
+        : null,
+      after: band?.after ?? null,
+      before: band?.before ?? null,
+      atMin: atMin ?? null,
+      subject: subject || "ประชุม",
+      includeLunch: !!includeLunch,
+      dnRef: dnRef || "",
+    })
+  );
+  return new URLSearchParams({ a: "findmt", ref: id }).toString();
 }
 
 /** Persist mail→displayName so LINE postback stays under 300 chars. */
@@ -1952,6 +2580,134 @@ export function decodeMtAttendees(data: URLSearchParams): {
   };
 }
 
+const SELF_BOOK_DURATION_SUGGESTIONS = [
+  { label: "30 นาที", text: "30 นาที" },
+  { label: "1 ชม.", text: "1 ชม." },
+  { label: "2 ชม.", text: "2 ชม." },
+];
+
+function selfBookWindowFromParams(
+  params: Record<string, unknown>,
+  text: string
+): { start: Date; end: Date; label: string } | null {
+  const dayStart = String(params.day_start || "");
+  if (dayStart) {
+    const d = parseWall(dayStart);
+    if (d) {
+      const label = String(params.date_label || fmtDate(d));
+      return { start: startOfDay(d), end: endOfDay(d), label };
+    }
+  }
+  if (params.date_label) {
+    const parsed = resolveDay(String(params.date_label));
+    if (parsed) return parsed;
+  }
+  return dayHintFromText(text) || periodRange("today");
+}
+
+async function runSelfBookCalendar(
+  userUpn: string,
+  text: string,
+  params: Record<string, unknown>
+): Promise<CommandResult> {
+  const subject = String(params.subject || params.note || "จองเวลา").trim().slice(0, 200) || "จองเวลา";
+  const window = selfBookWindowFromParams(params, text);
+  if (!window) {
+    return {
+      intent: "book_self_calendar",
+      reply:
+        "ยังไม่แน่ใจว่าจะจองวันไหนครับ — ลองระบุ เช่น วันนี้, พรุ่งนี้, วันที่ 5 กันยา, หรือ 5/9",
+      pending_self_book: null,
+    };
+  }
+
+  const allDay =
+    !!params.all_day || /(?:ทั้งวัน|ตลอดวัน|all\s*day)/i.test(text);
+
+  if (allDay) {
+    const dayStart = startOfDay(window.start);
+    const dayEnd = startOfDay(addDays(window.start, 1));
+    const exact = {
+      start: wallIso(dayStart),
+      end: wallIso(dayEnd),
+      label: `${fmtDayHeader(dayStart)} (ทั้งวัน)`,
+    };
+    return {
+      intent: "confirm_meeting",
+      reply:
+        `สรุปการจองเวลาในตาราง — กดยืนยันถ้าถูกต้อง\n` +
+        `📌 ${subject}\n` +
+        `🕐 ${exact.label}\n` +
+        `(ไม่มีผู้เข้าร่วม — จองเฉพาะตัวเอง)`,
+      slots: [exact],
+      meeting: { attendees: [], duration: 24 * 60, subject, all_day: true },
+      pending_self_book: null,
+    };
+  }
+
+  let atMin = parseHHMM(params.at);
+  if (atMin == null) atMin = parseClockToMinutes(text);
+  if (atMin == null) {
+    return {
+      intent: "book_self_calendar",
+      reply:
+        `จองตาราง ${window.label} — ระบุเวลาด้วยนะครับ\n` +
+        `(เช่น 9โมง, 09:00, บ่าย 2)\n` +
+        `หรือพิมพ์ “ทั้งวัน” ถ้าต้องการจองทั้งวัน`,
+      pending_self_book: null,
+    };
+  }
+
+  let duration = Number(params.duration_min) || 0;
+  if (!duration) duration = parseDurationMinutes(text) || 0;
+
+  if (!duration) {
+    const pending: PendingSelfBook = {
+      dayStart: wallIso(window.start),
+      dateLabel: window.label,
+      atMin,
+      subject,
+    };
+    return {
+      intent: "book_self_calendar",
+      reply:
+        `จองตารางตัวเอง ${window.label} เวลา ${fmtHHMM(atMin)} น.\n\n` +
+        `จองกี่นาทีหรือกี่ชั่วโมงครับ? (เช่น 30 นาที, 1 ชม.)`,
+      pending_self_book: pending,
+      suggestions: SELF_BOOK_DURATION_SUGGESTIONS,
+    };
+  }
+
+  const slotStart = new Date(startOfDay(window.start));
+  slotStart.setUTCHours(Math.floor(atMin / 60), atMin % 60, 0, 0);
+  const slotEnd = addMinutes(slotStart, duration);
+  const exact = {
+    start: wallIso(slotStart),
+    end: wallIso(slotEnd),
+    label: fmtSlotRange(slotStart, slotEnd),
+  };
+  const now = nowWall();
+  const pastNote =
+    slotEnd.getTime() <= now.getTime()
+      ? "\n⚠️ ช่วงเวลานี้ผ่านไปแล้ว — กด “🕐 เวลา” เพื่อแก้ หรือยืนยันถ้าต้องการสร้างตามที่ระบุ"
+      : slotStart.getTime() < now.getTime() - 2 * 60_000
+        ? "\n⚠️ เวลาเริ่มผ่านไปแล้วเล็กน้อย — กด “🕐 เวลา” ถ้าต้องการเลื่อน"
+        : "";
+
+  return {
+    intent: "confirm_meeting",
+    reply:
+      `สรุปการจองเวลาในตาราง — กดยืนยันถ้าถูกต้อง\n` +
+      `📌 ${subject}\n` +
+      `🕐 ${exact.label}\n` +
+      `(ไม่มีผู้เข้าร่วม — จองเฉพาะตัวเอง)` +
+      pastNote,
+    slots: [exact],
+    meeting: { attendees: [], duration, subject },
+    pending_self_book: null,
+  };
+}
+
 export async function runFindMeeting(
   userUpn: string,
   attendees: MtAttendee[],
@@ -1973,7 +2729,16 @@ export async function runFindMeeting(
   for (let i = 0; i < attendees.length; i++) {
     const a = attendees[i];
     if (a.mail || !a.name) continue;
-    const cands = await searchUsers(a.name);
+    const taken = new Set(
+      attendees
+        .map((x) => (x.mail || "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+    let cands = await searchUsers(a.name);
+    // “เบสกับพี่เบส” — after picking the 1st Base, hide them from the 2nd pick
+    if (taken.size) {
+      cands = cands.filter((c) => !taken.has((c.mail || "").toLowerCase()));
+    }
     if (cands.length === 1) {
       a.mail = cands[0].mail;
       a.name = cands[0].displayName || a.name;
@@ -1985,11 +2750,47 @@ export async function runFindMeeting(
         choices.push({
           mail: c.mail,
           displayName: c.displayName || c.mail,
-          data: encodeMtData(next, duration, window, band, includeLunch, atMin, subject, dnRef),
+          data: await encodeMtDataSafe(userUpn, next, duration, window, band, includeLunch, atMin, subject, dnRef),
         });
       }
       const dayNote = window ? ` (${window.label})` : "";
-      return { intent: "choose_mt_person", reply: `เจอหลายคนที่ตรงกับ “${a.name}” เลือกคนที่ต้องการดูตารางครับ${dayNote} 👇`, choices };
+      const which =
+        attendees.length > 1
+          ? ` (คนที่ ${i + 1}/${attendees.length})`
+          : "";
+      const multiHint =
+        attendees.filter((x) => !x.mail && x.name).length >= 2
+          ? `\n💡 พิมพ์ได้ เช่น 1กับ2, หนึ่งกับสอง หรือ ทั้งหมด`
+          : `\n💡 พิมพ์เลขได้ เช่น 1 หรือ หนึ่ง`;
+      const pending: PendingMtPick = {
+        attendees: attendees.map((x) => ({ mail: x.mail, name: x.name })),
+        choices: choices.map((c) => ({
+          mail: c.mail,
+          displayName: String(c.displayName || c.mail),
+        })),
+        duration,
+        window: window
+          ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
+          : null,
+        after: band?.after ?? null,
+        before: band?.before ?? null,
+        atMin: atMin ?? null,
+        subject,
+        includeLunch,
+      };
+      return {
+        intent: "choose_mt_person",
+        reply: `เจอหลายคนที่ตรงกับ “${a.name}”${which} — เลือกคนที่ต้องการดูตารางครับ${dayNote} 👇${multiHint}`,
+        choices,
+        pending_mt_pick: pending,
+      };
+    } else if (taken.size && (await searchUsers(a.name)).length > 0) {
+      // All remaining candidates were already picked as earlier attendees
+      return {
+        intent: "find_meeting_time",
+        reply:
+          `ชื่อ “${a.name}” เหลือแต่คนที่เลือกไปแล้วครับ — ลองพิมพ์อีเมลของอีกคน เช่น “เบสกับ chananchida.b@ktisgroup.com”`,
+      };
     }
   }
 
@@ -2074,10 +2875,15 @@ export async function runFindMeeting(
   const SHOW_CAP = 8;
   const offset = opts?.showMore ? SHOW_CAP : 0;
   // Strip any legacy "· หลังเลิกงาน" on labels — explain once in the reply instead
-  let cleaned = result.slots.map((s) => ({
-    ...s,
-    label: (s.label || "").replace(/\s*·\s*หลังเลิกงาน/g, ""),
-  }));
+  let cleaned = result.slots.map((s) => {
+    const start = parseWall(s.start);
+    const end = parseWall(s.end);
+    const label =
+      start && end
+        ? fmtSlotRange(start, end)
+        : (s.label || "").replace(/\s*·\s*หลังเลิกงาน/g, "");
+    return { ...s, label };
+  });
   // Hard guard: if user asked a specific day, never list slots outside that day
   if (window) {
     const w0 = window.start.getTime();
@@ -2106,8 +2912,10 @@ export async function runFindMeeting(
   });
 
   const note = unresolved.length ? `\n(หาอีเมลไม่เจอ: ${unresolved.join(", ")})` : "";
-  const who = await formatAttendeeLines(attendees.filter((a) => a.mail));
-  const dayNote = window ? ` (${window.label})` : "";
+  // Always show organizer + guests (หาเวลาว่างต้องครบทุกคน รวมตัวเอง เช่น เอก+เอ็ม+นนท์)
+  const who = await formatMeetingPeople(userUpn, attendees.filter((a) => a.mail));
+  const dayLabel = window ? enrichDayLabel(window.label || fmtDate(window.start), window.start) : "";
+  const dayNote = dayLabel ? ` (${dayLabel})` : "";
   const bandNote =
     resolvedAt != null ? ` ตอน ${fmtHHMM(resolvedAt)}` : band?.label ? ` ${band.label}` : "";
   const attachNote = opts?.attachFile?.name ? `\n📎 จะแนบไฟล์: ${opts.attachFile.name}` : "";
@@ -2117,7 +2925,11 @@ export async function runFindMeeting(
     duration,
     subject,
     window: window
-      ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label }
+      ? {
+          start: wallIso(window.start),
+          end: wallIso(window.end),
+          label: dayLabel || window.label,
+        }
       : undefined,
     ...(opts?.attachFile ? { attach_file: opts.attachFile } : {}),
     ...(opts?.attachLinePhoto ? { attach_line_photo: true } : {}),
@@ -2181,7 +2993,7 @@ export async function runFindMeeting(
       ({
         start: wallIso(slotStart),
         end: wallIso(slotEnd),
-        label: `${fmtDateTime(slotStart)}-${fmtTime(slotEnd)}`,
+        label: fmtSlotRange(slotStart, slotEnd),
       } as (typeof result.slots)[number]);
     const now = nowWall();
     const pastNote =
@@ -2261,6 +3073,22 @@ async function formatAttendeeLines(attendees: MtAttendee[]): Promise<string> {
   return lines.join("\n👤 ") || "(ไม่ระบุ)";
 }
 
+/** Organizer first, then guests — หาเวลาว่างต้องโชว์ครบทุกคนที่ถูกเช็คตาราง */
+async function formatMeetingPeople(organizerUpn: string, guests: MtAttendee[]): Promise<string> {
+  const org = (organizerUpn || "").trim().toLowerCase();
+  const guestMails = new Set(
+    guests.map((g) => (g.mail || "").trim().toLowerCase()).filter(Boolean)
+  );
+  const people: MtAttendee[] = [];
+  if (org && !guestMails.has(org)) {
+    people.push({ mail: org });
+  }
+  for (const g of guests) {
+    if (g.mail) people.push(g);
+  }
+  return formatAttendeeLines(people);
+}
+
 
 export async function handleCommand(
   userUpn: string,
@@ -2314,6 +3142,28 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
       const range = d ? resolveDay(d) || periodRange("week") : periodRange(data.get("p") || "week");
       return await availabilityResponse(userUpn, mail, name, range, data.get("ln") === "1");
     }
+    if (a === "personbusy") {
+      const mail = data.get("m") || "";
+      const name = data.get("n") || mail;
+      if (!mail) return { intent: "error", reply: "ข้อมูลไม่ครบ ลองใหม่อีกครั้งครับ" };
+      const d = data.get("d");
+      const day = d ? resolveDay(d) : null;
+      const period = data.get("p") || "upcoming";
+      const af = data.get("af");
+      const bf = data.get("bf");
+      const tm = data.get("tm");
+      const busy = await personBusyResponse(
+        userUpn,
+        name,
+        day,
+        period,
+        af != null && af !== "" ? Number(af) : null,
+        bf != null && bf !== "" ? Number(bf) : null,
+        tm != null && tm !== "" ? Number(tm) : null,
+        { mail, displayName: name }
+      );
+      return withCalendarNext({ ...busy, period: day ? undefined : period }, "meetings");
+    }
     if (a === "book") {
       const start = parseWall(data.get("s") || "");
       const end = parseWall(data.get("e") || "");
@@ -2361,6 +3211,60 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
       return { intent: "meeting_summary", reply };
     }
     if (a === "findmt") {
+      const ref = data.get("ref") || "";
+      if (ref) {
+        try {
+          const raw = await getSetting(userUpn, `mt_find_${ref}`);
+          if (!raw) {
+            return { intent: "error", reply: "รายการเลือกหมดอายุแล้วครับ — พิมพ์คำสั่งดูตารางใหม่อีกครั้งได้เลย" };
+          }
+          const saved = JSON.parse(raw) as {
+            attendees?: MtAttendee[];
+            duration?: number;
+            window?: { start?: string; end?: string; label?: string } | null;
+            after?: number | null;
+            before?: number | null;
+            atMin?: number | null;
+            subject?: string;
+            includeLunch?: boolean;
+            dnRef?: string;
+          };
+          const attendees = Array.isArray(saved.attendees) ? saved.attendees : [];
+          if (saved.dnRef) {
+            const map = await loadMtDisplayNames(userUpn, saved.dnRef);
+            for (const att of attendees) {
+              const m = (att.mail || "").toLowerCase();
+              if (m && map[m]) att.name = map[m];
+            }
+          }
+          const ws = saved.window?.start ? parseWall(saved.window.start) : null;
+          const we = saved.window?.end ? parseWall(saved.window.end) : null;
+          const window =
+            ws && we
+              ? { start: ws, end: we, label: saved.window?.label || fmtDate(ws) }
+              : null;
+          const band =
+            saved.after != null || saved.before != null
+              ? {
+                  after: saved.after ?? null,
+                  before: saved.before ?? null,
+                  label: saved.after != null && saved.after >= 16 * 60 ? "ช่วงเย็น" : undefined,
+                }
+              : null;
+          return await runFindMeeting(
+            userUpn,
+            attendees,
+            Number(saved.duration || 30),
+            window,
+            band,
+            !!saved.includeLunch,
+            saved.subject || "ประชุม",
+            saved.atMin ?? null
+          );
+        } catch {
+          return { intent: "error", reply: "อ่านรายการเลือกไม่สำเร็จ — พิมพ์คำสั่งใหม่อีกครั้งครับ" };
+        }
+      }
       const { attendees, duration, window, after, before, atMin, subject, includeLunch, dnRef } = decodeMtAttendees(data);
       if (dnRef) {
         const map = await loadMtDisplayNames(userUpn, dnRef);
@@ -2421,6 +3325,88 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     .replace(/\s+/g, " ")
     .trim();
 
+  // Pending duration after “จองตาราง … เวลา …”
+  if (context?.pending_self_book) {
+    const p = context.pending_self_book;
+    if (p.allDay || /(?:ทั้งวัน|ตลอดวัน)/i.test(text)) {
+      trace("parse", "★ AI:NONE · intent=book_self_calendar (ทั้งวัน ไม่เรียก API)");
+      return runSelfBookCalendar(userUpn, text, {
+        day_start: p.dayStart,
+        date_label: p.dateLabel,
+        subject: p.subject || "จองเวลา",
+        all_day: true,
+      });
+    }
+    const dur = parseDurationMinutes(text);
+    if (dur) {
+      trace("parse", "★ AI:NONE · intent=book_self_calendar (ตอบระยะเวลา ไม่เรียก API)");
+      return runSelfBookCalendar(userUpn, text, {
+        day_start: p.dayStart,
+        date_label: p.dateLabel,
+        at: fmtHHMM(p.atMin ?? 0),
+        duration_min: dur,
+        subject: p.subject || "จองเวลา",
+      });
+    }
+    return {
+      intent: "book_self_calendar",
+      reply: "ยังอ่านระยะเวลาไม่ชัดครับ — ลองพิมพ์ เช่น 30 นาที หรือ 1 ชม.",
+      pending_self_book: context.pending_self_book,
+      suggestions: SELF_BOOK_DURATION_SUGGESTIONS,
+    };
+  }
+
+  // Typed picks after “เจอหลายคน…” — find-meeting path
+  if (context?.pending_mt_pick?.choices?.length) {
+    if (isSelectAllChoices(text)) {
+      trace("parse", "★ AI:NONE · intent=choose_mt_person (เลือกทั้งหมด ไม่เรียก API)");
+      return applyPendingMtPickAll(userUpn, context.pending_mt_pick);
+    }
+    const picks = parseChoiceIndices(text);
+    if (picks.length) {
+      trace("parse", `★ AI:NONE · intent=choose_mt_person (พิมพ์เลข ${picks.join(",")} ไม่เรียก API)`);
+      return applyPendingMtPicks(userUpn, context.pending_mt_pick, picks);
+    }
+    if (looksLikeChoiceAttempt(text)) {
+      return {
+        intent: "choose_mt_person",
+        reply:
+          "ยังอ่านเลขไม่ชัดครับ — ลองพิมพ์ 1กับ2, หนึ่งกับสอง, ทั้งหมด หรือกดปุ่มเลขด้านล่างได้เลย",
+        pending_mt_pick: context.pending_mt_pick,
+        choices: context.pending_mt_pick.choices,
+      };
+    }
+  }
+
+  // Typed picks after “ดูตารางเบส” (choose_person) — “1” / “1กับ2” / “ทั้งหมด”
+  if (context?.pending_avail_pick?.choices?.length) {
+    if (isSelectAllChoices(text)) {
+      trace("parse", "★ AI:NONE · intent=choose_person (เลือกทั้งหมด → หาเวลาตรงกัน)");
+      return applyPendingAvailPicks(userUpn, context.pending_avail_pick, "all");
+    }
+    const picks = parseChoiceIndices(text);
+    if (picks.length) {
+      trace("parse", `★ AI:NONE · intent=choose_person (พิมพ์เลข ${picks.join(",")} ไม่เรียก API)`);
+      return applyPendingAvailPicks(userUpn, context.pending_avail_pick, picks);
+    }
+    if (looksLikeChoiceAttempt(text)) {
+      return {
+        intent: "choose_person",
+        reply:
+          "ยังอ่านเลขไม่ชัดครับ — ลองพิมพ์ 1, 1กับ2, ทั้งหมด หรือกดปุ่มเลขด้านล่างได้เลย",
+        pending_avail_pick: context.pending_avail_pick,
+        choices: context.pending_avail_pick.choices.map((c) => ({
+          mail: c.mail,
+          displayName: c.displayName,
+          period: context.pending_avail_pick!.period,
+          date: context.pending_avail_pick!.date,
+          lunch: context.pending_avail_pick!.lunch,
+        })),
+        period: context.pending_avail_pick.period,
+      };
+    }
+  }
+
   // Instant calendar list shortcuts BEFORE follow-up heuristics / LLM
   // (prevents “ดูประชุมเช้านี้” being eaten by last_meeting time-band follow-up)
   {
@@ -2436,6 +3422,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       quick?.intent === "get_news" ||
       quick?.intent === "summarize_meetings" ||
       quick?.intent === "find_meeting_time" ||
+      quick?.intent === "book_self_calendar" ||
       quick?.intent === "cancel_meeting" ||
       quick?.intent === "my_availability" ||
       quick?.intent === "prep_meeting" ||
@@ -2461,15 +3448,19 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   }
 
   // Follow-up on a multi-person search: keep the same attendees.
-  // “ตอนเย็นว่างไหม” = same day + time band; “พรุ่งนี้ล่ะ” = new day, same people.
-  if (context?.last_meeting?.attendees?.length && (isTimeFollowUp(text) || isDayFollowUp(text))) {
-    const band = isDayFollowUp(text) ? null : timeBandFromText(text);
-    const window = isDayFollowUp(text)
+  // “ตอนเย็นว่างไหม” = same day + time band; “พรุ่งนี้ล่ะ” / “แต่พรุ่งนี้เช้าว่างนะ” = new day (± band).
+  if (
+    context?.last_meeting?.attendees?.length &&
+    (isTimeFollowUp(text) || isDayFollowUp(text) || isDayBandFollowUp(text))
+  ) {
+    const dayFollow = isDayFollowUp(text) || isDayBandFollowUp(text);
+    const band = dayFollow ? timeBandFromText(text.replace(/เช้ส/g, "เช้า")) : timeBandFromText(text);
+    const window = dayFollow
       ? windowFromDayFollowUp(text)
       : windowFromStored(context.last_meeting) || dayHintFromText(text);
     trace(
       "parse",
-      `★ AI:NONE · intent=find_meeting_time (${isDayFollowUp(text) ? "ติดตามวัน" : "ติดตามเวลา"} ไม่เรียก API)`
+      `★ AI:NONE · intent=find_meeting_time (${dayFollow ? "ติดตามวัน" : "ติดตามเวลา"} ไม่เรียก API)`
     );
     return runFindMeeting(
       userUpn,
@@ -2536,6 +3527,11 @@ async function handleParsed(
         { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
       ],
     };
+  }
+
+  if (intent === "book_self_calendar") {
+    trace("fetch", "จองตารางตัวเอง (ไม่มีผู้เข้าร่วม)", "start");
+    return runSelfBookCalendar(userUpn, text, params);
   }
 
   if (intent === "find_duplicate_nicknames") {
@@ -2839,7 +3835,7 @@ async function handleParsed(
         const digest = raced.digest;
         trace("fetch", digest.stories.length ? `📰 ได้ข่าว ${digest.stories.length} เรื่อง` : "📰 ไม่มีข่าวใหม่");
         if (!digest.stories.length) {
-          const extra = digest.skipped.length ? `\n(ข้าม: ${digest.skipped.join(", ")})` : "";
+          const extra = formatDigestSkippedNote(digest.skipped, false);
           return {
             intent,
             reply:
@@ -2848,7 +3844,7 @@ async function handleParsed(
               extra,
           };
         }
-        const extra = digest.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${digest.skipped.join(", ")})` : "";
+        const extra = formatDigestSkippedNote(digest.skipped, true);
         await rememberDeliveredStories(upn, digest.stories);
         trace("compose", "📰 สรุปข่าวภาษาไทย");
         return { intent, reply: formatStoriesText(digest.stories, digest.note) + extra, data: digest.stories };
@@ -2876,9 +3872,7 @@ async function handleParsed(
                   );
                 } else {
                   await rememberDeliveredStories(upn, digest.stories);
-                  const extra = digest.skipped.length
-                    ? `\n\n(ข้ามบางแหล่ง: ${digest.skipped.join(", ")})`
-                    : "";
+                  const extra = formatDigestSkippedNote(digest.skipped, !!digest.stories?.length);
                   await sendLine(upn, "", formatStoriesText(digest.stories, digest.note) + extra);
                   trace("reply", `📰 ตอบกลับ get_news สำรอง (${digest.stories.length} เรื่อง)`);
                 }
@@ -2940,7 +3934,7 @@ async function handleParsed(
     trace("fetch", digest.stories.length ? `📰 ได้ข่าว ${digest.stories.length} เรื่อง` : "📰 ไม่มีข่าวใหม่");
     const { stories, skipped, note } = digest;
     if (!stories.length) {
-      const extra = skipped.length ? `\n(ข้าม: ${skipped.join(", ")})` : "";
+      const extra = formatDigestSkippedNote(skipped, false);
       trace("compose", "📰 แจ้งผลสรุปข่าว");
       return {
         intent,
@@ -2950,7 +3944,7 @@ async function handleParsed(
           extra,
       };
     }
-    const extra = skipped.length ? `\n\n(ข้ามบางแหล่ง: ${skipped.join(", ")})` : "";
+    const extra = formatDigestSkippedNote(skipped, true);
     await rememberDeliveredStories(userUpn, stories);
     trace("compose", "📰 สรุปข่าวภาษาไทย");
     return { intent, reply: formatStoriesText(stories, note) + extra, data: stories };
@@ -3146,13 +4140,70 @@ async function handleParsed(
     const before = parseHHMM(params.before);
     const at = parseHHMM(params.at);
 
-    // Self agenda — never continue last_person as the subject
+    // Self agenda — only when NO named person (ดูนัดเบส must NOT match)
+    const namedPerson =
+      String(params.person || "").trim() || personFromText(tNorm);
     const selfAgenda =
-      /^(ดู)?(ประชุม|นัด)|ตารางวันนี้|มีนัดอะไร|มีประชุมอะไร|เช้านี้|บ่ายนี้/.test(tNorm) &&
-      !params.person &&
-      !/(?:ของ|กับ)\s*\S/.test(tNorm);
+      !namedPerson &&
+      (/^(ดู)?(ประชุม|นัด)(?:วัน)?(?:นี้|พรุ่งนี้)?[!?.…]*$/u.test(tNorm) ||
+        /ตารางวันนี้|มีนัดอะไร|มีประชุมอะไร|เช้านี้|บ่ายนี้/.test(tNorm));
 
     if (!selfAgenda) {
+      const personHint = namedPerson;
+      if (personHint) {
+        const cands = await searchUsers(personHint);
+        if (cands.length > 1) {
+          const dayIso = day
+            ? `${day.start.getUTCFullYear()}-${String(day.start.getUTCMonth() + 1).padStart(2, "0")}-${String(day.start.getUTCDate()).padStart(2, "0")}`
+            : undefined;
+          const pending: PendingAvailPick = {
+            choices: cands.slice(0, 10).map((c) => ({
+              mail: c.mail,
+              displayName: c.displayName || c.mail,
+            })),
+            period,
+            date: dayIso,
+            query: personHint,
+            mode: "busy",
+            after,
+            before,
+            at,
+          };
+          return {
+            intent: "choose_person",
+            reply:
+              `เจอหลายคนที่ตรงกับ “${personHint}” เลือกคนที่ต้องการดูนัดครับ 👇` +
+              `\n💡 พิมพ์ได้ เช่น 1 หรือ ทั้งหมด`,
+            choices: cands.map((c) => ({
+              mail: c.mail,
+              displayName: c.displayName,
+              period,
+              date: dayIso,
+              mode: "busy",
+              after: after != null ? String(after) : undefined,
+              before: before != null ? String(before) : undefined,
+              at: at != null ? String(at) : undefined,
+            })),
+            period: day ? undefined : period,
+            pending_avail_pick: pending,
+          };
+        }
+        const pre =
+          cands.length === 1
+            ? { mail: cands[0]!.mail, displayName: cands[0]!.displayName }
+            : undefined;
+        const busy = await personBusyResponse(
+          userUpn,
+          personHint,
+          day,
+          period,
+          after,
+          before,
+          at,
+          pre || undefined
+        );
+        return withCalendarNext({ ...busy, period: day ? undefined : period }, "meetings");
+      }
       const { name: person, info: personInfo } = await continuedPerson(tNorm, context);
       if (person) {
         const busy = await personBusyResponse(userUpn, person, day, period, after, before, at, personInfo);
@@ -3282,11 +4333,31 @@ async function handleParsed(
     if (det) {
       const cands = await searchUsers(det);
       if (cands.length > 1) {
+        const pending: PendingAvailPick = {
+          choices: cands.slice(0, 10).map((c) => ({
+            mail: c.mail,
+            displayName: c.displayName || c.mail,
+          })),
+          period,
+          date: dayIso,
+          lunch,
+          query: det,
+          mode: "free",
+        };
         return {
           intent: "choose_person",
-          reply: `เจอหลายคนที่ตรงกับ “${det}” เลือกคนที่ต้องการดูตารางครับ 👇`,
-          choices: cands.map((c) => ({ mail: c.mail, displayName: c.displayName, period, date: dayIso, lunch })),
+          reply:
+            `เจอหลายคนที่ตรงกับ “${det}” เลือกคนที่ต้องการดูตารางครับ 👇` +
+            `\n💡 พิมพ์ได้ เช่น 1, 1กับ2 หรือ ทั้งหมด (หาเวลาว่างตรงกัน)`,
+          choices: cands.map((c) => ({
+            mail: c.mail,
+            displayName: c.displayName,
+            period,
+            date: dayIso,
+            lunch,
+          })),
           period,
+          pending_avail_pick: pending,
         };
       }
       if (cands.length === 1) {
@@ -3664,6 +4735,12 @@ async function handleParsed(
   if (intent === "find_meeting_time") {
     const denied = needCalendarConsent();
     if (denied) return denied;
+    // LLM sometimes misroutes “จองวันที่ … ทั้งวัน” here — recover via self-book rules
+    const selfBook = quickSelfBookIntent(text);
+    if (selfBook?.intent === "book_self_calendar") {
+      trace("parse", "★ AI:NONE · intent=book_self_calendar (กู้จาก find_meeting_time ไม่เรียก API)");
+      return runSelfBookCalendar(userUpn, text, selfBook.params);
+    }
     const attendeesRaw = (params.attendees as string[]) || [];
     // Don't reuse last booking's 10 นาที for a fresh “ดูตาราง…” ask
     const duration = Number(
@@ -3673,7 +4750,7 @@ async function handleParsed(
     );
     let window = resolveFindWindow(params, text);
     // Day-only follow-up (“พรุ่งนี้ล่ะ”) — never let LLM swap attendees
-    if (isDayFollowUp(text) && context?.last_meeting?.attendees?.length) {
+    if (isDayFollowUp(text) || isDayBandFollowUp(text)) {
       window = windowFromDayFollowUp(text) || window;
     }
     // Only reuse last meeting day for short time follow-ups (“แล้วบ่ายล่ะ”) — not for a new “ดูตาราง A กับ B”
@@ -3702,7 +4779,10 @@ async function handleParsed(
         ...nameTokensBesideEmails(text),
       ]);
       if (!attendeeTokens.length) attendeeTokens = [...emailsInText];
-    } else if (isDayFollowUp(text) && context?.last_meeting?.attendees?.length) {
+    } else if (
+      (isDayFollowUp(text) || isDayBandFollowUp(text)) &&
+      context?.last_meeting?.attendees?.length
+    ) {
       // Keep Em+Non etc. — do not re-resolve nicknames (เอ็ม↔เอก)
       attendeeTokens = context.last_meeting.attendees.map(String);
     } else if (!attendeeTokens.length) {

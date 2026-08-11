@@ -274,7 +274,11 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
           });
         }
       } catch (e) {
-        skipped.push(`YouTube (ดึงไม่สำเร็จ: ${String(e).slice(0, 60)})`);
+        const msg = String(e);
+        const ytHint = /refresh\s*400|invalid_grant|token/i.test(msg)
+          ? "YouTube (เชื่อม Google ใหม่ที่หน้าตั้งค่า)"
+          : `YouTube (ดึงไม่สำเร็จ — ลองเชื่อม Google ใหม่)`;
+        skipped.push(ytHint);
       }
     } else {
       skipped.push("YouTube (ยังไม่ได้เชื่อมบัญชี Google)");
@@ -757,6 +761,21 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
 
   trace("compose", `📰 สรุปเสร็จ · ${stories.length} เรื่องเด่น`);
   return { stories, skipped, note: repeatNote };
+}
+
+/** User-facing footnote for skipped feeds — hide when digest already has stories. */
+export function formatDigestSkippedNote(skipped: string[], hasStories: boolean): string {
+  if (!skipped.length || hasStories) return "";
+  const short = skipped
+    .map((s) => {
+      const name = (s.split(" (")[0] || s).trim();
+      if (/facebook/i.test(s)) return `${name} (ตั้งเป็นแหล่ง Facebook)`;
+      if (/youtube/i.test(s)) return `${name} (เชื่อม Google ที่หน้าตั้งค่า)`;
+      return name;
+    })
+    .slice(0, 3);
+  const more = skipped.length > short.length ? ` +${skipped.length - short.length}` : "";
+  return `\n\n(ดึงไม่ได้บางแหล่ง: ${short.join(", ")}${more})`;
 }
 
 /** Call after a digest was shown/pushed so the same links are not summarized again. */

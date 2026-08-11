@@ -18,7 +18,7 @@ import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleCh
 import { addMeetingMaterial } from "@/lib/meetingMaterials";
 import { attachLineImageToMeeting, clearMeetingPhotoContext, clearPendingLinePhoto, loadPendingLinePhoto, saveLastBookedEvent, savePendingLinePhoto } from "@/lib/meetingLink";
 import { buildShortFileOpenUrl } from "@/lib/fileOpenLink";
-import { parseWall, wallIso, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
+import { parseWall, wallIso, fmtDate, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
   chatMemoryExpired,
@@ -74,6 +74,10 @@ type Choice = {
   short_label?: string;
   data?: string;
   lunch?: boolean;
+  mode?: string;
+  after?: string;
+  before?: string;
+  at?: string;
 };
 type Slot = { start: string; end: string; label?: string };
 
@@ -101,9 +105,21 @@ function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | 
     for (const c of res.choices as Choice[]) {
       if (!c.mail) continue;
       n++;
-      const p = new URLSearchParams({ a: "avail", m: c.mail, n: c.displayName || c.mail });
-      if (c.date) p.set("d", c.date); else p.set("p", c.period || "week");
+      const p =
+        c.mode === "busy"
+          ? new URLSearchParams({
+              a: "personbusy",
+              m: c.mail,
+              n: c.displayName || c.mail,
+              p: c.period || "upcoming",
+            })
+          : new URLSearchParams({ a: "avail", m: c.mail, n: c.displayName || c.mail });
+      if (c.date) p.set("d", c.date);
+      else if (c.mode !== "busy") p.set("p", c.period || "week");
       if (c.lunch) p.set("ln", "1");
+      if (c.after) p.set("af", c.after);
+      if (c.before) p.set("bf", c.before);
+      if (c.at) p.set("tm", c.at);
       add(n, p.toString(), `เลือก ${n}) ${c.displayName || c.mail}`);
     }
   } else if (res.intent === "choose_mt_person" && Array.isArray(res.choices)) {
@@ -351,6 +367,18 @@ async function loadCtx(upn: string): Promise<CommandContext | undefined> {
       nick_dup_offset: typeof c.nick_dup_offset === "number" ? c.nick_dup_offset : undefined,
       last_link_meeting_index:
         typeof c.last_link_meeting_index === "number" ? c.last_link_meeting_index : undefined,
+      pending_mt_pick:
+        c.pending_mt_pick && Array.isArray(c.pending_mt_pick.choices)
+          ? c.pending_mt_pick
+          : undefined,
+      pending_avail_pick:
+        c.pending_avail_pick && Array.isArray(c.pending_avail_pick.choices)
+          ? c.pending_avail_pick
+          : undefined,
+      pending_self_book:
+        c.pending_self_book && typeof c.pending_self_book.atMin === "number"
+          ? c.pending_self_book
+          : undefined,
       files: Array.isArray(c.files) ? c.files : undefined,
       history: pruned.history,
       summary: pruned.summary,
@@ -402,6 +430,56 @@ async function saveCtx(upn: string, prev: CommandContext | undefined, res: Comma
   if (res.meeting?.attendees?.length) {
     next.last_meeting = res.meeting;
   }
+  if (res.pending_mt_pick) {
+    next.pending_mt_pick = res.pending_mt_pick;
+  } else if (res.pending_mt_pick === null) {
+    // explicit clear after typed multi-pick resolved
+  } else if (
+    res.intent === "choose_slot" ||
+    res.intent === "confirm_meeting" ||
+    res.intent === "booked" ||
+    res.intent === "proposed" ||
+    res.intent === "clear_memory" ||
+    (res.intent === "find_meeting_time" && !Array.isArray(res.choices))
+  ) {
+    // drop pending pick after a finished search
+  } else if (prev?.pending_mt_pick) {
+    // Keep so “1กับ2” still works if an interim error replied
+    next.pending_mt_pick = prev.pending_mt_pick;
+  }
+
+  if (res.pending_avail_pick) {
+    next.pending_avail_pick = res.pending_avail_pick;
+  } else if (res.pending_avail_pick === null) {
+    // cleared
+  } else if (
+    res.intent === "availability" ||
+    res.intent === "choose_slot" ||
+    res.intent === "confirm_meeting" ||
+    res.intent === "clear_memory" ||
+    (res.intent === "find_meeting_time" && !Array.isArray(res.choices))
+  ) {
+    // drop
+  } else if (prev?.pending_avail_pick && res.intent === "choose_person") {
+    next.pending_avail_pick = res.pending_avail_pick || prev.pending_avail_pick;
+  } else if (prev?.pending_avail_pick) {
+    next.pending_avail_pick = prev.pending_avail_pick;
+  }
+
+  if (res.pending_self_book) {
+    next.pending_self_book = res.pending_self_book;
+  } else if (res.pending_self_book === null) {
+    // cleared after duration answered / confirm card shown
+  } else if (
+    res.intent === "confirm_meeting" ||
+    res.intent === "clear_memory" ||
+    res.intent === "booked"
+  ) {
+    // drop
+  } else if (prev?.pending_self_book) {
+    next.pending_self_book = prev.pending_self_book;
+  }
+
   if (res.files?.length) {
     next.files = res.files;
   } else if (prev?.files?.length && res.intent !== "clear_memory") {
@@ -425,6 +503,7 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
         subject?: string;
         attach_file?: { id?: string; name?: string; url?: string };
         attach_line_photo?: boolean;
+        all_day?: boolean;
       }) || {};
     const draft: Draft = {
       start: s.start,
@@ -432,6 +511,7 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
       attendees: meeting.attendees || [],
       subject: meeting.subject || "ประชุม",
       detail: "",
+      allDay: !!meeting.all_day,
       attachFile: meeting.attach_file?.url || meeting.attach_file?.id ? meeting.attach_file : undefined,
       attachLinePhoto: !!meeting.attach_line_photo || !!(await loadPendingLinePhoto(upn)),
       ts: Date.now(),
@@ -486,6 +566,7 @@ type Draft = {
   attendees: string[];
   subject: string;
   detail: string;
+  allDay?: boolean;
   await?: "subject" | "detail" | "attendee" | "custom_time";
   durationMin?: number;
   /** Snapshot from last file search — attach to Outlook after confirm */
@@ -510,6 +591,10 @@ const saveDraft = (upn: string, d: Draft) => setSetting(upn, DRAFT_KEY, JSON.str
 const clearDraft = (upn: string) => deleteSetting(upn, DRAFT_KEY);
 
 function draftWhen(d: Draft): string {
+  if (d.allDay) {
+    const s = parseWall(d.start);
+    return s ? `${fmtDate(s)} (ทั้งวัน)` : `${d.start} (ทั้งวัน)`;
+  }
   const s = parseWall(d.start), e = parseWall(d.end);
   return s && e ? `${fmtDateTime(s)}-${fmtTime(e)}` : `${d.start} - ${d.end}`;
 }
@@ -538,15 +623,18 @@ async function formatDraftAttendees(emails: string[]): Promise<string> {
 // no LINE in system → Outlook invite goes out right after organizer confirms
 // (omit “รออีกฝั่งยืนยัน…” from the card in that case).
 async function confirmCardMessage(d: Draft, prefix = "", organizerUpn?: string): Promise<object> {
-  const linked = await findLinkedLineAttendees(d.attendees, organizerUpn);
+  const selfOnly = d.attendees.length === 0;
+  const linked = selfOnly ? [] : await findLinkedLineAttendees(d.attendees, organizerUpn);
   const lineHold = linked.length > 0;
   const pendingPhoto = d.attachLinePhoto ? await loadPendingLinePhoto(organizerUpn || "") : null;
-  const who = await formatDraftAttendees(d.attendees);
+  const who = selfOnly ? "(ตัวเอง — ไม่มีผู้เข้าร่วม)" : await formatDraftAttendees(d.attendees);
   const hint = lineHold
     ? "ยืนยันเพื่อส่งคำขอนัด (รออีกฝั่งยืนยันก่อนเข้า Outlook)\nหรือตั้งหัวข้อ / รายละเอียด / เพิ่มคน ก่อนได้ครับ 👇"
-    : "ยืนยันเพื่อส่งนัดประชุม\nหรือตั้งหัวข้อ / รายละเอียด / เพิ่มคน ก่อนได้ครับ 👇";
+    : selfOnly
+      ? "ยืนยันเพื่อจองเวลาในตาราง\nหรือตั้งหัวข้อ / รายละเอียด ก่อนได้ครับ 👇"
+      : "ยืนยันเพื่อส่งนัดประชุม\nหรือตั้งหัวข้อ / รายละเอียด / เพิ่มคน ก่อนได้ครับ 👇";
   const text =
-    `${prefix}📋 ตรวจสอบก่อนส่งนัดประชุม\n` +
+    `${prefix}${selfOnly ? "📋 ตรวจสอบก่อนจองเวลา" : "📋 ตรวจสอบก่อนส่งนัดประชุม"}\n` +
     `🕐 ${draftWhen(d)}\n` +
     `📌 หัวข้อ: ${d.subject}\n` +
     (d.detail ? `📝 รายละเอียด: ${d.detail}\n` : "") +
@@ -556,23 +644,28 @@ async function confirmCardMessage(d: Draft, prefix = "", organizerUpn?: string):
         ? `📷 รูปจาก LINE: ${pendingPhoto.name}\n`
         : `📷 รูปจาก LINE: ส่งรูปในแชทได้เลย (จะแนบตอนยืนยัน)\n`
       : "") +
-    `👤 ผู้เข้าร่วม: ${who}\n\n` +
+    `👤 ${selfOnly ? "" : "ผู้เข้าร่วม: "}${who}\n\n` +
     hint;
   const items: object[] = [
     {
       type: "action",
       action: {
         type: "postback",
-        label: lineHold ? "✅ ยืนยันส่งคำขอ" : "✅ ยืนยันส่งนัด",
+        label: lineHold ? "✅ ยืนยันส่งคำขอ" : selfOnly ? "✅ ยืนยันจอง" : "✅ ยืนยันส่งนัด",
         data: "a=confirmbook",
-        displayText: lineHold ? "ยืนยันส่งคำขอนัด" : "ยืนยันส่งนัด Outlook",
+        displayText: lineHold ? "ยืนยันส่งคำขอนัด" : selfOnly ? "ยืนยันจองเวลา" : "ยืนยันส่งนัด Outlook",
       },
     },
     { type: "action", action: { type: "postback", label: "🕐 เวลา", data: "a=settime", displayText: "แก้วันเวลา" } },
     { type: "action", action: { type: "postback", label: "✏️ หัวข้อ", data: "a=setsubj", displayText: "ตั้งหัวข้อประชุม" } },
     { type: "action", action: { type: "postback", label: "📝 รายละเอียด", data: "a=setdetail", displayText: "ใส่รายละเอียด" } },
-    { type: "action", action: { type: "postback", label: "➕ เพิ่มคน", data: "a=addppl", displayText: "เพิ่มคนเข้าประชุม" } },
   ];
+  if (!selfOnly) {
+    items.push({
+      type: "action",
+      action: { type: "postback", label: "➕ เพิ่มคน", data: "a=addppl", displayText: "เพิ่มคนเข้าประชุม" },
+    });
+  }
   if (d.attendees.length > 0) {
     items.push({
       type: "action",
@@ -863,7 +956,16 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
         detail: draft.detail || undefined,
         create: async () => {
           const { result: ev, asUser } = await withDelegatedGraph(upn, () =>
-            createEvent(upn, draft.subject, wallIso(s), wallIso(e), draft.attendees, true, draft.detail || undefined)
+            createEvent(
+              upn,
+              draft.subject,
+              wallIso(s),
+              wallIso(e),
+              draft.attendees,
+              !draft.allDay,
+              draft.detail || undefined,
+              !!draft.allDay
+            )
           );
           asUserOk = asUser;
           return ev;
@@ -880,7 +982,9 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       const headline =
         result.mode === "proposed"
           ? `⏳ ส่งคำขอนัดแล้ว — รออีกฝั่งยืนยัน\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}`
-          : `✅ ส่งนัดประชุมแล้ว!\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}`;
+          : draft.attendees.length === 0
+            ? `✅ จองเวลาในตารางแล้ว!\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}`
+            : `✅ ส่งนัดประชุมแล้ว!\n📌 ${draft.subject}\n🕐 ${draftWhen(draft)}`;
 
       const pendingAttach = result.mode === "booked" && result.eventId && draft.attachFile?.url;
       const pendingPhoto = result.mode === "booked" && result.eventId && draft.attachLinePhoto;
@@ -888,12 +992,14 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       await clearDraft(upn);
 
       // Reply LINE first — file attach runs in after() so webhook + monitor don't hang.
-      const whoLine = await formatDraftAttendees(draft.attendees);
+      const whoLine = draft.attendees.length
+        ? await formatDraftAttendees(draft.attendees)
+        : "(ตัวเอง — ไม่มีผู้เข้าร่วม)";
       await replyLine(
         replyToken,
         headline +
           (draft.detail ? `\n📝 ${draft.detail}` : "") +
-          `\n👤 ${whoLine}` +
+          (draft.attendees.length ? `\n👤 ${whoLine}` : "") +
           (pendingAttach ? `\n📎 กำลังแนบไฟล์ ${draft.attachFile!.name || "เอกสาร"}…` : "") +
           (pendingPhoto && linePhoto ? `\n📷 กำลังแนบรูป ${linePhoto.name}…` : "") +
           (pendingPhoto && !linePhoto

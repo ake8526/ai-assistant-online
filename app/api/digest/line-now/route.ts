@@ -3,7 +3,7 @@
 import { NextResponse } from "next/server";
 import { checkCronSecret } from "@/lib/auth";
 import { resolveLinkedUpn, sendLine } from "@/lib/line";
-import { buildDigest, formatStoriesText, rememberDeliveredStories } from "@/lib/digest";
+import { buildDigest, formatDigestSkippedNote, formatStoriesText, rememberDeliveredStories } from "@/lib/digest";
 import { digestKickSettingKey, type DigestKickPayload } from "@/lib/digestKick";
 import { deleteSetting, getSetting } from "@/lib/store";
 import { claimSend, clearInflight, markSent } from "@/lib/notify";
@@ -87,7 +87,7 @@ async function run(req: Request) {
             trace("reply", "📰 ตอบกลับ get_news (ว่าง)");
             return { ok: true, delivered: 0, note: why };
           }
-          const extra = digest.skipped.length ? `\n\n(ข้ามบางแหล่ง: ${digest.skipped.join(", ")})` : "";
+          const extra = formatDigestSkippedNote(digest.skipped, !!digest.stories?.length);
           await sendLine(upn, "", formatStoriesText(digest.stories, digest.note) + extra);
           await rememberDeliveredStories(upn, digest.stories);
           if (fromCron && !force) await markSent(upn, "news");

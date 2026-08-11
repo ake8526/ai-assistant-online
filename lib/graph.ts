@@ -1605,7 +1605,8 @@ export async function createEvent(
   endIso: string,
   attendeeEmails: string[],
   _online = true,
-  description?: string
+  description?: string,
+  allDay = false
 ): Promise<GraphEvent & { id: string; webLink?: string; onlineMeeting?: { joinUrl?: string } | null }> {
   const asUser = !!getUserGraphToken();
   const path = asUser ? `/me/events` : `/users/${encodeURIComponent(organizerUpn)}/events`;
@@ -1616,17 +1617,22 @@ export async function createEvent(
   );
 
   const postTeams = async () => {
+    const body: Record<string, unknown> = {
+      subject,
+      start: { dateTime: startIso, timeZone: TIMEZONE },
+      end: { dateTime: endIso, timeZone: TIMEZONE },
+      attendees: attendeeEmails.map((a) => ({ emailAddress: { address: a }, type: "required" })),
+    };
+    if (allDay) {
+      body.isAllDay = true;
+    } else {
+      body.isOnlineMeeting = true;
+      body.onlineMeetingProvider = "teamsForBusiness";
+    }
     const r = await graphFetch(path, {
       method: "POST",
       timeoutMs: teamsTimeout,
-      body: {
-        subject,
-        start: { dateTime: startIso, timeZone: TIMEZONE },
-        end: { dateTime: endIso, timeZone: TIMEZONE },
-        attendees: attendeeEmails.map((a) => ({ emailAddress: { address: a }, type: "required" })),
-        isOnlineMeeting: true,
-        onlineMeetingProvider: "teamsForBusiness",
-      },
+      body,
     });
     if (!r.ok) throw new Error(`Graph createEvent ${r.status}: ${(await r.text()).slice(0, 300)}`);
     return r.json() as Promise<GraphEvent & { id: string; webLink?: string }>;
@@ -1637,7 +1643,7 @@ export async function createEvent(
     ev = await postTeams();
   } catch (e) {
     const msg = String(e);
-    if (/timeout|503|504|502|429/i.test(msg)) {
+    if (!allDay && /timeout|503|504|502|429/i.test(msg)) {
       console.warn("[graph] createEvent Teams retry:", msg.slice(0, 160));
       await new Promise((r) => setTimeout(r, 1200));
       ev = await postTeams();
@@ -1647,7 +1653,7 @@ export async function createEvent(
   }
 
   // Join URL sometimes lands a moment after create — refetch / patch if missing.
-  if (!ev.onlineMeeting?.joinUrl && ev.id) {
+  if (!allDay && !ev.onlineMeeting?.joinUrl && ev.id) {
     try {
       await new Promise((r) => setTimeout(r, 800));
       const refreshed = await getEvent(organizerUpn, ev.id);
@@ -1672,12 +1678,12 @@ export async function createEvent(
     }
   }
 
-  if (!ev.onlineMeeting?.joinUrl) {
+  if (!allDay && !ev.onlineMeeting?.joinUrl) {
     console.warn("[graph] createEvent succeeded but Teams joinUrl still missing", ev.id);
   }
 
   // Compact Teams body from the create response — no extra GET/sleep (avoids LINE timeout).
-  if (ev.id) {
+  if (!allDay && ev.id) {
     const raw = String(ev.body?.content || "");
     const join = ev.onlineMeeting?.joinUrl;
     if (raw.includes("teams.microsoft.com") || join) {
