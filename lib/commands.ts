@@ -925,8 +925,15 @@ function quickCancelIntent(text: string): { intent: string; params: Record<strin
     .trim();
 
   const params: Record<string, unknown> = {};
-  if (period) params.period = period;
-  if (rest && !/^(วันนี้|พรุ่งนี้|มะรืน|ทั้งหมด|นี้)$/i.test(rest)) params.person = rest;
+  // Support “ยกเลิกนัดวันเสาร์” / “ยกเลิกวันเสาร์” by turning weekday into an exact filter.
+  const wdM = rest.match(/^(วัน?(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)(?:นี้|หน้า)?)$/i);
+  if (wdM?.[1]) {
+    params.weekday = wdM[1];
+  } else if (period) {
+    params.period = period;
+  }
+
+  if (rest && !params.weekday && !/^(วันนี้|พรุ่งนี้|มะรืน|ทั้งหมด|นี้)$/i.test(rest)) params.person = rest;
   return { intent: "cancel_meeting", params };
 }
 
@@ -4666,7 +4673,49 @@ async function handleParsed(
     const denied = needCalendarConsent();
     if (denied) return denied;
     const period = String(params.period || "upcoming");
-    const { start, end, label: periodLabel } = periodRange(period);
+    // Allow weekday/date cancellation to filter to exactly that day.
+    const weekdayRaw = params.weekday ? String(params.weekday) : "";
+    const dateRaw = params.date ? String(params.date) : "";
+    let start: Date;
+    let end: Date;
+    let periodLabel: string;
+    let scopePeriod: string;
+    if (weekdayRaw) {
+      const range = resolveWeekday(weekdayRaw);
+      if (range) {
+        start = range.start;
+        end = range.end;
+        periodLabel = range.label;
+        scopePeriod = "custom";
+      } else {
+        const r = periodRange(period);
+        start = r.start;
+        end = r.end;
+        periodLabel = r.label;
+        scopePeriod = period;
+      }
+    } else if (dateRaw) {
+      const range = resolveDay(dateRaw);
+      if (range) {
+        start = range.start;
+        end = range.end;
+        periodLabel = range.label;
+        scopePeriod = "custom";
+      } else {
+        const r = periodRange(period);
+        start = r.start;
+        end = r.end;
+        periodLabel = r.label;
+        scopePeriod = period;
+      }
+    } else {
+      const r = periodRange(period);
+      start = r.start;
+      end = r.end;
+      periodLabel = r.label;
+      scopePeriod = period;
+    }
+
     let events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
     // Still cancellable until end time (in-progress included)
     const now = nowWall();
@@ -4683,8 +4732,8 @@ async function handleParsed(
     if (!events.length) {
       return {
         intent,
-        reply: `ไม่มีนัดที่จะยกเลิก${period !== "upcoming" ? ` ${periodLabel}` : " ในช่วง 2 สัปดาห์ข้างหน้า"}ครับ`,
-        period,
+        reply: `ไม่มีนัดที่จะยกเลิก${scopePeriod !== "upcoming" ? ` ${periodLabel}` : " ในช่วง 2 สัปดาห์ข้างหน้า"}ครับ`,
+        period: scopePeriod,
       };
     }
 
@@ -4706,7 +4755,7 @@ async function handleParsed(
 
     const choices = buildCancelChoices(events, now);
     const liveCount = choices.filter((c) => c.label.startsWith("🔴")).length;
-    const scope = period !== "upcoming" ? periodLabel : "";
+    const scope = scopePeriod !== "upcoming" ? periodLabel : "";
     let reply = personHint
       ? `เจอนัด${scope ? ` ${scope}` : ""} ที่เกี่ยวกับ “${personHint}” ${choices.length} รายการ — เลือกที่ยกเลิกครับ 👇`
       : scope
@@ -4719,7 +4768,7 @@ async function handleParsed(
         (personHint ? `กรอง “${personHint}” แล้ว ` : "") +
         `เลือกด้านล่าง 👇`;
     }
-    return { intent: "choose_cancel", reply, choices, period };
+    return { intent: "choose_cancel", reply, choices, period: scopePeriod };
   }
 
   if (intent === "list_tasks") {
