@@ -1409,8 +1409,8 @@ async function parseIntent(
   // After a cancellation, user may say “ยังไม่ได้/อันนี้ไม่ได้” to cancel another item
   // from the same previously shown list.
   if (
-    (context?.last_intent === "cancelled" || context?.last_intent === "choose_cancel") &&
-    /^(ยังไม่ได้|อันนี้ไม่ได้|ไม่ใช่อันนี้|ไม่เอาอันนี้|ยกเลิกอันอื่น|เอาอันอื่น)/i.test(textClean)
+    /cancel/i.test(String(context?.last_intent || "")) &&
+    /(ยังไม่ได้|อันนี้ไม่ได้|ไม่ใช่อันนี้|ไม่เอาอันนี้|ยกเลิกอันอื่น|เอาอันอื่น)/i.test(textClean)
   ) {
     const lp = context.last_period || "upcoming";
     return { intent: "cancel_meeting", params: { period: lp }, source: "quick" };
