@@ -76,18 +76,14 @@ export function planFor(bkk) {
     if (weekday) {
       // ทุก 10 นาที ไม่ใช่ 5: งานนี้ใช้ได้ถึง 300 วินาที (maxDuration ของ route)
       // ระยะ 10 นาทีจึงรับประกันว่ารอบก่อนจบแล้วแน่ ๆ ไม่ทับกัน (route ไม่มี lock)
-      // ปิดชั่วคราว 13 ส.ค. 2026: dedupe พังแบบเดียวกับ calendar notify — ตาราง
-      // seen_meetings ไม่มีจริง ทำให้สรุปประชุมเดิมถูกส่งซ้ำทุกรอบ
-      // if (minute % 10 === 0) {
-      //   jobs.push({ label: "meeting summaries", path: "/api/summaries/run", timeoutMs: 280_000, background: true });
-      // }
+      if (minute % 10 === 0) {
+        jobs.push({ label: "meeting summaries", path: "/api/summaries/run", timeoutMs: 280_000, background: true });
+      }
       if (minute === 0) {
         jobs.push({ label: "task reminders", path: "/api/reminders/run", timeoutMs: 60_000, background: true });
       }
     }
-    // ปิดชั่วคราว 13 ส.ค. 2026: dedupe ของ /api/calendar/notify พังอยู่ (เขียนลงตาราง
-    // calendar_notified ที่ไม่มีจริง) ทำให้แจ้งนัดเดิมซ้ำทุกรอบ — เปิดคืนเมื่อแก้เสร็จ
-    // jobs.push({ label: "calendar notify", path: "/api/calendar/notify", timeoutMs: 110_000, background: true });
+    jobs.push({ label: "calendar notify", path: "/api/calendar/notify", timeoutMs: 110_000, background: true });
   }
 
   return jobs;
