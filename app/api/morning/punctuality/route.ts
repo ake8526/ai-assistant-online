@@ -138,9 +138,19 @@ async function run(req: Request) {
 
     const verdicts = users.flatMap((upn) => judge(upn, rows[upn] || {}));
     const problems = verdicts.filter((v) => v.status !== "ontime");
+    // "unknown" only means a legacy date-only row that carries no send time; it
+    // heals itself on the next send and is not worth waking anyone for. Alert on
+    // real lateness, and let the unknown rows ride along as context.
+    const alertable = problems.filter((v) => v.status === "late" || v.status === "missing");
 
-    if (!problems.length) {
-      return NextResponse.json({ ok: true, date: at.date, onTime: verdicts.length, problems: [] });
+    if (!alertable.length) {
+      return NextResponse.json({
+        ok: true,
+        date: at.date,
+        onTime: verdicts.filter((v) => v.status === "ontime").length,
+        problems,
+        sent: "skip (nothing late)",
+      });
     }
 
     const already = await getSetting(OPS_BUCKET, REPORTED_KEY);
@@ -153,7 +163,7 @@ async function run(req: Request) {
     let sent = "trace-only (no operator configured)";
     await runWithTrace({ upn: operator || undefined, channel: "cron" }, async () => {
       trace("receive", "cron · ตรวจความตรงเวลาการส่งเช้า");
-      trace("error", `⏰ ส่งช้า/ไม่ส่ง ${problems.length} รายการ`, "error");
+      trace("error", `⏰ ส่งช้า/ไม่ส่ง ${alertable.length} รายการ`, "error");
       if (dry) {
         sent = "dry run (not sent)";
         return;
