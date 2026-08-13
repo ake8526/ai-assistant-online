@@ -4,6 +4,8 @@ import { admin } from "@/lib/supabaseServer";
 
 const LINE_TEXT_LIMIT = 4900; // LINE hard limit is 5000 chars/message; keep headroom
 const PUSH_URL = "https://api.line.me/v2/bot/message/push";
+const QUOTA_URL = "https://api.line.me/v2/bot/message/quota";
+const QUOTA_USED_URL = "https://api.line.me/v2/bot/message/quota/consumption";
 const REPLY_URL = "https://api.line.me/v2/bot/message/reply";
 const LOADING_URL = "https://api.line.me/v2/bot/chat/loading/start";
 
@@ -14,14 +16,109 @@ function authHeaders(): Record<string, string> {
 }
 
 function chunk(text: string, size = LINE_TEXT_LIMIT): string[] {
+  const cleaned = (text || "").trim();
+  if (!cleaned) return [""];
+  if (cleaned.length <= size) return [cleaned];
   const parts: string[] = [];
-  for (let i = 0; i < text.length; i += size) parts.push(text.slice(i, i + size));
-  return parts.length ? parts : [""];
+  let rest = cleaned;
+  while (rest.length > size) {
+    const window = rest.slice(0, size);
+    let cut = window.lastIndexOf("\n\n");
+    if (cut < size * 0.45) cut = window.lastIndexOf("\n");
+    if (cut < size * 0.45) {
+      // Prefer end of sentence (Thai/English) over mid-word cut.
+      const marks = ["។", "．", "。", ".", "!", "?", "…"].map((m) => window.lastIndexOf(m));
+      cut = Math.max(...marks);
+    }
+    if (cut < size * 0.45) cut = window.lastIndexOf(" ");
+    if (cut < size * 0.45) cut = size;
+    else cut = cut + 1;
+    parts.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest) parts.push(rest);
+  return parts;
 }
 
 async function linePost(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, { method: "POST", headers: authHeaders(), body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`LINE ${r.status}: ${(await r.text()).slice(0, 300)}`);
+}
+
+// ---------------------------------------------------------------------------
+// Push quota guard
+//
+// The free LINE plan allows 300 PUSH messages per month (replies are free and
+// unlimited). On 13 Aug 2026 a dedupe bug burned the whole month's allowance in
+// a day and every proactive message failed with no explanation. The API knows
+// the number, so ask it: keep a reading cached and refuse bulk pushes once the
+// remaining budget is down to the reserve, so the morning brief and news still
+// have room. Reasons are traced, never silent.
+// ---------------------------------------------------------------------------
+const QUOTA_CACHE_MS = 10 * 60_000;
+/** Messages held back for the daily essentials when the month runs low. */
+const QUOTA_RESERVE = 15;
+
+type QuotaReading = { ts: number; used: number; limit: number | null };
+
+async function lineGet<T>(url: string): Promise<T | null> {
+  try {
+    const r = await fetch(url, { headers: authHeaders() });
+    if (!r.ok) return null;
+    return (await r.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function readQuota(): Promise<QuotaReading | null> {
+  const { getSetting, setSetting } = await import("@/lib/store");
+  try {
+    const raw = await getSetting("_ops", "line_quota");
+    if (raw) {
+      const cached = JSON.parse(raw) as QuotaReading;
+      if (Date.now() - cached.ts < QUOTA_CACHE_MS) return cached;
+    }
+  } catch {
+    /* fall through to a live read */
+  }
+  const quota = await lineGet<{ type?: string; value?: number }>(QUOTA_URL);
+  const used = await lineGet<{ totalUsage?: number }>(QUOTA_USED_URL);
+  if (!quota || !used) return null;
+  const reading: QuotaReading = {
+    ts: Date.now(),
+    used: Number(used.totalUsage || 0),
+    limit: quota.type === "limited" ? Number(quota.value || 0) : null, // null = unlimited plan
+  };
+  try {
+    await setSetting("_ops", "line_quota", JSON.stringify(reading));
+  } catch {
+    /* caching is best-effort */
+  }
+  return reading;
+}
+
+/** Remaining pushes this month, or null when unknown / on an unlimited plan. */
+export async function lineQuotaLeft(): Promise<number | null> {
+  const r = await readQuota();
+  if (!r || r.limit === null) return null;
+  return Math.max(0, r.limit - r.used);
+}
+
+export class LineQuotaError extends Error {
+  constructor(left: number) {
+    super(`LINE push quota exhausted (เหลือ ${left} ข้อความในเดือนนี้)`);
+    this.name = "LineQuotaError";
+  }
+}
+
+/** Throw before spending a push we do not have. `essential` messages (morning
+ *  brief / news) may dip into the reserve; bulk jobs may not. */
+async function assertQuota(essential: boolean): Promise<void> {
+  const left = await lineQuotaLeft();
+  if (left === null) return; // unknown or unlimited — let LINE decide
+  const floor = essential ? 0 : QUOTA_RESERVE;
+  if (left <= floor) throw new LineQuotaError(left);
 }
 
 /** Show LINE’s 3-dot “typing” bubble while the bot works (5–60s). */
@@ -35,13 +132,19 @@ export async function showLineLoading(lineUserId: string, seconds = 60): Promise
 }
 
 /** Low-level push to a raw LINE userId. */
-export async function pushLineToId(lineUserId: string, text: string): Promise<void> {
+export async function pushLineToId(lineUserId: string, text: string, essential = false): Promise<void> {
+  await assertQuota(essential);
   const messages = chunk(text).slice(0, 5).map((c) => ({ type: "text", text: c }));
   await linePost(PUSH_URL, { to: lineUserId, messages });
 }
 
 /** Push arbitrary message objects (text + quickReply, flex, …). */
-export async function pushLineMessages(lineUserId: string, messages: object[]): Promise<void> {
+export async function pushLineMessages(
+  lineUserId: string,
+  messages: object[],
+  essential = false
+): Promise<void> {
+  await assertQuota(essential);
   await linePost(PUSH_URL, { to: lineUserId, messages: messages.slice(0, 5) });
 }
 
@@ -109,9 +212,14 @@ export async function resolveLinkedUpn(query: string): Promise<string | null> {
 }
 
 /** Push a message to the user's linked LINE account. Throws if not linked. */
-export async function sendLine(upn: string, subject: string, bodyText: string): Promise<void> {
+export async function sendLine(
+  upn: string,
+  subject: string,
+  bodyText: string,
+  essential = false
+): Promise<void> {
   const lineId = await getLineId(upn);
   if (!lineId) throw new Error(`${upn} ยังไม่ได้เชื่อมบัญชี LINE`);
   const full = subject ? `${subject}\n\n${bodyText}` : bodyText;
-  await pushLineToId(lineId, full);
+  await pushLineToId(lineId, full, essential);
 }

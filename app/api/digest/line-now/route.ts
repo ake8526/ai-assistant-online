@@ -94,7 +94,7 @@ async function run(req: Request) {
             return { ok: true, delivered: 0, note: why };
           }
           const extra = formatDigestSkippedNote(digest.skipped, !!digest.stories?.length);
-          await sendLine(upn, "", formatStoriesText(digest.stories, digest.note) + extra);
+          await sendLine(upn, "", formatStoriesText(digest.stories, digest.note) + extra, fromCron);
           await rememberDeliveredStories(upn, digest.stories);
           if (fromCron && !force) await markSent(upn, "news");
           await clearNewsPrewarm(upn);

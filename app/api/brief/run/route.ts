@@ -81,7 +81,7 @@ async function pushBrief(upn: string, force: boolean): Promise<string> {
       return `delivered agenda (${count})`;
     } catch (e) {
       try {
-        await sendLine(upn, "🌅 สรุปตารางเช้า", agenda.text);
+        await sendLine(upn, "🌅 สรุปตารางเช้า", agenda.text, true);
         await markSent(upn, "brief");
         await clearBriefPrewarm(upn);
         trace("reply", "ส่งสรุปเช้า (text-fallback)");
@@ -105,7 +105,7 @@ async function sendBuiltNews(upn: string, force: boolean, d: DigestResult): Prom
   }
   if (!force && !(await claimSend(upn, "news"))) return "skip (inflight or sent)";
   try {
-    await sendLine(upn, "", formatStoriesText(d.stories));
+    await sendLine(upn, "", formatStoriesText(d.stories), true);
     await rememberDeliveredStories(upn, d.stories);
     await markSent(upn, "news");
     await clearNewsPrewarm(upn);

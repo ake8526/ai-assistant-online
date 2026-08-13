@@ -439,7 +439,7 @@ export async function runForUser(userUpn: string, ready?: MorningAgenda): Promis
   const body = `${header}\n\n${agenda.text}`;
 
   if (!agenda.choices.length) {
-    await pushLineMessages(lineId, [{ type: "text", text: body.slice(0, 4900) }]);
+    await pushLineMessages(lineId, [{ type: "text", text: body.slice(0, 4900) }], true);
     return agenda.text;
   }
 
@@ -457,12 +457,16 @@ export async function runForUser(userUpn: string, ready?: MorningAgenda): Promis
     };
   });
 
-  await pushLineMessages(lineId, [
-    {
-      type: "text",
-      text: body.slice(0, 4900),
-      quickReply: { items },
-    },
-  ]);
+  await pushLineMessages(
+    lineId,
+    [
+      {
+        type: "text",
+        text: body.slice(0, 4900),
+        quickReply: { items },
+      },
+    ],
+    true
+  );
   return agenda.text;
 }
