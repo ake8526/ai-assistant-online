@@ -1,13 +1,18 @@
-// Build tomorrow-morning's payloads BEFORE the delivery minute.
+// Build the morning payloads BEFORE each user's delivery minute.
 //
-// The digest takes ~100s to build, so 07:00 can only be hit if the content
-// already exists when the clock strikes. The Cloudflare Worker calls:
-//   06:50 / 06:53 / 06:56  ?stage=news   (retries: later calls skip if cached)
-//   06:59                  ?stage=brief  (also warms the function for 07:00)
-// Then /api/brief/run?only=news at 07:00 and ?only=brief at 07:01 just push.
+// The digest takes ~100s to build, so the delivery time can only be hit if the
+// content already exists when the clock strikes. The Cloudflare Worker calls
+// ?stage=auto every minute through the morning; this route looks at each user's
+// own `news_time` / `brief_time` and prepares whatever is coming up — news ~4–12
+// min ahead (three-plus attempts, each a no-op once cached) and the agenda 1–3
+// min ahead, where a fresher calendar is worth the rebuild.
+//
+// Then /api/brief/run just pushes what is cached. Nothing here sends to LINE.
 //
 // Heavy work runs after the response (waitUntil/after, maxDuration 300) so the
-// caller never has to hold a 100s connection open — same pattern as digest/push.
+// caller never holds a 100s connection open — same pattern as digest/push.
+// Manual runs can pass ?wait=1 to get the results inline. See
+// docs/morning-delivery-plan.md.
 import { NextResponse, after } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { checkCronSecret } from "@/lib/auth";
@@ -16,23 +21,83 @@ import { buildDigest } from "@/lib/digest";
 import { resolveLinkedUpn } from "@/lib/line";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { hasFreshNewsPrewarm, saveBriefPrewarm, saveNewsPrewarm } from "@/lib/morningCache";
-import { alreadySentToday } from "@/lib/notify";
+import {
+  alreadySentToday,
+  bkkNowParts,
+  minutesUntil,
+  notifyConfigFromSettings,
+  NOTIFY_SETTING_KEYS,
+  type NotifyKind,
+} from "@/lib/notify";
+import { getSettingsFor } from "@/lib/store";
 import { runWithTrace, trace } from "@/lib/trace";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-type Stage = "news" | "brief" | "both";
+type Stage = "news" | "brief" | "both" | "auto";
+
+/** How far ahead of the delivery minute each payload is prepared. */
+const NEWS_LEAD_MIN = { from: 4, to: 12 }; // build takes ~100s + retries
+const BRIEF_LEAD_MIN = { from: 1, to: 3 }; // ~5s, so as late (= as fresh) as possible
 
 function parseStage(req: Request): Stage {
   const v = (new URL(req.url).searchParams.get("stage") || "both").toLowerCase();
-  return v === "news" || v === "brief" ? v : "both";
+  return v === "news" || v === "brief" || v === "auto" ? v : "both";
 }
 
 async function linkedUsers(): Promise<string[]> {
   const { data } = await admin.from("line_links").select("upn");
   return (data || []).map((r) => r.upn);
+}
+
+/** Which payloads to prepare for each user right now. */
+async function planPrewarm(users: string[], stage: Stage): Promise<Record<string, NotifyKind[]>> {
+  const plan: Record<string, NotifyKind[]> = {};
+  if (stage !== "auto") {
+    const kinds: NotifyKind[] = stage === "both" ? ["news", "brief"] : [stage];
+    for (const upn of users) plan[upn] = kinds;
+    return plan;
+  }
+  // auto: follow each user's configured time, whatever it is
+  const rows = await getSettingsFor(users, NOTIFY_SETTING_KEYS);
+  const at = bkkNowParts();
+  for (const upn of users) {
+    const cfg = notifyConfigFromSettings(rows[upn] || {});
+    const kinds: NotifyKind[] = [];
+    for (const kind of ["news", "brief"] as NotifyKind[]) {
+      const k = cfg[kind];
+      if (!k.enabled || !k.days.includes(at.day)) continue;
+      const lead = kind === "news" ? NEWS_LEAD_MIN : BRIEF_LEAD_MIN;
+      const away = minutesUntil(k.time);
+      if (away >= lead.from && away <= lead.to) kinds.push(kind);
+    }
+    if (kinds.length) plan[upn] = kinds;
+  }
+  return plan;
+}
+
+/** ?explain=1 — what the schedule looks like right now, without doing anything.
+ *  Use it to confirm each user's resolved delivery times (incl. the agenda's
+ *  derived +1 minute) and how far away they are. */
+async function explainSchedule(users: string[]) {
+  const rows = await getSettingsFor(users, NOTIFY_SETTING_KEYS);
+  const at = bkkNowParts();
+  const out: Record<string, unknown> = {};
+  for (const upn of users) {
+    const cfg = notifyConfigFromSettings(rows[upn] || {});
+    out[upn] = {
+      news: { ...cfg.news, today: cfg.news.days.includes(at.day), minutesAway: minutesUntil(cfg.news.time) },
+      brief: { ...cfg.brief, today: cfg.brief.days.includes(at.day), minutesAway: minutesUntil(cfg.brief.time) },
+      sent: {
+        news: await alreadySentToday(upn, "news"),
+        brief: await alreadySentToday(upn, "brief"),
+      },
+      newsPrepared: await hasFreshNewsPrewarm(upn),
+    };
+  }
+  return { now: at, leads: { news: NEWS_LEAD_MIN, brief: BRIEF_LEAD_MIN }, users: out };
 }
 
 async function prewarmNews(upn: string, force: boolean): Promise<string> {
@@ -59,25 +124,6 @@ async function prewarmBrief(upn: string, force: boolean): Promise<string> {
   });
 }
 
-async function prewarmUser(upn: string, stage: Stage, force: boolean): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
-  if (stage === "news" || stage === "both") {
-    try {
-      out.news = await prewarmNews(upn, force);
-    } catch (e) {
-      out.news = `ERROR: ${String(e).slice(0, 150)}`;
-    }
-  }
-  if (stage === "brief" || stage === "both") {
-    try {
-      out.brief = await prewarmBrief(upn, force);
-    } catch (e) {
-      out.brief = `ERROR: ${String(e).slice(0, 150)}`;
-    }
-  }
-  return out;
-}
-
 async function run(req: Request) {
   try {
     assertConfigured();
@@ -86,7 +132,7 @@ async function run(req: Request) {
     const url = new URL(req.url);
     const stage = parseStage(req);
     const force = url.searchParams.get("force") === "1";
-    const wait = url.searchParams.get("wait") === "1"; // manual testing: hold for results
+    const wait = url.searchParams.get("wait") === "1"; // manual runs: hold for results
     const upnQuery = (url.searchParams.get("upn") || "").trim();
 
     let users: string[];
@@ -100,12 +146,29 @@ async function run(req: Request) {
       users = await linkedUsers();
     }
 
+    if (url.searchParams.get("explain") === "1") {
+      return NextResponse.json({ ok: true, ...(await explainSchedule(users)) });
+    }
+
+    const plan = await planPrewarm(users, stage);
     const results: Record<string, Record<string, string>> = {};
-    // Sequential across users: the digest is LLM-bound and parallel users would
-    // trip provider rate limits (the same reason the delivery loop is serial).
+    if (!Object.keys(plan).length) {
+      return NextResponse.json({ ok: true, stage, results, note: "nothing due to prepare" });
+    }
+
+    // Sequential: the digest is LLM-bound and parallel users would trip provider
+    // rate limits (the same reason the delivery loop is serial).
     const job = (async () => {
-      for (const upn of users) {
-        results[upn] = await prewarmUser(upn, stage, force);
+      for (const [upn, kinds] of Object.entries(plan)) {
+        results[upn] = {};
+        for (const kind of kinds) {
+          try {
+            results[upn][kind] =
+              kind === "news" ? await prewarmNews(upn, force) : await prewarmBrief(upn, force);
+          } catch (e) {
+            results[upn][kind] = `ERROR: ${String(e).slice(0, 150)}`;
+          }
+        }
       }
     })();
 
@@ -123,12 +186,12 @@ async function run(req: Request) {
       try {
         await job;
       } catch {
-        /* logged per user */
+        /* recorded per user */
       }
     });
     // Brief wait so the build has actually started before the isolate freezes.
     await Promise.race([job, new Promise((r) => setTimeout(r, 5_000))]);
-    return NextResponse.json({ ok: true, stage, mode: "background", users: users.length, results });
+    return NextResponse.json({ ok: true, stage, mode: "background", results });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

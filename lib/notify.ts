@@ -2,7 +2,7 @@
 // digest). Times/days are stored in the `settings` table; a frequent cron hits
 // the delivery endpoints and each one checks whether "now" (Bangkok wall-clock)
 // is due for each user, sending at most once per day per kind.
-import { getSetting, setSetting } from "@/lib/store";
+import { getSetting, getSettingsFor, setSetting } from "@/lib/store";
 import { nowWall } from "@/lib/time";
 
 export type NotifyKind = "brief" | "news";
@@ -49,28 +49,60 @@ function validTime(s: string | null, def: string): string {
   return s && /^\d{1,2}:\d{2}$/.test(s) ? s.padStart(5, "0") : def;
 }
 
-async function kindConfig(upn: string, kind: NotifyKind): Promise<KindConfig> {
-  const d = NOTIFY_DEFAULTS[kind];
-  const [en, time, days] = await Promise.all([
-    getSetting(upn, `${kind}_enabled`),
-    getSetting(upn, `${kind}_time`),
-    getSetting(upn, `${kind}_days`),
-  ]);
-  return {
-    enabled: en === null ? d.enabled : en === "1",
-    time: validTime(time, d.time),
-    days: parseDays(days, d.days),
+/** Every settings key the schedule depends on — fetched in one query. */
+export const NOTIFY_SETTING_KEYS = [
+  "brief_enabled",
+  "brief_time",
+  "brief_days",
+  "news_enabled",
+  "news_time",
+  "news_days",
+  "news_count",
+];
+
+function addOneMinute(t: string): string {
+  const [hh, mm] = t.split(":").map((x) => parseInt(x, 10));
+  const total = (hh || 0) * 60 + (mm || 0) + 1;
+  if (total >= 24 * 60) return t; // no wrap past midnight — leave it alone
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}
+
+/** Resolve one user's schedule from their settings rows (defaults fill the gaps). */
+export function notifyConfigFromSettings(rows: Record<string, string>): NotifyConfig {
+  const kind = (k: NotifyKind): KindConfig => {
+    const d = NOTIFY_DEFAULTS[k];
+    const en = rows[`${k}_enabled`] ?? null;
+    return {
+      enabled: en === null ? d.enabled : en === "1",
+      time: validTime(rows[`${k}_time`] ?? null, d.time),
+      days: parseDays(rows[`${k}_days`] ?? null, d.days),
+    };
   };
+  const brief = kind("brief");
+  const news = kind("news");
+  news.count = clampNewsCount(rows.news_count ?? NEWS_COUNT_DEFAULT);
+  // The agenda must land AFTER the news — its quick-reply numbers belong on the
+  // newest message. Users (and the settings UI) often store the same minute for
+  // both; shift the agenda by a minute rather than letting them race.
+  if (brief.time === news.time && news.enabled) brief.time = addOneMinute(news.time);
+  return { brief, news };
 }
 
 export async function getNotifyConfig(upn: string): Promise<NotifyConfig> {
-  const [brief, news, countRaw] = await Promise.all([
-    kindConfig(upn, "brief"),
-    kindConfig(upn, "news"),
-    getSetting(upn, "news_count"),
-  ]);
-  news.count = clampNewsCount(countRaw === null ? NEWS_COUNT_DEFAULT : countRaw);
-  return { brief, news };
+  const rows = (await getSettingsFor([upn], NOTIFY_SETTING_KEYS))[upn] || {};
+  return notifyConfigFromSettings(rows);
+}
+
+/** Bangkok wall-clock parts used by every schedule decision. */
+export function bkkNowParts(): { min: number; day: number; date: string } {
+  return bkkNow();
+}
+
+/** Minutes from now until `time` (HH:MM) today in Bangkok — negative once passed. */
+export function minutesUntil(time: string): number {
+  const [hh, mm] = time.split(":").map((x) => parseInt(x, 10));
+  return (hh || 0) * 60 + (mm || 0) - bkkNow().min;
 }
 
 export async function saveNotifyKind(upn: string, kind: NotifyKind, cfg: Partial<KindConfig>): Promise<void> {

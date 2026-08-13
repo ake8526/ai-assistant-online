@@ -108,6 +108,28 @@ export async function deleteSetting(ownerUpn: string, key: string): Promise<void
   await admin.from("settings").delete().eq("owner_upn", ownerUpn).eq("key", key);
 }
 
+/** Selected settings for several users in ONE query — used by the schedule checks
+ *  that run every minute, where a read per key per user adds up. Avoids pulling
+ *  the big cached payload rows that allSettings() would. */
+export async function getSettingsFor(
+  ownerUpns: string[],
+  keys: string[]
+): Promise<Record<string, Record<string, string>>> {
+  const out: Record<string, Record<string, string>> = {};
+  for (const u of ownerUpns) out[u] = {};
+  if (!ownerUpns.length || !keys.length) return out;
+  const { data } = await admin
+    .from("settings")
+    .select("owner_upn,key,value")
+    .in("owner_upn", ownerUpns)
+    .in("key", keys);
+  for (const r of data || []) {
+    if (!out[r.owner_upn]) out[r.owner_upn] = {};
+    out[r.owner_upn][r.key] = r.value;
+  }
+  return out;
+}
+
 export async function allSettings(ownerUpn: string): Promise<Record<string, string>> {
   const { data } = await admin.from("settings").select("key,value").eq("owner_upn", ownerUpn);
   const out: Record<string, string> = {};
