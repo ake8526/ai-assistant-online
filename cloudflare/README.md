@@ -11,16 +11,18 @@ Worker นี้เป็น **ตัวยิงงานตามเวลา�
 
 | เวลา | งาน | endpoint |
 |---|---|---|
-| 06:50 / 06:53 / 06:56 จ–ศ | เตรียมข่าวล่วงหน้า (สร้าง ~100 วิ) | `/api/morning/prewarm?stage=news` |
-| 06:59 จ–ศ | เตรียมตารางเช้า + ปลุก function | `/api/morning/prewarm?stage=brief` |
-| **07:00 จ–ศ** | **ส่งข่าว** (push จากที่เตรียมไว้ <1 วิ) | `/api/brief/run?only=news` |
-| **07:01 จ–ศ** | **ส่งสรุปประชุม/ตาราง** | `/api/brief/run?only=brief` |
-| 07:02–07:10 จ–ศ | ตามเก็บทุกนาที (ส่งแล้วข้ามเอง) | `/api/brief/run?only=both` |
-| 07:00–20:55 ทุก 5 นาที | poll เผื่อผู้ใช้ตั้งเวลาส่งเองไม่ใช่ 07:00 | `/api/brief/run?only=both` |
+| **ทุกนาที 05:30–08:20** | ส่งของใครที่ถึงเวลานาทีนั้น (ข่าวก่อน ตารางตามหลัง 1 นาที) | `/api/brief/run?only=both` |
+| **ทุกนาที 05:30–08:20** | เตรียมเนื้อหาล่วงหน้า — ข่าวก่อนเวลา 4–12 นาที, ตารางก่อน 1–3 นาที | `/api/morning/prewarm?stage=auto` |
 | 08:30 ทุกวัน | ตรวจว่าเมื่อเช้าส่งตรงเวลาไหม (ช้า > 5 นาที → แจ้งผู้ดูแลทาง LINE) | `/api/morning/punctuality` |
+| 08:20–20:55 ทุก 5 นาที | ตามเก็บของที่ยังไม่ได้ส่ง / คนที่ตั้งเวลากลางวัน | `/api/brief/run?only=both` |
 | 08:20–20:55 ทุก **10** นาที จ–ศ | สรุปประชุมจาก transcript (งานยาวถึง 300 วิ จึงเว้น 10 นาทีกันทับกัน) | `/api/summaries/run` |
 | ต้นชั่วโมง 09:00–20:00 จ–ศ | เตือนงานค้าง | `/api/reminders/run` |
 | 08:20–20:55 ทุก 5 นาที ทุกวัน | แจ้งนัดใหม่ในปฏิทิน | `/api/calendar/notify` |
+
+**Worker ไม่ได้ฮาร์ดโค้ดเวลาของใคร** — เวลาส่งอยู่ในตาราง `settings` (`news_time` / `brief_time`
+ต่อผู้ใช้) ฝั่ง Vercel เป็นคนตัดสินว่าถึงเวลาของใคร Worker แค่เคาะให้ถี่พอ
+ตอนนี้ผู้ใช้ตั้งไว้ 06:00 และ 07:00 ซึ่งอยู่ในช่วง 05:30–08:20 ทั้งคู่
+ถ้ามีคนตั้งเวลานอกช่วงนี้ ต้องขยาย `MORNING_FROM_MIN` / `MORNING_TO_MIN` ใน `src/worker.js`
 
 ## Deploy (ทำครั้งเดียว)
 
@@ -46,19 +48,19 @@ npx wrangler deploy
 ดูว่าตอนนี้ Worker คิดว่าต้องยิงอะไร (ไม่ยิงจริง):
 
 ```bash
-curl -sS "https://ktis-ai-scheduler.<subdomain>.workers.dev/?key=<CRON_SECRET>"
+curl -sS "https://ktis-ai-scheduler.ktis-ake.workers.dev/?key=<CRON_SECRET>"
 ```
 
 ดูแผนของนาที 07:00 วันจันทร์:
 
 ```bash
-curl -sS "https://ktis-ai-scheduler.<subdomain>.workers.dev/?key=<CRON_SECRET>&at=07:00&dow=1"
+curl -sS "https://ktis-ai-scheduler.ktis-ake.workers.dev/?key=<CRON_SECRET>&at=07:00&dow=1"
 ```
 
 ยิงงานของนาทีนี้จริง:
 
 ```bash
-curl -sS "https://ktis-ai-scheduler.<subdomain>.workers.dev/?run=1&key=<CRON_SECRET>"
+curl -sS "https://ktis-ai-scheduler.ktis-ake.workers.dev/?run=1&key=<CRON_SECRET>"
 ```
 
 ดู log สด:
@@ -94,7 +96,6 @@ curl -sS -X POST -H "x-cron-secret: <CRON_SECRET>" "https://ktis-ai-assistant.ve
 - Vercel Cron (`../vercel.json`) และ GitHub Actions (`../.github/workflows/cron.yml`)
   ยังเปิดไว้เป็น **ตัวสำรอง** ถ้า Worker ล่ม งานก็ยังออก (สายกว่า) และไม่ส่งซ้ำ
   เพราะ `claimSend`/`isDueNow` ใน `../lib/notify.ts` กันอยู่
-- เวลาส่งของผู้ใช้แต่ละคนตั้งได้เองในฐานข้อมูล (`settings`: `news_time`, `brief_time`)
-  ค่าเริ่มต้น 07:00 / 07:01 จะได้ความแม่นระดับวินาทีเพราะมี prewarm รองรับ
-  ส่วนเวลาอื่นจะถูกจับด้วย poll ทุก 5 นาที และสร้างเนื้อหาสด (ช้ากว่า ~100 วิ)
-  ถ้าย้ายเวลาเริ่มต้นของทีม ต้องเลื่อนเวลา prewarm ใน `src/worker.js` ตามด้วย
+- เวลาส่งของผู้ใช้เปลี่ยนได้จากในแอปโดย**ไม่ต้องแก้ Worker** — prewarm วิ่งตามเวลาของแต่ละคนเอง
+- งานหนัก (สรุปประชุม/เตือนงาน/แจ้งนัด) ยิงแบบไม่รอผล (`background`) เพื่อไม่ให้ไปดันงานที่ต้องตรงเวลา
+- ถ้าจะปิด Worker ชั่วคราว: `npx wrangler triggers delete` หรือ `npx wrangler delete` (ตัวสำรองจะรับช่วงต่อ แค่สายกว่า)
