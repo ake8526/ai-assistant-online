@@ -1,8 +1,9 @@
 # แผนส่งข่าว + สรุปประชุมเช้า ให้ตรงเวลา (Morning Delivery)
 
 อัปเดต: 13 ส.ค. 2026
-สถานะ: **ยังไม่ลงมือแก้โค้ด** — เอกสารนี้บันทึกเป้าหมาย + สาเหตุที่พิสูจน์แล้ว + แผน
-รอคำสั่ง: **“เริ่มทำตามแผน morning-delivery”**
+สถานะ: **โค้ดทำเสร็จ + deploy ขึ้น Vercel แล้ว** เหลือขั้นเดียว — **deploy Cloudflare Worker**
+(ต้องใช้บัญชี Cloudflare ของผู้ใช้ ดู [`cloudflare/README.md`](../cloudflare/README.md))
+ถ้ายังไม่ deploy Worker: ระบบยังส่งได้ด้วยตัวสำรอง (Vercel/GitHub) แต่ **จะยังไม่ตรงเวลา**
 
 ---
 
@@ -84,56 +85,60 @@ GitHub deprioritize/ดรอป scheduled run ความถี่สูงบ
 
 ---
 
-## 4. แผนแก้ — แยก "สร้าง" ออกจาก "ส่ง"
+## 4. สิ่งที่ทำจริง — แยก "สร้าง" ออกจาก "ส่ง"
 
-### ไทม์ไลน์เป้าหมาย
+### หลักการ
+Worker **ไม่รู้** ว่าใครตั้งกี่โมง (ผู้ใช้ 4 คนตั้งไม่เหมือนกัน มีคนตั้ง 06:00) มันแค่
+**เคาะทุกนาที** ในช่วงเช้า แล้วฝั่ง Vercel เป็นคนตัดสินจาก `settings` ของแต่ละคน
+→ ผู้ใช้เปลี่ยนเวลาในแอปได้เองโดยไม่ต้องแก้ Worker
 
-| เวลา | งาน | endpoint | ใช้เวลา |
-|---|---|---|---|
-| 06:50 | **Prewarm** — build ข่าว + agenda เก็บ cache (ไม่ส่ง) | `/api/morning/prewarm` *(ใหม่)* | ~100 วิ |
-| 06:53, 06:56 | Prewarm retry (เฉพาะที่ยังไม่มี cache) | เดิม | — |
-| 06:59 | Warm-up ปลุก function กัน cold start | endpoint เบา | <1 วิ |
-| **07:00:00** | **ส่งข่าว** จาก cache ทันที | `/api/brief/run?only=news` | ~0.5–1 วิ |
-| **07:01:00** | **ส่งสรุปประชุม** จาก agenda ที่ prebuild ไว้ | `/api/brief/run?only=brief` | ~0.5–1 วิ |
+### ไทม์ไลน์ (ยกตัวอย่างคนที่ตั้งข่าว 07:00)
 
-fallback: ถ้า prewarm ล่มทั้ง 3 รอบ → 07:00 build สด (ช้าแต่ยังได้ข่าว) ไม่เงียบหาย
+| เวลา | งาน | ใช้เวลา |
+|---|---|---|
+| 06:48–06:56 | `prewarm?stage=auto` เห็นว่าข่าวเหลือ 4–12 นาที → **build + cache** (ไม่ส่ง) รอบถัดไปเจอ cache แล้วข้าม | ~100 วิ |
+| 06:58–07:00 | `prewarm?stage=auto` เห็นว่าตารางเหลือ 1–3 นาที → build agenda (สร้างใหม่ทุกรอบ ปฏิทินสดที่สุด) | ~5 วิ |
+| **07:00:00** | `brief/run?only=both` → ข่าวถึงเวลา → **push จาก cache** | ~0.5–1 วิ |
+| **07:01:00** | รอบถัดไป → ตารางถึงเวลา → push agenda ที่เตรียมไว้ | ~0.5–1 วิ |
 
-### สิ่งที่ต้องแก้ในโค้ดเดิม (4 จุด)
+fallback: ถ้า prewarm ล่มทุกรอบ → ตอนส่งจะ build สดให้ (ช้าแต่ไม่เงียบหาย)
 
-| จุด | เดิม | ใหม่ | เหตุผล |
-|---|---|---|---|
-| `NOTIFY_DEFAULTS` — `lib/notify.ts` | brief 07:00, news 07:00 | news 07:00, **brief 07:01** | ให้ห่าง 1 นาทีตามเป้า (เดิมเวลาเดียวกันแล้วอาศัยลำดับ step) |
-| `NOTIFY_EARLY_SLACK_MIN = 5` | ส่งก่อนเวลาได้ 5 นาที | **0** | ถ้าไม่แก้ poll รอบ 06:56 จะส่งก่อน 07:00 ทันที — ขัดกับ "07:00 เป๊ะ" |
-| `*_last_sent` เก็บแค่วันที่ | `2026-08-13` | เก็บเป็น **timestamp** | ต้องรู้เวลาส่งข่าวจริง เพื่อบังคับ brief = ข่าว+1 นาที และตรวจย้อนหลังได้ |
-| brief / news เช็คเวลาอิสระต่อกัน | ต่างคนต่างเช็ค | brief ส่งได้เมื่อ **ข่าวส่งแล้ว ≥ 60 วินาที** | กันสลับลำดับ + รับประกันช่องว่าง 1 นาทีจริงแม้วันที่ข่าวสาย |
+### ไฟล์/จุดที่แก้
 
-โครงสร้างที่ **ไม่ต้องแก้** (ทำงานถูกอยู่แล้ว): `isDueNow` (once-per-day), `claimSend` inflight lock 6 นาที, `markSent`, ลำดับข่าวก่อน–ตารางหลัง (ปุ่ม quick-reply อยู่ข้อความใหม่สุด)
+| จุด | เดิม | ใหม่ |
+|---|---|---|
+| `cloudflare/` *(ใหม่)* | — | Worker cron `* * * * *` → เช้าเคาะทุกนาที (05:30–08:20), กลางวันทุก 5 นาที |
+| `lib/morningCache.ts` *(ใหม่)* | — | cache ข่าว/agenda ที่เตรียมไว้ (ผูกกับวันที่ไทย, อายุไม่เกิน 90 นาที, ล้างทันทีที่ส่งสำเร็จ) |
+| `app/api/morning/prewarm/` *(ใหม่)* | — | `stage=auto` เตรียมของตามเวลาของแต่ละคน · `explain=1` ดูตารางที่ระบบคำนวณได้ · `wait=1` รอผลตอนทดสอบ |
+| `NOTIFY_DEFAULTS` | brief 07:00 / news 07:00 | news 07:00 / **brief 07:01** |
+| `notifyConfigFromSettings` | — | **ถ้าเก็บเวลาไว้เท่ากัน → เลื่อน brief +1 นาทีอัตโนมัติ** (07:00→07:01, 06:00→06:01) จึงไม่ต้องไปแก้ค่าที่ผู้ใช้ตั้งไว้ และ UI เขียนทับเท่ากันอีกก็ยังถูก |
+| `NOTIFY_EARLY_SLACK_MIN` | 5 (ส่งก่อนเวลาได้) | **0** — เวลาที่ตั้ง = เวลาที่ต้องถึงมือ |
+| `*_last_sent` | เก็บแค่ `2026-08-13` | เก็บ timestamp ไทย `2026-08-13T07:00:01+07:00` |
+| brief/news เช็คเวลาอิสระ | ต่างคนต่างเช็ค | brief ต้องรอ **ข่าวส่งจริงแล้ว** (+ผ่อนผัน 15 นาที กันข่าวล่มแล้วตารางไม่ออก) |
+| อ่าน settings | 7 query/คน/รอบ | **1 query** (`getSettingsFor`) — จำเป็นเพราะเช้านี้เคาะทุกนาที |
+| `.github/workflows/cron.yml` | `*/5` 3 รอบ | ตัวสำรอง `*/10` (ตัดรอบ 23:50/55 ที่ไม่เคยรัน) |
+| `vercel.json` | ข่าว 07:00 + ตาราง 07:05 | ตัวสำรอง: prewarm รอบเช้า + `only=both` |
 
-### ตัวยิง — ต้องแม่นระดับนาที (ผู้ใช้เลือก + สมัครเอง)
+เพดานที่เลี่ยงไม่ได้: LINE Messaging API ตอบกลับ ~300–800 มิลลิวินาที → คาด **07:00:00–07:00:05**
 
-ยิงทุกนาทีช่วง 06:48–07:10 จ–ศ พร้อม header `x-cron-secret: $CRON_SECRET`
-
-| ตัวเลือก | ค่าใช้จ่าย | ความแม่นที่คาดได้ | หมายเหตุ |
-|---|---|---|---|
-| **Cloudflare Workers Cron** | ฟรี | **07:00:00–07:00:02** | ดีที่สุด: Worker หน่วงรอถึงวินาทีที่ 0 ได้ก่อน push |
-| cron-job.org | ฟรี | 07:00:01–07:00:05 | ตั้งง่ายที่สุด, granularity 1 นาที |
-| อัป Vercel Pro | ~$20/เดือน | ไม่รับประกันระดับวินาที | ไม่ต้องพึ่งของนอก แต่ยังไม่ตอบเป้า 07:00 เป๊ะ |
-
-Vercel cron + GitHub Actions เดิม → **เก็บไว้เป็น safety net** (มาสายก็เจอ "ส่งแล้ว" แล้วข้าม, `claimSend` กันส่งซ้ำอยู่แล้ว) ปรับ GitHub เป็น `*/10` ตามความเป็นจริง และตัดรอบ `50,55 23` ที่ไม่เคยรัน
-
-เพดานที่เลี่ยงไม่ได้: LINE Messaging API ตอบกลับ ~300–800 มิลลิวินาที
+### ที่ยังไม่ทำ (ตกลงกันไว้ว่าเป็นทีหลัง)
+- แจ้งเตือนอัตโนมัติเมื่อส่งช้ากว่าเป้า > 5 นาที (ตอนนี้ตรวจย้อนหลังด้วย `agent_traces` ได้แล้ว)
+- ยังไม่ได้ทดสอบส่งจริงเข้า LINE (ทดสอบแล้วแค่ prewarm + คำนวณตาราง — ไม่มีข้อความถึงผู้ใช้)
 
 ---
 
 ## 5. Definition of Done
 
-- [ ] ข่าวถึง LINE ที่ **07:00:0x** (ไม่ใช่ 07:24–07:30)
-- [ ] สรุปประชุมถึง LINE ที่ **07:01:0x** — ห่างจากข่าว 1 นาที
+- [x] แยกสร้าง/ส่ง: prewarm สร้างล่วงหน้า, เวลาส่งเป็น push เท่านั้น
+- [x] ทำงานตามเวลาของผู้ใช้แต่ละคน ไม่ฮาร์ดโค้ด 07:00 (ตรวจแล้ว: 06:00→06:01, 07:00→07:01)
+- [x] `*_last_sent` มี timestamp ใช้ตรวจความตรงเวลาย้อนหลังได้
+- [x] prewarm ล่ม → fallback build สดตอนส่ง ไม่เงียบหาย
+- [x] `next build` ผ่าน + deploy ขึ้น production แล้ว
+- [ ] **deploy Cloudflare Worker** (ต้องใช้บัญชีผู้ใช้ — `cloudflare/README.md`)
+- [ ] ข่าวถึง LINE ที่ **07:00:0x** และสรุปประชุมที่ **07:01:0x**
 - [ ] ตรงตามนี้ **ต่อเนื่อง 5 วันทำการ** ตรวจจาก `agent_traces` (trace `reply`)
-- [ ] prewarm ล่ม → ยัง fallback build สดได้ ไม่เงียบหาย
-- [ ] ไม่ส่งซ้ำในวันเดียวกัน แม้ trigger ทั้ง 3 ทาง (external + Vercel + GitHub) ยิงพร้อมกัน
-- [ ] `*_last_sent` มี timestamp ใช้ตรวจความตรงเวลาย้อนหลังได้
-- [ ] เพิ่มการเฝ้าระวัง: แจ้งเตือนถ้าส่งช้ากว่าเป้า > 5 นาที (ไม่ต้องรอผู้ใช้แจ้ง)
+- [ ] ไม่ส่งซ้ำในวันเดียวกัน แม้ trigger ทั้ง 3 ทาง (Worker + Vercel + GitHub) ยิงพร้อมกัน
+- [ ] แจ้งเตือนอัตโนมัติถ้าส่งช้ากว่าเป้า > 5 นาที
 
 ---
 
@@ -141,9 +146,13 @@ Vercel cron + GitHub Actions เดิม → **เก็บไว้เป็�
 
 | ไฟล์ | บทบาท |
 |---|---|
-| `vercel.json` | Vercel cron 2 ตัว (ตัวส่งจริงตอนนี้ — สายประจำ) |
-| `.github/workflows/cron.yml` | GitHub scheduled jobs (ถูก throttle, ไม่ได้เป็นตัวส่งจริง) |
-| `lib/notify.ts` | `NOTIFY_DEFAULTS` / `NOTIFY_EARLY_SLACK_MIN` / `isDueNow` / `claimSend` / `markSent` |
+| `cloudflare/src/worker.js` | **ตัวยิงหลัก** — เคาะทุกนาที, ตารางเวลาทั้งหมดอยู่ที่นี่ |
+| `cloudflare/README.md` | วิธี deploy + คำสั่งทดสอบ + วิธีซ้อมส่งจริง |
+| `lib/morningCache.ts` | cache ข่าว/agenda ที่เตรียมล่วงหน้า |
+| `app/api/morning/prewarm/route.ts` | เตรียมของตามเวลาของแต่ละคน (`stage=auto`), `explain=1`, `wait=1` |
+| `vercel.json` | Vercel cron (ตัวสำรอง — สายประจำ) |
+| `.github/workflows/cron.yml` | GitHub scheduled jobs (ตัวสำรอง — ถูก throttle) |
+| `lib/notify.ts` | `NOTIFY_DEFAULTS` / `notifyConfigFromSettings` (+1 นาที) / `isDueNow` / `claimSend` / `markSent` |
 | `app/api/brief/run/route.ts` | `only=news` / `only=brief` / `only=both`, `deliverMorningForUser` |
 | `app/api/digest/push/route.ts` | enqueue ข่าว → `kickLineDigest` |
 | `app/api/digest/line-now/route.ts` | สร้าง+ส่งข่าว (isolate 300s) |
@@ -163,4 +172,10 @@ curl -sS -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_
 
 ```bash
 curl -sS "https://api.github.com/repos/ake8526/ai-assistant-online/actions/workflows/cron.yml/runs?per_page=100"
+```
+
+ตารางที่ระบบคำนวณได้ตอนนี้ของทุกคน (ไม่ส่งอะไร ไม่แก้อะไร):
+
+```bash
+curl -sS -X POST -H "x-cron-secret: $CRON_SECRET" "https://ktis-ai-assistant.vercel.app/api/morning/prewarm?explain=1"
 ```
