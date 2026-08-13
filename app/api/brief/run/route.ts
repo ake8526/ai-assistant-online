@@ -10,7 +10,7 @@ import {
   loadNewsPrewarm,
 } from "@/lib/morningCache";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
-import { claimSend, clearInflight, isDueNow, markSent } from "@/lib/notify";
+import { claimSend, clearInflight, dueNowForUsers, isDueNow, markSent } from "@/lib/notify";
 import { runWithTrace, trace } from "@/lib/trace";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
@@ -21,8 +21,8 @@ async function linkedUsers(): Promise<string[]> {
   return (data || []).map((r) => r.upn);
 }
 
-/** Today's agenda — from the 06:59 prewarm if it is there (a push at 07:01 must
- *  not wait on Graph), otherwise built live. */
+/** Today's agenda — from the prewarm pass if it is there (the push must not wait
+ *  on Graph at the delivery minute), otherwise built live. */
 async function loadAgenda(upn: string): Promise<{ agenda: MorningAgenda; count: number }> {
   const cached = await loadBriefPrewarm(upn);
   if (cached) {
@@ -136,11 +136,11 @@ async function pushNews(upn: string, force: boolean): Promise<string> {
 }
 
 /**
- * Normal mornings use the separate ticks: only=news at 07:00, only=brief at
- * 07:01 (see cloudflare/src/worker.js). only=both is the catch-up path — news
- * first, then the agenda, which `isDueNow` holds back until news has actually
- * gone out, so the agenda still lands after it with its quick-reply buttons on
- * the newest message.
+ * The Worker calls only=both every minute (cloudflare/src/worker.js) and each
+ * kind goes out on its own minute: news first, then the agenda, which
+ * `isDueFromState` holds back until news has actually gone out — so the agenda
+ * always lands after it, with its quick-reply buttons on the newest message.
+ * only=news / only=brief stay available for manual sends.
  */
 async function deliverMorningForUser(
   upn: string,
@@ -183,8 +183,17 @@ async function run(req: Request) {
       } else {
         users = await linkedUsers();
       }
+      // One query decides who is due. This runs every minute all morning and
+      // almost always finds nobody — checking per user per kind cost 4-6s, which
+      // the "arrive at 07:00" target cannot spare.
+      const due = force ? null : await dueNowForUsers(users);
       const results: Record<string, { brief: string; news: string }> = {};
       for (const upn of users) {
+        const d = due?.[upn];
+        if (d && !d.news && !d.brief) {
+          results[upn] = { brief: "skip (not due)", news: "skip (not due)" };
+          continue;
+        }
         try {
           results[upn] = await deliverMorningForUser(upn, force, only);
         } catch (e) {

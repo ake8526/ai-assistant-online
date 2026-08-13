@@ -159,28 +159,31 @@ export async function alreadySentToday(upn: string, kind: NotifyKind): Promise<b
   return sentDate(raw) === bkkNow().date;
 }
 
+/** Everything a due-check needs: the schedule plus when each kind last went out. */
+export const NOTIFY_STATE_KEYS = [...NOTIFY_SETTING_KEYS, "news_last_sent", "brief_last_sent"];
+
 /** Keep the agenda behind the news: same-day ordering + the minimum gap. */
-async function briefMustWaitForNews(
-  upn: string,
+function briefMustWaitForNews(
+  rows: Record<string, string>,
   news: KindConfig,
   at: { min: number; day: number; date: string },
   briefDueMin: number
-): Promise<boolean> {
+): boolean {
   if (!news.enabled || !news.days.includes(at.day)) return false; // no news today — nothing to wait for
   if (at.min >= briefDueMin + NEWS_WAIT_GRACE_MIN) return false; // grace expired — don't starve the agenda
-  const raw = await getSetting(upn, "news_last_sent");
+  const raw = rows.news_last_sent ?? null;
   if (sentDate(raw) !== at.date) return true; // news not out yet today
   const t = Date.parse(raw || "");
   if (!Number.isFinite(t)) return false; // legacy date-only row carries no time
   return Date.now() - t < NEWS_MIN_GAP_MS;
 }
 
-/** Is it time to send `kind` to this user right now, and not already sent today?
- *  Due when Bangkok wall-clock has reached the user's set time (HH:MM). The
- *  Worker polls every minute, so "due" normally becomes true on the exact
- *  minute; a late catch-up still delivers rather than skipping the day. */
-export async function isDueNow(upn: string, kind: NotifyKind): Promise<boolean> {
-  const all = await getNotifyConfig(upn);
+/** Due-check with no I/O — `rows` must cover NOTIFY_STATE_KEYS.
+ *  Due when Bangkok wall-clock has reached the user's set time (HH:MM) and the
+ *  kind has not gone out today. The Worker polls every minute, so "due" normally
+ *  turns true on the exact minute; a late catch-up still delivers the day. */
+export function isDueFromState(rows: Record<string, string>, kind: NotifyKind): boolean {
+  const all = notifyConfigFromSettings(rows);
   const cfg = all[kind];
   if (!cfg.enabled || !cfg.days.length) return false;
   const at = bkkNow();
@@ -188,10 +191,29 @@ export async function isDueNow(upn: string, kind: NotifyKind): Promise<boolean> 
   const [hh, mm] = cfg.time.split(":").map((x) => parseInt(x, 10));
   const dueMin = (hh || 0) * 60 + (mm || 0);
   if (at.min < dueMin - NOTIFY_EARLY_SLACK_MIN) return false;
-  const last = await getSetting(upn, `${kind}_last_sent`);
-  if (sentDate(last) === at.date) return false; // once per day
-  if (kind === "brief" && (await briefMustWaitForNews(upn, all.news, at, dueMin))) return false;
+  if (sentDate(rows[`${kind}_last_sent`] ?? null) === at.date) return false; // once per day
+  if (kind === "brief" && briefMustWaitForNews(rows, all.news, at, dueMin)) return false;
   return true;
+}
+
+export async function isDueNow(upn: string, kind: NotifyKind): Promise<boolean> {
+  const rows = (await getSettingsFor([upn], NOTIFY_STATE_KEYS))[upn] || {};
+  return isDueFromState(rows, kind);
+}
+
+/** Who is due right now, for both kinds, in ONE query. The morning tick runs
+ *  every minute and almost always finds nobody due — doing that with a handful
+ *  of reads per user per kind cost seconds, which the 07:00 target cannot spare. */
+export async function dueNowForUsers(
+  upns: string[]
+): Promise<Record<string, { news: boolean; brief: boolean }>> {
+  const rows = await getSettingsFor(upns, NOTIFY_STATE_KEYS);
+  const out: Record<string, { news: boolean; brief: boolean }> = {};
+  for (const upn of upns) {
+    const r = rows[upn] || {};
+    out[upn] = { news: isDueFromState(r, "news"), brief: isDueFromState(r, "brief") };
+  }
+  return out;
 }
 
 const INFLIGHT_TTL_MS = 6 * 60_000;
