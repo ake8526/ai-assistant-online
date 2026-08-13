@@ -16,8 +16,9 @@
  *   /api/brief/run?only=both         ส่งของใครที่ถึงเวลานาทีนี้ (ข่าวก่อน, ตารางตามหลัง
  *                                    1 นาทีตามกฎใน lib/notify.ts)
  *
- * ทุก 5 นาที 08:20–20:55: ส่งที่ค้าง + สรุปประชุมจาก transcript + เตือนงาน (ต้นชั่วโมง)
- * + แจ้งนัดใหม่ในปฏิทิน — งานกลุ่มนี้เคยพึ่ง GitHub Actions ที่รันจริงแค่ชั่วโมงละครั้ง
+ * 08:20–20:55: ส่งที่ค้าง + แจ้งนัดใหม่ในปฏิทิน (ทุก 5 นาที), สรุปประชุมจาก transcript
+ * (ทุก 10 นาที — งานยาวถึง 300 วิ), เตือนงานค้าง (ต้นชั่วโมง) — งานกลุ่มนี้เคยพึ่ง
+ * GitHub Actions ที่รันจริงแค่ชั่วโมงละครั้ง
  *
  * Deploy: ดู cloudflare/README.md (ต้องตั้ง secret CRON_SECRET ให้ตรงกับ Vercel)
  */
@@ -67,16 +68,22 @@ export function planFor(bkk) {
 
   // หลังหมดช่วงเช้า: ตรวจว่าเมื่อเช้าส่งตรงเวลาไหม ถ้าช้าเกิน 5 นาทีจะแจ้งผู้ดูแล
   if (minOfDay === PUNCTUALITY_CHECK_MIN) {
-    jobs.push({ label: "punctuality check", path: "/api/morning/punctuality" });
+    jobs.push({ label: "punctuality check", path: "/api/morning/punctuality", background: true });
   }
 
   if (minOfDay >= DAY_FROM_MIN && minOfDay <= DAY_TO_MIN && minute % 5 === 0) {
     jobs.push({ label: "deliver (late)", path: "/api/brief/run?only=both" });
     if (weekday) {
-      jobs.push({ label: "meeting summaries", path: "/api/summaries/run" });
-      if (minute === 0) jobs.push({ label: "task reminders", path: "/api/reminders/run" });
+      // ทุก 10 นาที ไม่ใช่ 5: งานนี้ใช้ได้ถึง 300 วินาที (maxDuration ของ route)
+      // ระยะ 10 นาทีจึงรับประกันว่ารอบก่อนจบแล้วแน่ ๆ ไม่ทับกัน (route ไม่มี lock)
+      if (minute % 10 === 0) {
+        jobs.push({ label: "meeting summaries", path: "/api/summaries/run", timeoutMs: 280_000, background: true });
+      }
+      if (minute === 0) {
+        jobs.push({ label: "task reminders", path: "/api/reminders/run", timeoutMs: 60_000, background: true });
+      }
     }
-    jobs.push({ label: "calendar notify", path: "/api/calendar/notify" });
+    jobs.push({ label: "calendar notify", path: "/api/calendar/notify", timeoutMs: 110_000, background: true });
   }
 
   return jobs;
@@ -100,7 +107,11 @@ async function fire(env, job) {
   }
 }
 
-async function tick(scheduledMs, env) {
+function logResult(r) {
+  console.log(`[cron] ${hhmmOf(bkkOf(Date.now()))} ${r.label} → ${r.ok ? r.status : r.error}`);
+}
+
+async function tick(scheduledMs, env, ctx) {
   const jobs = planFor(bkkOf(scheduledMs));
   if (!jobs.length) return [];
 
@@ -112,16 +123,23 @@ async function tick(scheduledMs, env) {
 
   const out = [];
   for (const job of jobs) {
+    // งานหนัก (สรุปประชุม/เตือนงาน/แจ้งนัด) ปล่อยวิ่งเบื้องหลัง — ถ้า await
+    // ตามลำดับ งานที่รอ 30 วินาทีจะดันงานถัดไปให้สายไปด้วย
+    if (job.background) {
+      const p = fire(env, job).then(logResult);
+      if (ctx?.waitUntil) ctx.waitUntil(p);
+      continue;
+    }
     const r = await fire(env, job);
     out.push(r);
-    console.log(`[cron] ${hhmmOf(bkkOf(Date.now()))} ${r.label} → ${r.ok ? r.status : r.error}`);
+    logResult(r);
   }
   return out;
 }
 
 export default {
-  async scheduled(event, env) {
-    await tick(event.scheduledTime, env);
+  async scheduled(event, env, ctx) {
+    await tick(event.scheduledTime, env, ctx);
   },
 
   /**
@@ -130,7 +148,7 @@ export default {
    *   /?at=07:00&dow=1  → ดูแผนของนาทีนั้น (ไม่ยิง)
    *   /?run=1           → ยิงงานของนาทีนี้จริง
    */
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     if (!env.CRON_SECRET || url.searchParams.get("key") !== env.CRON_SECRET) {
       return new Response("unauthorized", { status: 401 });
@@ -151,7 +169,12 @@ export default {
       return Response.json({ bkk: hhmmOf(bkk), dow: bkk.getUTCDay(), plan });
     }
     const results = [];
-    for (const job of plan) results.push(await fire(env, job));
+    for (const job of plan) {
+      const r = await fire(env, job);
+      results.push(r);
+      logResult(r);
+    }
+    void ctx;
     return Response.json({ bkk: hhmmOf(bkk), results });
   },
 };

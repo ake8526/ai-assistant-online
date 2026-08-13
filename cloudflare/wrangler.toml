@@ -10,6 +10,11 @@ compatibility_date = "2026-08-01"
 [triggers]
 crons = ["* * * * *"]
 
+# URL สาธารณะสำหรับเครื่องมือทดสอบ (ทุก endpoint ต้องมี ?key=<CRON_SECRET>)
+# https://ktis-ai-scheduler.ktis-ake.workers.dev
+workers_dev = true
+preview_urls = false
+
 [vars]
 BASE = "https://ktis-ai-assistant.vercel.app"
 
