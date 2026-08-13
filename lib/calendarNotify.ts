@@ -1,30 +1,57 @@
 // Detect newly-created calendar appointments and push a LINE notice.
-// Strategy: poll upcoming events every cron tick; first run seeds IDs without
-// notifying (avoid flooding); later runs notify only for never-seen event IDs.
+// Strategy: poll upcoming events every cron tick; the first run records the IDs
+// without notifying (never flood on install); later runs notify only IDs never
+// seen before.
+//
+// The seen-set lives in `settings` like `news_seen` does. It used to live in a
+// `calendar_notified` table whose migration was never run: every write failed,
+// the error was discarded, so every poll re-announced every upcoming meeting.
+// Anything that needs a manual SQL step can be forgotten the same way, so this
+// now uses a store that ships with the app — and a failed write throws instead
+// of quietly turning the dedupe off.
+import { createHash } from "crypto";
 import { GraphEvent, getEventsRange, TIMEZONE } from "@/lib/graph";
 import { sendLine } from "@/lib/line";
 import { getSetting, setSetting } from "@/lib/store";
-import { admin } from "@/lib/supabaseServer";
 import { addMinutes, nowWall, wallIso } from "@/lib/time";
 
 const LOOKAHEAD_DAYS = 14;
-const SEED_KEY = "calendar_notify_seeded";
+/** Absent = never seeded; a fresh key name so the old (empty) seed flag cannot
+ *  make the first run after this fix announce two weeks of meetings at once. */
+const SEEN_KEY = "calendar_seen";
+const SEEN_MAX = 400;
+/** Must exceed LOOKAHEAD_DAYS by a wide margin — an entry that ages out while
+ *  its meeting is still upcoming would be announced a second time. */
+const SEEN_TTL_MS = 45 * 24 * 60 * 60 * 1000;
+/** Backstop: however broken the dedupe gets, one poll can never send more than
+ *  this. The rest go out on the next poll. */
+const MAX_NOTIFY_PER_RUN = 5;
 
-async function wasNotified(ownerUpn: string, eventId: string): Promise<boolean> {
-  const { data } = await admin
-    .from("calendar_notified")
-    .select("event_id")
-    .eq("owner_upn", ownerUpn)
-    .eq("event_id", eventId)
-    .maybeSingle();
-  return !!data;
+type SeenEntry = [key: string, ts: number];
+
+/** Graph event ids are long; store a short digest instead. */
+function seenKey(eventId: string): string {
+  return createHash("sha1").update(eventId, "utf8").digest("hex").slice(0, 16);
 }
 
-async function markNotified(ownerUpn: string, eventId: string, subject: string): Promise<void> {
-  await admin.from("calendar_notified").upsert(
-    { owner_upn: ownerUpn, event_id: eventId, subject, notified_at: new Date().toISOString() },
-    { onConflict: "owner_upn,event_id", ignoreDuplicates: true }
-  );
+async function loadSeen(upn: string): Promise<SeenEntry[] | null> {
+  const raw = await getSetting(upn, SEEN_KEY);
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? (v as SeenEntry[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveSeen(upn: string, entries: SeenEntry[]): Promise<void> {
+  const cutoff = Date.now() - SEEN_TTL_MS;
+  const kept = entries
+    .filter(([, ts]) => ts >= cutoff)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, SEEN_MAX);
+  await setSetting(upn, SEEN_KEY, JSON.stringify(kept));
 }
 
 function fmtWhen(ev: GraphEvent): string {
@@ -63,6 +90,8 @@ export type CalendarNotifyResult = {
   seeded: number;
   notified: number;
   skipped: number;
+  /** New events held back by MAX_NOTIFY_PER_RUN — they go out next poll. */
+  capped?: number;
   error?: string;
 };
 
@@ -72,40 +101,35 @@ export async function notifyNewAppointments(upn: string): Promise<CalendarNotify
   try {
     const now = nowWall();
     const end = addMinutes(now, LOOKAHEAD_DAYS * 24 * 60);
-    const events = await getEventsRange(upn, wallIso(now), wallIso(end));
+    const events = (await getEventsRange(upn, wallIso(now), wallIso(end))).filter((e) => e.id);
     out.checked = events.length;
 
-    const seeded = (await getSetting(upn, SEED_KEY)) === "1";
-    if (!seeded) {
-      for (const ev of events) {
-        const id = ev.id;
-        if (!id) continue;
-        await markNotified(upn, id, ev.subject || "");
-        out.seeded += 1;
-      }
-      await setSetting(upn, SEED_KEY, "1");
+    const stored = await loadSeen(upn);
+    if (!stored) {
+      await saveSeen(upn, events.map((ev) => [seenKey(ev.id as string), Date.now()] as SeenEntry));
+      out.seeded = events.length;
       return out;
     }
 
-    for (const ev of events) {
-      const id = ev.id;
-      if (!id) {
-        out.skipped += 1;
-        continue;
-      }
-      if (await wasNotified(upn, id)) {
-        out.skipped += 1;
-        continue;
-      }
-      try {
+    const seen = new Map<string, number>(stored);
+    const fresh = events.filter((ev) => !seen.has(seenKey(ev.id as string)));
+    out.skipped = events.length - fresh.length;
+    if (!fresh.length) return out;
+
+    const batch = fresh.slice(0, MAX_NOTIFY_PER_RUN);
+    if (fresh.length > batch.length) out.capped = fresh.length - batch.length;
+
+    try {
+      for (const ev of batch) {
+        // Mark first: a push that throws must not be retried on every poll.
+        seen.set(seenKey(ev.id as string), Date.now());
         await sendLine(upn, "", formatNewEvent(ev));
-        await markNotified(upn, id, ev.subject || "");
         out.notified += 1;
-      } catch (e) {
-        out.error = String(e).slice(0, 150);
-        // still mark so we don't retry-spam a broken push forever for this event
-        await markNotified(upn, id, ev.subject || "");
       }
+    } finally {
+      // One write per run, and a failure here throws — the dedupe going quiet
+      // is exactly the failure that caused the flood.
+      await saveSeen(upn, Array.from(seen.entries()) as SeenEntry[]);
     }
   } catch (e) {
     out.error = String(e).slice(0, 200);

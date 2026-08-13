@@ -14,7 +14,12 @@ import {
 import { summaryChat } from "@/lib/llm";
 import { sendLine } from "@/lib/line";
 import { ActionItem, ingestActionItems } from "@/lib/followup";
-import { markMeetingSummarized, wasMeetingSummarized } from "@/lib/store";
+import {
+  markMeetingSummarized,
+  seedMeetingsSeen,
+  seenMeetingsReady,
+  wasMeetingSummarized,
+} from "@/lib/store";
 import { isMeetingSummaryEnabled } from "@/lib/meetingSummaryPrefs";
 import { findLinkedLineAttendees } from "@/lib/meetingInvite";
 import { addMinutes, fmtDateTime, nowWall, parseWall, wallIso } from "@/lib/time";
@@ -254,6 +259,16 @@ export async function summarizeRecent(
     skipped: 0,
     delivered: [],
   };
+
+  // First run after install (or after the dedupe store was repaired): record the
+  // window instead of summarizing it, so nobody gets a day of meetings re-sent.
+  if (opts.skipSummarized && !(await seenMeetingsReady())) {
+    await seedMeetingsSeen(
+      events.map((ev) => seenKeyForMeeting(ev, (ev as { id?: string }).id || ""))
+    );
+    out.skipped = events.length;
+    return out;
+  }
 
   for (const ev of events) {
     const subject = ev.subject || "(ไม่มีหัวข้อ)";
