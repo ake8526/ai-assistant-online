@@ -1,7 +1,7 @@
 // Task follow-up + reminders — ported from morning_brief/followup.py.
 import { createHash } from "crypto";
 import { Attendee, resolveAttendee, resolveUser } from "@/lib/graph";
-import { sendLine } from "@/lib/line";
+import { getLineId, pushLineMessages, sendLine } from "@/lib/line";
 import { Task, addTask, duePendingTasks, markReminded, updateTaskStatus } from "@/lib/store";
 
 const NOTIFY_RESPONSIBLE = (process.env.NOTIFY_RESPONSIBLE || "true").toLowerCase() === "true";
@@ -35,6 +35,8 @@ export async function resolveResponsible(name: string, attendees?: Attendee[]): 
 }
 
 import { normalizeDue } from "@/lib/time";
+
+const APP_BASE = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/+$/, "");
 export { normalizeDue };
 
 /** Store meeting action items as tasks (deduped). Returns count of newly-added tasks. */
@@ -105,15 +107,42 @@ async function notifyNewAssignments(
   }
 }
 
+/** Bangkok-readable due date — the raw UTC ISO string was unreadable in chat. */
+function fmtDue(due: string | null): string {
+  if (!due) return "ไม่ระบุกำหนด";
+  const d = new Date(due);
+  if (isNaN(d.getTime())) return due;
+  const bkk = new Date(d.getTime() + 7 * 60 * 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(bkk.getUTCDate())}/${pad(bkk.getUTCMonth() + 1)}/${bkk.getUTCFullYear()} ${pad(bkk.getUTCHours())}:${pad(bkk.getUTCMinutes())}`;
+}
+
 function formatReminder(tasks: Task[]): string {
   const lines = ["⏰ แจ้งเตือน: มีงานที่เลยกำหนดแล้วยังไม่เสร็จ", ""];
-  for (const t of tasks) {
+  tasks.forEach((t, i) => {
     const who = t.responsible || "ไม่ระบุผู้รับผิดชอบ";
     const src = t.source ? ` (จาก: ${t.source})` : "";
-    lines.push(`  • ${t.title} — ${who} | กำหนด ${t.due}${src}`);
-  }
-  lines.push("", "ทำเสร็จแล้วกดปิดงานได้ที่หน้าเว็บ");
+    lines.push(`  ${i + 1}) ${t.title} — ${who} | กำหนด ${fmtDue(t.due)}${src}`);
+  });
+  lines.push("", "กดเลขด้านล่างเพื่อปิดงาน หรือพิมพ์ «ปิดงาน <ชื่องาน>»");
+  // The old wording said "close it on the web page" without ever saying which page.
+  lines.push(`ดูงานทั้งหมด: ${APP_BASE}/`);
   return lines.join("\n");
+}
+
+/** One numbered close-button per task, same shape as the agenda's prep buttons. */
+function reminderQuickReply(tasks: Task[]): { items: object[] } {
+  return {
+    items: tasks.slice(0, 12).map((t, i) => ({
+      type: "action",
+      action: {
+        type: "postback",
+        label: `${i + 1}`,
+        data: `a=done&t=${t.id}`,
+        displayText: `ปิดงาน ${i + 1}) ${t.title}`.slice(0, 60),
+      },
+    })),
+  };
 }
 
 function recipientsFor(task: Task): string[] {
@@ -144,7 +173,15 @@ export async function checkDue(): Promise<Record<string, number>> {
       await runWithTrace({ upn, channel: "cron" }, async () => {
         trace("receive", "cron · เตือนงานเลยกำหนด");
         trace("compose", `งาน ${tasks.length} รายการ`);
-        await sendLine(upn, "⏰ งานที่เลยกำหนด", formatReminder(tasks));
+        const lineId = await getLineId(upn);
+        if (lineId) {
+          const body = `⏰ งานที่เลยกำหนด\n\n${formatReminder(tasks)}`;
+          await pushLineMessages(lineId, [
+            { type: "text", text: body.slice(0, 4900), quickReply: reminderQuickReply(tasks) },
+          ]);
+        } else {
+          await sendLine(upn, "⏰ งานที่เลยกำหนด", formatReminder(tasks));
+        }
         trace("reply", "ส่งเตือน LINE");
       });
       reminded[upn] = tasks.length;

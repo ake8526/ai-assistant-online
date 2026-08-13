@@ -75,6 +75,7 @@ type Choice = {
   data?: string;
   lunch?: boolean;
   mode?: string;
+  task_id?: number;
   after?: string;
   before?: string;
   at?: string;
@@ -195,6 +196,13 @@ function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | 
       if (data.length > 300) continue;
       // Numbered buttons; full titles are in the message body via detailText.
       add(n, data, `สรุป ${n}) ${c.label || ""}`);
+    }
+  } else if (res.intent === "choose_task" && Array.isArray(res.choices)) {
+    let n = 0;
+    for (const c of res.choices as Choice[]) {
+      if (!c.task_id || items.length >= 12) continue;
+      n++;
+      add(n, `a=done&t=${c.task_id}`, `ปิดงาน ${n}) ${c.label || ""}`);
     }
   } else if (res.intent === "confirm_cancel" && Array.isArray(res.choices)) {
     // Confirm / abort a meeting deletion — the summary sits in the message body.
@@ -324,6 +332,10 @@ function detailText(res: CommandResult, upn?: string): string {
     return "\n\n" + parts.join("\n");
   } else if (res.intent === "choose_cancel" && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[]).filter((c) => c.event_id).map((c, i) => `${i + 1}) ${c.label || ""}`);
+  } else if (res.intent === "choose_task" && Array.isArray(res.choices)) {
+    lines = (res.choices as Choice[])
+      .filter((c) => c.task_id)
+      .map((c, i) => `${i + 1}) ${c.label || ""}`);
   } else if (res.intent === "choose_meeting" && Array.isArray(res.choices)) {
     lines = (res.choices as Choice[])
       .filter((c) => c.event_id)

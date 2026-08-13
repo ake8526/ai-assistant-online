@@ -61,6 +61,7 @@ import {
   allSettings,
   setSetting,
   updateTaskStatus,
+  type Task,
 } from "@/lib/store";
 import {
   listManagedFeeds,
@@ -275,7 +276,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - my_availability: { "period": "today|tomorrow|week", "weekday": "mon|tue|wed|thu|fri|sat|sun (ถ้าพูดชื่อวัน เช่น เสาร์นี้ว่างไหม)", "person": "ชื่อ/อีเมลคนที่อยากดูตาราง (ถ้าไม่ระบุ = ตัวเอง)" }
 - ถ้าประวัติ/บริบทรอบก่อนพูดถึงวันใดวันหนึ่ง (เช่น พรุ่งนี้ / last_period) แล้วผู้ใช้ถามต่อแบบไม่ระบุวัน เช่น "ขอตารางว่าง", "ว่างกี่โมง", "แล้วว่างไหม" → คง period/วันเดิมจากบริบท (ห้ามดีฟอลต์เป็นวันนี้)
 - add_task: { "title": "...", "responsible": "...", "due": "YYYY-MM-DD HH:MM หรือ null" }
-- complete_task: { "task_id": <number> }
+- complete_task: { "task_id": <number ถ้าผู้ใช้พิมพ์เลขงาน>, "title": "ชื่องานถ้าผู้ใช้พิมพ์ชื่อ เช่น «test meeting ปิดงานเลย» → title=test meeting" }
 - find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "weekday": "mon|tue|… (ถ้าพูดชื่อวัน เช่น วันจันทร์นี้)", "date": "YYYY-MM-DD หรือ 31 (ถ้าเจาะจงวันที่)", "period": "today|tomorrow|week (ถ้าไม่ได้เจาะจงวัน)", "after": "HH:MM (เช้า/บ่าย/เย็น หรือหลัง…)", "before": "HH:MM", "note": "...", "file_index": 3 }
 - cancel_meeting: { "person": "ชื่อ/อีเมลคนในนัด ถ้าผู้ใช้ระบุ เช่น ยกเลิกนัดกับเบส (ถ้าไม่ระบุ = โชว์รายการทั้งหมด)" }
 - get_brief / get_news / list_tasks / summarize_meetings / list_feeds: {}
@@ -3377,9 +3378,38 @@ export async function handleCommand(
 // Handle a tap on a LINE quick-reply/postback button. `data` is the postback
 // payload (URLSearchParams). Each action is self-contained (stateless) so it
 // completes in one step without stored conversation context.
+/** Match a typed task name against pending titles: exact, then either side
+ *  containing the other (people paraphrase and drop words). */
+export function matchTasksByTitle(tasks: Task[], wanted: string): Task[] {
+  const norm = (v: string) => v.toLowerCase().replace(/\s+/g, " ").trim();
+  const w = norm(wanted);
+  if (!w) return [];
+  const exact = tasks.filter((t) => norm(t.title) === w);
+  if (exact.length) return exact;
+  return tasks.filter((t) => {
+    const title = norm(t.title);
+    return title.includes(w) || w.includes(title);
+  });
+}
+
+/** Numbered choices for "which task?" — the tap closes it (a=done). */
+export function taskChoices(tasks: Task[]): { index: number; task_id: number; label: string }[] {
+  return tasks.slice(0, 12).map((t, i) => ({
+    index: i + 1,
+    task_id: t.id,
+    label: t.title,
+  }));
+}
+
 export async function handleSelection(userUpn: string, data: URLSearchParams): Promise<CommandResult> {
   const a = data.get("a") || "";
   try {
+    if (a === "done") {
+      const tid = Number(data.get("t") || "");
+      if (!tid) return { intent: "error", reply: "ข้อมูลไม่ครบ ลองใหม่อีกครั้งครับ" };
+      const ok = await updateTaskStatus(tid, "done");
+      return { intent: "complete_task", reply: ok ? "ปิดงานแล้วครับ ✅" : "งานนี้ถูกปิดไปแล้ว หรือไม่พบครับ" };
+    }
     if (a === "avail" || a === "book" || a === "cancel" || a === "cancelok" || a === "findmt") {
       const denied = needCalendarConsent();
       if (denied) return denied;
@@ -5044,8 +5074,31 @@ async function handleParsed(
 
   if (intent === "complete_task") {
     const tid = Number(params.task_id);
-    if (tid && (await updateTaskStatus(tid, "done"))) return { intent, reply: `ปิดงาน #${tid} แล้ว` };
-    return { intent, reply: "ไม่พบงานหมายเลขนั้น" };
+    if (tid) {
+      if (await updateTaskStatus(tid, "done")) return { intent, reply: `ปิดงาน #${tid} แล้ว` };
+      return { intent, reply: "ไม่พบงานหมายเลขนั้น" };
+    }
+    // The overdue reminder shows task TITLES, so that is what people type back
+    // ("test meeting ปิดงานเลย") — match on the title instead of demanding a number.
+    const wanted = String(params.title || "").trim();
+    const pending = (await listTasks(userUpn)).filter(
+      (t) => t.status === "pending" || t.status === "overdue"
+    );
+    if (!pending.length) return { intent, reply: "ไม่มีงานค้างอยู่ครับ" };
+    if (!wanted) return { intent: "choose_task", reply: "ปิดงานไหนครับ เลือกได้เลย 👇", choices: taskChoices(pending) };
+    const hit = matchTasksByTitle(pending, wanted);
+    if (hit.length === 1) {
+      await updateTaskStatus(hit[0].id, "done");
+      return { intent, reply: `ปิดงาน «${hit[0].title}» แล้วครับ ✅` };
+    }
+    if (hit.length > 1) {
+      return { intent: "choose_task", reply: `เจอ ${hit.length} งานที่ชื่อใกล้เคียง เลือกอันที่จะปิดครับ 👇`, choices: taskChoices(hit) };
+    }
+    return {
+      intent: "choose_task",
+      reply: `ไม่เจองานชื่อ «${wanted}» ครับ นี่คืองานค้างทั้งหมด เลือกอันที่จะปิดได้เลย 👇`,
+      choices: taskChoices(pending),
+    };
   }
 
   if (intent === "summarize_meetings") {
