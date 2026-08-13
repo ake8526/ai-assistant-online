@@ -173,14 +173,21 @@ export async function checkDue(): Promise<Record<string, number>> {
       await runWithTrace({ upn, channel: "cron" }, async () => {
         trace("receive", "cron · เตือนงานเลยกำหนด");
         trace("compose", `งาน ${tasks.length} รายการ`);
-        const lineId = await getLineId(upn);
-        if (lineId) {
-          const body = `⏰ งานที่เลยกำหนด\n\n${formatReminder(tasks)}`;
-          await pushLineMessages(lineId, [
-            { type: "text", text: body.slice(0, 4900), quickReply: reminderQuickReply(tasks) },
-          ]);
-        } else {
-          await sendLine(upn, "⏰ งานที่เลยกำหนด", formatReminder(tasks));
+        try {
+          const lineId = await getLineId(upn);
+          if (lineId) {
+            const body = `⏰ งานที่เลยกำหนด\n\n${formatReminder(tasks)}`;
+            await pushLineMessages(lineId, [
+              { type: "text", text: body.slice(0, 4900), quickReply: reminderQuickReply(tasks) },
+            ]);
+          } else {
+            await sendLine(upn, "⏰ งานที่เลยกำหนด", formatReminder(tasks));
+          }
+        } catch (e) {
+          // Record WHY nothing arrived (quota exhausted, unlinked, LINE error) —
+          // a bare missing "reply" step is what made this hard to diagnose.
+          trace("error", `ส่งเตือนไม่ได้: ${String(e).slice(0, 90)}`, "error");
+          throw e;
         }
         trace("reply", "ส่งเตือน LINE");
       });
