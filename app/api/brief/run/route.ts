@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { AuthError, checkCronSecret, requireUser } from "@/lib/auth";
-import { buildMorningAgenda, runForUser } from "@/lib/brief";
+import { buildMorningAgenda, runForUser, type MorningAgenda } from "@/lib/brief";
 import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
 import { resolveLinkedUpn, sendLine } from "@/lib/line";
+import {
+  clearBriefPrewarm,
+  clearNewsPrewarm,
+  loadBriefPrewarm,
+  loadNewsPrewarm,
+} from "@/lib/morningCache";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { claimSend, clearInflight, isDueNow, markSent } from "@/lib/notify";
 import { runWithTrace, trace } from "@/lib/trace";
@@ -13,6 +19,20 @@ export const maxDuration = 300;
 async function linkedUsers(): Promise<string[]> {
   const { data } = await admin.from("line_links").select("upn");
   return (data || []).map((r) => r.upn);
+}
+
+/** Today's agenda — from the 06:59 prewarm if it is there (a push at 07:01 must
+ *  not wait on Graph), otherwise built live. */
+async function loadAgenda(upn: string): Promise<{ agenda: MorningAgenda; count: number }> {
+  const cached = await loadBriefPrewarm(upn);
+  if (cached) {
+    trace("fetch", `ตารางเช้า (เตรียมไว้) · ${cached.eventCount} นัด`);
+    return { agenda: cached.agenda, count: cached.eventCount };
+  }
+  trace("fetch", "ดึงตาราง Outlook", "start");
+  const { result } = await withDelegatedGraph(upn, () => buildMorningAgenda(upn));
+  trace("fetch", `ตารางเช้า · ${result.events.length} นัด`);
+  return { agenda: result, count: result.events.length };
 }
 
 type OnlyKind = "brief" | "news" | "both";
@@ -28,12 +48,12 @@ async function pushBrief(upn: string, force: boolean): Promise<string> {
     if (!force && !(await isDueNow(upn, "brief"))) return "skip (not due)";
     trace("receive", "cron · สรุปตารางเช้า");
 
-    let agenda;
+    let agenda: MorningAgenda;
+    let count = 0;
     try {
-      trace("fetch", "ดึงตาราง Outlook", "start");
-      const wrapped = await withDelegatedGraph(upn, () => buildMorningAgenda(upn));
-      agenda = wrapped.result;
-      trace("fetch", `ตารางเช้า · ${agenda.events.length} นัด`);
+      const built = await loadAgenda(upn);
+      agenda = built.agenda;
+      count = built.count;
     } catch (e) {
       const msg =
         "🌅 สรุปตารางเช้า\n\nดึงตารางจาก Outlook ไม่สำเร็จตอนนี้ครับ\n" +
@@ -56,12 +76,14 @@ async function pushBrief(upn: string, force: boolean): Promise<string> {
       trace("compose", "สรุปตารางเช้า");
       await runForUser(upn, agenda);
       await markSent(upn, "brief");
-      trace("reply", `ส่งสรุปเช้า (${agenda.events.length} นัด)`);
-      return `delivered agenda (${agenda.events.length})`;
+      await clearBriefPrewarm(upn);
+      trace("reply", `ส่งสรุปเช้า (${count} นัด)`);
+      return `delivered agenda (${count})`;
     } catch (e) {
       try {
         await sendLine(upn, "🌅 สรุปตารางเช้า", agenda.text);
         await markSent(upn, "brief");
+        await clearBriefPrewarm(upn);
         trace("reply", "ส่งสรุปเช้า (text-fallback)");
         return "delivered text-fallback";
       } catch {
@@ -76,6 +98,7 @@ async function sendBuiltNews(upn: string, force: boolean, d: DigestResult): Prom
   if (!d.stories?.length) {
     if (force || (await claimSend(upn, "news"))) {
       await markSent(upn, "news");
+      await clearNewsPrewarm(upn);
       return d.note || "no stories";
     }
     return "skip (inflight or sent)";
@@ -85,6 +108,7 @@ async function sendBuiltNews(upn: string, force: boolean, d: DigestResult): Prom
     await sendLine(upn, "", formatStoriesText(d.stories));
     await rememberDeliveredStories(upn, d.stories);
     await markSent(upn, "news");
+    await clearNewsPrewarm(upn);
     return `delivered ${d.stories.length} stories`;
   } catch (e) {
     await clearInflight(upn, "news");
@@ -97,7 +121,11 @@ async function pushNews(upn: string, force: boolean): Promise<string> {
     if (!force && !(await isDueNow(upn, "news"))) return "skip (not due)";
     try {
       trace("receive", "cron · ส่งข่าวเช้า");
-      const d = await buildDigest(upn, { fast: true });
+      // Prepared at 06:5x by /api/morning/prewarm → this is a pure push (<1s).
+      // Nothing cached (prewarm missed) → build now: late beats missing.
+      const ready = await loadNewsPrewarm(upn);
+      if (ready) trace("fetch", `📰 ใช้ข่าวที่เตรียมไว้ · ${ready.stories.length} เรื่อง`);
+      const d = ready || (await buildDigest(upn, { fast: true }));
       const status = await sendBuiltNews(upn, force, d);
       if (status.startsWith("delivered")) trace("reply", status);
       return status;
@@ -108,9 +136,11 @@ async function pushNews(upn: string, force: boolean): Promise<string> {
 }
 
 /**
- * When only=both: push news first, then brief last so LINE quick-reply
- * numbers stay on the newest message. Cron still calls only=news / only=brief
- * as separate steps so a slow digest cannot starve the agenda.
+ * Normal mornings use the separate ticks: only=news at 07:00, only=brief at
+ * 07:01 (see cloudflare/src/worker.js). only=both is the catch-up path — news
+ * first, then the agenda, which `isDueNow` holds back until news has actually
+ * gone out, so the agenda still lands after it with its quick-reply buttons on
+ * the newest message.
  */
 async function deliverMorningForUser(
   upn: string,
@@ -123,48 +153,8 @@ async function deliverMorningForUser(
   if (only === "news") {
     return { brief: "skip (only=news)", news: await pushNews(upn, force) };
   }
-
-  // both: start agenda fetch while news sends; push brief AFTER news (buttons last)
-  const briefDue = force || (await isDueNow(upn, "brief"));
-  const agendaP = briefDue
-    ? withDelegatedGraph(upn, () => buildMorningAgenda(upn))
-        .then(({ result }) => ({ ok: true as const, agenda: result }))
-        .catch((e) => ({ ok: false as const, err: String(e).slice(0, 150) }))
-    : null;
-
   const news = await pushNews(upn, force);
-
-  let brief = "skip (not due)";
-  if (!briefDue) {
-    brief = "skip (not due)";
-  } else if (!agendaP) {
-    brief = "skip (not due)";
-  } else {
-    const built = await agendaP;
-    if (!built.ok) {
-      // Fall through to pushBrief (sends Graph-error notice or retries)
-      brief = await pushBrief(upn, force);
-    } else if (!force && !(await claimSend(upn, "brief"))) {
-      brief = "skip (inflight or sent)";
-    } else {
-      try {
-        await runForUser(upn, built.agenda);
-        await markSent(upn, "brief");
-        brief = `delivered agenda (${built.agenda.events.length})`;
-      } catch (e) {
-        try {
-          await sendLine(upn, "🌅 สรุปตารางเช้า", built.agenda.text);
-          await markSent(upn, "brief");
-          brief = "delivered text-fallback";
-        } catch {
-          await clearInflight(upn, "brief");
-          brief = `ERROR: ${String(e).slice(0, 150)}`;
-        }
-      }
-    }
-  }
-
-  return { brief, news };
+  return { brief: await pushBrief(upn, force), news };
 }
 
 export async function POST(req: Request) {

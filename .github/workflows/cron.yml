@@ -1,19 +1,20 @@
-# Morning LINE delivery + daytime jobs.
-# Requires repo secret CRON_SECRET (= Vercel CRON_SECRET).
-# Times are UTC (Bangkok = UTC+7).
+# BACKUP scheduler only. The primary one is the Cloudflare Worker in
+# cloudflare/ — see docs/morning-delivery-plan.md.
 #
+# Measured 4–13 Aug 2026: GitHub ran this ~12–17 times per DAY even though it
+# asked for every 5 min, and the first morning run never landed before 07:37 BKK
+# (the "50,55 23" entry never fired at all). High-frequency schedules are
+# deprioritised on shared runners, so this can only ever be a catch-up net.
+#
+# Requires repo secret CRON_SECRET (= Vercel CRON_SECRET). Times are UTC (BKK = UTC+7).
 # News and brief are separate HTTP calls so a slow digest cannot starve the
 # agenda. Brief is ALWAYS last — it has LINE quick-reply number buttons.
 name: scheduled-jobs
 
 on:
   schedule:
-    # Pre-morning Mon–Fri BKK: 06:50 / 06:55 (Sun–Thu 23:50/55 UTC)
-    - cron: "50,55 23 * * 0-4"
-    # 07:00–07:55 BKK every 5 min (Mon–Fri)
-    - cron: "*/5 0 * * 1-5"
-    # 08:00–20:55 BKK every 5 min
-    - cron: "*/5 1-13 * * *"
+    # 07:00–20:55 BKK — ask for every 10 min and treat every run as a catch-up
+    - cron: "*/10 0-13 * * *"
   workflow_dispatch: {}
 
 env:

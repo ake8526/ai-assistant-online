@@ -1,8 +1,9 @@
 {
   "framework": "nextjs",
   "buildCommand": "next build",
+  "$comment": "BACKUP scheduler only — Hobby crons fire anywhere inside the hour (measured +25..32 min), so they cannot hit 07:00. The primary scheduler is the Cloudflare Worker in cloudflare/. See docs/morning-delivery-plan.md.",
   "crons": [
-    { "path": "/api/digest/push", "schedule": "0 0 * * 1-5" },
-    { "path": "/api/brief/run?only=brief", "schedule": "5 0 * * 1-5" }
+    { "path": "/api/morning/prewarm?stage=both", "schedule": "40 23 * * 0-4" },
+    { "path": "/api/brief/run?only=both", "schedule": "0 0 * * 1-5" }
   ]
 }

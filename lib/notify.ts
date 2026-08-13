@@ -8,9 +8,12 @@ import { nowWall } from "@/lib/time";
 export type NotifyKind = "brief" | "news";
 
 export const NOTIFY_DEFAULTS: Record<NotifyKind, { enabled: boolean; time: string; days: number[] }> = {
-  // days: 0=Sun … 6=Sat — cron sends news first, brief last (quick-reply buttons)
-  brief: { enabled: true, time: "07:00", days: [1, 2, 3, 4, 5] },        // จ–ศ
-  news: { enabled: true, time: "07:00", days: [1, 2, 3, 4, 5] },         // จ–ศ เวลาเดียวกับบรีฟ
+  // days: 0=Sun … 6=Sat — news first, brief one minute later (its quick-reply
+  // number buttons must sit on the newest message). The times are the times the
+  // message must ARRIVE, not when work starts: /api/morning/prewarm builds both
+  // payloads before 07:00 so these ticks are pure pushes.
+  brief: { enabled: true, time: "07:01", days: [1, 2, 3, 4, 5] },        // จ–ศ · ข่าว + 1 นาที
+  news: { enabled: true, time: "07:00", days: [1, 2, 3, 4, 5] },         // จ–ศ
 };
 
 export type KindConfig = { enabled: boolean; time: string; days: number[]; count?: number };
@@ -97,26 +100,69 @@ function bkkNow(): { min: number; day: number; date: string } {
   };
 }
 
-/** Allow cron that fires a few minutes early (GitHub/Vercel drift) to still
- *  deliver — better slightly early than ~1h late. */
-export const NOTIFY_EARLY_SLACK_MIN = 5;
+/** No early sending. The set time is the time the message must ARRIVE, and the
+ *  Cloudflare Worker polls every minute (cloudflare/src/worker.js), so there is
+ *  nothing to compensate for. Keep at 0 — any slack here makes a 06:5x poll
+ *  deliver before the user's time. */
+export const NOTIFY_EARLY_SLACK_MIN = 0;
 
-/** Is it time to send `kind` to this user right now, and not already sent today?
- *  Due when Bangkok wall-clock is at/near the user's set time (HH:MM).
- *  Cron should poll often (≈ every 5 min) so delivery stays close to that time. */
-export async function isDueNow(upn: string, kind: NotifyKind): Promise<boolean> {
-  const cfg = (await getNotifyConfig(upn))[kind];
-  if (!cfg.enabled || !cfg.days.length) return false;
-  const { min, day, date } = bkkNow();
-  if (!cfg.days.includes(day)) return false;
-  const [hh, mm] = cfg.time.split(":").map((x) => parseInt(x, 10));
-  const dueMin = (hh || 0) * 60 + (mm || 0);
-  if (min < dueMin - NOTIFY_EARLY_SLACK_MIN) return false;
-  const last = await getSetting(upn, `${kind}_last_sent`);
-  return last !== date; // once per day
+/** Minimum gap between the news push and the agenda push. Small on purpose: the
+ *  1-minute spacing comes from brief.time = news.time + 1, this only stops the
+ *  two landing in the same second when a late catch-up run sends both at once. */
+const NEWS_MIN_GAP_MS = 20_000;
+
+/** If news has still not gone out this long after the brief's own time, send the
+ *  agenda anyway — a broken digest must never starve the calendar. */
+const NEWS_WAIT_GRACE_MIN = 15;
+
+/** `*_last_sent` holds a Bangkok timestamp ("2026-08-13T07:00:01+07:00"); older
+ *  rows hold a bare date. Both start with the date, so this reads either. */
+function sentDate(raw: string | null): string {
+  return (raw || "").slice(0, 10);
 }
 
-const INFLIGHT_TTL_MS = 12 * 60_000;
+/** Has `kind` already gone out today (Bangkok date)? */
+export async function alreadySentToday(upn: string, kind: NotifyKind): Promise<boolean> {
+  const raw = await getSetting(upn, `${kind}_last_sent`);
+  return sentDate(raw) === bkkNow().date;
+}
+
+/** Keep the agenda behind the news: same-day ordering + the minimum gap. */
+async function briefMustWaitForNews(
+  upn: string,
+  news: KindConfig,
+  at: { min: number; day: number; date: string },
+  briefDueMin: number
+): Promise<boolean> {
+  if (!news.enabled || !news.days.includes(at.day)) return false; // no news today — nothing to wait for
+  if (at.min >= briefDueMin + NEWS_WAIT_GRACE_MIN) return false; // grace expired — don't starve the agenda
+  const raw = await getSetting(upn, "news_last_sent");
+  if (sentDate(raw) !== at.date) return true; // news not out yet today
+  const t = Date.parse(raw || "");
+  if (!Number.isFinite(t)) return false; // legacy date-only row carries no time
+  return Date.now() - t < NEWS_MIN_GAP_MS;
+}
+
+/** Is it time to send `kind` to this user right now, and not already sent today?
+ *  Due when Bangkok wall-clock has reached the user's set time (HH:MM). The
+ *  Worker polls every minute, so "due" normally becomes true on the exact
+ *  minute; a late catch-up still delivers rather than skipping the day. */
+export async function isDueNow(upn: string, kind: NotifyKind): Promise<boolean> {
+  const all = await getNotifyConfig(upn);
+  const cfg = all[kind];
+  if (!cfg.enabled || !cfg.days.length) return false;
+  const at = bkkNow();
+  if (!cfg.days.includes(at.day)) return false;
+  const [hh, mm] = cfg.time.split(":").map((x) => parseInt(x, 10));
+  const dueMin = (hh || 0) * 60 + (mm || 0);
+  if (at.min < dueMin - NOTIFY_EARLY_SLACK_MIN) return false;
+  const last = await getSetting(upn, `${kind}_last_sent`);
+  if (sentDate(last) === at.date) return false; // once per day
+  if (kind === "brief" && (await briefMustWaitForNews(upn, all.news, at, dueMin))) return false;
+  return true;
+}
+
+const INFLIGHT_TTL_MS = 6 * 60_000;
 
 /** Claim exclusive delivery for today so overlapping Vercel + GitHub crons
  *  don't double-build. Returns false if already sent or another worker holds the lock. */
@@ -132,7 +178,7 @@ export async function claimSend(upn: string, kind: NotifyKind): Promise<boolean>
   await setSetting(upn, key, String(now));
   // Re-check after write (cheap race guard)
   const last = await getSetting(upn, `${kind}_last_sent`);
-  if (last === bkkNow().date) return false;
+  if (sentDate(last) === bkkNow().date) return false;
   return true;
 }
 
@@ -140,8 +186,21 @@ export async function clearInflight(upn: string, kind: NotifyKind): Promise<void
   await setSetting(upn, `${kind}_inflight`, "");
 }
 
-/** Record a successful send so we don't send `kind` again today. */
+/** Bangkok wall-clock stamp, e.g. "2026-08-13T07:00:01+07:00". Parses to the
+ *  right instant AND starts with the Bangkok date, so both the once-per-day
+ *  check and the news→brief gap can read one value. */
+function bkkStamp(): string {
+  const w = nowWall();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const d = `${w.getUTCFullYear()}-${pad(w.getUTCMonth() + 1)}-${pad(w.getUTCDate())}`;
+  const t = `${pad(w.getUTCHours())}:${pad(w.getUTCMinutes())}:${pad(w.getUTCSeconds())}`;
+  return `${d}T${t}+07:00`;
+}
+
+/** Record a successful send so we don't send `kind` again today. Stores the
+ *  actual delivery time — used by the news→brief gap and by the punctuality
+ *  check in docs/morning-delivery-plan.md. */
 export async function markSent(upn: string, kind: NotifyKind): Promise<void> {
-  await setSetting(upn, `${kind}_last_sent`, bkkNow().date);
+  await setSetting(upn, `${kind}_last_sent`, bkkStamp());
   await clearInflight(upn, kind);
 }

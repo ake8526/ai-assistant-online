@@ -1,0 +1,17 @@
+# ตัวตั้งเวลาหลักของ AI Assistant — ดู src/worker.js + README.md
+# CRON_SECRET เป็น secret (ไม่เก็บในไฟล์นี้): wrangler secret put CRON_SECRET
+
+name = "ktis-ai-scheduler"
+main = "src/worker.js"
+compatibility_date = "2026-08-01"
+
+# ยิงทุกนาที แล้วให้ worker ตัดสินใจเองจากเวลาไทย — เลี่ยงเพดาน 3 cron ต่อ Worker
+# และทำให้ตารางเวลาทั้งหมดอยู่ในโค้ดที่เดียว
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+BASE = "https://ktis-ai-assistant.vercel.app"
+
+[observability]
+enabled = true
