@@ -32,6 +32,9 @@ const MORNING_TO_MIN = 8 * 60 + 20; // 08:20
 const DAY_FROM_MIN = 8 * 60 + 20;
 const DAY_TO_MIN = 20 * 60 + 55;
 
+/** เวลาตรวจย้อนหลังว่าเมื่อเช้าส่งตรงเวลาไหม (หลังหมดช่วงเช้าแล้ว) */
+const PUNCTUALITY_CHECK_MIN = 8 * 60 + 30; // 08:30
+
 /** Cloudflare อาจยิงก่อนวินาทีที่ 0 เล็กน้อย — รอให้ถึงนาทีจริงก่อนส่ง (สูงสุด 3 วิ) */
 const MAX_ALIGN_MS = 3_000;
 
@@ -60,6 +63,11 @@ export function planFor(bkk) {
     // 5 วินาที ซึ่งกินเป้า "ถึงมือ 07:00" ทั้งสองงานไม่ขึ้นแก่กันในนาทีเดียวกัน
     jobs.push({ label: "deliver", path: "/api/brief/run?only=both", align: true });
     jobs.push({ label: "prewarm", path: "/api/morning/prewarm?stage=auto" });
+  }
+
+  // หลังหมดช่วงเช้า: ตรวจว่าเมื่อเช้าส่งตรงเวลาไหม ถ้าช้าเกิน 5 นาทีจะแจ้งผู้ดูแล
+  if (minOfDay === PUNCTUALITY_CHECK_MIN) {
+    jobs.push({ label: "punctuality check", path: "/api/morning/punctuality" });
   }
 
   if (minOfDay >= DAY_FROM_MIN && minOfDay <= DAY_TO_MIN && minute % 5 === 0) {

@@ -17,6 +17,7 @@ Worker นี้เป็น **ตัวยิงงานตามเวลา�
 | **07:01 จ–ศ** | **ส่งสรุปประชุม/ตาราง** | `/api/brief/run?only=brief` |
 | 07:02–07:10 จ–ศ | ตามเก็บทุกนาที (ส่งแล้วข้ามเอง) | `/api/brief/run?only=both` |
 | 07:00–20:55 ทุก 5 นาที | poll เผื่อผู้ใช้ตั้งเวลาส่งเองไม่ใช่ 07:00 | `/api/brief/run?only=both` |
+| 08:30 ทุกวัน | ตรวจว่าเมื่อเช้าส่งตรงเวลาไหม (ช้า > 5 นาที → แจ้งผู้ดูแลทาง LINE) | `/api/morning/punctuality` |
 | 08:00–20:55 ทุก 5 นาที จ–ศ | สรุปประชุมจาก transcript | `/api/summaries/run` |
 | ต้นชั่วโมง 08:00–20:00 จ–ศ | เตือนงานค้าง | `/api/reminders/run` |
 | 08:00–20:55 ทุก 5 นาที ทุกวัน | แจ้งนัดใหม่ในปฏิทิน | `/api/calendar/notify` |
@@ -77,6 +78,16 @@ curl -sS -X POST -H "x-cron-secret: <CRON_SECRET>" "https://ktis-ai-assistant.ve
 ```bash
 curl -sS -X POST -H "x-cron-secret: <CRON_SECRET>" "https://ktis-ai-assistant.vercel.app/api/brief/run?only=both&force=1&upn=weerasak.pi@ktisgroup.com"
 ```
+
+## ดูรายงานความตรงเวลาแบบไม่ส่งข้อความ
+
+```bash
+curl -sS -X POST -H "x-cron-secret: <CRON_SECRET>" "https://ktis-ai-assistant.vercel.app/api/morning/punctuality?dry=1"
+```
+
+ผู้รับรายงานเก็บไว้ในตาราง `settings` (`owner_upn=_ops`, `key=punctuality_admin`)
+เปลี่ยนได้ด้วย `?to=<upn>` หรือ env `PUNCTUALITY_ADMIN_UPN` — ถ้าไม่ตั้งเลยจะบันทึกลง
+`agent_traces` ให้ดูที่หน้า `/monitor` แต่ไม่ส่ง LINE
 
 ## หมายเหตุ
 
