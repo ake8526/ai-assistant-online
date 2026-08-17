@@ -669,10 +669,10 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
 
   // /test — preview what the morning message will look like. A reply, so it
   // costs no quota; "/test ประชุม" previews the meeting-summary shape instead.
-  if (t === "__preview_summary_link__" || /^\/?test$/i.test(t)) {
+  if (t === "__preview_morning__" || /^\/?test$/i.test(t)) {
     return { intent: "preview_morning", params: {} };
   }
-  if (/^\/?test\s*(ประชุม|สรุป|summary|mt)$/i.test(t)) {
+  if (t === "__preview_summary_link__" || /^\/?test\s*(ประชุม|สรุป|summary|mt)$/i.test(t)) {
     return { intent: "preview_summary_link", params: {} };
   }
 
@@ -3898,14 +3898,9 @@ async function handleParsed(
       const p = await buildMorningPreview(userUpn);
       return {
         intent: "preview_morning",
-        reply: [
-          p.message,
-          "",
-          "— — —",
-          `☝️ นี่คือข้อความเช้าแบบใหม่ (ข้อความเดียว) จากข้อมูลจริงของวันนี้`,
-          `เดิมส่ง 2 ข้อความ (ตาราง + ข่าว) แบบใหม่รวมเป็น 1 · ข่าว ${p.newsCount} เรื่องอยู่ในลิงก์`,
-          "ข้อความนี้เป็นการตอบกลับ จึงไม่ใช้โควตาส่งของ LINE",
-        ].join("\n"),
+        // No explanatory footer: a preview has to look exactly like the message
+        // it previews, or it is not showing what will actually arrive.
+        reply: p.message,
         // The real morning message offers a button per meeting; a preview
         // without them cannot show whether that still works.
         suggestions: [
@@ -4255,15 +4250,18 @@ async function handleParsed(
   if (intent === "get_news") {
     trace("fetch", "📰 ดึงข่าวจากแหล่งที่ติดตาม", "start");
 
-    // LINE replyToken expires ~30s. Try a short race for in-reply news;
-    // otherwise kick line-now (maxDuration 300) as the sole delivery owner.
+    // Answer in the reply if at all possible: a reply is free and arrives, while
+    // the push fallback silently delivers nothing once the monthly quota is gone.
+    // Dropping unreadable sources took the digest to ~10s, so the old 12s race
+    // was losing by a hair and handing the answer to a channel that could not
+    // send it.
     if (lite) {
       const upn = userUpn;
       const digestPromise = buildDigest(upn);
       type Race = { done: true; digest: DigestResult } | { done: false };
       const raced: Race = await Promise.race([
         digestPromise.then((digest) => ({ done: true as const, digest })),
-        new Promise<Race>((resolve) => setTimeout(() => resolve({ done: false }), 12_000)),
+        new Promise<Race>((resolve) => setTimeout(() => resolve({ done: false }), 35_000)),
       ]);
 
       if (raced.done) {
@@ -4282,7 +4280,27 @@ async function handleParsed(
         const extra = formatDigestSkippedNote(digest.skipped, true);
         await rememberDeliveredStories(upn, digest.stories);
         trace("compose", "📰 สรุปข่าวภาษาไทย");
-        return { intent, reply: formatStoriesText(digest.stories, digest.note) + extra, data: digest.stories };
+        // Link, not a wall of text: the page holds the full summaries and every
+        // source link, and this reply stays one short bubble.
+        const { buildNewsUrl, newsIdFor, saveNewsPage, toPageStories } = await import("@/lib/newsPage");
+        const now = new Date(Date.now() + 7 * 60 * 60 * 1000);
+        const months = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+        const dateLabel = `${now.getUTCDate()} ${months[now.getUTCMonth()]} ${now.getUTCFullYear() + 543}`;
+        const pageId = newsIdFor(upn, now.toISOString().slice(0, 10));
+        const pageStories = toPageStories(digest.stories);
+        await saveNewsPage(pageId, { dateLabel, stories: pageStories, note: digest.note, createdAt: Date.now() });
+        const heads = pageStories.slice(0, 3).map((st, i) => `${i + 1}) ${st.headline}`);
+        return {
+          intent,
+          reply: [
+            `📰 ข่าววันนี้ · ${pageStories.length} เรื่อง`,
+            "",
+            ...heads,
+            "",
+            `อ่านทั้งหมด 👉 ${buildNewsUrl(pageId)}`,
+          ].join("\n") + extra,
+          data: digest.stories,
+        };
       }
 
       trace("fetch", "📰 สรุปข่าวช้า · ส่งต่อ line-now", "start");
@@ -4347,11 +4365,18 @@ async function handleParsed(
         } catch { /* ignore */ }
       });
 
+      // Only promise a push we can actually pay for. With the monthly quota
+      // spent, "it will arrive shortly" is untrue — the background build still
+      // runs, so asking again shortly is answered from the warm cache.
+      const { lineQuotaLeft } = await import("@/lib/line");
+      const quotaLeft = await lineQuotaLeft();
+      const canPush = quotaLeft === null || quotaLeft > 0;
       return {
         intent,
-        newsPending: true,
-        reply:
-          "กำลังรวบรวมและสรุปข่าวครับ — จะส่งเข้า LINE ให้อัตโนมัติเมื่อเสร็จ (ประมาณ 1–2 นาที)\n\nหรือพิมพ์ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ",
+        newsPending: canPush,
+        reply: canPush
+          ? "กำลังรวบรวมและสรุปข่าวครับ — จะส่งเข้า LINE ให้อัตโนมัติเมื่อเสร็จ (ประมาณ 1–2 นาที)\n\nหรือพิมพ์ “ดูแหล่งข่าว” เพื่อตรวจแหล่งก่อนได้ครับ"
+          : "กำลังรวบรวมข่าวอยู่ครับ แต่ตอนนี้ส่งข้อความอัตโนมัติไม่ได้ (โควตา LINE เดือนนี้หมด)\n\nรอสักครู่แล้วพิมพ์ “ข่าวตอนนี้” อีกครั้ง — รอบหน้าจะตอบได้ทันทีเพราะเตรียมไว้แล้วครับ",
       };
     }
 

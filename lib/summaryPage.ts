@@ -165,16 +165,10 @@ export async function previewSummaryLinkMessage(upn: string): Promise<string> {
 
   if (real) {
     const url = buildSummaryUrl(real.id);
-    return [
-      summaryTeaser(real.subject, real.when, real.text, url),
-      "",
-      "— — —",
-      "☝️ ข้างบนคือสรุปประชุมจริงของคุณ ไม่ใช่ตัวอย่างสมมติ",
-      inPilot
-        ? "บัญชีนี้อยู่ในโหมดลิงก์แล้ว สรุปจริงจะมาแบบนี้"
-        : "บัญชีนี้ยังรับสรุปแบบเต็มอยู่ นี่คือตัวอย่างว่าโหมดลิงก์จะเป็นอย่างไร",
-      "ข้อความนี้เป็นการตอบกลับ จึงไม่ใช้โควตาส่งของ LINE",
-    ].join("\n");
+    // Shown exactly as it will arrive — a preview that explains itself is no
+    // longer showing you what you will get.
+    void inPilot;
+    return summaryTeaser(real.subject, real.when, real.text, url);
   }
 
   // 3) No finished meeting with a transcript in the last three days — say so

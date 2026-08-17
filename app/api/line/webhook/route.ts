@@ -1420,7 +1420,8 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         return;
       }
       // Map other slash cmds to normal assistant text
-      text = slashToUserText(cmd);
+      const slashRest = slashBody.trim().replace(/^\/?[^\s]+\s*/, "");
+      text = slashToUserText(cmd, slashRest);
     }
 
     // A pending booking draft awaiting subject/attendee input takes priority

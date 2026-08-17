@@ -39,9 +39,14 @@ export function parseSlashCommand(text: string): string | null {
 
 export function matchSlashCommand(body: string): SlashCommand | null {
   const q = body.trim().replace(/^\//, "").toLowerCase();
-  return (
-    SLASH_COMMANDS.find((c) => c.cmd.toLowerCase() === q || c.message.toLowerCase() === `/${q}`) || null
+  const exact = SLASH_COMMANDS.find(
+    (c) => c.cmd.toLowerCase() === q || c.message.toLowerCase() === `/${q}`
   );
+  if (exact) return exact;
+  // A command may take an argument ("/test ประชุม"). Matching only whole
+  // strings answered "ไม่รู้จักคำสั่ง" to a command the menu had just offered.
+  const head = q.split(/\s+/)[0] || "";
+  return SLASH_COMMANDS.find((c) => c.cmd.toLowerCase() === head) || null;
 }
 
 function quickReplyItems(cmds: SlashCommand[]) {
@@ -79,7 +84,8 @@ export function textWithDraftEscape(text: string): object {
 }
 
 /** Map slash command → plain text the normal command brain understands. */
-export function slashToUserText(cmd: SlashCommand): string {
+/** `rest` is whatever followed the command word, e.g. "ประชุม" in "/test ประชุม". */
+export function slashToUserText(cmd: SlashCommand, rest = ""): string {
   switch (cmd.cmd) {
     case "ล้างความจำ":
       return "ล้างความจำ";
@@ -94,7 +100,7 @@ export function slashToUserText(cmd: SlashCommand): string {
     case "ช่วยเหลือ":
       return "ช่วยเรื่องอื่น";
     case "test":
-      return "__preview_summary_link__";
+      return rest.trim() ? "__preview_summary_link__" : "__preview_morning__";
     default:
       return cmd.message;
   }
