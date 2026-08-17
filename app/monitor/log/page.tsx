@@ -107,6 +107,15 @@ const CSS = `
 .mlog .empty{border:1px dashed var(--hair);padding:20px;text-align:center;color:var(--dim);font-size:18px}
 .mlog .note{border:1px solid var(--amber);color:var(--amber);padding:8px 10px;margin-bottom:8px;font-size:16px}
 .mlog .center{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+/* Own confirm dialog — window.confirm() cannot be themed and reads as the browser talking */
+.mlog .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:80;padding:16px}
+.mlog .modal{border:2px solid var(--red);background:var(--panel);max-width:520px;width:100%;box-shadow:0 0 0 4px #000}
+.mlog .modal .mt{font-size:9px;color:var(--red);padding:9px 12px;border-bottom:2px solid var(--hair);background:var(--panel2)}
+.mlog .modal .mb{padding:12px;font-size:17px;line-height:1.55}
+.mlog .modal .mb b{color:var(--amber)}
+.mlog .modal .mb ul{margin:8px 0 0 18px;color:var(--dim)}
+.mlog .modal .mb li{margin-bottom:2px}
+.mlog .modal .ma{display:flex;gap:8px;justify-content:flex-end;padding:10px 12px;border-top:2px solid var(--hair);background:var(--panel2)}
 `;
 
 function JobRow({ job }: { job: LogJob }) {
@@ -150,6 +159,7 @@ function LogView({ getToken }: { getToken: () => Promise<string | null> }) {
   const [err, setErr] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [cancelMsg, setCancelMsg] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -181,10 +191,21 @@ function LogView({ getToken }: { getToken: () => Promise<string | null> }) {
     return () => clearTimeout(t);
   }, [load]);
 
-  // Stop the scheduler retrying today's morning deliveries. Confirmed first:
-  // it skips today's brief/news for everyone rather than pausing it.
+  // Esc closes the dialog — expected of anything that replaces window.confirm().
+  useEffect(() => {
+    if (!confirmOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setConfirmOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmOpen]);
+
+  // Stop the scheduler retrying today's morning deliveries. The confirm step is
+  // our own dialog, not window.confirm() — the browser's box is chrome-styled,
+  // shows the bare hostname, and cannot say this skips today for everyone.
   const cancelPending = useCallback(async () => {
-    if (!window.confirm("หยุดงานค้างของวันนี้ (สรุปเช้า + ข่าว) ทุกคนใช่ไหมครับ?\n\nระบบจะเลิกพยายามส่งซ้ำจนถึงพรุ่งนี้ — พิมพ์สั่งเองใน LINE ยังใช้ได้ตามปกติ")) return;
+    setConfirmOpen(false);
     setCancelling(true);
     setCancelMsg("");
     try {
@@ -238,10 +259,42 @@ function LogView({ getToken }: { getToken: () => Promise<string | null> }) {
         </button>
         <button onClick={() => void load()}>{loading ? "กำลังโหลด…" : "รีเฟรช"}</button>
         <div className="spacer" />
-        <button className="danger" onClick={() => void cancelPending()} disabled={cancelling}>
+        <button className="danger" onClick={() => setConfirmOpen(true)} disabled={cancelling}>
           {cancelling ? "กำลังหยุด…" : "■ หยุดงานค้าง"}
         </button>
       </div>
+
+      {confirmOpen && (
+        <div className="modal-back" onClick={() => setConfirmOpen(false)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mt pix" id="confirm-title">
+              ■ หยุดงานค้าง
+            </div>
+            <div className="mb">
+              <p>
+                หยุดงานค้าง<b> ของวันนี้ </b>ทั้งหมด — สรุปตารางเช้า + ข่าวเช้า ของผู้ใช้ทุกคน
+              </p>
+              <ul>
+                <li>ระบบจะเลิกพยายามส่งซ้ำ จนถึงรอบพรุ่งนี้</li>
+                <li>ไม่มีการลบข้อมูล ตั้งค่าเวลาส่งเดิมยังอยู่ครบ</li>
+                <li>พิมพ์สั่งเองใน LINE เช่น «สรุปตารางเช้า» ยังใช้ได้ตามปกติ</li>
+              </ul>
+            </div>
+            <div className="ma">
+              <button onClick={() => setConfirmOpen(false)}>ยกเลิก</button>
+              <button className="danger" onClick={() => void cancelPending()} autoFocus>
+                ยืนยัน หยุดงานค้าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {cancelMsg && <div className="note">{cancelMsg}</div>}
 
