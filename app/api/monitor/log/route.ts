@@ -298,6 +298,8 @@ export async function GET(req: Request) {
     durationMs: number;
     title: string;
     outcome: "ok" | "quiet" | "error" | "incomplete";
+    /** Plain-language answer to "what is this, why is it stuck, is it still stuck?" */
+    diagnosis?: string;
     events: { clock: string; step: string; label: string; status: string; ms: number }[];
   };
 
@@ -306,6 +308,25 @@ export async function GET(req: Request) {
     const list = byTrace.get(r.trace_id);
     if (list) list.push(r);
     else byTrace.set(r.trace_id, [r]);
+  }
+
+  /** A job that stopped without an ending: say what that means in words. */
+  function explain(lastStep: string, quietSec: number): string {
+    if (quietSec < 45) return "กำลังทำอยู่ตอนนี้ — ยังไม่จบ ให้รอสักครู่แล้วรีเฟรช";
+    const idle =
+      quietSec < 3600
+        ? `เงียบมา ${Math.round(quietSec / 60)} นาที`
+        : `เงียบมา ${Math.round(quietSec / 3600)} ชั่วโมง`;
+    const why: Record<string, string> = {
+      receive:
+        "หยุดตั้งแต่เพิ่งรับงาน ยังไม่ได้เริ่มทำอะไรเลย — มักเกิดกับงานเบื้องหลังที่ถูกตัดกลางคัน (ตัวที่เรียกไม่ได้รอผล) หรือเซิร์ฟเวอร์ปิดฟังก์ชันก่อนงานได้เริ่ม",
+      parse: "หยุดตอนกำลังตีความคำสั่ง — มัก AI ตอบช้าหรือล้มเหลว",
+      fetch: "หยุดระหว่างดึงข้อมูล — มัก M365 หรือแหล่งข่าวตอบช้าเกินเวลาที่ตั้งไว้",
+      compose:
+        "เขียนคำตอบเสร็จแล้วแต่ไม่มีขั้นส่งออก — มักเป็นการส่ง LINE ที่ล้มเหลว เช่น โควตาส่งหมด",
+    };
+    const cause = why[lastStep] || "หยุดกลางทางโดยไม่ได้บันทึกสาเหตุ";
+    return `${cause} · ${idle} แล้ว จึงถือว่าหยุดไปแล้ว ไม่ได้ทำงานอยู่ และจะไม่ทำต่อเอง`;
   }
 
   const jobs: Job[] = [];
@@ -336,6 +357,10 @@ export async function GET(req: Request) {
       durationMs: Math.max(0, (last.ms ?? 0) - (first.ms ?? 0)),
       title: list.find((r) => r.step === "receive")?.label || first.label || first.step,
       outcome,
+      diagnosis:
+        outcome === "incomplete"
+          ? explain(last.step, Math.max(0, (Date.now() - Date.parse(last.created_at)) / 1000))
+          : undefined,
       events: list.map((r) => ({
         clock: bkkClock(r.created_at),
         step: r.step,

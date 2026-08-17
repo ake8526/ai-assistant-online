@@ -19,6 +19,7 @@ type LogJob = {
   durationMs: number;
   title: string;
   outcome: "ok" | "quiet" | "error" | "incomplete";
+  diagnosis?: string;
   events: LogEvent[];
 };
 type Activity = {
@@ -500,6 +501,8 @@ const CSS = `
 .mlog .ev{display:flex;gap:10px;font-size:15px;color:var(--dim);line-height:1.5}
 .mlog .ev .st{color:#a3a3a3;min-width:80px}
 .mlog .ev .lb{color:var(--ink)}
+.mlog .why{color:var(--amber);background:rgba(240,180,41,.07);border:1px solid #78350f;
+  padding:6px 9px;margin-bottom:6px;font-size:15.5px;line-height:1.5}
 .mlog .ev.error .lb,.mlog .ev.error .st{color:var(--red)}
 .mlog .empty{border:1px dashed var(--hair);padding:20px;text-align:center;color:var(--dim);font-size:18px}
 .mlog .note{border:1px solid var(--amber);color:var(--amber);padding:8px 10px;margin-bottom:8px;font-size:16px}
@@ -533,6 +536,7 @@ function JobRow({ job }: { job: LogJob }) {
       </div>
       {open && (
         <div className="steps">
+          {job.diagnosis && <div className="why">⚠️ {job.diagnosis}</div>}
           {job.events.map((e, i) => (
             <div key={i} className={`ev${e.status === "error" || e.step === "error" ? " error" : ""}`}>
               <span>{e.clock}</span>
