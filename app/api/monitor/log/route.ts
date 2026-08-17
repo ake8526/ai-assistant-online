@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { guard } from "@/lib/guard";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { PAUSABLE_JOBS, pauseState } from "@/lib/opsPause";
+import { searchUsers } from "@/lib/graph";
 
 // History feed for /monitor/log — "ดู log ย้อนหลัง".
 //
@@ -217,6 +218,35 @@ export async function GET(req: Request) {
 
   const { from, to } = bkkDayRange(date);
 
+  // The filter box takes a nickname, because that is how people refer to each
+  // other here — but a trace is stamped with a UPN like "weerasak.pi". A Thai
+  // (or otherwise non-roman) query is resolved through the directory first, so
+  // "เอก" finds Weerasak. Roman text stays a plain prefix match, which is both
+  // faster and lets a partial UPN work.
+  let resolved: { mail: string; name: string }[] | null = null;
+  if (user && !/^[ -~]+$/.test(user)) {
+    try {
+      resolved = (await searchUsers(user, 8))
+        .filter((u) => u.mail)
+        .map((u) => ({ mail: u.mail.toLowerCase(), name: u.displayName || u.mail }));
+    } catch {
+      resolved = [];
+    }
+    if (!resolved.length) {
+      return NextResponse.json({
+        date,
+        today: date === bkkToday(),
+        perms: gate.perms,
+        userQuery: user,
+        resolvedUsers: [],
+        summary: { traces: 0, events: 0, ok: 0, quiet: 0, errors: 0, incomplete: 0, users: [], channels: [] },
+        activity: [],
+        traces: [],
+        note: `ไม่พบผู้ใช้ชื่อ “${user}” ในไดเรกทอรี M365`,
+      });
+    }
+  }
+
   // PostgREST caps a single response at 1000 rows, and one busy morning easily
   // passes that — page through so a day is never silently cut short.
   const PAGE = 1000;
@@ -233,7 +263,8 @@ export async function GET(req: Request) {
       query = query.eq("trace_id", traceId);
     } else {
       query = query.gte("created_at", from).lt("created_at", to);
-      if (user) query = query.ilike("upn", `${user}%`);
+      if (resolved) query = query.in("upn", resolved.map((r) => r.mail));
+      else if (user) query = query.ilike("upn", `${user}%`);
       if (channel) query = query.eq("channel", channel);
       if (step) query = query.eq("step", step);
       if (q) query = query.ilike("label", `%${q}%`);
@@ -380,6 +411,7 @@ export async function GET(req: Request) {
     date,
     today: date === bkkToday(),
     perms: gate.perms,
+    resolvedUsers: resolved,
     truncated: rows.length >= MAX_ROWS,
     activityWindowMin: ACTIVITY_WINDOW_MS / 60_000,
     activity,

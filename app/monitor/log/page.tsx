@@ -55,6 +55,7 @@ type LogResp = {
   date: string;
   today?: boolean;
   perms?: string[];
+  resolvedUsers?: { mail: string; name: string }[] | null;
   truncated?: boolean;
   note?: string;
   activityWindowMin?: number;
@@ -499,6 +500,7 @@ const CSS = `
 .mlog .ev.error .lb,.mlog .ev.error .st{color:var(--red)}
 .mlog .empty{border:1px dashed var(--hair);padding:20px;text-align:center;color:var(--dim);font-size:18px}
 .mlog .note{border:1px solid var(--amber);color:var(--amber);padding:8px 10px;margin-bottom:8px;font-size:16px}
+.mlog .note.match{border-color:#1e3a8a;color:#60a5fa}
 .mlog .note.expired{display:flex;gap:10px;align-items:center;justify-content:space-between;border-color:var(--red);color:var(--red)}
 .mlog .center{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
 /* Own confirm dialog — window.confirm() cannot be themed and reads as the browser talking */
@@ -725,7 +727,11 @@ function LogView({
           วันถัดไป ▶
         </button>
         <button onClick={() => setDate(bkkToday())}>วันนี้</button>
-        <input placeholder="ผู้ใช้ (เช่น weerasak)" value={user} onChange={(e) => setUser(e.target.value)} />
+        <input
+          placeholder="ผู้ใช้ — ชื่อเล่นก็ได้ เช่น เอก"
+          value={user}
+          onChange={(e) => setUser(e.target.value)}
+        />
         <select value={channel} onChange={(e) => setChannel(e.target.value)}>
           <option value="">ทุกช่องทาง</option>
           <option value="line">LINE</option>
@@ -811,6 +817,12 @@ function LogView({
           <button className="danger" onClick={() => void reauth()}>
             เข้าสู่ระบบใหม่
           </button>
+        </div>
+      )}
+      {!!data?.resolvedUsers?.length && (
+        <div className="note match">
+          ค้นชื่อเล่น “{user}” เจอใน M365: {data.resolvedUsers.map((r) => r.name).join(" · ")}
+          {data.summary.users.length ? ` — มี log เฉพาะ ${data.summary.users.join(", ")}` : " — ยังไม่มี log ของวันนี้"}
         </div>
       )}
       {err && <div className="note">โหลดไม่สำเร็จ: {err}</div>}
