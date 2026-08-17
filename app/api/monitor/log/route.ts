@@ -290,7 +290,21 @@ export async function GET(req: Request) {
   // instead of having to read a wall of identical rows.
   const ACTIVITY_WINDOW_MS = 30 * 60_000;
   const cutoff = Date.now() - ACTIVITY_WINDOW_MS;
-  const recent = jobs.filter((j) => Date.parse(j.startedAt) >= cutoff);
+  const pausedState = await pauseState();
+  const pausedTitles = new Set(
+    (pausedState?.jobs || [])
+      .map((j) => PAUSABLE_JOBS.find((p) => p.key === j)?.traceTitle)
+      .filter((t): t is string => !!t)
+  );
+  const recent = jobs.filter(
+    (j) =>
+      Date.parse(j.startedAt) >= cutoff &&
+      // Recurring scheduled work only — a LINE conversation or a button press on
+      // this page is a one-off, and belongs in the list below, not here.
+      j.channel === "cron" &&
+      // Stopped means gone. It comes back on its own the next time it runs.
+      !pausedTitles.has(j.title)
+  );
   const groups = new Map<string, Job[]>();
   for (const j of recent) {
     const list = groups.get(j.title);
@@ -315,20 +329,11 @@ export async function GET(req: Request) {
     })
     .sort((a, b) => a.lastAgoSec - b.lastAgoSec);
 
-  // Which of these recurring jobs are paused right now. The activity table is a
-  // rear-view mirror: rows from before a pause stay visible until they age out,
-  // and without this flag they read as "still running".
-  const pausedState = await pauseState();
-  const pausedTitles = (pausedState?.jobs || [])
-    .map((j) => PAUSABLE_JOBS.find((p) => p.key === j)?.traceTitle)
-    .filter((t): t is string => !!t);
-
   return NextResponse.json({
     date,
     today: date === bkkToday(),
     truncated: rows.length >= MAX_ROWS,
     activityWindowMin: ACTIVITY_WINDOW_MS / 60_000,
-    pausedTitles,
     activity,
     summary: {
       traces: jobs.length,

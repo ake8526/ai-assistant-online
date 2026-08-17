@@ -58,7 +58,6 @@ type LogResp = {
   note?: string;
   activityWindowMin?: number;
   activity?: Activity[];
-  pausedTitles?: string[];
   summary: {
     traces: number;
     events: number;
@@ -147,8 +146,6 @@ const CSS = `
 .mlog .tag.quiet{color:#60a5fa;border-color:#1e3a8a}
 .mlog .tag.err{color:var(--red);border-color:#7f1d1d}
 .mlog .tag.inc{color:var(--amber);border-color:#78350f}
-.mlog .tag.pause{color:var(--amber);border-color:#78350f}
-.mlog .act tr.off td{opacity:.5}
 .mlog .tag.run{color:#fff;border-color:var(--red);background:rgba(238,27,36,.18)}
 .mlog .act.live{border-color:var(--red)}
 .mlog .act.live .ah{color:var(--ink)}
@@ -348,22 +345,6 @@ function LogView({
     }
   }, [getToken, load, alsoPauseCron]);
 
-  const resumeCron = useCallback(async () => {
-    setCancelling(true);
-    try {
-      const token = await getToken();
-      const headers: Record<string, string> = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const r = await fetch("/api/monitor/cancel?resume=1", { method: "POST", headers });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setCancelMsg("เปิดงานที่พักไว้กลับแล้ว — รอบถัดไปจะทำงานตามปกติ");
-    } catch (e) {
-      setCancelMsg(`เปิดกลับไม่สำเร็จ: ${String(e).slice(0, 200)}`);
-    } finally {
-      setCancelling(false);
-    }
-  }, [getToken]);
-
   const s = data?.summary;
 
   return (
@@ -470,12 +451,9 @@ function LogView({
           {live.paused && (
             <div className="paused">
               <span>
-                ⏸ พักอยู่: {live.paused.labels.join(" · ")}{" "}
-                <span className="dim">(กลับมาเองตอน {live.paused.untilClock})</span>
+                ⏸ หยุดไว้: {live.paused.labels.join(" · ")}{" "}
+                <span className="dim">— กลับมาทำงานเองรอบแรกของพรุ่งนี้</span>
               </span>
-              <button onClick={() => void resumeCron()} disabled={cancelling}>
-                ▶ เปิดงานกลับ
-              </button>
             </div>
           )}
           {live.running.length === 0 ? (
@@ -537,8 +515,8 @@ function LogView({
       {data?.today && !!data.activity?.length && (
         <div className="act">
           <div className="ah pix">
-            ประวัติงานที่วนอยู่ · ย้อนหลัง {data.activityWindowMin ?? 30} นาที{" "}
-            <span className="dim">(ไม่ใช่สถานะปัจจุบัน — ดูกรอบแดงด้านบน)</span>
+            งานตามเวลาที่ทำไปแล้ว · ย้อนหลัง {data.activityWindowMin ?? 30} นาที{" "}
+            <span className="dim">(งานที่หยุดไว้จะไม่แสดง)</span>
           </div>
           <table>
             <thead>
@@ -551,13 +529,9 @@ function LogView({
               </tr>
             </thead>
             <tbody>
-              {data.activity.map((a) => {
-                const isPaused = (data.pausedTitles || []).includes(a.title);
-                return (
-                <tr key={a.title} className={isPaused ? "off" : ""}>
-                  <td className="n">
-                    {a.title} {isPaused && <span className="tag pause">⏸ พักอยู่</span>}
-                  </td>
+              {data.activity.map((a) => (
+                <tr key={a.title}>
+                  <td className="n">{a.title}</td>
                   <td>{a.runs}</td>
                   <td>{a.users || "—"}</td>
                   <td>
@@ -570,8 +544,7 @@ function LogView({
                     {a.incomplete > 0 && <span className="tag inc">ไม่จบงาน {a.incomplete}</span>}
                   </td>
                 </tr>
-                );
-              })}
+              ))}
             </tbody>
           </table>
         </div>
