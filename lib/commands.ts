@@ -4350,10 +4350,20 @@ async function handleParsed(
         }
       })();
 
-      try {
-        await kickLineDigest(upn);
-      } catch (e) {
-        console.warn("[get_news kick]", String(e).slice(0, 160));
+      // The kick starts a second serverless invocation that nothing waits on. If
+      // the platform stops it before it does anything, it leaves a job in the log
+      // that begins and never ends — which is where the ghost "cron · ส่งข่าว
+      // LINE" rows came from. It exists only to deliver by push, so when there
+      // is no push quota to deliver with, do not start it at all.
+      const quotaBefore = await (await import("@/lib/line")).lineQuotaLeft();
+      if (quotaBefore === null || quotaBefore > 0) {
+        try {
+          await kickLineDigest(upn);
+        } catch (e) {
+          console.warn("[get_news kick]", String(e).slice(0, 160));
+        }
+      } else {
+        trace("fetch", "📰 ไม่เรียก line-now — โควตาส่งหมด (จะเตรียมข่าวไว้ให้แทน)", "skip");
       }
 
       try {

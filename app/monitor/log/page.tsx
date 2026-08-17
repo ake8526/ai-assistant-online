@@ -503,6 +503,9 @@ const CSS = `
 .mlog .ev .lb{color:var(--ink)}
 .mlog .why{color:var(--amber);background:rgba(240,180,41,.07);border:1px solid #78350f;
   padding:6px 9px;margin-bottom:6px;font-size:15.5px;line-height:1.5}
+.mlog .why .closebtn{margin-top:6px;border-color:var(--amber);color:var(--amber);font-size:15px;padding:3px 9px}
+.mlog .why .closebtn:hover{background:var(--amber);color:#06101f}
+.mlog .why .closed{margin-top:6px;color:var(--green)}
 .mlog .ev.error .lb,.mlog .ev.error .st{color:var(--red)}
 .mlog .empty{border:1px dashed var(--hair);padding:20px;text-align:center;color:var(--dim);font-size:18px}
 .mlog .note{border:1px solid var(--amber);color:var(--amber);padding:8px 10px;margin-bottom:8px;font-size:16px}
@@ -520,8 +523,18 @@ const CSS = `
 .mlog .modal .ma{display:flex;gap:8px;justify-content:flex-end;padding:10px 12px;border-top:2px solid var(--hair);background:var(--panel2)}
 `;
 
-function JobRow({ job }: { job: LogJob }) {
+function JobRow({
+  job,
+  canStop,
+  onClose,
+}: {
+  job: LogJob;
+  canStop: boolean;
+  onClose: (traceId: string) => Promise<string>;
+}) {
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [closed, setClosed] = useState("");
   return (
     <div className="job">
       <div className="jh" onClick={() => setOpen((v) => !v)}>
@@ -536,7 +549,25 @@ function JobRow({ job }: { job: LogJob }) {
       </div>
       {open && (
         <div className="steps">
-          {job.diagnosis && <div className="why">⚠️ {job.diagnosis}</div>}
+          {job.diagnosis && (
+            <div className="why">
+              <div>⚠️ {job.diagnosis}</div>
+              {canStop && !closed && (
+                <button
+                  className="closebtn"
+                  disabled={closing}
+                  onClick={async () => {
+                    setClosing(true);
+                    setClosed(await onClose(job.traceId));
+                    setClosing(false);
+                  }}
+                >
+                  {closing ? "กำลังปิด…" : "ปิดงานค้างนี้ + ปลดล็อกที่ค้างไว้"}
+                </button>
+              )}
+              {closed && <div className="closed">{closed}</div>}
+            </div>
+          )}
           {job.events.map((e, i) => (
             <div key={i} className={`ev${e.status === "error" || e.step === "error" ? " error" : ""}`}>
               <span>{e.clock}</span>
@@ -688,6 +719,30 @@ function LogView({
   }, [getToken, load, alsoPauseCron]);
 
   const can = (p: string) => !!data?.perms?.includes(p);
+  // One dead job at a time: releases whatever locks it left and writes a closing
+  // line into its own trace, so the history keeps its shape.
+  const closeJob = useCallback(
+    async (traceId: string): Promise<string> => {
+      try {
+        const token = await getToken();
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const r = await fetch("/api/monitor/close-job", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ traceId }),
+        });
+        const d = await r.json();
+        if (!r.ok) return `ปิดไม่สำเร็จ: ${d.error || r.status}`;
+        void load();
+        return d.note || `ปิดแล้ว · ปลดล็อก ${(d.released || []).join(", ") || "ไม่มี"}`;
+      } catch (e) {
+        return `ปิดไม่สำเร็จ: ${String(e).slice(0, 120)}`;
+      }
+    },
+    [getToken, load]
+  );
+
   const s = data?.summary;
 
   if (denied) {
@@ -978,7 +1033,7 @@ function LogView({
       )}
 
       {data?.traces.map((j) => (
-        <JobRow key={j.traceId} job={j} />
+        <JobRow key={j.traceId} job={j} canStop={can("jobs.stop")} onClose={closeJob} />
       ))}
     </div>
   );
