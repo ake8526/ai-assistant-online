@@ -434,6 +434,9 @@ const CSS = `
 .mlog .act td{padding:4px 9px;border-bottom:1px solid #1c1c1c}
 .mlog .act tr:last-child td{border-bottom:none}
 .mlog .act td.n{color:var(--ink)}
+.mlog .act tr.click{cursor:pointer}
+.mlog .act tr.click:hover td{background:var(--panel2)}
+.mlog .act tr.click.on td{background:#1c1c1c;box-shadow:inset 2px 0 0 var(--red)}
 .mlog .act .dim{color:var(--dim);font-size:14px}
 .mlog .tag{display:inline-block;border:1px solid var(--hair);padding:0 6px;margin-right:4px;font-size:14px}
 .mlog .tag.ok{color:var(--green);border-color:#14532d}
@@ -932,7 +935,15 @@ function LogView({
             </thead>
             <tbody>
               {data.activity.map((a) => (
-                <tr key={a.title}>
+                // Clicking a row filters the list below to that job — the
+                // summary was a dead end otherwise: it names a job and gives you
+                // no way to see what actually happened in it.
+                <tr
+                  key={a.title}
+                  className={`click${q === a.title ? " on" : ""}`}
+                  title="คลิกเพื่อดูรายละเอียดงานนี้"
+                  onClick={() => setQ(q === a.title ? "" : a.title)}
+                >
                   <td className="n">{a.title}</td>
                   <td>{a.runs}</td>
                   <td>{a.users || "—"}</td>

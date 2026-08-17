@@ -61,7 +61,7 @@ async function run(req: Request) {
       // Morning cron: one news push per day. force=1 bypasses for manual re-send.
       if (fromCron && !force) {
         if (!(await claimSend(upn, "news"))) {
-          trace("fetch", "📰 ข้าม — ส่งข่าววันนี้ไปแล้ว / กำลังส่ง");
+          trace("reply", "📰 ข้าม — ส่งข่าววันนี้ไปแล้ว / กำลังส่ง", "skip");
           return { ok: true, delivered: 0, skipped: "not due or inflight" };
         }
       }
@@ -74,7 +74,7 @@ async function run(req: Request) {
         if (ready) trace("fetch", `📰 ใช้ข่าวที่เตรียมไว้ · ${ready.stories.length} เรื่อง`);
         const digest = ready || (await buildDigest(upn, { fast: true }));
         if (!(await claimDigestPush(upn))) {
-          trace("fetch", "📰 ข้ามส่ง — มีงานอื่นส่งแล้ว");
+          trace("reply", "📰 ข้ามส่ง — มีงานอื่นส่งแล้ว", "skip");
           if (fromCron && !force) await clearInflight(upn, "news");
           return { ok: true, delivered: 0, skipped: "claimed" };
         }
@@ -105,6 +105,10 @@ async function run(req: Request) {
           await clearDigestClaim(upn);
         }
       } catch (e) {
+        // Without this the job simply stops mid-flight and the log files it as
+        // "ไม่จบงาน" with no reason — which is exactly how a spent LINE quota
+        // stayed invisible for a whole morning.
+        trace("error", `📰 ส่งข่าวไม่สำเร็จ · ${String(e).slice(0, 120)}`, "error");
         if (fromCron && !force) await clearInflight(upn, "news");
         throw e;
       }
