@@ -315,11 +315,20 @@ export async function GET(req: Request) {
     })
     .sort((a, b) => a.lastAgoSec - b.lastAgoSec);
 
+  // Which of these recurring jobs are paused right now. The activity table is a
+  // rear-view mirror: rows from before a pause stay visible until they age out,
+  // and without this flag they read as "still running".
+  const pausedState = await pauseState();
+  const pausedTitles = (pausedState?.jobs || [])
+    .map((j) => PAUSABLE_JOBS.find((p) => p.key === j)?.traceTitle)
+    .filter((t): t is string => !!t);
+
   return NextResponse.json({
     date,
     today: date === bkkToday(),
     truncated: rows.length >= MAX_ROWS,
     activityWindowMin: ACTIVITY_WINDOW_MS / 60_000,
+    pausedTitles,
     activity,
     summary: {
       traces: jobs.length,

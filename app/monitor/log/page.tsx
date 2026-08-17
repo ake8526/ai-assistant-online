@@ -58,6 +58,7 @@ type LogResp = {
   note?: string;
   activityWindowMin?: number;
   activity?: Activity[];
+  pausedTitles?: string[];
   summary: {
     traces: number;
     events: number;
@@ -146,6 +147,8 @@ const CSS = `
 .mlog .tag.quiet{color:#60a5fa;border-color:#1e3a8a}
 .mlog .tag.err{color:var(--red);border-color:#7f1d1d}
 .mlog .tag.inc{color:var(--amber);border-color:#78350f}
+.mlog .tag.pause{color:var(--amber);border-color:#78350f}
+.mlog .act tr.off td{opacity:.5}
 .mlog .tag.run{color:#fff;border-color:var(--red);background:rgba(238,27,36,.18)}
 .mlog .act.live{border-color:var(--red)}
 .mlog .act.live .ah{color:var(--ink)}
@@ -534,7 +537,8 @@ function LogView({
       {data?.today && !!data.activity?.length && (
         <div className="act">
           <div className="ah pix">
-            งานที่วนอยู่ · {data.activityWindowMin ?? 30} นาทีล่าสุด
+            ประวัติงานที่วนอยู่ · ย้อนหลัง {data.activityWindowMin ?? 30} นาที{" "}
+            <span className="dim">(ไม่ใช่สถานะปัจจุบัน — ดูกรอบแดงด้านบน)</span>
           </div>
           <table>
             <thead>
@@ -547,9 +551,13 @@ function LogView({
               </tr>
             </thead>
             <tbody>
-              {data.activity.map((a) => (
-                <tr key={a.title}>
-                  <td className="n">{a.title}</td>
+              {data.activity.map((a) => {
+                const isPaused = (data.pausedTitles || []).includes(a.title);
+                return (
+                <tr key={a.title} className={isPaused ? "off" : ""}>
+                  <td className="n">
+                    {a.title} {isPaused && <span className="tag pause">⏸ พักอยู่</span>}
+                  </td>
                   <td>{a.runs}</td>
                   <td>{a.users || "—"}</td>
                   <td>
@@ -562,7 +570,8 @@ function LogView({
                     {a.incomplete > 0 && <span className="tag inc">ไม่จบงาน {a.incomplete}</span>}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -15,10 +15,12 @@ const KEY = "paused_jobs";
 
 export type PausableJob = "calendar" | "summaries" | "nudge";
 
-export const PAUSABLE_JOBS: { key: PausableJob; label: string }[] = [
-  { key: "calendar", label: "แจ้งนัดใหม่" },
-  { key: "summaries", label: "สรุปประชุม" },
-  { key: "nudge", label: "เตือนนัดค้างตอบ" },
+/** `traceTitle` must match the job's own trace("receive", …) label — it is how
+ *  /monitor/log marks a paused job in the history table it already rendered. */
+export const PAUSABLE_JOBS: { key: PausableJob; label: string; traceTitle: string }[] = [
+  { key: "calendar", label: "แจ้งนัดใหม่", traceTitle: "cron · แจ้งนัดใหม่" },
+  { key: "summaries", label: "สรุปประชุม", traceTitle: "cron · สรุปประชุม" },
+  { key: "nudge", label: "เตือนนัดค้างตอบ", traceTitle: "cron · เตือนนัดค้างตอบ" },
 ];
 
 type PauseState = { jobs: PausableJob[]; until: number };
