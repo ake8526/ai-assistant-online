@@ -58,6 +58,8 @@ type LogResp = {
   note?: string;
   activityWindowMin?: number;
   activity?: Activity[];
+  shownCount?: number;
+  matchedCount?: number;
   summary: {
     traces: number;
     events: number;
@@ -104,6 +106,296 @@ function bkkToday(): string {
 function shiftDate(date: string, days: number): string {
   const t = Date.parse(`${date}T00:00:00Z`) + days * 86400_000;
   return new Date(t).toISOString().slice(0, 10);
+}
+
+
+const TH_MONTHS = [
+  "มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
+  "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม",
+];
+const TH_MONTHS_SHORT = [
+  "ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค.",
+];
+const TH_DOW = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+
+/** "2026-08-17" → "17 ส.ค. 2569" — Thai reads the Buddhist year. */
+function thaiDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y) return iso;
+  return `${d} ${TH_MONTHS_SHORT[m - 1] || ""} ${y + 543}`;
+}
+
+function isoOf(y: number, m: number, d: number): string {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/**
+ * Date picker per Rules_App/Calendar/1_Date_Only: never <input type="date">,
+ * always a modal the page owns — closes on ✕, backdrop, or Esc, has a วันนี้
+ * shortcut, and cannot select a day that makes no sense (there is no log from
+ * the future, so those days are disabled rather than silently clamped).
+ */
+function CalendarModal({
+  value,
+  onPick,
+  onClose,
+  getToken,
+}: {
+  value: string;
+  onPick: (iso: string) => void;
+  onClose: () => void;
+  getToken: () => Promise<string | null>;
+}) {
+  const [y0, m0] = value.split("-").map(Number);
+  const [view, setView] = useState({ y: y0 || 2026, m: (m0 || 1) - 1 });
+  const today = bkkToday();
+  const [counts, setCounts] = useState<Record<string, number> | null>(null);
+
+  // Which days of the shown month actually have log. Until it answers, nothing
+  // is disabled — better a moment of "all clickable" than greying out real days.
+  useEffect(() => {
+    let alive = true;
+    const month = `${view.y}-${String(view.m + 1).padStart(2, "0")}`;
+    const t = setTimeout(async () => {
+      setCounts(null);
+      try {
+        const token = await getToken();
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const r = await fetch(`/api/monitor/log?days=${month}`, { headers, cache: "no-store" });
+        if (!r.ok || !alive) return;
+        const d = (await r.json()) as { counts?: Record<string, number> };
+        if (alive) setCounts(d.counts || {});
+      } catch {
+        /* leave every day selectable */
+      }
+    }, 0);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [view, getToken]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const first = new Date(Date.UTC(view.y, view.m, 1)).getUTCDay();
+  const days = new Date(Date.UTC(view.y, view.m + 1, 0)).getUTCDate();
+  const cells: (number | null)[] = [
+    ...Array.from({ length: first }, () => null),
+    ...Array.from({ length: days }, (_, i) => i + 1),
+  ];
+  const step = (by: number) => {
+    const t = new Date(Date.UTC(view.y, view.m + by, 1));
+    setView({ y: t.getUTCFullYear(), m: t.getUTCMonth() });
+  };
+  const nextDisabled = isoOf(view.y, view.m, 1) >= today.slice(0, 8) + "01";
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal cal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="mt pix">
+          เลือกวันที่
+          <button className="x" onClick={onClose} aria-label="ปิด">
+            ✕
+          </button>
+        </div>
+        <div className="cal-nav">
+          <button onClick={() => step(-1)} aria-label="เดือนก่อน">
+            ◀
+          </button>
+          <div className="cal-month">
+            {TH_MONTHS[view.m]} {view.y + 543}
+          </div>
+          <button onClick={() => step(1)} disabled={nextDisabled} aria-label="เดือนถัดไป">
+            ▶
+          </button>
+        </div>
+        <div className="dow">
+          {TH_DOW.map((d) => (
+            <span key={d}>{d}</span>
+          ))}
+        </div>
+        <div className="days">
+          {cells.map((d, i) => {
+            if (!d) return <span key={`x${i}`} className="day empty" />;
+            const iso = isoOf(view.y, view.m, d);
+            const future = iso > today;
+            const n = counts?.[iso];
+            const empty = !!counts && !n;
+            return (
+              <button
+                key={iso}
+                className={`day${iso === value ? " on" : ""}${iso === today ? " today" : ""}${
+                  empty ? " none" : ""
+                }`}
+                disabled={future || empty}
+                title={
+                  future
+                    ? "ยังไม่ถึงวันนั้น"
+                    : empty
+                      ? `${thaiDate(iso)} — ไม่มี log`
+                      : `${thaiDate(iso)}${n ? ` · ${n.toLocaleString()} ขั้นตอน` : ""}`
+                }
+                onClick={() => onPick(iso)}
+              >
+                {d}
+              </button>
+            );
+          })}
+        </div>
+        <div className="calnote">
+          {!counts
+            ? "กำลังตรวจว่าวันไหนมี log…"
+            : Object.keys(counts).length === 0
+              ? "เดือนนี้ไม่มี log เลย — ลองเดือนอื่น"
+              : "แสดงเฉพาะวันที่มี log — วันที่จางคือไม่มีข้อมูล"}
+        </div>
+        <div className="ma">
+          <button onClick={() => onPick(today)}>วันนี้</button>
+          <button onClick={onClose}>ปิด</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---- Date field per Rules_App/Calendar/1_Date_Only ------------------------
+ * No <input type="date">. Typed as DD/MM/YYYY with the slashes filled in, and
+ * validated on EVERY digit: a keystroke that could not lead to a real date is
+ * rejected outright (never clamped quietly), with the reason said out loud.
+ * Both eras are accepted — พ.ศ. converts to ค.ศ. on the way in.
+ * ------------------------------------------------------------------------ */
+const CE_MIN = 1900, CE_MAX = 2200, BE_OFFSET = 543;
+const BE_MIN = CE_MIN + BE_OFFSET, BE_MAX = CE_MAX + BE_OFFSET;
+
+const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+const toCE = (y: number) => (y >= BE_MIN && y <= BE_MAX ? y - BE_OFFSET : y);
+
+/** Could a year still land in an accepted range, given only its first digits? */
+function yearPrefixOK(p: string): boolean {
+  if (!p) return true;
+  const pad = Math.pow(10, 4 - p.length);
+  const lo = parseInt(p, 10) * pad;
+  const hi = lo + pad - 1;
+  return [
+    [CE_MIN, CE_MAX],
+    [BE_MIN, BE_MAX],
+  ].some(([a, b]) => hi >= a && lo <= b);
+}
+
+/** Digit-by-digit gate. Returns the reason to refuse, or "" when still possible. */
+function refuseReason(v: string, maxIso: string): string {
+  if (v.length >= 1 && +v[0] > 3) return "วันที่ต้องอยู่ระหว่าง 01-31 (หลักแรกใส่ได้แค่ 0-3)";
+  if (v.length >= 2) {
+    const d = +v.slice(0, 2);
+    if (d < 1 || d > 31) return "วันที่ต้องอยู่ระหว่าง 01-31";
+  }
+  if (v.length >= 3 && +v[2] > 1) return "เดือนต้องอยู่ระหว่าง 01-12 (หลักแรกใส่ได้แค่ 0-1)";
+  if (v.length >= 4) {
+    const m = +v.slice(2, 4);
+    if (m < 1 || m > 12) return "เดือนต้องอยู่ระหว่าง 01-12";
+  }
+  if (v.length >= 5 && !yearPrefixOK(v.slice(4, 8)))
+    return `ปีต้องเป็น ค.ศ. ${CE_MIN}-${CE_MAX} หรือ พ.ศ. ${BE_MIN}-${BE_MAX}`;
+  if (v.length >= 8) {
+    const d = +v.slice(0, 2);
+    const m = +v.slice(2, 4);
+    const y = toCE(+v.slice(4, 8));
+    const max = daysInMonth(y, m);
+    if (d > max) return `${TH_MONTHS[m - 1]} ${y + 543} มี ${max} วัน จึงไม่มีวันที่ ${d}`;
+    if (isoOf(y, m - 1, d) > maxIso) return "ยังไม่ถึงวันนั้น — ยังไม่มี log ให้ดู";
+  }
+  return "";
+}
+
+function fmtDigits(v: string): string {
+  if (v.length > 4) return `${v.slice(0, 2)}/${v.slice(2, 4)}/${v.slice(4, 8)}`;
+  if (v.length > 2) return `${v.slice(0, 2)}/${v.slice(2, 4)}`;
+  return v;
+}
+
+/** ISO (CE) → the digits a Thai user expects to see: DD/MM/พ.ศ. */
+function digitsOf(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y) return "";
+  return `${String(d).padStart(2, "0")}${String(m).padStart(2, "0")}${y + 543}`;
+}
+
+function DateField({
+  value,
+  onChange,
+  onOpenCal,
+}: {
+  value: string;
+  onChange: (iso: string) => void;
+  onOpenCal: () => void;
+}) {
+  const [digits, setDigits] = useState(() => digitsOf(value));
+  const [err, setErr] = useState("");
+  const [shake, setShake] = useState(false);
+  const lastValue = React.useRef(value);
+
+  // The calendar and the day arrows also change the date — follow them.
+  useEffect(() => {
+    if (value !== lastValue.current) {
+      lastValue.current = value;
+      setDigits(digitsOf(value));
+      setErr("");
+    }
+  }, [value]);
+
+  const reject = (why: string) => {
+    setErr(why);
+    setShake(true);
+    setTimeout(() => setShake(false), 320);
+  };
+
+  const type = (raw: string) => {
+    const next = raw.replace(/\D/g, "").slice(0, 8);
+    if (next.length > digits.length) {
+      const why = refuseReason(next, bkkToday());
+      if (why) {
+        reject(why); // keep the old digits — the bad keystroke never lands
+        return;
+      }
+    }
+    setErr("");
+    setDigits(next);
+    if (next.length === 8) {
+      const y = toCE(+next.slice(4, 8));
+      const iso = isoOf(y, +next.slice(2, 4) - 1, +next.slice(0, 2));
+      lastValue.current = iso;
+      onChange(iso);
+    }
+  };
+
+  return (
+    <span className="datefield">
+      <span className={`well${err ? " bad" : ""}${shake ? " shake" : ""}`}>
+        <input
+          value={fmtDigits(digits)}
+          onChange={(e) => type(e.target.value)}
+          onBlur={() => {
+            if (digits.length && digits.length < 8) reject("กรอกไม่ครบตามรูปแบบ DD/MM/YYYY");
+          }}
+          placeholder="DD/MM/YYYY"
+          maxLength={10}
+          inputMode="numeric"
+          aria-label="วันที่ของ log"
+        />
+        <button className="cal-open" onClick={onOpenCal} title="เปิดปฏิทิน" aria-label="เปิดปฏิทิน">
+          📅
+        </button>
+      </span>
+      {err && <span className="fieldmsg">{err}</span>}
+    </span>
+  );
 }
 
 const CSS = `
@@ -154,6 +446,37 @@ const CSS = `
 .mlog .act.live td.u{color:#7dd3fc}
 @keyframes mlogbeat{0%{opacity:1}50%{opacity:.15}100%{opacity:1}}
 .mlog .act.live .paused{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:7px 9px;border-bottom:1px solid var(--hair);background:rgba(240,180,41,.08);color:var(--amber);font-size:16px}
+.mlog .datefield{display:inline-flex;flex-direction:column;gap:2px}
+.mlog .well{display:inline-flex;align-items:center;border:1px solid var(--hair);background:var(--panel2)}
+.mlog .well:focus-within{border-color:var(--red)}
+.mlog .well input{border:none;background:none;width:118px;text-align:center;letter-spacing:.5px}
+.mlog .well input:focus{outline:none}
+.mlog .well .cal-open{border:none;border-left:1px solid var(--hair);background:none;padding:4px 8px}
+.mlog .well.bad{border-color:var(--red);background:rgba(238,27,36,.08)}
+.mlog .well.shake{animation:mlogshake .3s}
+@keyframes mlogshake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.mlog .fieldmsg{color:var(--red);font-size:14px;max-width:260px;line-height:1.2}
+.mlog .stat.pick{cursor:pointer;font-family:inherit}
+.mlog .stat.pick:hover{border-color:var(--ink)}
+.mlog .stat.pick.on{border-color:var(--ink);background:var(--panel2);box-shadow:inset 0 -2px 0 var(--red)}
+.mlog .modal .mt .x{position:absolute;right:8px;top:6px;background:none;border:none;color:var(--dim);font-size:16px;padding:2px 6px}
+.mlog .modal .mt .x:hover{color:var(--ink)}
+.mlog .modal.cal{max-width:330px;border-color:var(--hair)}
+.mlog .modal.cal .mt{position:relative;color:var(--ink)}
+.mlog .cal-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px}
+.mlog .cal-nav .cal-month{font-size:18px}
+.mlog .cal-nav button{padding:2px 10px}
+.mlog .dow,.mlog .days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 10px}
+.mlog .dow span{text-align:center;color:var(--dim);font-size:14px;padding-bottom:2px}
+.mlog .days{padding-bottom:10px}
+.mlog .day{background:none;border:1px solid transparent;color:var(--ink);font-family:inherit;font-size:17px;padding:5px 0;text-align:center;cursor:pointer}
+.mlog .day:hover:not(:disabled){border-color:var(--ink)}
+.mlog .day.empty{cursor:default}
+.mlog .day.today{border-color:var(--hair);color:var(--amber)}
+.mlog .day.on{background:var(--red);color:#fff;border-color:var(--red)}
+.mlog .day:disabled{color:#3a3a3a;cursor:not-allowed;text-decoration:line-through}
+.mlog .day.none{text-decoration:none;opacity:.35}
+.mlog .calnote{padding:0 10px 8px;color:var(--dim);font-size:14px}
 .mlog .modal .opt{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding-top:10px;border-top:1px solid var(--hair);cursor:pointer;font-size:16px}
 .mlog .modal .opt input{margin-top:4px;accent-color:var(--red)}
 .mlog .modal .opt .dim{color:var(--dim)}
@@ -229,7 +552,8 @@ function LogView({
   const [user, setUser] = useState("");
   const [channel, setChannel] = useState("");
   const [q, setQ] = useState("");
-  const [problems, setProblems] = useState(false);
+  const [outcome, setOutcome] = useState("");
+  const [calOpen, setCalOpen] = useState(false);
   const [data, setData] = useState<LogResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -251,7 +575,7 @@ function LogView({
       if (user) p.set("user", user);
       if (channel) p.set("channel", channel);
       if (q) p.set("q", q);
-      if (problems) p.set("problems", "1");
+      if (outcome) p.set("outcome", outcome);
       const r = await fetch(`/api/monitor/log?${p}`, { headers, cache: "no-store" });
       const d = await r.json();
       // The M365 session outlives nothing in particular — a tab left open all
@@ -269,7 +593,7 @@ function LogView({
     } finally {
       setLoading(false);
     }
-  }, [getToken, date, user, channel, q, problems]);
+  }, [getToken, date, user, channel, q, outcome]);
 
   // Debounced: the user/keyword boxes change on every keystroke, and a query per
   // keystroke would hammer a table that holds every stage of every request.
@@ -362,7 +686,7 @@ function LogView({
 
       <div className="bar">
         <button onClick={() => setDate(shiftDate(date, -1))}>◀ วันก่อน</button>
-        <input type="date" value={date} max={bkkToday()} onChange={(e) => setDate(e.target.value || bkkToday())} />
+        <DateField value={date} onChange={setDate} onOpenCal={() => setCalOpen(true)} />
         <button onClick={() => setDate(shiftDate(date, 1))} disabled={date >= bkkToday()}>
           วันถัดไป ▶
         </button>
@@ -375,7 +699,10 @@ function LogView({
           <option value="cron">Cron</option>
         </select>
         <input placeholder="ค้นในคำอธิบาย เช่น สรุปตารางเช้า" value={q} onChange={(e) => setQ(e.target.value)} />
-        <button className={problems ? "on" : ""} onClick={() => setProblems((v) => !v)}>
+        <button
+          className={outcome === "problems" ? "on" : ""}
+          onClick={() => setOutcome((v) => (v === "problems" ? "" : "problems"))}
+        >
           เฉพาะที่มีปัญหา
         </button>
         <button onClick={() => void load()}>{loading ? "กำลังโหลด…" : "รีเฟรช"}</button>
@@ -384,6 +711,18 @@ function LogView({
           {cancelling ? "กำลังหยุด…" : "■ หยุดงานค้าง"}
         </button>
       </div>
+
+      {calOpen && (
+        <CalendarModal
+          getToken={getToken}
+          value={date}
+          onPick={(iso) => {
+            setDate(iso);
+            setCalOpen(false);
+          }}
+          onClose={() => setCalOpen(false)}
+        />
+      )}
 
       {confirmOpen && (
         <div className="modal-back" onClick={() => setConfirmOpen(false)}>
@@ -490,22 +829,37 @@ function LogView({
 
       {s && (
         <div className="stats">
-          <div className="stat">
-            งานทั้งหมด <b>{s.traces}</b>
-          </div>
-          <div className="stat ok">
-            สำเร็จ <b>{s.ok ?? 0}</b>
-          </div>
-          <div className="stat quiet" title="งานที่ทำงานปกติ แต่รอบนั้นไม่มีอะไรต้องส่ง">
-            ไม่มีอะไรต้องส่ง <b>{s.quiet ?? 0}</b>
-          </div>
-          <div className="stat err">
-            ผิดพลาด <b>{s.errors ?? 0}</b>
-          </div>
-          <div className="stat inc" title="เริ่มแล้วแต่ไม่มีขั้นสุดท้าย และไม่ได้บันทึกว่าล้มเหลว">
-            ไม่จบงาน <b>{s.incomplete ?? 0}</b>
-          </div>
-          <div className="stat">
+          {(
+            [
+              { key: "", cls: "", label: "งานทั้งหมด", n: s.traces, tip: "ดูทุกงานของวันนี้" },
+              { key: "ok", cls: "ok", label: "สำเร็จ", n: s.ok ?? 0, tip: "ส่ง/ตอบถึงผู้ใช้เรียบร้อย" },
+              {
+                key: "quiet",
+                cls: "quiet",
+                label: "ไม่มีอะไรต้องส่ง",
+                n: s.quiet ?? 0,
+                tip: "ทำงานปกติ แต่รอบนั้นไม่มีอะไรต้องส่ง",
+              },
+              { key: "error", cls: "err", label: "ผิดพลาด", n: s.errors ?? 0, tip: "ล้มเหลว และรู้สาเหตุ" },
+              {
+                key: "incomplete",
+                cls: "inc",
+                label: "ไม่จบงาน",
+                n: s.incomplete ?? 0,
+                tip: "เริ่มแล้วแต่ไม่มีขั้นสุดท้าย และไม่ได้บันทึกว่าล้มเหลว",
+              },
+            ] as { key: string; cls: string; label: string; n: number; tip: string }[]
+          ).map((c) => (
+            <button
+              key={c.key || "all"}
+              className={`stat pick ${c.cls}${outcome === c.key ? " on" : ""}`}
+              title={`${c.tip} — คลิกเพื่อกรอง`}
+              onClick={() => setOutcome((v) => (v === c.key ? "" : c.key))}
+            >
+              {c.label} <b>{c.n}</b>
+            </button>
+          ))}
+          <div className="stat" title="จำนวนขั้นตอนย่อยรวมทุกงาน (กรองไม่ได้)">
             ขั้นตอนรวม <b>{s.events}</b>
           </div>
           <div className="stat">ผู้ใช้: {s.users.join(", ") || "—"}</div>
@@ -552,6 +906,12 @@ function LogView({
 
       {!loading && data && data.traces.length === 0 && (
         <div className="empty">ไม่มี log ตามเงื่อนไขนี้ในวันที่ {data.date}</div>
+      )}
+
+      {data && (data.matchedCount ?? 0) > (data.shownCount ?? 0) && (
+        <div className="note">
+          แสดง {data.shownCount} จาก {data.matchedCount} งาน — กรองผู้ใช้/คำค้นเพิ่มเพื่อดูส่วนที่เหลือ
+        </div>
       )}
 
       {data?.traces.map((j) => (

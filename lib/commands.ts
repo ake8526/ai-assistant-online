@@ -432,7 +432,7 @@ function peelSchedulePhrases(text: string): string {
  * types, what is left over is the part that could be a name.
  */
 const CALENDAR_TALK =
-  /(?:และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|\d+|[:.,\s/-])/gi;
+  /(?:และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|\d+|[:.,\s/-])/gi;
 
 /**
  * True when nothing but calendar talk is left — "และวันพฤหัสล่ะ" is a follow-up
@@ -1771,7 +1771,18 @@ async function personBusyResponse(
   let info = preInfo;
   if (!info?.mail) info = await resolveUserInfo(person);
   if (!info?.mail) {
-    return { intent: "list_meetings", reply: `หาคนชื่อ “${person}” ในองค์กรไม่เจอครับ ลองระบุอีเมลได้ไหม` };
+    // A name the directory does not know is usually a follow-up the parser
+    // misread ("วันอื่นอะ"), not a colleague — so offer the way out instead of
+    // dead-ending on a lookup failure.
+    return {
+      intent: "list_meetings",
+      reply: `หาคนชื่อ “${person}” ในองค์กรไม่เจอครับ — ถ้าหมายถึงตารางของคุณเอง กดปุ่มด้านล่างได้เลย หรือพิมพ์อีเมลของคนที่ต้องการ`,
+      suggestions: [
+        { label: "📅 ตารางฉันวันนี้", text: "ตารางวันนี้" },
+        { label: "📅 พรุ่งนี้", text: "นัดพรุ่งนี้" },
+        { label: "⬜ ขอตารางว่าง", text: "ขอตารางว่าง" },
+      ],
+    };
   }
   const who = info.displayName || person;
   const range = day || periodRange(period);

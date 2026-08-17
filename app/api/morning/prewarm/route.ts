@@ -107,7 +107,9 @@ async function prewarmNews(upn: string, force: boolean): Promise<string> {
     trace("receive", "cron · เตรียมข่าวล่วงหน้า");
     const d = await buildDigest(upn, { fast: true });
     await saveNewsPrewarm(upn, d);
-    trace("compose", `📰 เตรียมข่าวพร้อมส่ง · ${d.stories?.length || 0} เรื่อง`);
+    // Preparing sends nothing by design, so it has to declare its own ending —
+    // stopping at "compose" made every prewarm look like a job that died.
+    trace("reply", `📰 เตรียมข่าวไว้แล้ว · ${d.stories?.length || 0} เรื่อง`, "skip");
     return `prepared ${d.stories?.length || 0} stories`;
   });
 }
@@ -119,7 +121,7 @@ async function prewarmBrief(upn: string, force: boolean): Promise<string> {
     trace("receive", "cron · เตรียมตารางเช้าล่วงหน้า");
     const { result: agenda } = await withDelegatedGraph(upn, () => buildMorningAgenda(upn));
     await saveBriefPrewarm(upn, agenda);
-    trace("compose", `เตรียมตารางเช้าพร้อมส่ง · ${agenda.events.length} นัด`);
+    trace("reply", `เตรียมตารางเช้าไว้แล้ว · ${agenda.events.length} นัด`, "skip");
     return `prepared agenda (${agenda.events.length})`;
   });
 }

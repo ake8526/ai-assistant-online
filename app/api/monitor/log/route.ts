@@ -143,6 +143,45 @@ async function liveNow(): Promise<Response> {
   });
 }
 
+
+/** Which days of a month actually hold trace rows — the calendar greys out the
+ *  rest, so a day that cannot show anything cannot be picked. One small COUNT
+ *  per day (head-only, served by the created_at index) rather than pulling a
+ *  month of stages just to learn which days exist. */
+async function daysWithLogs(month: string): Promise<Response> {
+  const [y, m] = month.split("-").map(Number);
+  if (!y || !m || m < 1 || m > 12) {
+    return NextResponse.json({ error: "bad month" }, { status: 400 });
+  }
+  const today = bkkToday();
+  const total = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const candidates: string[] = [];
+  for (let d = 1; d <= total; d++) {
+    const iso = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    if (iso <= today) candidates.push(iso);
+  }
+
+  const counted = await Promise.all(
+    candidates.map(async (iso) => {
+      const { from, to } = bkkDayRange(iso);
+      const { count, error } = await admin
+        .from("agent_traces")
+        .select("id", { count: "exact", head: true })
+        .gte("created_at", from)
+        .lt("created_at", to);
+      if (error) return { iso, n: 0, failed: true };
+      return { iso, n: count || 0, failed: false };
+    })
+  );
+
+  // A failed probe must not hide a day that does have log — better to offer a
+  // day that turns out empty than to lock the user out of it.
+  const days = counted.filter((c) => c.failed || c.n > 0).map((c) => c.iso);
+  const counts: Record<string, number> = {};
+  for (const c of counted) if (c.n) counts[c.iso] = c.n;
+  return NextResponse.json({ month, days, counts });
+}
+
 export async function GET(req: Request) {
   if (REQUIRE_LOGIN) {
     try {
@@ -168,12 +207,20 @@ export async function GET(req: Request) {
   const q = (url.searchParams.get("q") || "").trim();
   const traceId = (url.searchParams.get("trace") || "").trim();
   const problemsOnly = url.searchParams.get("problems") === "1";
+  // Clicking a count chip filters by that outcome; "problems" = error + incomplete.
+  const outcome = (url.searchParams.get("outcome") || "").toLowerCase();
 
   // live=1 — "what is running right NOW". Deliberately its own tiny query
   // (last few minutes, no filters) so the page can poll it every few seconds
   // without re-reading a whole day of stages each time.
   if (url.searchParams.get("live") === "1") {
     return liveNow();
+  }
+
+  // days=YYYY-MM — for the calendar: which days of that month have any log.
+  const monthParam = (url.searchParams.get("days") || "").trim();
+  if (/^\d{4}-\d{2}$/.test(monthParam)) {
+    return daysWithLogs(monthParam);
   }
 
   const { from, to } = bkkDayRange(date);
@@ -278,9 +325,17 @@ export async function GET(req: Request) {
 
   jobs.sort((a, b) => (a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : 0)); // newest first
 
-  const shown = problemsOnly
+  // A bad morning can leave hundreds of matching jobs. Rendering every one of
+  // them locks the page up, so cap what is sent and say so — the counts above
+  // still come from the full day.
+  const SHOW_LIMIT = 300;
+  const wantProblems = problemsOnly || outcome === "problems";
+  const matched = wantProblems
     ? jobs.filter((j) => j.outcome === "error" || j.outcome === "incomplete")
-    : jobs;
+    : outcome
+      ? jobs.filter((j) => j.outcome === outcome)
+      : jobs;
+  const shown = matched.slice(0, SHOW_LIMIT);
 
   const users = [...new Set(jobs.map((j) => j.user))].sort();
   const channels = [...new Set(jobs.map((j) => j.channel))].sort();
@@ -335,6 +390,8 @@ export async function GET(req: Request) {
     truncated: rows.length >= MAX_ROWS,
     activityWindowMin: ACTIVITY_WINDOW_MS / 60_000,
     activity,
+    shownCount: shown.length,
+    matchedCount: matched.length,
     summary: {
       traces: jobs.length,
       events: rows.length,

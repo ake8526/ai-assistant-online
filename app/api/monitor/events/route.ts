@@ -28,9 +28,29 @@ type TraceRow = {
 
 // Only the local-part of the UPN is exposed to the browser (e.g. "weerasak"),
 // never the full address — enough to tell requests apart, minimal PII.
+/** How far back a freshly-opened room looks. Long enough to catch a job that is
+ *  mid-flight or just finished; short enough that it is clearly "now". */
+const CATCHUP_WINDOW_MS = 5 * 60_000;
+const CATCHUP_LIMIT = 150;
+
 function shortUser(upn: string | null): string {
   if (!upn) return "—";
   return upn.split("@")[0] || upn;
+}
+
+function toEvent(r: TraceRow) {
+  return {
+    id: r.id,
+    traceId: r.trace_id,
+    user: shortUser(r.upn),
+    channel: r.channel || "?",
+    step: r.step,
+    label: r.label || "",
+    status: r.status,
+    seq: r.seq,
+    ms: r.ms ?? 0,
+    at: r.created_at,
+  };
 }
 
 export async function GET(req: Request) {
@@ -56,13 +76,18 @@ export async function GET(req: Request) {
   // refreshing /monitor does not look like the AI started work by itself.
   const replay = url.searchParams.get("replay") === "1";
 
-  // First load (since=0): jump to the tip — do not replay past jobs as live work.
+  // First load (since=0): hand back the last few minutes so the room shows what
+  // is happening the moment it is opened. Jumping straight to the tip made every
+  // refresh look like an idle office until the next request happened to arrive —
+  // you could not tell "nothing is running" from "I just pressed F5".
   if (sinceId <= 0 && !replay) {
+    const since = new Date(Date.now() - CATCHUP_WINDOW_MS).toISOString();
     const { data, error } = await admin
       .from("agent_traces")
-      .select("id")
-      .order("id", { ascending: false })
-      .limit(1);
+      .select("id,trace_id,upn,channel,step,label,status,seq,ms,created_at")
+      .gte("created_at", since)
+      .order("id", { ascending: true })
+      .limit(CATCHUP_LIMIT);
     if (error) {
       const code = (error as { code?: string }).code || "";
       const missing =
@@ -79,8 +104,15 @@ export async function GET(req: Request) {
       }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    const tip = ((data as { id: number }[]) || [])[0]?.id || 0;
-    return NextResponse.json({ events: [], cursor: tip, seeded: true, llm: llmMonitorInfo() });
+    const recent = (data as TraceRow[]) || [];
+    const cursor = recent.length ? recent[recent.length - 1].id : 0;
+    return NextResponse.json({
+      events: recent.map(toEvent),
+      cursor,
+      seeded: true,
+      catchup: true, // the client plays these without pretending they arrived just now
+      llm: llmMonitorInfo(),
+    });
   }
 
   let query = admin
@@ -121,18 +153,7 @@ export async function GET(req: Request) {
   const rows = (data as TraceRow[]) || [];
   if (sinceId <= 0) rows.reverse(); // newest-first fetch → chronological for the client
 
-  const events = rows.map((r) => ({
-    id: r.id,
-    traceId: r.trace_id,
-    user: shortUser(r.upn),
-    channel: r.channel || "?",
-    step: r.step,
-    label: r.label || "",
-    status: r.status,
-    seq: r.seq,
-    ms: r.ms ?? 0,
-    at: r.created_at,
-  }));
+  const events = rows.map(toEvent);
 
   const cursor = events.length ? events[events.length - 1].id : sinceId;
   return NextResponse.json({ events, cursor, llm: llmMonitorInfo() });
