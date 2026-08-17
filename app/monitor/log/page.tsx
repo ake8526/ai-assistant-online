@@ -54,6 +54,7 @@ type LiveResp = {
 type LogResp = {
   date: string;
   today?: boolean;
+  perms?: string[];
   truncated?: boolean;
   note?: string;
   activityWindowMin?: number;
@@ -561,6 +562,7 @@ function LogView({
   const [cancelMsg, setCancelMsg] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [expired, setExpired] = useState(false);
+  const [denied, setDenied] = useState(false);
   const [live, setLive] = useState<LiveResp | null>(null);
   const [alsoPauseCron, setAlsoPauseCron] = useState(true);
 
@@ -585,8 +587,15 @@ function LogView({
         setErr("");
         return;
       }
+      // 403 is not a login problem — signing in again would change nothing.
+      if (r.status === 403) {
+        setDenied(true);
+        setErr("");
+        return;
+      }
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
       setExpired(false);
+      setDenied(false);
       setData(d as LogResp);
     } catch (e) {
       setErr(String(e).slice(0, 200));
@@ -669,7 +678,27 @@ function LogView({
     }
   }, [getToken, load, alsoPauseCron]);
 
+  const can = (p: string) => !!data?.perms?.includes(p);
   const s = data?.summary;
+
+  if (denied) {
+    return (
+      <div className="mlog">
+        <style dangerouslySetInnerHTML={{ __html: CSS }} />
+        <div className="center">
+          <div className="pix" style={{ fontSize: 14, color: "#ee1b24" }}>
+            ไม่มีสิทธิ์ดู log
+          </div>
+          <div style={{ fontSize: 19, color: "#7c7c7c", maxWidth: 520, textAlign: "center" }}>
+            หน้านี้เปิดให้เฉพาะผู้ที่ได้รับสิทธิ์ «ดู log» — ติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์
+          </div>
+          <a className="link" href="/monitor">
+            ← กลับห้องทำงาน
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mlog">
@@ -679,6 +708,11 @@ function LogView({
           AI ASSISTANT · <em>LOG ย้อนหลัง</em>
         </h1>
         <div className="spacer" />
+        {can("admin") && (
+          <a className="link" href="/monitor/admin">
+            จัดการสิทธิ์
+          </a>
+        )}
         <a className="link" href="/monitor">
           ← กลับห้องทำงาน (สด)
         </a>
@@ -707,9 +741,11 @@ function LogView({
         </button>
         <button onClick={() => void load()}>{loading ? "กำลังโหลด…" : "รีเฟรช"}</button>
         <div className="spacer" />
-        <button className="danger" onClick={() => setConfirmOpen(true)} disabled={cancelling}>
-          {cancelling ? "กำลังหยุด…" : "■ หยุดงานค้าง"}
-        </button>
+        {can("jobs.stop") && (
+          <button className="danger" onClick={() => setConfirmOpen(true)} disabled={cancelling}>
+            {cancelling ? "กำลังหยุด…" : "■ หยุดงานค้าง"}
+          </button>
+        )}
       </div>
 
       {calOpen && (

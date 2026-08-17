@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, AuthError } from "@/lib/auth";
+import { guard } from "@/lib/guard";
 import { runWithTrace, trace } from "@/lib/trace";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { alreadySentToday, clearInflight, markSent, type NotifyKind } from "@/lib/notify";
@@ -18,23 +18,16 @@ import { PAUSABLE_JOBS, pauseJobs, resumeJobs, type PausableJob } from "@/lib/op
 // still ask for the brief by hand in LINE ("สรุปตารางเช้า").
 export const dynamic = "force-dynamic";
 
-const REQUIRE_LOGIN = process.env.NODE_ENV === "production";
-
 async function linkedUsers(): Promise<string[]> {
   const { data } = await admin.from("line_links").select("upn");
   return (data || []).map((r: { upn: string }) => r.upn);
 }
 
 export async function POST(req: Request) {
-  let caller = "dev";
-  if (REQUIRE_LOGIN) {
-    try {
-      caller = await requireUser(req);
-    } catch (e) {
-      if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
-      return NextResponse.json({ error: "auth failed" }, { status: 401 });
-    }
-  }
+  // Stopping the day's deliveries is a separate right from reading the log.
+  const gate = await guard(req, "jobs.stop");
+  if (!gate.ok) return gate.response;
+  const caller = gate.upn;
 
   try {
     assertConfigured();

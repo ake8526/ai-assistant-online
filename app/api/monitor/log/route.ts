@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, AuthError } from "@/lib/auth";
+import { guard } from "@/lib/guard";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { PAUSABLE_JOBS, pauseState } from "@/lib/opsPause";
 
@@ -13,8 +13,6 @@ import { PAUSABLE_JOBS, pauseState } from "@/lib/opsPause";
 // Auth: same rule as the live feed — signed-in M365 user in production, open in
 // local dev. Content is stages only; no message text is ever stored.
 export const dynamic = "force-dynamic";
-
-const REQUIRE_LOGIN = process.env.NODE_ENV === "production";
 
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
 const MAX_ROWS = 5000;
@@ -183,14 +181,8 @@ async function daysWithLogs(month: string): Promise<Response> {
 }
 
 export async function GET(req: Request) {
-  if (REQUIRE_LOGIN) {
-    try {
-      await requireUser(req);
-    } catch (e) {
-      if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
-      return NextResponse.json({ error: "auth failed" }, { status: 401 });
-    }
-  }
+  const gate = await guard(req, "log.view");
+  if (!gate.ok) return gate.response;
 
   try {
     assertConfigured();
@@ -387,6 +379,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     date,
     today: date === bkkToday(),
+    perms: gate.perms,
     truncated: rows.length >= MAX_ROWS,
     activityWindowMin: ACTIVITY_WINDOW_MS / 60_000,
     activity,
