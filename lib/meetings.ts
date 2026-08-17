@@ -25,6 +25,13 @@ import {
   releaseMeetingSummary,
 } from "@/lib/store";
 import { isMeetingSummaryEnabled } from "@/lib/meetingSummaryPrefs";
+import {
+  buildSummaryUrl,
+  isLinkPilot,
+  saveSummaryPage,
+  summaryIdFor,
+  summaryTeaser,
+} from "@/lib/summaryPage";
 import { findLinkedLineAttendees } from "@/lib/meetingInvite";
 import { addMinutes, fmtDateTime, nowWall, parseWall, wallIso } from "@/lib/time";
 
@@ -180,6 +187,19 @@ export function formatSummary(subject: string, result: SummaryResult): string {
 // ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
+const subjectOf = (ev: GraphEvent) => ev.subject || "(ไม่มีหัวข้อ)";
+
+/** "17 ส.ค. 09:00-10:30" — Bangkok wall clock, for the page header and teaser. */
+function meetingWhen(ev: GraphEvent): string {
+  const s = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+  const e = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
+  if (!s) return "";
+  const months = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const head = `${s.getUTCDate()} ${months[s.getUTCMonth()]} ${pad(s.getUTCHours())}:${pad(s.getUTCMinutes())}`;
+  return e ? `${head}-${pad(e.getUTCHours())}:${pad(e.getUTCMinutes())}` : head;
+}
+
 function attendeesOf(ev: GraphEvent): Attendee[] {
   const people: Attendee[] = [];
   for (const a of ev.attendees || []) {
@@ -210,7 +230,8 @@ export async function deliverSummaryToLinkedAttendees(
   ev: GraphEvent,
   message: string,
   extraUpns: string[] = [],
-  dedupeKey = ""
+  dedupeKey = "",
+  pageId = ""
 ): Promise<{ sent: string[]; skipped: string[]; failed: string[] }> {
   const emails = [
     ...attendeesOf(ev).map((a) => a.email || ""),
@@ -238,7 +259,13 @@ export async function deliverSummaryToLinkedAttendees(
         skipped.push(upn);
         continue;
       }
-      await sendLine(upn, "", message);
+      // Pilot accounts get a short note plus a link: one bubble however long
+      // the meeting was, instead of the summary split across up to five.
+      const asLink = pageId && (await isLinkPilot(upn));
+      const body = asLink
+        ? summaryTeaser(subjectOf(ev), meetingWhen(ev), message, buildSummaryUrl(pageId))
+        : message;
+      await sendLine(upn, "", body);
       if (dedupeKey) await noteSummaryDelivered(upn, dedupeKey);
       sent.push(upn);
     } catch (e) {
@@ -313,7 +340,19 @@ export async function summarizeRecent(
       const message = formatSummary(subject, result);
       out.summaries.push(message);
       if (opts.deliver) {
-        const fanout = await deliverSummaryToLinkedAttendees(ev, message, [userUpn], seenKey);
+        // Keep a readable copy on the web before anything is sent — the link in
+        // chat is worthless if the page it points at does not exist yet.
+        const pageId = summaryIdFor(seenKey);
+        await saveSummaryPage(pageId, {
+          subject,
+          when: meetingWhen(ev),
+          text: message,
+          actionItems: (result.action_items || []).map(
+            (it) => `${it.task} — ${it.owner || "ไม่ระบุ"} (กำหนด: ${it.due || "ไม่ระบุกำหนด"})`
+          ),
+          createdAt: Date.now(),
+        });
+        const fanout = await deliverSummaryToLinkedAttendees(ev, message, [userUpn], seenKey, pageId);
         out.delivered!.push(...fanout.sent);
         // Reached nobody and the reason was a failed push (quota, outage) —
         // hand the claim back so a later run can deliver it. If everyone simply
