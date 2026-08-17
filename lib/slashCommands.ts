@@ -19,6 +19,9 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { cmd: "นัดพรุ่งนี้", label: "/นัดพรุ่งนี้", message: "/นัดพรุ่งนี้", hint: "ดูนัดพรุ่งนี้" },
   { cmd: "ตั้งค่าข่าว", label: "/ตั้งค่าข่าว", message: "/ตั้งค่าข่าว", hint: "จัดการติดตามข่าว" },
   { cmd: "ช่วยเหลือ", label: "/ช่วยเหลือ", message: "/ช่วยเหลือ", hint: "เมนูความช่วยเหลือ" },
+  // Replies cost nothing, so previewing a push-shaped message this way never
+  // spends quota — which is the whole point while the monthly cap is gone.
+  { cmd: "test", label: "/test", message: "/test", hint: "ดูตัวอย่างสรุปประชุมแบบลิงก์ (ไม่กินโควตา)" },
 ];
 
 export function isSlashMenu(text: string): boolean {
@@ -90,6 +93,8 @@ export function slashToUserText(cmd: SlashCommand): string {
       return "ตั้งค่าข่าว";
     case "ช่วยเหลือ":
       return "ช่วยเรื่องอื่น";
+    case "test":
+      return "__preview_summary_link__";
     default:
       return cmd.message;
   }

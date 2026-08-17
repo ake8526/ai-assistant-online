@@ -667,6 +667,11 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   const t = text.trim().replace(/\s+/g, " ");
   if (!t) return null;
 
+  // /test — preview the link-style summary. A reply, so it costs no quota.
+  if (t === "__preview_summary_link__" || /^\/?test$/i.test(t)) {
+    return { intent: "preview_summary_link", params: {} };
+  }
+
   // Multi-person first (before single-person “ดูตาราง…”) — “ดูตารางเบสกับพี่แบง”
   {
     const people = peopleFromText(t);
@@ -3795,6 +3800,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       quick?.intent === "show_work_location" ||
       quick?.intent === "clear_work_location" ||
       quick?.intent === "ack" ||
+      quick?.intent === "preview_summary_link" ||
       quick?.intent === "search_files"
     ) {
       trace("parse", `★ AI:NONE · intent=${quick.intent} (กฎตายตัว ไม่เรียก API)`);
@@ -3876,6 +3882,21 @@ async function handleParsed(
         { label: "/ตารางวันนี้", text: "/ตารางวันนี้" },
         { label: "/นัดพรุ่งนี้", text: "/นัดพรุ่งนี้" },
         { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
+      ],
+    };
+  }
+
+  if (intent === "preview_summary_link") {
+    trace("compose", "ตัวอย่างสรุปประชุมแบบลิงก์");
+    // Built from the most recent real summary when there is one, so the preview
+    // shows what this person would actually have received.
+    const { previewSummaryLinkMessage } = await import("@/lib/summaryPage");
+    return {
+      intent: "preview_summary_link",
+      reply: await previewSummaryLinkMessage(userUpn),
+      suggestions: [
+        { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
+        { label: "ตารางวันนี้", text: "ตารางวันนี้" },
       ],
     };
   }

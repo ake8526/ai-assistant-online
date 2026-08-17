@@ -126,3 +126,45 @@ export function summaryTeaser(subject: string, when: string, text: string, url: 
     .join("\n")
     .replace(/\n{3,}/g, "\n\n");
 }
+
+/**
+ * The `/test` preview. Uses the person's most recent real summary when there is
+ * one — a preview built from fabricated text would not show whether their own
+ * meetings render properly. Replies are free, so this can be run as often as
+ * wanted, even with the monthly push quota at zero.
+ */
+export async function previewSummaryLinkMessage(upn: string): Promise<string> {
+  const demoId = "preview" + crypto.createHash("sha1").update(upn).digest("hex").slice(0, 9);
+  const existing = await loadSummaryPage(demoId);
+  const payload: StoredSummary = existing || {
+    subject: "ตัวอย่างสรุปประชุม",
+    when: "ตัวอย่าง · 09:00-10:30",
+    text: [
+      "📋 สรุปประชุม: ตัวอย่างสรุปประชุม",
+      "",
+      "นี่คือหน้าตัวอย่างของสรุปประชุมแบบลิงก์ ประชุมจริงจะมีเนื้อหาเต็มตรงนี้",
+      "",
+      "✅ ข้อตัดสินใจ:",
+      "  • ส่งสรุปเป็นลิงก์ ประหยัดโควตา LINE เมื่อสรุปยาว",
+      "  • ตารางเช้ายังส่งเต็มใน LINE เหมือนเดิม",
+      "",
+      "📌 งานที่ต้องติดตาม:",
+      "  • ลองอ่านหน้านี้บนมือถือแล้วบอกว่าโอเคไหม — (กำหนด: ภายในสัปดาห์นี้)",
+    ].join("\n"),
+    actionItems: ["ลองอ่านหน้านี้บนมือถือแล้วบอกว่าโอเคไหม"],
+    createdAt: Date.now(),
+  };
+  await saveSummaryPage(demoId, payload);
+
+  const url = buildSummaryUrl(demoId);
+  const inPilot = await isLinkPilot(upn);
+  return [
+    summaryTeaser(payload.subject, payload.when, payload.text, url),
+    "",
+    "— — —",
+    inPilot
+      ? "✅ บัญชีนี้อยู่ในโหมดลิงก์แล้ว สรุปประชุมจริงจะมาแบบนี้"
+      : "ℹ️ บัญชีนี้ยังรับสรุปแบบเต็มอยู่ นี่เป็นเพียงตัวอย่าง",
+    "ข้อความนี้เป็นการตอบกลับ จึงไม่ใช้โควตาส่งของ LINE",
+  ].join("\n");
+}
