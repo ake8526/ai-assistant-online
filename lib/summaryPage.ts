@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { getSetting, setSetting } from "@/lib/store";
+import { allSettings, getSetting, setSetting } from "@/lib/store";
 
 // Meeting summaries as a page instead of a wall of chat.
 //
@@ -134,37 +134,57 @@ export function summaryTeaser(subject: string, when: string, text: string, url: 
  * wanted, even with the monthly push quota at zero.
  */
 export async function previewSummaryLinkMessage(upn: string): Promise<string> {
-  const demoId = "preview" + crypto.createHash("sha1").update(upn).digest("hex").slice(0, 9);
-  const existing = await loadSummaryPage(demoId);
-  const payload: StoredSummary = existing || {
-    subject: "ตัวอย่างสรุปประชุม",
-    when: "ตัวอย่าง · 09:00-10:30",
-    text: [
-      "📋 สรุปประชุม: ตัวอย่างสรุปประชุม",
-      "",
-      "นี่คือหน้าตัวอย่างของสรุปประชุมแบบลิงก์ ประชุมจริงจะมีเนื้อหาเต็มตรงนี้",
-      "",
-      "✅ ข้อตัดสินใจ:",
-      "  • ส่งสรุปเป็นลิงก์ ประหยัดโควตา LINE เมื่อสรุปยาว",
-      "  • ตารางเช้ายังส่งเต็มใน LINE เหมือนเดิม",
-      "",
-      "📌 งานที่ต้องติดตาม:",
-      "  • ลองอ่านหน้านี้บนมือถือแล้วบอกว่าโอเคไหม — (กำหนด: ภายในสัปดาห์นี้)",
-    ].join("\n"),
-    actionItems: ["ลองอ่านหน้านี้บนมือถือแล้วบอกว่าโอเคไหม"],
-    createdAt: Date.now(),
-  };
-  await saveSummaryPage(demoId, payload);
-
-  const url = buildSummaryUrl(demoId);
   const inPilot = await isLinkPilot(upn);
+
+  // 1) A summary this person already received — instant, and unmistakably real.
+  let real: { id: string; subject: string; when: string; text: string; actionItems: string[] } | null = null;
+  const rows = await allSettings(upn);
+  const delivered = Object.entries(rows)
+    .filter(([k, v]) => k.startsWith("sm_dlv_") && v)
+    .map(([k, v]) => ({ id: k.slice("sm_dlv_".length), ts: parseInt(v, 10) || 0 }))
+    .sort((a, b) => b.ts - a.ts);
+  for (const d of delivered) {
+    const page = await loadSummaryPage(d.id);
+    if (page) {
+      real = { id: d.id, ...page };
+      break;
+    }
+  }
+
+  // 2) Nothing delivered yet (the usual case while the push quota is spent) —
+  //    summarise their most recent real meeting instead. Costs one LLM call and
+  //    no LINE message, and does not stop the scheduled run delivering it later.
+  if (!real) {
+    const { buildPreviewSummary } = await import("@/lib/meetings");
+    try {
+      real = await buildPreviewSummary(upn);
+    } catch {
+      real = null;
+    }
+  }
+
+  if (real) {
+    const url = buildSummaryUrl(real.id);
+    return [
+      summaryTeaser(real.subject, real.when, real.text, url),
+      "",
+      "— — —",
+      "☝️ ข้างบนคือสรุปประชุมจริงของคุณ ไม่ใช่ตัวอย่างสมมติ",
+      inPilot
+        ? "บัญชีนี้อยู่ในโหมดลิงก์แล้ว สรุปจริงจะมาแบบนี้"
+        : "บัญชีนี้ยังรับสรุปแบบเต็มอยู่ นี่คือตัวอย่างว่าโหมดลิงก์จะเป็นอย่างไร",
+      "ข้อความนี้เป็นการตอบกลับ จึงไม่ใช้โควตาส่งของ LINE",
+    ].join("\n");
+  }
+
+  // 3) No finished meeting with a transcript in the last three days — say so
+  //    plainly rather than dressing a demo up as the real thing.
   return [
-    summaryTeaser(payload.subject, payload.when, payload.text, url),
+    "ยังสร้างตัวอย่างจากข้อมูลจริงไม่ได้ครับ",
     "",
-    "— — —",
-    inPilot
-      ? "✅ บัญชีนี้อยู่ในโหมดลิงก์แล้ว สรุปประชุมจริงจะมาแบบนี้"
-      : "ℹ️ บัญชีนี้ยังรับสรุปแบบเต็มอยู่ นี่เป็นเพียงตัวอย่าง",
-    "ข้อความนี้เป็นการตอบกลับ จึงไม่ใช้โควตาส่งของ LINE",
+    "ไม่พบประชุมออนไลน์ที่จบแล้วและมี transcript ใน 3 วันล่าสุด",
+    "(สรุปอัตโนมัติทำได้เฉพาะประชุม Teams ที่เปิดบันทึก transcript ไว้)",
+    "",
+    "พอมีประชุมที่เข้าเงื่อนไข พิมพ์ /test อีกครั้งจะเห็นของจริงทันที",
   ].join("\n");
 }

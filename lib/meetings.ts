@@ -28,6 +28,7 @@ import { isMeetingSummaryEnabled } from "@/lib/meetingSummaryPrefs";
 import {
   buildSummaryUrl,
   isLinkPilot,
+  loadSummaryPage,
   saveSummaryPage,
   summaryIdFor,
   summaryTeaser,
@@ -436,4 +437,54 @@ export async function runScheduledForUser(
   const res = await summarizeRecent(userUpn, { deliver: true, skipSummarized: true });
   const added = await ingestActionItems(res.action_items);
   return { summarized: res.summaries.length, tasksAdded: added, skipped: res.skipped };
+}
+
+/**
+ * Build a summary of this person's most recent finished meeting, for /test.
+ * Real data on purpose — a preview made of invented text says nothing about
+ * whether their own meetings render properly.
+ *
+ * Deliberately does NOT claim the meeting: the scheduled run must still deliver
+ * it normally afterwards. Nothing is pushed from here.
+ */
+export async function buildPreviewSummary(
+  userUpn: string,
+  lookbackHours = 72
+): Promise<{ id: string; subject: string; when: string; text: string; actionItems: string[] } | null> {
+  const events = await getRecentOnlineEvents(userUpn, lookbackHours);
+  // Newest first — the meeting they are most likely to remember.
+  const ordered = [...events].sort((a, b) => {
+    const ta = a.end?.dateTime ? Date.parse(a.end.dateTime) : 0;
+    const tb = b.end?.dateTime ? Date.parse(b.end.dateTime) : 0;
+    return tb - ta;
+  });
+
+  for (const ev of ordered.slice(0, 5)) {
+    const eventId = (ev as { id?: string }).id || "";
+    const seenKey = seenKeyForMeeting(ev, eventId);
+    const pageId = summaryIdFor(seenKey);
+
+    // Already summarised once — reuse that page rather than paying for another
+    // LLM call to produce the same thing.
+    const existing = await loadSummaryPage(pageId);
+    if (existing) return { id: pageId, ...existing };
+
+    const text = await getTranscriptText(userUpn, ev);
+    if (!text) continue;
+    const result = await summarize(text, subjectOf(ev));
+    const message = formatSummary(subjectOf(ev), result);
+    const actionItems = (result.action_items || []).map(
+      (it) => `${it.task} — ${it.owner || "ไม่ระบุ"} (กำหนด: ${it.due || "ไม่ระบุกำหนด"})`
+    );
+    const payload = {
+      subject: subjectOf(ev),
+      when: meetingWhen(ev),
+      text: message,
+      actionItems,
+      createdAt: Date.now(),
+    };
+    await saveSummaryPage(pageId, payload);
+    return { id: pageId, ...payload };
+  }
+  return null;
 }
