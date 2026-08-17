@@ -2,7 +2,16 @@ import { NextResponse } from "next/server";
 import { guard } from "@/lib/guard";
 import { runWithTrace, trace } from "@/lib/trace";
 import { assertConfigured } from "@/lib/supabaseServer";
-import { loadRoles, saveRoles, rootAdmins, PERMS, type Perm } from "@/lib/roles";
+import {
+  loadRoles,
+  saveRoles,
+  rootAdmins,
+  openPerms,
+  setOpenPerms,
+  openablePerms,
+  PERMS,
+  type Perm,
+} from "@/lib/roles";
 
 // Read and edit who may use the ops pages. Only holders of "admin" get here.
 export const dynamic = "force-dynamic";
@@ -21,6 +30,8 @@ export async function GET(req: Request) {
     roles: await loadRoles(),
     roots: rootAdmins(),
     perms: PERMS,
+    open: await openPerms(),
+    openable: openablePerms(),
     you: gate.upn,
   });
 }
@@ -34,11 +45,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: String(e) }, { status: 503 });
   }
 
-  let body: { upn?: string; perms?: unknown };
+  let body: { upn?: string; perms?: unknown; open?: unknown };
   try {
-    body = (await req.json()) as { upn?: string; perms?: unknown };
+    body = (await req.json()) as { upn?: string; perms?: unknown; open?: unknown };
   } catch {
     return NextResponse.json({ error: "bad body" }, { status: 400 });
+  }
+
+  // { open: [...] } — which permissions every signed-in account holds already.
+  if (Array.isArray(body.open)) {
+    const saved = await setOpenPerms(body.open.map(String));
+    await runWithTrace({ upn: gate.upn.includes("@") ? gate.upn : undefined, channel: "web" }, async () => {
+      trace("receive", "แก้สิทธิ์เปิดให้ทุกคนจากหน้า Monitor");
+      trace("reply", saved.length ? `เปิดให้ทุกคน: ${saved.join(",")}` : "ปิดสิทธิ์เปิดให้ทุกคนทั้งหมด");
+    });
+    return NextResponse.json({ ok: true, open: saved });
   }
 
   const upn = (body.upn || "").trim().toLowerCase();

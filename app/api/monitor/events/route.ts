@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, AuthError } from "@/lib/auth";
+import { guard } from "@/lib/guard";
 import { llmMonitorInfo } from "@/lib/llm";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
@@ -9,9 +9,6 @@ import { admin, assertConfigured } from "@/lib/supabaseServer";
 // watched while working locally. Returns recent pipeline STAGE events (no
 // message content is ever stored). Client polls with ?since=.
 export const dynamic = "force-dynamic";
-
-// Online (Vercel) → NODE_ENV=production → login required. Local `next dev` → open.
-const REQUIRE_LOGIN = process.env.NODE_ENV === "production";
 
 type TraceRow = {
   id: number;
@@ -54,14 +51,8 @@ function toEvent(r: TraceRow) {
 }
 
 export async function GET(req: Request) {
-  if (REQUIRE_LOGIN) {
-    try {
-      await requireUser(req);
-    } catch (e) {
-      if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
-      return NextResponse.json({ error: "auth failed" }, { status: 401 });
-    }
-  }
+  const gate = await guard(req, "monitor.view");
+  if (!gate.ok) return gate.response;
 
   try {
     assertConfigured();

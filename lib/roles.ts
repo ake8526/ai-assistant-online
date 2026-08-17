@@ -15,9 +15,10 @@ import { getSetting, setSetting } from "@/lib/store";
 const OWNER = "_ops";
 const KEY = "roles";
 
-export type Perm = "log.view" | "jobs.stop" | "admin";
+export type Perm = "monitor.view" | "log.view" | "jobs.stop" | "admin";
 
 export const PERMS: { key: Perm; label: string; hint: string }[] = [
+  { key: "monitor.view", label: "ดูห้องทำงาน", hint: "เปิดหน้า /monitor และดูงานที่กำลังทำสด ๆ" },
   { key: "log.view", label: "ดู log", hint: "เปิดหน้า /monitor/log และดูประวัติการทำงาน" },
   { key: "jobs.stop", label: "หยุดงานค้าง", hint: "กดปุ่มหยุด/พักงานที่ระบบตั้งเวลาไว้" },
   { key: "admin", label: "จัดการสิทธิ์", hint: "เพิ่ม/ลบสิทธิ์ของคนอื่น" },
@@ -45,6 +46,37 @@ export function rootAdmins(): string[] {
 
 export function isRootAdmin(upn: string): boolean {
   return rootAdmins().includes(norm(upn));
+}
+
+/**
+ * Permissions everyone who can sign in already holds. The agent room shows no
+ * history and no controls, so it is open to the whole company by default;
+ * acting on jobs and managing people never can be.
+ */
+const OPEN_KEY = "open_perms";
+const OPENABLE: Perm[] = ["monitor.view", "log.view"];
+const OPEN_DEFAULT: Perm[] = ["monitor.view"];
+
+export async function openPerms(): Promise<Perm[]> {
+  const raw = await getSetting(OWNER, OPEN_KEY);
+  if (raw === null) return OPEN_DEFAULT; // never configured → the default stands
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return OPEN_DEFAULT;
+    return parsed.filter((p): p is Perm => OPENABLE.includes(p as Perm));
+  } catch {
+    return OPEN_DEFAULT;
+  }
+}
+
+export async function setOpenPerms(perms: string[]): Promise<Perm[]> {
+  const kept = perms.filter((p): p is Perm => OPENABLE.includes(p as Perm));
+  await setSetting(OWNER, OPEN_KEY, JSON.stringify(kept));
+  return kept;
+}
+
+export function openablePerms(): Perm[] {
+  return [...OPENABLE];
 }
 
 export async function loadRoles(): Promise<RoleMap> {
@@ -75,11 +107,11 @@ export async function saveRoles(map: RoleMap): Promise<void> {
   await setSetting(OWNER, KEY, JSON.stringify(clean));
 }
 
-/** Every permission this account holds, root admins included. */
+/** Every permission this account holds — its own, plus whatever is open to all. */
 export async function permsOf(upn: string): Promise<Perm[]> {
   if (isRootAdmin(upn)) return PERMS.map((p) => p.key);
-  const map = await loadRoles();
-  return map[norm(upn)] || [];
+  const [map, open] = await Promise.all([loadRoles(), openPerms()]);
+  return [...new Set([...(map[norm(upn)] || []), ...open])];
 }
 
 export async function can(upn: string, perm: Perm): Promise<boolean> {

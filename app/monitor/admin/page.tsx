@@ -13,6 +13,8 @@ type RolesResp = {
   roles: Record<string, string[]>;
   roots: string[];
   perms: PermDef[];
+  open: string[];
+  openable: string[];
   you: string;
   error?: string;
 };
@@ -58,6 +60,7 @@ const CSS = `
 .madm .opt b{color:var(--ink);font-weight:400}
 .madm .opt span{color:var(--dim);font-size:14px}
 .madm .opt.dim{color:var(--dim);cursor:default}
+.madm .inherit{color:var(--dim);font-size:13px;margin-right:5px}
 .madm .who{color:var(--green);font-size:15px}
 .madm .note{border:1px solid var(--amber);color:var(--amber);padding:8px 10px;margin-bottom:8px;font-size:16px}
 .madm .note.bad{border-color:var(--red);color:var(--red)}
@@ -138,6 +141,31 @@ function AdminView({ getToken }: { getToken: () => Promise<string | null> }) {
     };
   }, [newUpn, picked, headers]);
 
+  const saveOpen = useCallback(
+    async (next: string[]) => {
+      setBusy(true);
+      setMsg("");
+      setBad(false);
+      try {
+        const r = await fetch("/api/admin/roles", {
+          method: "POST",
+          headers: await headers(),
+          body: JSON.stringify({ open: next }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        setData((prev) => (prev ? { ...prev, open: d.open } : prev));
+        setMsg("บันทึกสิทธิ์ที่เปิดให้ทุกคนแล้ว");
+      } catch (e) {
+        setBad(true);
+        setMsg(String(e).replace(/^Error:\s*/, "").slice(0, 200));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [headers]
+  );
+
   const save = useCallback(
     async (upn: string, perms: string[]) => {
       setBusy(true);
@@ -204,7 +232,39 @@ function AdminView({ getToken }: { getToken: () => Promise<string | null> }) {
       {msg && <div className={`note${bad ? " bad" : ""}`}>{msg}</div>}
 
       <div className="panel">
-        <div className="ph pix">ผู้ที่มีสิทธิ์</div>
+        <div className="ph pix">เปิดให้ทุกคนที่ล็อกอิน M365</div>
+        <div className="add">
+          {(data?.openable || []).map((key) => {
+            const def = (data?.perms || []).find((p) => p.key === key);
+            const on = (data?.open || []).includes(key);
+            return (
+              <label className="p" key={key} title={def?.hint}>
+                <input
+                  type="checkbox"
+                  checked={on}
+                  disabled={busy}
+                  onChange={(e) =>
+                    void saveOpen(
+                      e.target.checked
+                        ? [...(data?.open || []), key]
+                        : (data?.open || []).filter((x) => x !== key)
+                    )
+                  }
+                />
+                {def?.label || key}
+              </label>
+            );
+          })}
+        </div>
+        <div className="hint">
+          ติ๊กไว้ = พนักงานทุกคนที่ล็อกอิน M365 ได้ เข้าดูได้เลยโดยไม่ต้องเพิ่มรายชื่อ
+          <br />
+          «หยุดงานค้าง» และ «จัดการสิทธิ์» เปิดให้ทุกคนไม่ได้ — ต้องระบุรายคนเท่านั้น
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="ph pix">สิทธิ์เฉพาะราย</div>
         <table>
           <thead>
             <tr>
@@ -233,7 +293,8 @@ function AdminView({ getToken }: { getToken: () => Promise<string | null> }) {
               <tr key={upn}>
                 <td className="u">{upn}</td>
                 {perms.map((p) => (
-                  <td key={p.key}>
+                  <td key={p.key} title={(data?.open || []).includes(p.key) ? "เปิดให้ทุกคนอยู่แล้ว" : undefined}>
+                    {(data?.open || []).includes(p.key) && <span className="inherit">ทุกคน</span>}
                     <input
                       type="checkbox"
                       checked={list.includes(p.key)}

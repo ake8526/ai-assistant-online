@@ -1563,6 +1563,17 @@ function MonitorRoom({
             headers,
             cache: "no-store",
           });
+          // 403 = signed in, but this account may not watch the room. Say so and
+          // stop polling; another sign-in would not change the answer.
+          if (r.status === 403) {
+            alive = false;
+            setHud("NO ACCESS", "var(--red)");
+            if (capRef.current) {
+              capRef.current.innerHTML =
+                '<b style="color:#ee1b24">ไม่มีสิทธิ์ดูห้องทำงาน</b> — ติดต่อผู้ดูแลเพื่อขอสิทธิ์ «ดูห้องทำงาน»';
+            }
+            return;
+          }
           if (r.ok) {
             const d = await r.json();
             if (d.llm?.ready?.length) {
