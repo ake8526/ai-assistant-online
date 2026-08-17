@@ -22,6 +22,8 @@ li{margin-bottom:6px;font-size:16px;color:#d4d4d4}
 a.src{display:inline-block;color:#7dd3fc;font-size:15px;text-decoration:none;border:1px solid #1e3a8a;
   border-radius:8px;padding:4px 11px}
 a.src:hover{background:rgba(125,211,252,.1)}
+.thin{background:rgba(240,180,41,.08);border:1px solid #78350f;border-radius:8px;
+  color:#f0b429;font-size:14.5px;padding:8px 11px;margin-bottom:11px;line-height:1.55}
 .empty{background:#171718;border:1px solid #2a2a2c;border-radius:12px;padding:22px;text-align:center;color:#9a9a9a}
 .foot{color:#6f6f6f;font-size:13px;margin-top:24px;line-height:1.6}
 .gone{background:#171718;border:1px solid #7f1d1d;border-radius:12px;padding:22px;text-align:center}
@@ -71,6 +73,12 @@ export default async function NewsPage({ params }: { params: Promise<{ token: st
                   <li key={j}>{p}</li>
                 ))}
               </ul>
+            )}
+            {s.thin && (
+              <div className="thin">
+                ⚠️ เว็บต้นทางไม่ให้ดึงเนื้อหา — สรุปนี้เขียนจากหัวข้อและเกริ่นข่าวเท่านั้น
+                กดอ่านต้นฉบับเพื่อดูรายละเอียดครบ
+              </div>
             )}
             {s.link && (
               <a className="src" href={s.link} target="_blank" rel="noopener noreferrer">

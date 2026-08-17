@@ -25,6 +25,8 @@ export type NewsPageStory = {
   headline: string;
   points: string[];
   link: string;
+  /** Written from the headline and blurb because the source blocked the fetch. */
+  thin?: boolean;
 };
 
 export type StoredNews = {
@@ -95,6 +97,7 @@ export function toPageStories(stories: Story[]): NewsPageStory[] {
       headline: bullets[0] || s.title || "",
       points: bullets.slice(1, 6),
       link: s.rawLink || s.shortLink || "",
+      thin: !!s.thin,
     };
   });
 }
@@ -110,11 +113,15 @@ export function newsFooter(count: number, url: string): string {
  * the news as a link (people only read it). Used by /test today; the scheduled
  * send moves onto it once the shape has been lived with.
  */
-export async function buildMorningPreview(upn: string): Promise<{
+export async function buildMorningPreview(
+  upn: string,
+  opts: { fastNews?: boolean } = {}
+): Promise<{
   message: string;
   newsUrl: string;
   newsCount: number;
   agendaChars: number;
+  choices: { index: number; label: string }[];
 }> {
   const { buildMorningAgenda } = await import("@/lib/brief");
   const { withDelegatedGraph } = await import("@/lib/msGraphOAuth");
@@ -124,9 +131,30 @@ export async function buildMorningPreview(upn: string): Promise<{
 
   const { result: agenda } = await withDelegatedGraph(upn, () => buildMorningAgenda(upn));
 
-  // Prefer what the morning already prepared — building a digest costs several
-  // seconds and a reply token does not wait forever.
-  const digest = (await loadNewsPrewarm(upn)) || (await buildDigest(upn, { fast: true }));
+  // The page has room and is not on the morning's clock, so it is built with the
+  // thorough reader: 15s to fetch each article instead of 8, and 28s for the
+  // writer instead of 14. The fast path was producing bullets that only restated
+  // the headline — "เหมือนเอาแค่หัวข้อมา", which is exactly what a summary is not.
+  const cached = await loadNewsPrewarm(upn);
+  // A LINE reply token is only good for about a minute, and the thorough read
+  // takes ~25s. Cap it: past the limit, say so rather than letting the whole
+  // reply fail and leave the user with nothing.
+  const NEWS_BUDGET_MS = 35_000;
+  let timedOut = false;
+  let digest = cached;
+  if (!digest) {
+    const built = await Promise.race([
+      buildDigest(upn, { fast: !!opts.fastNews }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), NEWS_BUDGET_MS)),
+    ]);
+    if (built) {
+      digest = built;
+    } else {
+      timedOut = true;
+      digest = { stories: [], skipped: [], note: "สรุปข่าวไม่ทันในรอบนี้ ลองใหม่อีกครั้งครับ" };
+    }
+  }
+
   const stories = toPageStories(digest.stories || []);
 
   const w = nowWall();
@@ -147,5 +175,11 @@ export async function buildMorningPreview(upn: string): Promise<{
     newsFooter(stories.length, newsUrl),
   ].join("\n");
 
-  return { message, newsUrl, newsCount: stories.length, agendaChars: agenda.text.length };
+  return {
+    message,
+    newsUrl,
+    newsCount: stories.length,
+    agendaChars: agenda.text.length,
+    choices: agenda.choices.map((c) => ({ index: c.index, label: c.label || "" })),
+  };
 }

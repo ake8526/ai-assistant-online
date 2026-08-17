@@ -3906,9 +3906,14 @@ async function handleParsed(
           `เดิมส่ง 2 ข้อความ (ตาราง + ข่าว) แบบใหม่รวมเป็น 1 · ข่าว ${p.newsCount} เรื่องอยู่ในลิงก์`,
           "ข้อความนี้เป็นการตอบกลับ จึงไม่ใช้โควตาส่งของ LINE",
         ].join("\n"),
+        // The real morning message offers a button per meeting; a preview
+        // without them cannot show whether that still works.
         suggestions: [
+          ...p.choices.slice(0, 3).map((c) => ({
+            label: `เตรียมนัด ${c.index}`,
+            text: `เตรียมนัด ${c.index}`,
+          })),
           { label: "ดูแบบสรุปประชุม", text: "/test ประชุม" },
-          { label: "ตารางวันนี้", text: "ตารางวันนี้" },
         ],
       };
     } catch (e) {

@@ -27,6 +27,9 @@ export interface Story {
   shortLink: string;
   rawLink: string;
   publishedAt: string;
+  /** The source blocked the fetch, so this was written from the headline and
+   *  RSS blurb alone. Said out loud rather than passed off as a full summary. */
+  thin?: boolean;
 }
 
 export interface DigestResult {
@@ -562,16 +565,48 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
   }
 
   // News in parallel; YouTube sequential so spare clips aren't double-claimed
-  type WithFull = DigestItem & { full: string };
+  type WithFull = DigestItem & { full: string; thin?: boolean };
   const resolved: (WithFull | null)[] = new Array(chosen.length).fill(null);
+  // Articles whose body will not load (Cloudflare, paywalls) can only be
+  // "summarised" back into their own headline — which is what a reader notices
+  // first: «เหมือนเอาแค่หัวข้อมา». Try a spare story instead of shipping that.
+  const NEWS_MIN_BODY = 400;
+  const NEWS_REPLACE_MAX = 2;
+  const chosenNewsKeys = new Set(
+    chosen.map((it) => (it.link || it.title || "").toLowerCase()).filter(Boolean)
+  );
+  const newsSpare: DigestItem[] = pool.filter((it) => {
+    const k = (it.link || it.title || "").toLowerCase();
+    return it.kind !== "youtube" && k && !chosenNewsKeys.has(k);
+  });
+
+  // Judge on the ARTICLE, not on the assembled body: title + RSS blurb can clear
+  // any length bar while carrying none of the substance the piece actually has.
+  const readNews = async (it: DigestItem): Promise<{ full: string; article: number }> => {
+    const sum = (it.summary || "").trim();
+    const scraped = await fetchArticle(it.link, scrapeMs);
+    let full = bestArticleBody(it.title, isPaywalledSnippet(sum) ? "" : sum, scraped);
+    if (isPaywalledSnippet(full)) full = (it.title || "").trim();
+    return { full, article: isPaywalledSnippet(scraped) ? 0 : scraped.length };
+  };
+
   await Promise.all(
     chosen.map(async (it, i) => {
       if (it.kind === "youtube") return;
-      const sum = (it.summary || "").trim();
-      const scraped = await fetchArticle(it.link, scrapeMs);
-      let full = bestArticleBody(it.title, isPaywalledSnippet(sum) ? "" : sum, scraped);
-      if (isPaywalledSnippet(full)) full = (it.title || "").trim();
-      resolved[i] = { ...it, full };
+      let cur = it;
+      let read = await readNews(cur);
+      for (let tries = 0; read.article < NEWS_MIN_BODY && tries < NEWS_REPLACE_MAX; tries++) {
+        const next = newsSpare.shift();
+        if (!next) break;
+        trace(
+          "fetch",
+          `📰 อ่านบทความไม่ได้ · ${(cur.title || "").slice(0, 30)} → ลองเรื่องอื่น`,
+          "error"
+        );
+        cur = next;
+        read = await readNews(cur);
+      }
+      resolved[i] = { ...cur, full: read.full, thin: read.article < NEWS_MIN_BODY };
     })
   );
   for (let i = 0; i < chosen.length; i++) {
@@ -756,6 +791,7 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
       shortLink: it.link,
       rawLink: it.link,
       publishedAt: it.published || "",
+      thin: !!(it as { thin?: boolean }).thin,
     });
   }
 
