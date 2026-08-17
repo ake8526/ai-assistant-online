@@ -1641,6 +1641,7 @@ function MonitorRoom({
               QUEUE <b>{loadStats.queued}</b>
             </div>
             <div className="badge">STATUS <b ref={(el) => { hudRef.current = el; }}>{status}</b></div>
+            <a className="layout-switch" href="/monitor/log" title="ดู log การทำงานย้อนหลัง">LOG ย้อนหลัง</a>
             {stagesRight ? (
               <a className="layout-switch" href="/monitor">← เลย์เอาต์ปัจจุบัน</a>
             ) : (

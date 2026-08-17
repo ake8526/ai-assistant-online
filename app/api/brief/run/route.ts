@@ -66,7 +66,8 @@ async function pushBrief(upn: string, force: boolean): Promise<string> {
           return "delivered graph-error notice";
         }
         return "skip (inflight or sent)";
-      } catch {
+      } catch (e2) {
+        trace("error", `แจ้ง error ไม่สำเร็จ · ${String(e2).slice(0, 120)}`, "error");
         return `ERROR: ${String(e).slice(0, 150)}`;
       }
     }
@@ -86,7 +87,11 @@ async function pushBrief(upn: string, force: boolean): Promise<string> {
         await clearBriefPrewarm(upn);
         trace("reply", "ส่งสรุปเช้า (text-fallback)");
         return "delivered text-fallback";
-      } catch {
+      } catch (e2) {
+        // Both the rich push and the plain-text fallback failed — without this
+        // the whole morning shows up in /monitor/log as "ไม่จบงาน" with no
+        // reason, and the tick just retries forever (e.g. LINE push quota 429).
+        trace("error", `ส่ง LINE ไม่สำเร็จ · ${String(e2).slice(0, 120)}`, "error");
         await clearInflight(upn, "brief");
         return `ERROR: ${String(e).slice(0, 150)}`;
       }
@@ -128,8 +133,10 @@ async function pushNews(upn: string, force: boolean): Promise<string> {
       const d = ready || (await buildDigest(upn, { fast: true }));
       const status = await sendBuiltNews(upn, force, d);
       if (status.startsWith("delivered")) trace("reply", status);
+      else if (status.startsWith("ERROR")) trace("error", `ส่งข่าวไม่สำเร็จ · ${status.slice(0, 120)}`, "error");
       return status;
     } catch (e) {
+      trace("error", `ข่าวเช้าล้ม · ${String(e).slice(0, 120)}`, "error");
       return `ERROR: ${String(e).slice(0, 150)}`;
     }
   });

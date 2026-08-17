@@ -774,12 +774,17 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     return { intent: "clear_memory", params: {} };
   }
 
-  // "ดูตารางพี่นนท์" → free time; "ดูนัดเบส" → that person's meetings
+  // "ดูตารางพี่นนท์" → free time; "ดูนัดเบส" → that person's meetings.
+  // Only the SIMPLE shape belongs here. Two or more names is a find-a-common-slot
+  // question, and a qualifier this shortcut cannot express (a weekday, a date,
+  // "ตอนเช้า") would be dropped silently — "ดูตารางวันพุธนี้ <7 คน> ตอนเช้า"
+  // then came back as one person's whole week. Both cases go to the parser.
   if (/^(ดู|ขอดู|เช็ค|เช็ก)?ตาราง/.test(t)) {
     const people = peopleFromText(t);
     const who = people[0] || personFromText(t);
-    if (who) {
-      const period = /พรุ่งนี้/.test(t) ? "tomorrow" : /วันนี้/.test(t) ? "today" : undefined;
+    const period = /พรุ่งนี้/.test(t) ? "tomorrow" : /วันนี้/.test(t) ? "today" : undefined;
+    const qualifierLost = (!period && hasDayHint(t)) || hasMorningWord(t) || /บ่าย|เย็น|ค่ำ/.test(t);
+    if (who && people.length < 2 && !qualifierLost) {
       return {
         intent: "my_availability",
         params: period ? { person: who, period } : { person: who },
