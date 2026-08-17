@@ -425,6 +425,25 @@ function peelSchedulePhrases(text: string): string {
   return s;
 }
 
+/**
+ * Calendar vocabulary — day names, clock words, question particles, the
+ * conjunctions that open a follow-up ("และ…ล่ะ", "แล้ว…ล่ะ"). Used as a
+ * STRIPPER, not a list of forbidden phrases: whatever combination the user
+ * types, what is left over is the part that could be a name.
+ */
+const CALENDAR_TALK =
+  /(?:และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|\d+|[:.,\s/-])/gi;
+
+/**
+ * True when nothing but calendar talk is left — "และวันพฤหัสล่ะ" is a follow-up
+ * about Thursday, not someone called that. Answering it as a name produced
+ * «หาคนชื่อ "และวันพฤหัสล่ะ" ในองค์กรไม่เจอ». Trade-off: a colleague whose whole
+ * name is a calendar word ("วัน", "พุธ") must be addressed by email.
+ */
+function isCalendarTalk(s: string): boolean {
+  return !String(s || "").replace(CALENDAR_TALK, "").trim();
+}
+
 /** Normalize a person token: strip ของ/honorific; drop pure schedule junk. */
 function cleanPersonToken(raw: string): string {
   let n = String(raw || "").trim();
@@ -436,6 +455,7 @@ function cleanPersonToken(raw: string): string {
   if (/^(?:วันนี้|พรุ่งนี้|มะรืน|นาที|โมง|ทุ่ม|เรื่อง|ตอน|บ่าย|เช้า|เย็น|เที่ยง|ชั่วโมง|ช่วง|เวลา|ว่าง|ตรงกัน|หาเวลาว่าง|หาเวลา|\d+)$/i.test(n)) {
     return "";
   }
+  if (isCalendarTalk(n)) return "";
   return n;
 }
 
@@ -526,6 +546,7 @@ function personFromText(text: string): string {
   s = s ? stripHonorificPublic(s).replace(/^[ .,/-]+|[ .,/-]+$/g, "") : "";
   // leftover “นัดเบส” / “ประชุมเบส” after peeling ดู
   s = s.replace(/^(?:นัด|ประชุม)\s*/u, "").trim();
+  if (isCalendarTalk(s)) return "";
   return SELF_WORDS.has(s) ? "" : s;
 }
 
@@ -3827,6 +3848,14 @@ async function handleParsed(
   intent: string,
   params: Record<string, unknown>
 ): Promise<CommandResult> {
+  // Every path (quick rules, LLM, follow-ups) funnels through here, so this is
+  // the one place a bogus name can be dropped. A follow-up that only moves the
+  // day — "และวันพฤหัสล่ะ" — must fall back to whoever was being discussed,
+  // not be looked up in the directory as a person.
+  if (typeof params.person === "string" && isCalendarTalk(params.person)) {
+    delete params.person;
+  }
+
   if (intent === "clear_memory") {
     await clearMeetingPhotoContext(userUpn);
     return {
