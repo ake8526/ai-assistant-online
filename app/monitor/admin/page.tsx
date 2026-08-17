@@ -50,6 +50,15 @@ const CSS = `
 .madm button.rm:hover{background:var(--red);color:#fff}
 .madm button:disabled{opacity:.5;cursor:default}
 .madm .add{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px}
+.madm .pick{position:relative;display:inline-block}
+.madm .drop{position:absolute;top:100%;left:0;z-index:20;min-width:320px;border:1px solid var(--hair);background:var(--panel2);box-shadow:0 12px 30px -10px #000}
+.madm .opt{display:flex;flex-direction:column;align-items:flex-start;gap:0;width:100%;text-align:left;border:none;border-bottom:1px solid #1c1c1c;padding:5px 9px}
+.madm .opt:last-child{border-bottom:none}
+.madm .opt:hover{background:#1f1f1f}
+.madm .opt b{color:var(--ink);font-weight:400}
+.madm .opt span{color:var(--dim);font-size:14px}
+.madm .opt.dim{color:var(--dim);cursor:default}
+.madm .who{color:var(--green);font-size:15px}
 .madm .note{border:1px solid var(--amber);color:var(--amber);padding:8px 10px;margin-bottom:8px;font-size:16px}
 .madm .note.bad{border-color:var(--red);color:var(--red)}
 .madm .hint{color:var(--dim);font-size:15px;padding:0 9px 9px;line-height:1.5}
@@ -64,6 +73,9 @@ function AdminView({ getToken }: { getToken: () => Promise<string | null> }) {
   const [newUpn, setNewUpn] = useState("");
   const [newPerms, setNewPerms] = useState<string[]>(["log.view"]);
   const [busy, setBusy] = useState(false);
+  const [found, setFound] = useState<{ mail: string; name: string }[]>([]);
+  const [picked, setPicked] = useState<{ mail: string; name: string } | null>(null);
+  const [searching, setSearching] = useState(false);
 
   const headers = useCallback(async () => {
     const token = await getToken();
@@ -93,6 +105,38 @@ function AdminView({ getToken }: { getToken: () => Promise<string | null> }) {
     const t = setTimeout(() => void load(), 0);
     return () => clearTimeout(t);
   }, [load]);
+
+  // Look people up in the M365 directory by nickname — nobody should have to
+  // recall an exact address to grant access. Same search the assistant uses.
+  useEffect(() => {
+    const q = newUpn.trim();
+    const tooShort = picked?.mail === q.toLowerCase() || q.length < 2;
+    let alive = true;
+    const t = setTimeout(async () => {
+      if (tooShort) {
+        setFound([]);
+        return;
+      }
+      setSearching(true);
+      try {
+        const r = await fetch(`/api/admin/users?q=${encodeURIComponent(q)}`, {
+          headers: await headers(),
+          cache: "no-store",
+        });
+        if (!r.ok || !alive) return;
+        const d = (await r.json()) as { users?: { mail: string; name: string }[] };
+        if (alive) setFound(d.users || []);
+      } catch {
+        /* keep whatever is on screen */
+      } finally {
+        if (alive) setSearching(false);
+      }
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [newUpn, picked, headers]);
 
   const save = useCallback(
     async (upn: string, perms: string[]) => {
@@ -232,12 +276,37 @@ function AdminView({ getToken }: { getToken: () => Promise<string | null> }) {
       <div className="panel">
         <div className="ph pix">เพิ่มคน</div>
         <div className="add">
-          <input
-            type="text"
-            placeholder="อีเมลเต็ม เช่น somchai@ktisgroup.com"
-            value={newUpn}
-            onChange={(e) => setNewUpn(e.target.value)}
-          />
+          <span className="pick">
+            <input
+              type="text"
+              placeholder="พิมพ์ชื่อ/ชื่อเล่น เช่น เบส หรืออีเมลเต็ม"
+              value={newUpn}
+              onChange={(e) => {
+                setNewUpn(e.target.value);
+                setPicked(null);
+              }}
+            />
+            {!!found.length && (
+              <div className="drop">
+                {found.map((u) => (
+                  <button
+                    key={u.mail}
+                    className="opt"
+                    onClick={() => {
+                      setNewUpn(u.mail);
+                      setPicked(u);
+                      setFound([]);
+                    }}
+                  >
+                    <b>{u.name}</b>
+                    <span>{u.mail}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {searching && !found.length && <div className="drop"><div className="opt dim">กำลังค้นหาใน M365…</div></div>}
+          </span>
+          {picked && <span className="who">{picked.name}</span>}
           {perms.map((p) => (
             <label className="p" key={p.key} title={p.hint}>
               <input
@@ -254,7 +323,10 @@ function AdminView({ getToken }: { getToken: () => Promise<string | null> }) {
             className="go"
             disabled={busy || !newUpn.includes("@") || !newPerms.length}
             onClick={() =>
-              void save(newUpn.trim().toLowerCase(), newPerms).then(() => setNewUpn(""))
+              void save(newUpn.trim().toLowerCase(), newPerms).then(() => {
+                setNewUpn("");
+                setPicked(null);
+              })
             }
           >
             เพิ่ม
