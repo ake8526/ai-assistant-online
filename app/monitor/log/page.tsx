@@ -146,6 +146,7 @@ const CSS = `
 .mlog .ev.error .lb,.mlog .ev.error .st{color:var(--red)}
 .mlog .empty{border:1px dashed var(--hair);padding:20px;text-align:center;color:var(--dim);font-size:18px}
 .mlog .note{border:1px solid var(--amber);color:var(--amber);padding:8px 10px;margin-bottom:8px;font-size:16px}
+.mlog .note.expired{display:flex;gap:10px;align-items:center;justify-content:space-between;border-color:var(--red);color:var(--red)}
 .mlog .center{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
 /* Own confirm dialog — window.confirm() cannot be themed and reads as the browser talking */
 .mlog .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:80;padding:16px}
@@ -188,7 +189,13 @@ function JobRow({ job }: { job: LogJob }) {
   );
 }
 
-function LogView({ getToken }: { getToken: () => Promise<string | null> }) {
+function LogView({
+  getToken,
+  reauth,
+}: {
+  getToken: () => Promise<string | null>;
+  reauth: () => Promise<void>;
+}) {
   const [date, setDate] = useState(bkkToday());
   const [user, setUser] = useState("");
   const [channel, setChannel] = useState("");
@@ -200,6 +207,7 @@ function LogView({ getToken }: { getToken: () => Promise<string | null> }) {
   const [cancelling, setCancelling] = useState(false);
   const [cancelMsg, setCancelMsg] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [expired, setExpired] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -215,7 +223,15 @@ function LogView({ getToken }: { getToken: () => Promise<string | null> }) {
       if (problems) p.set("problems", "1");
       const r = await fetch(`/api/monitor/log?${p}`, { headers, cache: "no-store" });
       const d = await r.json();
+      // The M365 session outlives nothing in particular — a tab left open all
+      // morning gets a 401. Say that in words, with the way out.
+      if (r.status === 401) {
+        setExpired(true);
+        setErr("");
+        return;
+      }
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      setExpired(false);
       setData(d as LogResp);
     } catch (e) {
       setErr(String(e).slice(0, 200));
@@ -338,6 +354,14 @@ function LogView({ getToken }: { getToken: () => Promise<string | null> }) {
 
       {cancelMsg && <div className="note">{cancelMsg}</div>}
 
+      {expired && (
+        <div className="note expired">
+          <span>เซสชัน Microsoft 365 หมดอายุ — เข้าสู่ระบบใหม่เพื่อดู log ต่อ</span>
+          <button className="danger" onClick={() => void reauth()}>
+            เข้าสู่ระบบใหม่
+          </button>
+        </div>
+      )}
       {err && <div className="note">โหลดไม่สำเร็จ: {err}</div>}
       {data?.note && <div className="note">{data.note}</div>}
       {data?.truncated && <div className="note">วันนี้มี event เยอะมาก — แสดงเท่าที่ดึงได้ ลองกรองผู้ใช้/คำค้นเพิ่ม</div>}
@@ -415,7 +439,7 @@ function LogView({ getToken }: { getToken: () => Promise<string | null> }) {
 }
 
 function Gate() {
-  const { account, login, ready, getToken } = useM365Auth();
+  const { account, login, ready, getToken, reauth } = useM365Auth();
   if (!ready) {
     return (
       <div className="mlog">
@@ -442,7 +466,7 @@ function Gate() {
       </div>
     );
   }
-  return <LogView getToken={getToken} />;
+  return <LogView getToken={getToken} reauth={reauth} />;
 }
 
 export default function MonitorLogPage() {

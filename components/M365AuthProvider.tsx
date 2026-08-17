@@ -63,6 +63,19 @@ const AuthContext = createContext<AuthContextType>({
 
 let msalInstance: PublicClientApplication | null = null;
 
+/** Seconds until a JWT's `exp`; 0 when it cannot be read (treat as expired). */
+function secondsLeftOn(jwt: string): number {
+  try {
+    const payload = jwt.split(".")[1];
+    if (!payload) return 0;
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    const exp = (JSON.parse(json) as { exp?: number }).exp;
+    return typeof exp === "number" ? exp - Math.floor(Date.now() / 1000) : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function M365AuthProvider({ children }: { children: React.ReactNode }) {
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [ready, setReady] = useState(false);
@@ -142,7 +155,24 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
     if (!acct) return null;
     try {
       const res = await msalInstance.acquireTokenSilent({ ...loginRequest, account: acct });
-      return res.idToken || null;
+      const token = res.idToken || null;
+      // acquireTokenSilent renews on the ACCESS token's expiry and can hand back
+      // an ID token that already expired — our API validates `exp` and answers
+      // 401 «"exp" claim timestamp check failed» on a page left open. Force a
+      // refresh when the ID token is spent or nearly so.
+      if (token && secondsLeftOn(token) < 120) {
+        try {
+          const fresh = await msalInstance.acquireTokenSilent({
+            ...loginRequest,
+            account: acct,
+            forceRefresh: true,
+          });
+          return fresh.idToken || token;
+        } catch {
+          return token; // fall through to the caller's own 401 handling
+        }
+      }
+      return token;
     } catch (err) {
       const code = (err as { errorCode?: string })?.errorCode || "";
       const needInteract =
