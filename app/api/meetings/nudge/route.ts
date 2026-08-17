@@ -3,6 +3,7 @@ import { checkCronSecret } from "@/lib/auth";
 import { nudgePendingMeetingInvites } from "@/lib/meetingInvite";
 import { assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace } from "@/lib/trace";
+import { isJobPaused } from "@/lib/opsPause";
 
 export const maxDuration = 60;
 
@@ -11,6 +12,7 @@ async function run(req: Request) {
   try {
     assertConfigured();
     if (!checkCronSecret(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (await isJobPaused("nudge")) return NextResponse.json({ ok: true, paused: "nudge" });
     const result = await runWithTrace({ channel: "cron" }, async () => {
       trace("receive", "cron · เตือนนัดค้างตอบ");
       const res = await nudgePendingMeetingInvites();

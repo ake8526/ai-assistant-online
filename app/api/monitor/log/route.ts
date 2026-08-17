@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser, AuthError } from "@/lib/auth";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
+import { PAUSABLE_JOBS, pauseState } from "@/lib/opsPause";
 
 // History feed for /monitor/log — "ดู log ย้อนหลัง".
 //
@@ -65,6 +66,83 @@ function tableMissing(error: { code?: string; message?: string }): boolean {
   );
 }
 
+/** How long after its last stage a job is still presumed to be working. Stages
+ *  land seconds apart; past this a silent trace is finished (or dead), not busy. */
+const RUNNING_QUIET_MS = 45_000;
+/** Lookback for the live query — a long job (meeting summaries, up to 300s)
+ *  must still be visible while it runs. */
+const LIVE_WINDOW_MS = 6 * 60_000;
+
+/** Jobs with no terminal stage yet and a stage seen moments ago = in flight. */
+async function liveNow(): Promise<Response> {
+  const since = new Date(Date.now() - LIVE_WINDOW_MS).toISOString();
+  const { data, error } = await admin
+    .from("agent_traces")
+    .select("id,trace_id,upn,channel,step,label,status,seq,ms,created_at")
+    .gte("created_at", since)
+    .order("id", { ascending: true })
+    .limit(1000);
+
+  if (error) {
+    if (tableMissing(error as { code?: string; message?: string })) {
+      return NextResponse.json({ running: [], now: bkkClock(new Date().toISOString()) });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const byTrace = new Map<string, TraceRow[]>();
+  for (const r of (data as TraceRow[]) || []) {
+    const list = byTrace.get(r.trace_id);
+    if (list) list.push(r);
+    else byTrace.set(r.trace_id, [r]);
+  }
+
+  const now = Date.now();
+  const running = [];
+  for (const [tid, list] of byTrace) {
+    list.sort((a, b) => a.seq - b.seq || a.id - b.id);
+    const done = list.some(
+      (r) => r.step === "reply" || r.step === "error" || r.status === "error"
+    );
+    if (done) continue;
+    const last = list[list.length - 1];
+    const quietMs = now - Date.parse(last.created_at);
+    if (quietMs > RUNNING_QUIET_MS) continue; // silent too long — not working, stuck or gone
+    running.push({
+      traceId: tid,
+      user: shortUser(list[0].upn),
+      channel: list[0].channel || "?",
+      // Trace rows are written concurrently, so a job caught in its first
+      // second may not have its "receive" row yet — showing the Graph URL that
+      // did land as the job name reads like nonsense. Wait for the real name.
+      title: list.find((r) => r.step === "receive")?.label || "(กำลังเริ่ม…)",
+      step: last.step,
+      stepLabel: last.label || "",
+      startedClock: bkkClock(list[0].created_at),
+      elapsedSec: Math.max(0, Math.round((now - Date.parse(list[0].created_at)) / 1000)),
+      stages: list.length,
+    });
+  }
+  running.sort((a, b) => b.elapsedSec - a.elapsedSec);
+
+  const paused = await pauseState();
+
+  return NextResponse.json({
+    running,
+    paused: paused
+      ? {
+          jobs: paused.jobs,
+          labels: paused.jobs.map(
+            (j) => PAUSABLE_JOBS.find((p) => p.key === j)?.label || j
+          ),
+          untilClock: bkkClock(new Date(paused.until).toISOString()),
+        }
+      : null,
+    now: bkkClock(new Date().toISOString()),
+    quietCutoffSec: RUNNING_QUIET_MS / 1000,
+  });
+}
+
 export async function GET(req: Request) {
   if (REQUIRE_LOGIN) {
     try {
@@ -90,6 +168,13 @@ export async function GET(req: Request) {
   const q = (url.searchParams.get("q") || "").trim();
   const traceId = (url.searchParams.get("trace") || "").trim();
   const problemsOnly = url.searchParams.get("problems") === "1";
+
+  // live=1 — "what is running right NOW". Deliberately its own tiny query
+  // (last few minutes, no filters) so the page can poll it every few seconds
+  // without re-reading a whole day of stages each time.
+  if (url.searchParams.get("live") === "1") {
+    return liveNow();
+  }
 
   const { from, to } = bkkDayRange(date);
 

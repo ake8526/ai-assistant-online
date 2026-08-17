@@ -33,6 +33,24 @@ type Activity = {
   incomplete: number;
   channel: string;
 };
+type RunningJob = {
+  traceId: string;
+  user: string;
+  channel: string;
+  title: string;
+  step: string;
+  stepLabel: string;
+  startedClock: string;
+  elapsedSec: number;
+  stages: number;
+};
+type PausedInfo = { jobs: string[]; labels: string[]; untilClock: string };
+type LiveResp = {
+  running: RunningJob[];
+  paused?: PausedInfo | null;
+  now: string;
+  quietCutoffSec?: number;
+};
 type LogResp = {
   date: string;
   today?: boolean;
@@ -128,6 +146,17 @@ const CSS = `
 .mlog .tag.quiet{color:#60a5fa;border-color:#1e3a8a}
 .mlog .tag.err{color:var(--red);border-color:#7f1d1d}
 .mlog .tag.inc{color:var(--amber);border-color:#78350f}
+.mlog .tag.run{color:#fff;border-color:var(--red);background:rgba(238,27,36,.18)}
+.mlog .act.live{border-color:var(--red)}
+.mlog .act.live .ah{color:var(--ink)}
+.mlog .act.live .ah .beat{color:var(--red);animation:mlogbeat 1s steps(1) infinite}
+.mlog .act.live .idle{padding:10px;color:var(--dim);font-size:17px}
+.mlog .act.live td.u{color:#7dd3fc}
+@keyframes mlogbeat{0%{opacity:1}50%{opacity:.15}100%{opacity:1}}
+.mlog .act.live .paused{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:7px 9px;border-bottom:1px solid var(--hair);background:rgba(240,180,41,.08);color:var(--amber);font-size:16px}
+.mlog .modal .opt{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding-top:10px;border-top:1px solid var(--hair);cursor:pointer;font-size:16px}
+.mlog .modal .opt input{margin-top:4px;accent-color:var(--red)}
+.mlog .modal .opt .dim{color:var(--dim)}
 .mlog .job{border:1px solid var(--hair);background:var(--panel);margin-bottom:4px}
 .mlog .jh{display:flex;gap:10px;align-items:center;padding:5px 9px;cursor:pointer;font-size:16px}
 .mlog .jh:hover{background:var(--panel2)}
@@ -208,6 +237,8 @@ function LogView({
   const [cancelMsg, setCancelMsg] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [expired, setExpired] = useState(false);
+  const [live, setLive] = useState<LiveResp | null>(null);
+  const [alsoPauseCron, setAlsoPauseCron] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -247,6 +278,36 @@ function LogView({
     return () => clearTimeout(t);
   }, [load]);
 
+  // "กำลังทำงานอยู่" — polled on its own short query every 5s, so the live view
+  // stays current without re-reading the whole day. Stops while the session is
+  // expired (every poll would 401) and while looking at a past day.
+  useEffect(() => {
+    if (expired || date !== bkkToday()) return; // panel is hidden in render too
+    let alive = true;
+    const poll = async () => {
+      try {
+        const token = await getToken();
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const r = await fetch("/api/monitor/log?live=1", { headers, cache: "no-store" });
+        if (!alive) return;
+        if (r.status === 401) {
+          setExpired(true);
+          return;
+        }
+        if (r.ok) setLive((await r.json()) as LiveResp);
+      } catch {
+        /* transient — the next tick retries */
+      }
+    };
+    void poll();
+    const id = setInterval(poll, 5000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [getToken, date, expired]);
+
   // Esc closes the dialog — expected of anything that replaces window.confirm().
   useEffect(() => {
     if (!confirmOpen) return;
@@ -268,17 +329,37 @@ function LogView({
       const token = await getToken();
       const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;
-      const r = await fetch("/api/monitor/cancel?scope=all&kind=both", { method: "POST", headers });
+      const q = alsoPauseCron ? "&jobs=1" : "";
+      const r = await fetch(`/api/monitor/cancel?scope=all&kind=both${q}`, { method: "POST", headers });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-      setCancelMsg(`หยุดงานค้างแล้ว ${d.count} รายการ จากผู้ใช้ ${d.users} คน`);
+      setCancelMsg(
+        `หยุดงานค้างแล้ว ${d.count} รายการ จากผู้ใช้ ${d.users} คน` +
+          (d.paused ? ` · พักงานที่วนอยู่ ${d.paused.jobs.length} งานถึงเที่ยงคืน` : "")
+      );
       void load();
     } catch (e) {
       setCancelMsg(`หยุดไม่สำเร็จ: ${String(e).slice(0, 200)}`);
     } finally {
       setCancelling(false);
     }
-  }, [getToken, load]);
+  }, [getToken, load, alsoPauseCron]);
+
+  const resumeCron = useCallback(async () => {
+    setCancelling(true);
+    try {
+      const token = await getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const r = await fetch("/api/monitor/cancel?resume=1", { method: "POST", headers });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setCancelMsg("เปิดงานที่พักไว้กลับแล้ว — รอบถัดไปจะทำงานตามปกติ");
+    } catch (e) {
+      setCancelMsg(`เปิดกลับไม่สำเร็จ: ${String(e).slice(0, 200)}`);
+    } finally {
+      setCancelling(false);
+    }
+  }, [getToken]);
 
   const s = data?.summary;
 
@@ -341,6 +422,17 @@ function LogView({
                 <li>ไม่มีการลบข้อมูล ตั้งค่าเวลาส่งเดิมยังอยู่ครบ</li>
                 <li>พิมพ์สั่งเองใน LINE เช่น «สรุปตารางเช้า» ยังใช้ได้ตามปกติ</li>
               </ul>
+              <label className="opt">
+                <input
+                  type="checkbox"
+                  checked={alsoPauseCron}
+                  onChange={(e) => setAlsoPauseCron(e.target.checked)}
+                />
+                <span>
+                  พักงานที่วนอยู่ด้วย — แจ้งนัดใหม่ / สรุปประชุม / เตือนนัดค้างตอบ
+                  <span className="dim"> (ถึงเที่ยงคืน แล้วกลับมาเองอัตโนมัติ)</span>
+                </span>
+              </label>
             </div>
             <div className="ma">
               <button onClick={() => setConfirmOpen(false)}>ยกเลิก</button>
@@ -365,6 +457,55 @@ function LogView({
       {err && <div className="note">โหลดไม่สำเร็จ: {err}</div>}
       {data?.note && <div className="note">{data.note}</div>}
       {data?.truncated && <div className="note">วันนี้มี event เยอะมาก — แสดงเท่าที่ดึงได้ ลองกรองผู้ใช้/คำค้นเพิ่ม</div>}
+
+      {live && !expired && date === bkkToday() && (
+        <div className="act live">
+          <div className="ah pix">
+            <span className={live.running.length ? "beat" : ""}>●</span> กำลังทำงานอยู่ตอนนี้ ·{" "}
+            {live.running.length} งาน <span className="dim">(อัปเดตทุก 5 วิ · {live.now})</span>
+          </div>
+          {live.paused && (
+            <div className="paused">
+              <span>
+                ⏸ พักอยู่: {live.paused.labels.join(" · ")}{" "}
+                <span className="dim">(กลับมาเองตอน {live.paused.untilClock})</span>
+              </span>
+              <button onClick={() => void resumeCron()} disabled={cancelling}>
+                ▶ เปิดงานกลับ
+              </button>
+            </div>
+          )}
+          {live.running.length === 0 ? (
+            <div className="idle">ว่าง — ไม่มีงานกำลังทำอยู่ในขณะนี้</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>งาน</th>
+                  <th>ผู้ใช้</th>
+                  <th>ขั้นที่ทำอยู่</th>
+                  <th>เริ่ม</th>
+                  <th>ผ่านไป</th>
+                </tr>
+              </thead>
+              <tbody>
+                {live.running.map((r) => (
+                  <tr key={r.traceId}>
+                    <td className="n">{r.title}</td>
+                    <td className="u">{r.user}</td>
+                    <td>
+                      <span className="tag run">{STEP_TH[r.step] || r.step}</span>{" "}
+                      <span className="dim">{r.stepLabel}</span>
+                    </td>
+                    <td className="dim">{r.startedClock}</td>
+                    <td>{r.elapsedSec}s</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {s && (
         <div className="stats">

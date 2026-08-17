@@ -3,6 +3,7 @@ import { requireUser, AuthError } from "@/lib/auth";
 import { runWithTrace, trace } from "@/lib/trace";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { alreadySentToday, clearInflight, markSent, type NotifyKind } from "@/lib/notify";
+import { PAUSABLE_JOBS, pauseJobs, resumeJobs, type PausableJob } from "@/lib/opsPause";
 
 // Stop pending / looping scheduled work — the button behind /monitor "หยุดงานค้าง".
 //
@@ -42,9 +43,30 @@ export async function POST(req: Request) {
   }
 
   const url = new URL(req.url);
+
+  // resume=1 — undo a pause without waiting for it to lapse.
+  if (url.searchParams.get("resume") === "1") {
+    await resumeJobs();
+    await runWithTrace({ upn: caller.includes("@") ? caller : undefined, channel: "web" }, async () => {
+      trace("receive", "เปิดงาน cron กลับจากหน้า Monitor");
+      trace("reply", "เปิดงานที่หยุดไว้กลับแล้ว");
+    });
+    return NextResponse.json({ ok: true, resumed: true });
+  }
+
   // scope=me → only the caller. scope=all (default) → every linked user, which is
   // what "งานค้างทั้งห้อง" means when a shared failure is looping for everyone.
   const scope = (url.searchParams.get("scope") || "all").toLowerCase();
+  // jobs=… — also silence the polling jobs (they have no "sent today" flag to
+  // set, so they need their own pause). Defaults to all three when jobs=1.
+  const jobsParam = (url.searchParams.get("jobs") || "").toLowerCase();
+  const pausedJobs: PausableJob[] = !jobsParam
+    ? []
+    : jobsParam === "1" || jobsParam === "all"
+      ? PAUSABLE_JOBS.map((j) => j.key)
+      : (jobsParam.split(",").map((s) => s.trim()) as PausableJob[]).filter((j) =>
+          PAUSABLE_JOBS.some((p) => p.key === j)
+        );
   const kindParam = (url.searchParams.get("kind") || "both").toLowerCase();
   const kinds: NotifyKind[] =
     kindParam === "brief" ? ["brief"] : kindParam === "news" ? ["news"] : ["brief", "news"];
@@ -68,12 +90,23 @@ export async function POST(req: Request) {
     }
   }
 
+  const paused = pausedJobs.length ? await pauseJobs(pausedJobs) : null;
+
   // Record it in the same trace log the monitor reads, so a stopped morning is
   // explainable later ("ทำไมวันนั้นไม่มีสรุปเช้า").
   await runWithTrace({ upn: caller.includes("@") ? caller : undefined, channel: "web" }, async () => {
     trace("receive", "หยุดงานค้างจากหน้า Monitor");
-    trace("reply", `หยุดแล้ว ${count} งาน · ${users.length} คน (${kinds.join("+")})`);
+    const pausedNote = paused ? ` · พัก cron ${paused.jobs.length} งาน` : "";
+    trace("reply", `หยุดแล้ว ${count} งาน · ${users.length} คน (${kinds.join("+")})${pausedNote}`);
   });
 
-  return NextResponse.json({ ok: true, scope, kinds, users: users.length, stopped, count });
+  return NextResponse.json({
+    ok: true,
+    scope,
+    kinds,
+    users: users.length,
+    stopped,
+    count,
+    paused,
+  });
 }

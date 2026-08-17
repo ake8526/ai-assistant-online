@@ -4,6 +4,7 @@ import { notifyNewAppointments } from "@/lib/calendarNotify";
 import { nudgePendingMeetingInvites } from "@/lib/meetingInvite";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace } from "@/lib/trace";
+import { isJobPaused } from "@/lib/opsPause";
 
 export const maxDuration = 120;
 
@@ -13,6 +14,9 @@ async function run(req: Request) {
   try {
     assertConfigured();
     if (!checkCronSecret(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+    // Paused from /monitor/log — poll nothing until the pause lapses.
+    if (await isJobPaused("calendar")) return NextResponse.json({ ok: true, paused: "calendar" });
 
     const { data } = await admin.from("line_links").select("upn");
     const users = (data || []).map((r) => r.upn);
@@ -27,6 +31,10 @@ async function run(req: Request) {
         else trace("reply", `ไม่มีนัดใหม่ · ตรวจ ${res.checked} นัด`, "skip");
         return res;
       });
+    }
+    // This route also carries the invite nudge, which has its own pause.
+    if (await isJobPaused("nudge")) {
+      return NextResponse.json({ ok: true, results, inviteNudge: "paused" });
     }
     const inviteNudge = await runWithTrace({ channel: "cron" }, async () => {
       trace("receive", "cron · เตือนนัดค้างตอบ");

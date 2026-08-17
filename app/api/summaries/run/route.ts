@@ -3,6 +3,7 @@ import { AuthError, checkCronSecret, requireUser } from "@/lib/auth";
 import { runScheduledForUser } from "@/lib/meetings";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace } from "@/lib/trace";
+import { isJobPaused } from "@/lib/opsPause";
 
 export const maxDuration = 300;
 
@@ -27,6 +28,9 @@ async function run(req: Request) {
     let users: string[];
     let channel: string;
     if (checkCronSecret(req)) {
+      // Paused from /monitor/log. A signed-in user asking for it by hand is
+      // never blocked — the pause is for the scheduler only.
+      if (await isJobPaused("summaries")) return NextResponse.json({ ok: true, paused: "summaries" });
       users = await linkedUsers();
       channel = "cron";
     } else {
