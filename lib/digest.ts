@@ -613,7 +613,18 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
     if (chosen[i]!.kind !== "youtube") continue;
     resolved[i] = await resolveYoutube(chosen[i]!);
   }
-  const withText = resolved.filter((x): x is WithFull => !!x);
+  // A story whose article will not load can only be written back into its own
+  // headline. Drop it rather than shipping a summary that summarises nothing —
+  // fewer, real stories beat a full list padded with restated headlines.
+  const readable = resolved.filter((x): x is WithFull => !!x);
+  const unreadable = readable.filter((x) => x.thin);
+  const withText = readable.filter((x) => !x.thin);
+  for (const it of unreadable) {
+    skipped.push(`${it.feedLabel || "ข่าว"} · ข้าม (เว็บต้นทางไม่ให้ดึงเนื้อหา: ${(it.title || "").slice(0, 40)})`);
+  }
+  if (unreadable.length) {
+    trace("fetch", `📰 ข้าม ${unreadable.length} เรื่อง · อ่านต้นฉบับไม่ได้`);
+  }
   trace("fetch", `📰 อ่านบทความ · ${withText.length} เรื่อง`);
   type StorySummary = { headline?: string; points?: string[]; blurb?: string; bullets?: string[] };
   const summaries: Record<string, StorySummary> = {};
