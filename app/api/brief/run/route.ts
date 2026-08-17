@@ -134,6 +134,8 @@ async function pushNews(upn: string, force: boolean): Promise<string> {
       const status = await sendBuiltNews(upn, force, d);
       if (status.startsWith("delivered")) trace("reply", status);
       else if (status.startsWith("ERROR")) trace("error", `ส่งข่าวไม่สำเร็จ · ${status.slice(0, 120)}`, "error");
+      // No stories today is a finished run with nothing to push, not a failure.
+      else if (!d.stories?.length) trace("reply", "ไม่มีข่าวให้ส่ง", "skip");
       return status;
     } catch (e) {
       trace("error", `ข่าวเช้าล้ม · ${String(e).slice(0, 120)}`, "error");

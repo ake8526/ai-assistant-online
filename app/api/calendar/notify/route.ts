@@ -22,7 +22,9 @@ async function run(req: Request) {
         trace("receive", "cron · แจ้งนัดใหม่");
         const res = await notifyNewAppointments(upn);
         if (res.notified > 0) trace("reply", `แจ้งนัดใหม่ ${res.notified} รายการ`);
-        else trace("fetch", `ตรวจปฏิทิน · ${res.checked} นัด`);
+        // Nothing new to announce is a finished run, so say so — ending on a
+        // fetch made every quiet poll look like a job that died mid-flight.
+        else trace("reply", `ไม่มีนัดใหม่ · ตรวจ ${res.checked} นัด`, "skip");
         return res;
       });
     }
@@ -31,6 +33,8 @@ async function run(req: Request) {
       const res = await nudgePendingMeetingInvites();
       if (res.nudged > 0 || res.hostAlerts > 0) {
         trace("reply", `เตือน ${res.nudged} · แจ้งโฮสต์ ${res.hostAlerts}`);
+      } else {
+        trace("reply", "ไม่มีนัดค้างตอบ", "skip");
       }
       return res;
     });

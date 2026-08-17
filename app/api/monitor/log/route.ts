@@ -142,7 +142,7 @@ export async function GET(req: Request) {
     clock: string;
     durationMs: number;
     title: string;
-    outcome: "ok" | "error" | "incomplete";
+    outcome: "ok" | "quiet" | "error" | "incomplete";
     events: { clock: string; step: string; label: string; status: string; ms: number }[];
   };
 
@@ -159,11 +159,19 @@ export async function GET(req: Request) {
     const first = list[0];
     const last = list[list.length - 1];
     const hasError = list.some((r) => r.status === "error" || r.step === "error");
-    const delivered = list.some((r) => r.step === "reply" && r.status !== "error");
+    const quiet = list.some((r) => r.step === "reply" && r.status === "skip");
+    const delivered = list.some((r) => r.step === "reply" && r.status !== "error" && r.status !== "skip");
     // No reply stage and no error row = the request died mid-flight (timeout,
     // crash, or a throw that was swallowed) — the single most useful thing to
-    // see when auditing a morning that never arrived.
-    const outcome: Job["outcome"] = hasError ? "error" : delivered ? "ok" : "incomplete";
+    // see when auditing a morning that never arrived. A run that finished with
+    // nothing to send says so ("skip") and must not be counted as a casualty.
+    const outcome: Job["outcome"] = hasError
+      ? "error"
+      : delivered
+        ? "ok"
+        : quiet
+          ? "quiet"
+          : "incomplete";
     jobs.push({
       traceId: tid,
       user: shortUser(first.upn),
@@ -185,18 +193,54 @@ export async function GET(req: Request) {
 
   jobs.sort((a, b) => (a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : 0)); // newest first
 
-  const shown = problemsOnly ? jobs.filter((j) => j.outcome !== "ok") : jobs;
+  const shown = problemsOnly
+    ? jobs.filter((j) => j.outcome === "error" || j.outcome === "incomplete")
+    : jobs;
 
   const users = [...new Set(jobs.map((j) => j.user))].sort();
   const channels = [...new Set(jobs.map((j) => j.channel))].sort();
 
+  // "งานที่วนอยู่ตอนนี้" — the recurring jobs seen in the last window, folded by
+  // job name. Answers "is anything running right now?" from the page itself
+  // instead of having to read a wall of identical rows.
+  const ACTIVITY_WINDOW_MS = 30 * 60_000;
+  const cutoff = Date.now() - ACTIVITY_WINDOW_MS;
+  const recent = jobs.filter((j) => Date.parse(j.startedAt) >= cutoff);
+  const groups = new Map<string, Job[]>();
+  for (const j of recent) {
+    const list = groups.get(j.title);
+    if (list) list.push(j);
+    else groups.set(j.title, [j]);
+  }
+  const activity = [...groups.entries()]
+    .map(([title, list]) => {
+      const newest = list[0]; // jobs are newest-first
+      return {
+        title,
+        runs: list.length,
+        users: [...new Set(list.map((j) => j.user))].length,
+        lastClock: newest.clock,
+        lastAgoSec: Math.max(0, Math.round((Date.now() - Date.parse(newest.startedAt)) / 1000)),
+        ok: list.filter((j) => j.outcome === "ok").length,
+        quiet: list.filter((j) => j.outcome === "quiet").length,
+        errors: list.filter((j) => j.outcome === "error").length,
+        incomplete: list.filter((j) => j.outcome === "incomplete").length,
+        channel: newest.channel,
+      };
+    })
+    .sort((a, b) => a.lastAgoSec - b.lastAgoSec);
+
   return NextResponse.json({
     date,
+    today: date === bkkToday(),
     truncated: rows.length >= MAX_ROWS,
+    activityWindowMin: ACTIVITY_WINDOW_MS / 60_000,
+    activity,
     summary: {
       traces: jobs.length,
       events: rows.length,
       ok: jobs.filter((j) => j.outcome === "ok").length,
+      quiet: jobs.filter((j) => j.outcome === "quiet").length,
       errors: jobs.filter((j) => j.outcome === "error").length,
       incomplete: jobs.filter((j) => j.outcome === "incomplete").length,
       users,

@@ -14,7 +14,10 @@ import { AsyncLocalStorage } from "async_hooks";
 import { admin } from "@/lib/supabaseServer";
 
 export type TraceStep = "receive" | "parse" | "fetch" | "compose" | "reply" | "error";
-export type TraceStatus = "start" | "done" | "error";
+/** "skip" = the job finished with nothing to send (no new appointment, no
+ *  meeting to summarise). It is a healthy ending, not a failure — without it
+ *  /monitor/log cannot tell a quiet run apart from one that died mid-flight. */
+export type TraceStatus = "start" | "done" | "error" | "skip";
 
 type TraceCtx = {
   traceId: string;

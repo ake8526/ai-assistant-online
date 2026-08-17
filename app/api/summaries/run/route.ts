@@ -39,7 +39,12 @@ async function run(req: Request) {
         results[upn] = await runWithTrace({ upn, channel }, async () => {
           trace("receive", channel === "cron" ? "cron · สรุปประชุม" : "เว็บ · สรุปประชุม");
           const res = await runScheduledForUser(upn);
-          trace("reply", `สรุป ${res.summarized} · งาน ${res.tasksAdded}`);
+          const quiet = !res.summarized && !res.tasksAdded;
+          trace(
+            "reply",
+            quiet ? "ไม่มีประชุมให้สรุป" : `สรุป ${res.summarized} · งาน ${res.tasksAdded}`,
+            quiet ? "skip" : "done"
+          );
           return res;
         });
       } catch (e) {

@@ -18,17 +18,33 @@ type LogJob = {
   clock: string;
   durationMs: number;
   title: string;
-  outcome: "ok" | "error" | "incomplete";
+  outcome: "ok" | "quiet" | "error" | "incomplete";
   events: LogEvent[];
+};
+type Activity = {
+  title: string;
+  runs: number;
+  users: number;
+  lastClock: string;
+  lastAgoSec: number;
+  ok: number;
+  quiet: number;
+  errors: number;
+  incomplete: number;
+  channel: string;
 };
 type LogResp = {
   date: string;
+  today?: boolean;
   truncated?: boolean;
   note?: string;
+  activityWindowMin?: number;
+  activity?: Activity[];
   summary: {
     traces: number;
     events: number;
     ok?: number;
+    quiet?: number;
     errors?: number;
     incomplete?: number;
     users: string[];
@@ -51,9 +67,17 @@ const STEP_TH: Record<string, string> = {
 
 const OUTCOME_TH: Record<LogJob["outcome"], string> = {
   ok: "สำเร็จ",
+  quiet: "ไม่มีอะไรต้องส่ง",
   error: "ผิดพลาด",
   incomplete: "ไม่จบงาน",
 };
+
+function ago(sec: number): string {
+  if (sec < 60) return `${sec} วินาทีที่แล้ว`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `${m} นาทีที่แล้ว`;
+  return `${Math.floor(m / 60)} ชม.${m % 60} นาทีที่แล้ว`;
+}
 
 function bkkToday(): string {
   return new Date(Date.now() + BKK_OFFSET_MS).toISOString().slice(0, 10);
@@ -89,6 +113,21 @@ const CSS = `
 .mlog .stat{border:1px solid var(--hair);background:var(--panel);padding:4px 9px;font-size:15px;color:var(--dim)}
 .mlog .stat b{font-size:18px}
 .mlog .stat.ok b{color:var(--green)}.mlog .stat.err b{color:var(--red)}.mlog .stat.inc b{color:var(--amber)}
+.mlog .stat.quiet b{color:#60a5fa}
+/* "งานที่วนอยู่" — recurring cron work folded by job name */
+.mlog .act{border:2px solid var(--hair);background:var(--panel);margin-bottom:8px}
+.mlog .act .ah{font-size:8px;color:var(--dim);padding:6px 9px;border-bottom:2px solid var(--hair);background:var(--panel2)}
+.mlog .act table{width:100%;border-collapse:collapse;font-size:16px}
+.mlog .act th{text-align:left;color:var(--dim);font-weight:400;font-size:14px;padding:4px 9px;border-bottom:1px solid var(--hair)}
+.mlog .act td{padding:4px 9px;border-bottom:1px solid #1c1c1c}
+.mlog .act tr:last-child td{border-bottom:none}
+.mlog .act td.n{color:var(--ink)}
+.mlog .act .dim{color:var(--dim);font-size:14px}
+.mlog .tag{display:inline-block;border:1px solid var(--hair);padding:0 6px;margin-right:4px;font-size:14px}
+.mlog .tag.ok{color:var(--green);border-color:#14532d}
+.mlog .tag.quiet{color:#60a5fa;border-color:#1e3a8a}
+.mlog .tag.err{color:var(--red);border-color:#7f1d1d}
+.mlog .tag.inc{color:var(--amber);border-color:#78350f}
 .mlog .job{border:1px solid var(--hair);background:var(--panel);margin-bottom:4px}
 .mlog .jh{display:flex;gap:10px;align-items:center;padding:5px 9px;cursor:pointer;font-size:16px}
 .mlog .jh:hover{background:var(--panel2)}
@@ -99,6 +138,7 @@ const CSS = `
 .mlog .jh .d{color:var(--dim);font-size:14px}
 .mlog .dot{width:9px;height:9px;flex:none}
 .mlog .dot.ok{background:var(--green)}.mlog .dot.error{background:var(--red)}.mlog .dot.incomplete{background:var(--amber)}
+.mlog .dot.quiet{background:#60a5fa}
 .mlog .steps{border-top:1px solid var(--hair);background:#0d0d0d;padding:5px 9px 7px}
 .mlog .ev{display:flex;gap:10px;font-size:15px;color:var(--dim);line-height:1.5}
 .mlog .ev .st{color:#a3a3a3;min-width:80px}
@@ -310,16 +350,56 @@ function LogView({ getToken }: { getToken: () => Promise<string | null> }) {
           <div className="stat ok">
             สำเร็จ <b>{s.ok ?? 0}</b>
           </div>
+          <div className="stat quiet" title="งานที่ทำงานปกติ แต่รอบนั้นไม่มีอะไรต้องส่ง">
+            ไม่มีอะไรต้องส่ง <b>{s.quiet ?? 0}</b>
+          </div>
           <div className="stat err">
             ผิดพลาด <b>{s.errors ?? 0}</b>
           </div>
-          <div className="stat inc">
+          <div className="stat inc" title="เริ่มแล้วแต่ไม่มีขั้นสุดท้าย และไม่ได้บันทึกว่าล้มเหลว">
             ไม่จบงาน <b>{s.incomplete ?? 0}</b>
           </div>
           <div className="stat">
             ขั้นตอนรวม <b>{s.events}</b>
           </div>
           <div className="stat">ผู้ใช้: {s.users.join(", ") || "—"}</div>
+        </div>
+      )}
+
+      {data?.today && !!data.activity?.length && (
+        <div className="act">
+          <div className="ah pix">
+            งานที่วนอยู่ · {data.activityWindowMin ?? 30} นาทีล่าสุด
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>งาน</th>
+                <th>รอบ</th>
+                <th>คน</th>
+                <th>ล่าสุด</th>
+                <th>ผลลัพธ์</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.activity.map((a) => (
+                <tr key={a.title}>
+                  <td className="n">{a.title}</td>
+                  <td>{a.runs}</td>
+                  <td>{a.users || "—"}</td>
+                  <td>
+                    {a.lastClock} <span className="dim">({ago(a.lastAgoSec)})</span>
+                  </td>
+                  <td>
+                    {a.ok > 0 && <span className="tag ok">สำเร็จ {a.ok}</span>}
+                    {a.quiet > 0 && <span className="tag quiet">ไม่มีอะไรต้องส่ง {a.quiet}</span>}
+                    {a.errors > 0 && <span className="tag err">ผิดพลาด {a.errors}</span>}
+                    {a.incomplete > 0 && <span className="tag inc">ไม่จบงาน {a.incomplete}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

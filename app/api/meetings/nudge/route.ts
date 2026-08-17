@@ -16,6 +16,8 @@ async function run(req: Request) {
       const res = await nudgePendingMeetingInvites();
       if (res.nudged > 0 || res.hostAlerts > 0) {
         trace("reply", `เตือน ${res.nudged} · แจ้งโฮสต์ ${res.hostAlerts}`);
+      } else {
+        trace("reply", "ไม่มีนัดค้างตอบ", "skip");
       }
       return res;
     });
