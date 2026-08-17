@@ -341,75 +341,125 @@ export async function clearPendingLineLocation(ownerUpn: string): Promise<void> 
 // ---------------------------------------------------------------------------
 // Seen meetings — the recurring summary job summarizes each meeting once.
 //
-// This lived in a `seen_meetings` table whose migration was never applied: every
-// write failed, the error was discarded, and so every run re-summarized and
-// re-sent the same meeting. It now lives in `settings` (which ships with the
-// app) under a shared ops row — the set is global, not per user, because one
-// Teams meeting must be summarized once no matter whose calendar it came from.
+// History worth keeping: this lived in a `seen_meetings` table whose migration
+// was never applied, so every write failed silently and every run re-sent the
+// same summary. Moving it into `settings` fixed the writes but kept the whole
+// set in ONE json row — and that row is read-modify-written by several users'
+// runs (and by overlapping cron invocations) at once, so each write dropped the
+// keys the others had just added. On 13 Aug the same meeting went out four
+// times to three people, and the store held two keys in total.
+//
+// Now: one row per meeting (`seen_mt_<digest>`), so two runs can never clobber
+// each other's record. Rows are small and bounded by their own TTL sweep.
 // ---------------------------------------------------------------------------
 const OPS_BUCKET = "_ops";
-const SEEN_MEETINGS_KEY = "seen_meetings";
-const SEEN_MEETINGS_MAX = 500;
+const SEEN_MEETINGS_KEY = "seen_meetings"; // legacy json blob — migrated on first use
+const SEEN_MEETINGS_READY = "seen_meetings_ready";
+const SEEN_MT_PREFIX = "seen_mt_";
 const SEEN_MEETINGS_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-
-type SeenMeetingEntry = [key: string, ts: number];
 
 /** Meeting keys can be long (join-url hashes); store a short digest. */
 function meetingKey(eventId: string): string {
   return createHash("sha1").update(eventId, "utf8").digest("hex").slice(0, 16);
 }
 
-async function loadSeenMeetings(): Promise<SeenMeetingEntry[] | null> {
+const seenRow = (eventId: string) => `${SEEN_MT_PREFIX}${meetingKey(eventId)}`;
+
+/** Copy the old json blob into per-meeting rows once, then mark the store ready.
+ *  Idempotent: safe to call on every run, does nothing once the flag is set. */
+async function migrateLegacySeenMeetings(): Promise<void> {
+  if (await getSetting(OPS_BUCKET, SEEN_MEETINGS_READY)) return;
   const raw = await getSetting(OPS_BUCKET, SEEN_MEETINGS_KEY);
-  if (!raw) return null;
-  try {
-    const v = JSON.parse(raw);
-    return Array.isArray(v) ? (v as SeenMeetingEntry[]) : null;
-  } catch {
-    return null;
+  if (raw) {
+    try {
+      const entries = JSON.parse(raw) as [string, number][];
+      if (Array.isArray(entries)) {
+        for (const [key, ts] of entries) {
+          if (typeof key !== "string" || !key) continue;
+          // Legacy keys are already digests — keep them exactly as they were,
+          // or the meetings they cover would look unseen and be re-sent.
+          await setSetting(OPS_BUCKET, `${SEEN_MT_PREFIX}${key}`, String(ts || Date.now()));
+        }
+        await setSetting(OPS_BUCKET, SEEN_MEETINGS_READY, "1");
+        return;
+      }
+    } catch {
+      /* fall through — an unreadable blob is not worth blocking on */
+    }
   }
 }
 
-async function saveSeenMeetings(entries: SeenMeetingEntry[]): Promise<void> {
-  const cutoff = Date.now() - SEEN_MEETINGS_TTL_MS;
-  const kept = entries
-    .filter(([, ts]) => ts >= cutoff)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, SEEN_MEETINGS_MAX);
-  await setSetting(OPS_BUCKET, SEEN_MEETINGS_KEY, JSON.stringify(kept));
-}
-
-/** False before the set has ever been written — the caller should seed rather
- *  than treat a whole lookback window as brand new. */
+/** False before anything has ever been recorded — the caller should seed the
+ *  lookback window rather than treat a whole day of meetings as brand new. */
 export async function seenMeetingsReady(): Promise<boolean> {
-  return (await loadSeenMeetings()) !== null;
+  await migrateLegacySeenMeetings();
+  return !!(await getSetting(OPS_BUCKET, SEEN_MEETINGS_READY));
 }
 
 /** Record keys without summarizing (first run after install/repair). */
 export async function seedMeetingsSeen(eventIds: string[]): Promise<void> {
-  const now = Date.now();
-  const existing = (await loadSeenMeetings()) || [];
-  const merged = new Map<string, number>(existing);
-  for (const id of eventIds) if (id) merged.set(meetingKey(id), now);
-  await saveSeenMeetings(Array.from(merged.entries()) as SeenMeetingEntry[]);
+  const now = String(Date.now());
+  for (const id of eventIds) {
+    if (id) await setSetting(OPS_BUCKET, seenRow(id), now);
+  }
+  await setSetting(OPS_BUCKET, SEEN_MEETINGS_READY, "1");
 }
 
 export async function wasMeetingSummarized(eventId: string): Promise<boolean> {
   if (!eventId) return false;
-  const entries = await loadSeenMeetings();
-  if (!entries) return false;
-  const key = meetingKey(eventId);
-  return entries.some(([k]) => k === key);
+  await migrateLegacySeenMeetings();
+  const raw = await getSetting(OPS_BUCKET, seenRow(eventId));
+  if (!raw) return false;
+  const ts = parseInt(raw, 10);
+  if (Number.isFinite(ts) && Date.now() - ts > SEEN_MEETINGS_TTL_MS) return false; // aged out
+  return true;
+}
+
+/**
+ * Claim a meeting BEFORE the summary is built and sent. Returns false when
+ * someone else already holds it, which is what stops two overlapping runs from
+ * both delivering. Release with `releaseMeetingSummary` if the work then fails.
+ */
+export async function claimMeetingSummary(eventId: string): Promise<boolean> {
+  if (!eventId) return false;
+  if (await wasMeetingSummarized(eventId)) return false;
+  await setSetting(OPS_BUCKET, seenRow(eventId), String(Date.now()));
+  await setSetting(OPS_BUCKET, SEEN_MEETINGS_READY, "1");
+  return true;
+}
+
+/** Hand a claim back when the summary could not be produced or delivered. */
+export async function releaseMeetingSummary(eventId: string): Promise<void> {
+  if (!eventId) return;
+  await setSetting(OPS_BUCKET, seenRow(eventId), "");
+}
+
+/**
+ * Last line of defence: even if a summary is somehow produced twice, the same
+ * person must not receive the same meeting's summary twice. Keyed per recipient
+ * so one person's row can never overwrite another's.
+ */
+const DELIVERED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export async function alreadyGotSummary(upn: string, meetingKeyRaw: string): Promise<boolean> {
+  if (!upn || !meetingKeyRaw) return false;
+  const raw = await getSetting(upn, `sm_dlv_${meetingKey(meetingKeyRaw)}`);
+  if (!raw) return false;
+  const ts = parseInt(raw, 10);
+  return !(Number.isFinite(ts) && Date.now() - ts > DELIVERED_TTL_MS);
+}
+
+export async function noteSummaryDelivered(upn: string, meetingKeyRaw: string): Promise<void> {
+  if (!upn || !meetingKeyRaw) return;
+  await setSetting(upn, `sm_dlv_${meetingKey(meetingKeyRaw)}`, String(Date.now()));
 }
 
 export async function markMeetingSummarized(eventId: string, ownerUpn = "", subject = ""): Promise<void> {
   void ownerUpn;
   void subject;
   if (!eventId) return;
-  const entries = (await loadSeenMeetings()) || [];
-  const merged = new Map<string, number>(entries);
-  merged.set(meetingKey(eventId), Date.now());
   // setSetting throws on failure — losing the dedupe silently is what caused
   // the same summary to be pushed over and over.
-  await saveSeenMeetings(Array.from(merged.entries()) as SeenMeetingEntry[]);
+  await setSetting(OPS_BUCKET, seenRow(eventId), String(Date.now()));
+  await setSetting(OPS_BUCKET, SEEN_MEETINGS_READY, "1");
 }

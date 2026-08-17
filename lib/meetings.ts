@@ -19,6 +19,10 @@ import {
   seedMeetingsSeen,
   seenMeetingsReady,
   wasMeetingSummarized,
+  claimMeetingSummary,
+  alreadyGotSummary,
+  noteSummaryDelivered,
+  releaseMeetingSummary,
 } from "@/lib/store";
 import { isMeetingSummaryEnabled } from "@/lib/meetingSummaryPrefs";
 import { findLinkedLineAttendees } from "@/lib/meetingInvite";
@@ -205,8 +209,9 @@ function seenKeyForMeeting(ev: GraphEvent, eventId: string): string {
 export async function deliverSummaryToLinkedAttendees(
   ev: GraphEvent,
   message: string,
-  extraUpns: string[] = []
-): Promise<{ sent: string[]; skipped: string[] }> {
+  extraUpns: string[] = [],
+  dedupeKey = ""
+): Promise<{ sent: string[]; skipped: string[]; failed: string[] }> {
   const emails = [
     ...attendeesOf(ev).map((a) => a.email || ""),
     ...extraUpns,
@@ -214,6 +219,9 @@ export async function deliverSummaryToLinkedAttendees(
   const linked = await findLinkedLineAttendees(emails);
   const sent: string[] = [];
   const skipped: string[] = [];
+  // Opting out and failing to send both used to land in `skipped`, which made
+  // "nobody wanted it" indistinguishable from "LINE refused every push".
+  const failed: string[] = [];
   const seen = new Set<string>();
 
   for (const { upn } of linked) {
@@ -225,14 +233,20 @@ export async function deliverSummaryToLinkedAttendees(
         skipped.push(upn);
         continue;
       }
+      // Belt and braces: this person already has this meeting's summary.
+      if (dedupeKey && (await alreadyGotSummary(upn, dedupeKey))) {
+        skipped.push(upn);
+        continue;
+      }
       await sendLine(upn, "", message);
+      if (dedupeKey) await noteSummaryDelivered(upn, dedupeKey);
       sent.push(upn);
     } catch (e) {
       console.log(`summary delivery failed for ${upn}: ${e}`);
-      skipped.push(upn);
+      failed.push(upn);
     }
   }
-  return { sent, skipped };
+  return { sent, skipped, failed };
 }
 
 export type SummarizeRunResult = {
@@ -242,6 +256,8 @@ export type SummarizeRunResult = {
   no_transcript: string[];
   skipped: number;
   delivered?: string[];
+  /** Summarized but reached nobody because every push failed — will retry. */
+  undelivered?: number;
 };
 
 /** Summarize each finished online meeting that has a transcript. */
@@ -283,18 +299,42 @@ export async function summarizeRecent(
       out.no_transcript.push(subject); // not ready yet — retry next run
       continue;
     }
-    const result = await summarize(text, subject);
-    const message = formatSummary(subject, result);
-    out.summaries.push(message);
-    if (opts.deliver) {
-      const fanout = await deliverSummaryToLinkedAttendees(ev, message, [userUpn]);
-      out.delivered!.push(...fanout.sent);
+
+    // Claim the meeting BEFORE spending an LLM call and pushing to LINE. Marking
+    // afterwards left a window in which a second run — another user's pass, or an
+    // overlapping cron tick — saw the meeting as unsummarised and sent it again.
+    if (opts.skipSummarized && !(await claimMeetingSummary(seenKey))) {
+      out.skipped += 1;
+      continue;
     }
-    const attendees = attendeesOf(ev);
-    for (const item of result.action_items || []) {
-      out.action_items.push({ ...item, _meeting: subject, _owner_user: userUpn, _attendees: attendees });
+
+    try {
+      const result = await summarize(text, subject);
+      const message = formatSummary(subject, result);
+      out.summaries.push(message);
+      if (opts.deliver) {
+        const fanout = await deliverSummaryToLinkedAttendees(ev, message, [userUpn], seenKey);
+        out.delivered!.push(...fanout.sent);
+        // Reached nobody and the reason was a failed push (quota, outage) —
+        // hand the claim back so a later run can deliver it. If everyone simply
+        // opted out, the claim stands: that summary is done with.
+        if (!fanout.sent.length && fanout.failed.length) {
+          if (opts.skipSummarized) await releaseMeetingSummary(seenKey);
+          out.summaries.pop();
+          out.undelivered = (out.undelivered || 0) + 1;
+          continue;
+        }
+      }
+      const attendees = attendeesOf(ev);
+      for (const item of result.action_items || []) {
+        out.action_items.push({ ...item, _meeting: subject, _owner_user: userUpn, _attendees: attendees });
+      }
+      if (opts.skipSummarized) await markMeetingSummarized(seenKey, userUpn, subject);
+    } catch (e) {
+      // Nothing went out — give the claim back so the next run may retry.
+      if (opts.skipSummarized) await releaseMeetingSummary(seenKey);
+      throw e;
     }
-    if (opts.skipSummarized) await markMeetingSummarized(seenKey, userUpn, subject);
   }
   return out;
 }
@@ -351,8 +391,10 @@ export async function listRecentOnline(userUpn: string, lookbackHours = 24 * 14)
 }
 
 /** Scheduled-run flow: summarize new meetings, deliver, and ingest action items. */
-export async function runScheduledForUser(userUpn: string): Promise<{ summarized: number; tasksAdded: number }> {
+export async function runScheduledForUser(
+  userUpn: string
+): Promise<{ summarized: number; tasksAdded: number; skipped: number }> {
   const res = await summarizeRecent(userUpn, { deliver: true, skipSummarized: true });
   const added = await ingestActionItems(res.action_items);
-  return { summarized: res.summaries.length, tasksAdded: added };
+  return { summarized: res.summaries.length, tasksAdded: added, skipped: res.skipped };
 }
