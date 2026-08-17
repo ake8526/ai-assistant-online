@@ -1590,9 +1590,9 @@ function MonitorRoom({
             if (d.note && capRef.current && !queueRef.current.length) {
               capRef.current.innerHTML = '<b style="color:#f0b429">ยังไม่พร้อม</b> — รัน supabase/migration_agent_traces.sql ใน Supabase ก่อน แล้วรีเฟรช';
             }
-            // First response carries the last few minutes so the room opens showing
-            // real work instead of an empty office — you should be able to tell at
-            // a glance whether the assistant is busy, without leaving the tab open.
+            // First response carries only work still in flight, so the room opens
+            // showing what is happening NOW. Replaying finished jobs made the
+            // office look busy for minutes after everything had stopped.
             if (!primedRef.current) {
               primedRef.current = true;
               const caught = Array.isArray(d.events) ? (d.events as MonEvent[]) : [];
@@ -1602,14 +1602,14 @@ function MonitorRoom({
                 queueRef.current.push(ev);
               }
               if (typeof d.cursor === "number") cursorRef.current = d.cursor;
-              setHud(caught.length ? "CATCH-UP" : "IDLE", caught.length ? "var(--amber)" : "var(--dim)");
+              setHud(caught.length ? "WORKING" : "IDLE", caught.length ? "var(--amber)" : "var(--dim)");
               if (capRef.current) {
                 const chainNote = d.llm?.ready?.length
                   ? ` · API: ${d.llm.ready.map((p: { id: string }) => p.id.toUpperCase()).join(" → ")}`
                   : "";
                 capRef.current.innerHTML = caught.length
-                  ? `<b style="color:#f0b429">กำลังไล่ดูงาน 5 นาทีล่าสุด</b> — ${caught.length} ขั้นตอน${chainNote}`
-                  : `<b>พร้อม</b> — ยังไม่มีงานใน 5 นาทีล่าสุด${chainNote}`;
+                  ? `<b style="color:#f0b429">มีงานกำลังทำอยู่</b> — ${caught.length} ขั้นตอน${chainNote}`
+                  : `<b>ว่าง</b> — ไม่มีงานที่กำลังทำอยู่ตอนนี้${chainNote}`;
               }
             } else if (Array.isArray(d.events) && d.events.length) {
               if (queueRef.current.length < 400) {

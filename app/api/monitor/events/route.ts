@@ -29,6 +29,8 @@ type TraceRow = {
  *  mid-flight or just finished; short enough that it is clearly "now". */
 const CATCHUP_WINDOW_MS = 5 * 60_000;
 const CATCHUP_LIMIT = 150;
+/** A trace with no ending and no new stage for this long is not running. */
+const STILL_RUNNING_MS = 45_000;
 
 function shortUser(upn: string | null): string {
   if (!upn) return "—";
@@ -67,10 +69,10 @@ export async function GET(req: Request) {
   // refreshing /monitor does not look like the AI started work by itself.
   const replay = url.searchParams.get("replay") === "1";
 
-  // First load (since=0): hand back the last few minutes so the room shows what
-  // is happening the moment it is opened. Jumping straight to the tip made every
-  // refresh look like an idle office until the next request happened to arrive —
-  // you could not tell "nothing is running" from "I just pressed F5".
+  // First load (since=0): hand back only work that is STILL RUNNING, so opening
+  // the room answers "is it busy right now?" — jumping to the tip made every
+  // refresh look idle, but replaying the whole last five minutes was worse: the
+  // office kept bustling through jobs that had finished hours ago.
   if (sinceId <= 0 && !replay) {
     const since = new Date(Date.now() - CATCHUP_WINDOW_MS).toISOString();
     const { data, error } = await admin
@@ -96,9 +98,30 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     const recent = (data as TraceRow[]) || [];
+    // Whatever we skip must still be behind the cursor, or the next poll would
+    // replay it as if it had just arrived.
     const cursor = recent.length ? recent[recent.length - 1].id : 0;
+
+    const byTrace = new Map<string, TraceRow[]>();
+    for (const r of recent) {
+      const list = byTrace.get(r.trace_id);
+      if (list) list.push(r);
+      else byTrace.set(r.trace_id, [r]);
+    }
+    const now = Date.now();
+    const live: TraceRow[] = [];
+    for (const rows of byTrace.values()) {
+      const finished = rows.some((r) => r.step === "reply" || r.step === "error" || r.status === "error");
+      if (finished) continue;
+      const last = rows[rows.length - 1];
+      // Silent for a while with no ending recorded: dead, not working.
+      if (now - Date.parse(last.created_at) > STILL_RUNNING_MS) continue;
+      live.push(...rows);
+    }
+    live.sort((a, b) => a.id - b.id);
+
     return NextResponse.json({
-      events: recent.map(toEvent),
+      events: live.map(toEvent),
       cursor,
       seeded: true,
       catchup: true, // the client plays these without pretending they arrived just now
