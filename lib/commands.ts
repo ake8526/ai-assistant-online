@@ -667,8 +667,12 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   const t = text.trim().replace(/\s+/g, " ");
   if (!t) return null;
 
-  // /test — preview the link-style summary. A reply, so it costs no quota.
+  // /test — preview what the morning message will look like. A reply, so it
+  // costs no quota; "/test ประชุม" previews the meeting-summary shape instead.
   if (t === "__preview_summary_link__" || /^\/?test$/i.test(t)) {
+    return { intent: "preview_morning", params: {} };
+  }
+  if (/^\/?test\s*(ประชุม|สรุป|summary|mt)$/i.test(t)) {
     return { intent: "preview_summary_link", params: {} };
   }
 
@@ -3801,6 +3805,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       quick?.intent === "clear_work_location" ||
       quick?.intent === "ack" ||
       quick?.intent === "preview_summary_link" ||
+      quick?.intent === "preview_morning" ||
       quick?.intent === "search_files"
     ) {
       trace("parse", `★ AI:NONE · intent=${quick.intent} (กฎตายตัว ไม่เรียก API)`);
@@ -3884,6 +3889,34 @@ async function handleParsed(
         { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
       ],
     };
+  }
+
+  if (intent === "preview_morning") {
+    trace("compose", "ตัวอย่างข้อความเช้า (ตาราง + ข่าว)");
+    const { buildMorningPreview } = await import("@/lib/newsPage");
+    try {
+      const p = await buildMorningPreview(userUpn);
+      return {
+        intent: "preview_morning",
+        reply: [
+          p.message,
+          "",
+          "— — —",
+          `☝️ นี่คือข้อความเช้าแบบใหม่ (ข้อความเดียว) จากข้อมูลจริงของวันนี้`,
+          `เดิมส่ง 2 ข้อความ (ตาราง + ข่าว) แบบใหม่รวมเป็น 1 · ข่าว ${p.newsCount} เรื่องอยู่ในลิงก์`,
+          "ข้อความนี้เป็นการตอบกลับ จึงไม่ใช้โควตาส่งของ LINE",
+        ].join("\n"),
+        suggestions: [
+          { label: "ดูแบบสรุปประชุม", text: "/test ประชุม" },
+          { label: "ตารางวันนี้", text: "ตารางวันนี้" },
+        ],
+      };
+    } catch (e) {
+      return {
+        intent: "preview_morning",
+        reply: `สร้างตัวอย่างข้อความเช้าไม่สำเร็จครับ\nเหตุผล: ${String(e).slice(0, 150)}`,
+      };
+    }
   }
 
   if (intent === "preview_summary_link") {
