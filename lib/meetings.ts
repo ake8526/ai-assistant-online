@@ -25,6 +25,7 @@ import {
   releaseMeetingSummary,
 } from "@/lib/store";
 import { isMeetingSummaryEnabled } from "@/lib/meetingSummaryPrefs";
+import { runAsAppOnly } from "@/lib/graphAuth";
 import {
   buildSummaryUrl,
   isLinkPilot,
@@ -85,6 +86,17 @@ export async function getTranscriptText(userUpn: string, event: GraphEvent): Pro
   const organizer = event.organizer?.emailAddress?.address;
   const owners = [...new Set([organizer, userUpn].filter(Boolean))] as string[];
 
+  // App-only, always — even when the caller has a delegated token.
+  //
+  // A transcript lives under the ORGANIZER's meeting, and a delegated token can
+  // neither read another person's profile (/users/{organizer} → 403) nor look up
+  // a meeting it does not own (/users/{me}/onlineMeetings?$filter=JoinWebUrl
+  // returns nothing for someone else's meeting). So asking from chat found
+  // nothing and reported "ไม่มี transcript", while the scheduled run — which has
+  // no delegated token and therefore falls back to app-only — read the very same
+  // transcript fine. Anyone in the meeting may ask for its summary, and the
+  // application access policy is what grants that.
+  return runAsAppOnly(async () => {
   for (const owner of owners) {
     let ownerId: string | null = null;
     try {
@@ -103,6 +115,7 @@ export async function getTranscriptText(userUpn: string, event: GraphEvent): Pro
     }
   }
   return null;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -408,8 +421,11 @@ export async function summarizeOne(
     return {
       ok: false,
       subject,
+      // The old wording blamed permissions and processing delays, which sent
+      // people looking in the wrong place: with the app policy in place the
+      // usual answer is simply that nobody switched transcription on.
       reason: ev.onlineMeeting?.joinUrl
-        ? "เจอ meeting แล้วแต่ยังดึง transcript ไม่ได้ (อาจยังประมวลผลไม่เสร็จ หรือไม่มีสิทธิ์เข้าถึง)"
+        ? "ประชุมนี้ไม่มี transcript ให้สรุปครับ — Teams สร้าง transcript เฉพาะตอนที่เปิด “บันทึกและถอดเสียง” ในห้องประชุม (ถ้าเพิ่งจบ อาจต้องรอ 10-15 นาทีให้ประมวลผลก่อน)"
         : "ประชุมนี้ไม่ใช่ online meeting (ไม่มีลิงก์ Teams) จึงไม่มี transcript",
     };
   }

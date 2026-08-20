@@ -4051,7 +4051,7 @@ async function handleParsed(
     if (!res.ok) {
       const head =
         res.reason === "no_transcript"
-          ? `⚠️ ประชุม “${res.subject}” ไม่มี transcript ให้สรุปครับ (ต้องเปิดบันทึก/ถอดเสียงใน Teams ตอนประชุม)`
+          ? `⚠️ ประชุม “${res.subject}” ไม่มี transcript ให้สรุปครับ — Teams สร้าง transcript เฉพาะตอนเปิด “บันทึกและถอดเสียง” ในห้องประชุม (ถ้าเพิ่งจบ รออีก 10-15 นาที)`
           : res.reason === "not_found"
             ? `หาประชุมชื่อ “${query}” ไม่เจอใน 7 วันที่ผ่านมาครับ`
             : "ไม่พบประชุมออนไลน์ที่จบแล้วใน 7 วันที่ผ่านมาครับ";
