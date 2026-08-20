@@ -1127,7 +1127,7 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
 }
 
 /** Shared / org mailboxes that must never appear in “pick a person” lists. */
-function isNonPersonAccount(u: UserInfo): boolean {
+export function isNonPersonAccount(u: UserInfo): boolean {
   const dn = (u.displayName || "").trim();
   const local = ((u.mail || "").split("@")[0] || "").toLowerCase();
   if (

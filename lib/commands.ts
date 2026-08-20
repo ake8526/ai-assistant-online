@@ -27,6 +27,7 @@ import {
   deleteEvent,
   downloadDriveText,
   findDuplicateNicknames,
+  isNonPersonAccount,
   getEvent,
   getEventsRange,
   nowLocal,
@@ -3098,8 +3099,116 @@ async function runSelfBookCalendar(
   };
 }
 
+/** Edit distance, capped — only used to tell near-identical Thai spellings apart. */
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  const prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let carry = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const keep = prev[j];
+      prev[j] = Math.min(
+        prev[j] + 1,
+        prev[j - 1] + 1,
+        carry + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+      carry = keep;
+    }
+  }
+  return prev[b.length];
+}
+
+/**
+ * Is `token` this person, allowing for how Thai names get typed?
+ *
+ * "ชนันชิดา" and the directory's "ชนัญชิดา" differ by one letter — น for ญ, the
+ * kind of slip nobody notices while typing and no prefix match forgives. One
+ * substitution is allowed from four characters, two from seven.
+ */
+function nameTokenMatches(token: string, displayName: string): boolean {
+  const t = token.trim().toLowerCase();
+  if (t.length < 2) return false;
+  const dn = displayName.toLowerCase();
+  if (dn.includes(t)) return true;
+  const slack = t.length >= 7 ? 2 : t.length >= 4 ? 1 : 0;
+  if (!slack) return false;
+  return dn
+    .split(/[\s._\-()/]+/)
+    .filter((w) => w.length >= 3)
+    .some((w) => editDistance(t, w) <= slack);
+}
+
+/**
+ * Several names typed for ONE person — a nickname pinned down by the real name.
+ *
+ * "ดูตารางนัด เบส ชนันชิดา" means the เบส called ชนันชิดา. Read as two people it
+ * asked which เบส, then went looking for a second colleague called ชนันชิดา and
+ * found nobody. So: when one candidate for one token also answers to the other
+ * tokens, that single person is the answer.
+ */
+async function collapseToOnePerson(tokens: string[]): Promise<UserInfo | null> {
+  const names = tokens.map((t) => t.trim()).filter((t) => t && !t.includes("@"));
+  if (names.length < 2) return null;
+  for (const probe of names) {
+    let cands: UserInfo[] = [];
+    try {
+      cands = await searchUsers(probe, 10);
+    } catch {
+      continue;
+    }
+    const others = names.filter((n) => n !== probe);
+    const hit = cands.find((c) =>
+      others.every((o) => nameTokenMatches(o, c.displayName || c.mail || ""))
+    );
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * The colleagues this person actually meets, most frequent first.
+ *
+ * "นัดประชุม" with no name used to end the conversation — correct, a booking
+ * needs someone, but a dead end. The calendar already knows who they meet: read
+ * the last six weeks of events and count who turns up.
+ */
+async function frequentContacts(userUpn: string, limit = 8): Promise<UserInfo[]> {
+  const now = nowWall();
+  const from = addMinutes(now, -45 * 24 * 60);
+  let events: Awaited<ReturnType<typeof getEventsRange>> = [];
+  try {
+    events = await getEventsRange(userUpn, wallIso(from), wallIso(now));
+  } catch {
+    return [];
+  }
+  const me = userUpn.toLowerCase();
+  const seen = new Map<string, { info: UserInfo; n: number }>();
+  const note = (name?: string, mail?: string) => {
+    const key = (mail || "").toLowerCase();
+    if (!key || key === me || !key.includes("@")) return;
+    const hit = seen.get(key);
+    if (hit) hit.n++;
+    else seen.set(key, { info: { mail: mail as string, displayName: name || (mail as string) }, n: 1 });
+  };
+  for (const ev of events) {
+    note(ev.organizer?.emailAddress?.name, ev.organizer?.emailAddress?.address);
+    for (const a of ev.attendees || []) note(a.emailAddress?.name, a.emailAddress?.address);
+  }
+  // Rooms, shared mailboxes and the Teams service account attend a lot of
+  // meetings; none of them is somebody to book with.
+  return [...seen.values()]
+    .filter((v) => !isNonPersonAccount(v.info))
+    .filter((v) => v.info.mail.toLowerCase().endsWith("@ktisgroup.com"))
+    .sort((a, b) => b.n - a.n)
+    .slice(0, limit)
+    .map((v) => v.info);
+}
+
 export async function runFindMeeting(
   userUpn: string,
+  // reassigned when several names turn out to be one person
   attendees: MtAttendee[],
   duration: number,
   window?: MtWindow | null,
@@ -3115,6 +3224,19 @@ export async function runFindMeeting(
 ): Promise<CommandResult> {
   const denied = needCalendarConsent();
   if (denied) return denied;
+
+  // One person named twice ("เบส ชนันชิดา") reads as two attendees. Collapse it
+  // before asking anybody to pick, or the picker asks "คนที่ 1/2" about a
+  // second person who does not exist.
+  const needNames = attendees.filter((x) => !x.mail && x.name).map((x) => String(x.name));
+  if (attendees.length > 1 && needNames.length === attendees.length) {
+    const one = await collapseToOnePerson(needNames);
+    if (one) {
+      trace("fetch", `ชื่อเดียวกันคนเดียว · ${needNames.join(" + ")}`);
+      attendees = [{ mail: one.mail, name: one.displayName || one.mail }];
+    }
+  }
+
   // Resolve each name; stop and ask when a name matches more than one person.
   for (let i = 0; i < attendees.length; i++) {
     const a = attendees[i];
@@ -5565,7 +5687,45 @@ async function handleParsed(
     );
 
     if (!attendees.length) {
-      return { intent: "find_meeting_time", reply: "ยังไม่ทราบว่าจะนัดกับใครครับ ลองระบุชื่อคนที่ต้องการดูตารางด้วยนะครับ" };
+      // Nobody named — offer the people actually met lately rather than ending
+      // the conversation with a question the asker has to answer from memory.
+      trace("fetch", "เสนอรายชื่อคนที่นัดบ่อย");
+      const contacts = await frequentContacts(userUpn);
+      if (!contacts.length) {
+        return {
+          intent: "find_meeting_time",
+          reply: "ยังไม่ทราบว่าจะนัดกับใครครับ ลองพิมพ์ชื่อหรืออีเมลของคนที่ต้องการนัดมาได้เลย",
+        };
+      }
+      const dur = Number(params.duration_min) || 30;
+      const contactChoices = [];
+      for (const c of contacts) {
+        const next: MtAttendee[] = [{ mail: c.mail, name: c.displayName || c.mail }];
+        const dnRef = await stashMtDisplayNames(userUpn, next);
+        contactChoices.push({
+          mail: c.mail,
+          displayName: c.displayName || c.mail,
+          data: await encodeMtDataSafe(userUpn, next, dur, null, null, false, null, "ประชุม", dnRef),
+        });
+      }
+      return {
+        intent: "choose_mt_person",
+        reply:
+          "จะนัดกับใครครับ? นี่คือคนที่คุณนัดบ่อยช่วงนี้ — เลือกได้เลย 👇\n" +
+          "💡 พิมพ์เลขได้ เช่น 1 หรือ 1กับ2 (เลือกสองคนพร้อมกัน) หรือพิมพ์ชื่อ/อีเมลคนอื่นก็ได้",
+        choices: contactChoices,
+        pending_mt_pick: {
+          attendees: [{ name: "" }],
+          choices: contactChoices.map((c) => ({ mail: c.mail, displayName: String(c.displayName) })),
+          duration: dur,
+          window: null,
+          after: null,
+          before: null,
+          atMin: null,
+          subject: "ประชุม",
+          includeLunch: false,
+        },
+      };
     }
     let subject = String(params.note || params.subject || "ประชุม").trim() || "ประชุม";
     let atMin = parseHHMM(params.at);
