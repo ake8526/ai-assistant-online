@@ -432,7 +432,7 @@ function peelSchedulePhrases(text: string): string {
  * types, what is left over is the part that could be a name.
  */
 const CALENDAR_TALK =
-  /(?:และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|\d+|[:.,\s/-])/gi;
+  /(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ต้อง|ให้|ว่า|และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|\d+|[:.,\s/-])/gi;
 
 /**
  * Day and time expressions that get typed straight onto a name, because Thai
@@ -475,6 +475,30 @@ function cleanPersonToken(raw: string): string {
   }
   if (isCalendarTalk(n)) return "";
   return n;
+}
+
+/**
+ * A name, or a sentence that was mistaken for one?
+ *
+ * Chasing this with vocabulary lists is a losing game — "ตอนนี้ผมต้องประชุมอะไร
+ * รึปล่าวเช็คที" got looked up in the directory because ปล่าว and ที happened not
+ * to be on the list. The shape of the string answers it instead: people are
+ * called short things, and nobody is called a question about themselves.
+ *
+ *  - a first-person pronoun means the asker is talking about their own diary
+ *  - more than three words, or more than 24 characters with the spaces taken
+ *    out, is prose; the longest real names here ("ณัฐกฤษณ์ บำรุงวงศ์",
+ *    "Supakorn Khamsuwan") sit comfortably under that
+ *
+ * An email address is exempt: it is unambiguous however long it is.
+ */
+function looksLikeSentence(s: string): boolean {
+  const t = String(s || "").trim();
+  if (!t || t.includes("@")) return false;
+  if (/^(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ตัวผม)/i.test(t)) return true;
+  if (/\b(?:i|me|my|mine|myself)\b/i.test(t)) return true;
+  if (t.split(/\s+/).filter(Boolean).length > 3) return true;
+  return t.replace(/\s+/g, "").length > 24;
 }
 
 function calendarSuggestions(kind: "meetings" | "free", period?: string): { label: string; text: string }[] {
@@ -565,6 +589,9 @@ function personFromText(text: string): string {
   // leftover “นัดเบส” / “ประชุมเบส” after peeling ดู
   s = s.replace(/^(?:นัด|ประชุม)\s*/u, "").trim();
   if (isCalendarTalk(s)) return "";
+  // The same shape test the parsed params get: what is left of a whole
+  // question (“ตอนนี้ผมต้องประชุมอะไรรึปล่าวเช็คที”) is prose, not a colleague.
+  if (looksLikeSentence(s)) return "";
   return SELF_WORDS.has(s) ? "" : s;
 }
 
@@ -3915,13 +3942,13 @@ async function handleParsed(
     // "นัดกรพรุ่งนี้" arrives as person="กรพรุ่งนี้"; the name is กร, and the day
     // belongs to the period the caller already parsed.
     const name = stripGluedWhen(params.person);
-    if (!name || isCalendarTalk(name)) delete params.person;
+    if (!name || isCalendarTalk(name) || looksLikeSentence(name)) delete params.person;
     else params.person = name;
   }
   if (Array.isArray(params.attendees)) {
     const cleaned = (params.attendees as unknown[])
       .map((a) => (typeof a === "string" ? stripGluedWhen(a) : ""))
-      .filter((a) => a && !isCalendarTalk(a));
+      .filter((a) => a && !isCalendarTalk(a) && !looksLikeSentence(a));
     if (cleaned.length) params.attendees = cleaned;
     else delete params.attendees;
   }
