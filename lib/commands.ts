@@ -675,6 +675,17 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   if (t === "__preview_summary_link__" || /^\/?test\s*(ประชุม|สรุป|summary|mt)$/i.test(t)) {
     return { intent: "preview_summary_link", params: {} };
   }
+  // "ประชุมไปกี่นาที" / "ขอเวลาที่ใช้ในประชุมแต่ละอัน" — asked right after a list
+  // of meetings, and answered by re-printing the same list until now. It is
+  // calendar arithmetic, so no LLM is involved.
+  if (
+    /(กี่นาที|กี่ชม|กี่ชั่วโมง)/.test(t) ||
+    /(เวลาที่ใช้|ใช้เวลา|ระยะเวลา|ความยาว|นานเท่า?ไ?ห?ร่?)/.test(t) &&
+      /(ประชุม|มีต|meeting)/i.test(t)
+  ) {
+    return { intent: "meeting_durations", params: {} };
+  }
+
   // /test_meeting <เรื่อง> — summarise a named meeting now, without waiting for
   // the scheduled run. No LLM needed to understand it: the subject is typed.
   {
@@ -3812,6 +3823,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       quick?.intent === "ack" ||
       quick?.intent === "preview_summary_link" ||
       quick?.intent === "test_meeting" ||
+      quick?.intent === "meeting_durations" ||
       quick?.intent === "preview_morning" ||
       quick?.intent === "search_files"
     ) {
@@ -3941,9 +3953,39 @@ async function handleParsed(
     };
   }
 
+  if (intent === "meeting_durations") {
+    trace("fetch", "เวลาที่ใช้ในแต่ละประชุม");
+    const { listRecentOnline: listOnline, durationLabel } = await import("@/lib/meetings");
+    const rows = await listOnline(userUpn);
+    if (!rows.length) {
+      return { intent, reply: "ไม่พบประชุมออนไลน์ที่จบไปแล้วใน 14 วันที่ผ่านมาครับ" };
+    }
+    const withMins = rows.filter((r) => r.minutes > 0);
+    const total = withMins.reduce((s, r) => s + r.minutes, 0);
+    const lines = rows.map((r, i) => `${i + 1}) ${r.label}`);
+    return {
+      intent,
+      reply: [
+        "⏱️ เวลาที่ใช้ในแต่ละประชุม (ออนไลน์ 14 วันที่ผ่านมา)",
+        "",
+        ...lines,
+        "",
+        withMins.length
+          ? `รวม ${withMins.length} ประชุม · ${durationLabel(total)} · เฉลี่ย ${durationLabel(
+              Math.round(total / withMins.length)
+            )}/ประชุม`
+          : "ไม่มีข้อมูลเวลาเริ่ม-จบครบพอจะคิดเวลาได้ครับ",
+      ].join("\n"),
+      suggestions: [
+        { label: "สรุปประชุม", text: "สรุปประชุม" },
+        { label: "/test_meeting", text: "/test_meeting" },
+      ],
+    };
+  }
+
   if (intent === "test_meeting") {
     const query = String(params.query || "").trim();
-    const { listTestMeetings, buildTestSummary } = await import("@/lib/meetings");
+    const { listTestMeetings, buildTestSummary, durationLabel } = await import("@/lib/meetings");
     const { buildSummaryUrl, summaryTeaser } = await import("@/lib/summaryPage");
 
     /** The pick-one list, shown when no subject was given or none matched. */
@@ -3957,6 +3999,7 @@ async function handleParsed(
       const lines = choices.map(
         (c) =>
           `${c.index}) ${c.subject} · ${c.when}` +
+          (c.minutes ? ` · ${durationLabel(c.minutes)}` : "") +
           (c.summarised ? " ✅ สรุปแล้ว" : c.hasTranscript ? " 📝 มี transcript" : " ⚠️ ไม่มี transcript")
       );
       return [

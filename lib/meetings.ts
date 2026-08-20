@@ -201,6 +201,23 @@ function meetingWhen(ev: GraphEvent): string {
   return e ? `${head}-${pad(e.getUTCHours())}:${pad(e.getUTCMinutes())}` : head;
 }
 
+/** How long the meeting ran, in minutes — 0 when either end is missing. */
+export function meetingMinutes(ev: GraphEvent): number {
+  const s = ev.start?.dateTime ? Date.parse(ev.start.dateTime) : 0;
+  const e = ev.end?.dateTime ? Date.parse(ev.end.dateTime) : 0;
+  if (!s || !e || e <= s) return 0;
+  return Math.round((e - s) / 60000);
+}
+
+/** "1 ชม. 30 นาที" — minutes alone stop being readable past an hour. */
+export function durationLabel(min: number): string {
+  if (min <= 0) return "";
+  if (min < 60) return `${min} นาที`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h} ชม. ${m} นาที` : `${h} ชม.`;
+}
+
 function attendeesOf(ev: GraphEvent): Attendee[] {
   const people: Attendee[] = [];
   for (const a of ev.attendees || []) {
@@ -423,9 +440,16 @@ export async function listRecentOnline(userUpn: string, lookbackHours = 24 * 14)
   const events = await getRecentOnlineEvents(userUpn, lookbackHours);
   return [...events].reverse().map((ev) => {
     const start = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+    // The duration is the thing people ask for next ("ประชุมไปกี่นาที"), so it
+    // travels with the row rather than being a second question.
+    const mins = meetingMinutes(ev);
+    const dur = durationLabel(mins);
     return {
       event_id: (ev as { id?: string }).id,
-      label: `${start ? fmtDateTime(start) : "?"} — ${ev.subject || "(ไม่มีหัวข้อ)"}`,
+      label:
+        `${start ? fmtDateTime(start) : "?"} — ${ev.subject || "(ไม่มีหัวข้อ)"}` +
+        (dur ? ` · ${dur}` : ""),
+      minutes: mins,
     };
   });
 }
@@ -496,6 +520,8 @@ export type TestMeetingChoice = {
   index: number;
   subject: string;
   when: string;
+  /** how long it ran, in minutes */
+  minutes: number;
   hasTranscript: boolean;
   summarised: boolean;
 };
@@ -536,6 +562,7 @@ export async function listTestMeetings(
       index: out.length + 1,
       subject: subjectOf(ev),
       when: meetingWhen(ev),
+      minutes: meetingMinutes(ev),
       hasTranscript,
       summarised,
     });
