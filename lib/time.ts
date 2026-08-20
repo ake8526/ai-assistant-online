@@ -286,6 +286,59 @@ function thaiMonthNum(token: string): number | null {
  * Parse Thai calendar dates in free text — e.g. "วันที่ 5 กันยา", "5 ก.ย. 2569", "5/9".
  * Returns null when no concrete date is found.
  */
+
+/** Thai month names, full and abbreviated, without a day in front. */
+const THAI_MONTH_ONLY =
+  /(?:^|[^\d])(?:เดือน\s*)?(ม\.?ค\.?|ก\.?พ\.?|มี\.?ค\.?|เม\.?ย\.?|พ\.?ค\.?|มิ\.?ย\.?|ก\.?ค\.?|ส\.?ค\.?|ก\.?ย\.?|ต\.?ค\.?|พ\.?ย\.?|ธ\.?ค\.?|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)(?:\s*(?:พ\.?\s*ศ\.?\s*)?(\d{4}|\d{2}))?/u;
+
+/**
+ * "เดือนกรกฎาคม", "ส.ค. 2569", "ธันวาคมปีที่แล้ว" → that whole month.
+ *
+ * Naming a month used to fall through to period=month, which always means the
+ * CURRENT month: asking in August for กรกฎาคม answered with August. A month
+ * with no year means the nearest one — this year unless that lands more than
+ * six months ahead, in which case the year before is what was meant.
+ *
+ * Returns null when a day number precedes the month ("31 ก.ค."), which is a
+ * single date and already handled.
+ */
+export function resolveThaiMonthRange(
+  text: string
+): { start: Date; end: Date; label: string } | null {
+  const t = (text || "").trim();
+  if (!t) return null;
+  // A day in front makes it a date, not a month.
+  if (/\d{1,2}\s*(?:ม\.?ค|ก\.?พ|มี\.?ค|เม\.?ย|พ\.?ค|มิ\.?ย|ก\.?ค|ส\.?ค|ก\.?ย|ต\.?ค|พ\.?ย|ธ\.?ค|มกรา|กุมภา|มีนา|เมษา|พฤษภา|มิถุนา|กรกฎา|สิงหา|กันยา|ตุลา|พฤศจิ|ธันวา)/u.test(t)) {
+    return null;
+  }
+  const m = THAI_MONTH_ONLY.exec(t);
+  if (!m) return null;
+  const mo = thaiMonthNum(m[1]!);
+  if (!mo) return null;
+
+  const now = nowWall();
+  let year = now.getUTCFullYear();
+  if (m[2]) {
+    let y = Number(m[2]);
+    if (y > 2400) y -= 543; // พ.ศ.
+    else if (y < 100) y += y > 50 ? 2400 - 543 : 2000; // "68" → 2568 → 2025
+    year = y;
+  } else {
+    const monthsAhead = mo - 1 - now.getUTCMonth();
+    if (monthsAhead > 6) year -= 1;
+    if (/ปีที่แล้ว|ปีก่อน/u.test(t)) year -= 1;
+    if (/ปีหน้า/u.test(t)) year += 1;
+  }
+
+  const start = new Date(Date.UTC(year, mo - 1, 1));
+  const end = new Date(Date.UTC(year, mo, 1));
+  const names = [
+    "มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
+    "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม",
+  ];
+  return { start, end, label: `${names[mo - 1]} ${year + 543}` };
+}
+
 export function resolveThaiDateInText(text: string): { start: Date; end: Date; label: string } | null {
   const t = (text || "").trim();
   if (!t) return null;

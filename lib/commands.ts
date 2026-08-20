@@ -94,6 +94,7 @@ import {
   periodRange,
   resolveDay,
   resolveThaiDateInText,
+  resolveThaiMonthRange,
   resolveWeekday,
   startOfDay,
   endOfDay,
@@ -433,7 +434,7 @@ function peelSchedulePhrases(text: string): string {
  * types, what is left over is the part that could be a name.
  */
 const CALENDAR_TALK =
-  /(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ต้อง|ให้|ว่า|ของ|เอง|ตรวจ|ช่วย|บอก|ทราบ|อยาก|ได้|ทั้ง|หมด|เอา|สรุป|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม|และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|ไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|\d+|[:.,\s/-])/gi;
+  /(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ต้อง|ให้|ว่าง|ว่า|ของ|เอง|ตรวจ|ช่วย|บอก|ทราบ|อยาก|ได้|ทั้ง|หมด|เอา|สรุป|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม|และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|ไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|\d+|[:.,\s/-])/gi;
 
 /**
  * Day and time expressions that get typed straight onto a name, because Thai
@@ -522,7 +523,10 @@ function nameFromCandidate(raw: string): string {
   const wordy = s.split(/\s+/).filter(Boolean).length > 1 || s.replace(/\s+/g, "").length > 12;
   if (!wordy && !REQUEST_WORDS.test(s)) return s;
   const residue = s.replace(CALENDAR_TALK, " ").replace(/\s+/g, " ").trim();
-  if (residue && residue.replace(/\s+/g, "").length <= 20) return residue;
+  // One stray letter is what is left when a word was chewed in half; it is
+  // not a name, and searching it matches whoever happens to start that way.
+  if (residue.replace(/\s+/g, "").length < 2) return "";
+  if (residue.replace(/\s+/g, "").length <= 20) return residue;
   return residue ? s : "";
 }
 
@@ -689,8 +693,10 @@ function peopleFromText(text: string): string[] {
 
   parts = parts.flatMap((p) => splitChunk(p));
   parts = parts
-    .map((s) => cleanPersonToken(s))
-    .filter((s) => s && !SELF_WORDS.has(s));
+    .map((s) => nameFromCandidate(cleanPersonToken(s)))
+    // A month name is not a colleague: "ว่างเดือนกันยายนวันไหน" was pulling
+    // กันยายน out as a person and answering with whoever it fuzzily matched.
+    .filter((s) => s && !SELF_WORDS.has(s) && !isCalendarTalk(s) && !looksLikeSentence(s));
 
   // Dedupe while preserving order — BUT keep duplicate nicknames when the user
   // listed multiple people with กับ/และ (e.g. “เบสกับพี่เบส” = two Bases).
@@ -2320,12 +2326,17 @@ function dayHintFromText(text: string): MtWindow | null {
   if (m) return resolveWeekday(m[1] + (m[2] || ""));
   const thaiDate = resolveThaiDateInText(text);
   if (thaiDate) return thaiDate;
+  const namedMonth = resolveThaiMonthRange(text);
+  if (namedMonth) return namedMonth;
   const dm = text.match(/วันที่\s*(\d{1,2}(?:\/\d{1,2}(?:\/\d{2,4})?)?|\d{4}-\d{2}-\d{2})/);
   if (dm) return resolveDay(dm[1]);
   return null;
 }
 
 function resolveFindWindow(params: Record<string, unknown>, text: string): MtWindow | null {
+  // Same precedence as the listing: a month by name is a month, not its 1st.
+  const namedMonth = resolveThaiMonthRange(text);
+  if (namedMonth) return namedMonth;
   if (params.weekday) return resolveWeekday(String(params.weekday));
   if (params.date) return resolveDay(String(params.date));
   if (params.period && ["today", "tomorrow"].includes(String(params.period))) {
@@ -4111,13 +4122,17 @@ async function handleParsed(
       intent = "list_meetings";
       if (who) params.person = who;
       if (!params.period && !params.date && !params.weekday) {
-        params.period = /(?:เดือน|ทั้งเดือน)/u.test(text)
+        // A month named outright ("เดือนกรกฎาคม") resolves to that month later;
+        // "เดือนนี้" and the rest still need a period.
+        params.period = resolveThaiMonthRange(text)
           ? "month"
-          : /(?:สัปดาห์|อาทิตย์)/u.test(text)
-            ? "week"
-            : /พรุ่งนี้/u.test(text)
-              ? "tomorrow"
-              : "today";
+          : /(?:เดือน|ทั้งเดือน)/u.test(text)
+            ? "month"
+            : /(?:สัปดาห์|อาทิตย์)/u.test(text)
+              ? "week"
+              : /พรุ่งนี้/u.test(text)
+                ? "tomorrow"
+                : "today";
       }
       trace("parse", `★ ปรับเป็น list_meetings (${who ? "มีชื่อคน" : "ช่วงกว้างกว่าวันนี้"})`);
     }
@@ -4986,7 +5001,18 @@ async function handleParsed(
     if (bandHint) {
       period = /พรุ่งนี้/.test(tNorm) ? "tomorrow" : "today";
     }
-    const day = params.date ? resolveDay(String(params.date)) : params.weekday ? resolveWeekday(String(params.weekday)) : null;
+    // A month by name is a real range ("กรกฎาคม" is July, not "this month").
+    const namedMonth = resolveThaiMonthRange(tNorm);
+    // The intent parser turns "เดือนกรกฎาคม" into date=2026-07-01, which reads as
+    // one day. A month named in the text is the whole month, so it wins; a real
+    // date ("วันที่ 5 กรกฎาคม") never reaches here as a month.
+    const day =
+      namedMonth ??
+      (params.date
+        ? resolveDay(String(params.date))
+        : params.weekday
+          ? resolveWeekday(String(params.weekday))
+          : null);
     const after = parseHHMM(params.after);
     const before = parseHHMM(params.before);
     const at = parseHHMM(params.at);
@@ -5170,7 +5196,14 @@ async function handleParsed(
     }
 
     const period = resolvePeriodParam(text, params, context, "week");
-    const dayRange = params.weekday ? resolveWeekday(String(params.weekday)) : params.date ? resolveDay(String(params.date)) : null;
+    // "เวลาว่างเดือนกรกฎาคม" is that month, not the 1st of it.
+    const dayRange =
+      resolveThaiMonthRange(text) ??
+      (params.weekday
+        ? resolveWeekday(String(params.weekday))
+        : params.date
+          ? resolveDay(String(params.date))
+          : null);
     const range = dayRange || periodRange(period);
     // token the disambiguation buttons carry so they reuse the same day/period
     const dayIso = dayRange
