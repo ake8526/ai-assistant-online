@@ -1097,6 +1097,8 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
 
       // Exact: mail local or first given name only — never any mid-title token.
       if (local === v || firstTok === v) best = Math.min(best, 0);
+      // An exact nickname beats a nickname that merely starts the same way.
+      else if (isExactParenNick(rawDn, v)) best = Math.min(best, 0.5);
       else if (localAlias || nickMatch) best = Math.min(best, 1);
       else if (firstPrefix || dn.startsWith(v)) best = Math.min(best, 2);
       else if (localPrefix) best = Math.min(best, 3);
@@ -1151,6 +1153,23 @@ function isPersonalParenNick(displayName: string, v: string): boolean {
   const englishWords = parts.filter((t) => /^[a-z]+$/.test(t));
   if (englishWords.length >= 3) return false;
   return parts.some((t) => t === v || (v.length >= 2 && t.startsWith(v) && t.length <= v.length + 4));
+}
+
+/**
+ * The paren nickname matches the query EXACTLY — "กร" is กร, not กรี.
+ *
+ * Both used to score the same, so a search for กร ranked three people equally
+ * and fell back to alphabetical order, putting the person actually called กร
+ * last in the menu.
+ */
+function isExactParenNick(displayName: string, v: string): boolean {
+  const inside = displayName.match(/\(([^)]+)\)/)?.[1];
+  if (!inside) return false;
+  return inside
+    .toLowerCase()
+    .split(/[\s._\-]+/)
+    .filter(Boolean)
+    .some((t) => t === v);
 }
 
 function isServiceNick(s: string): boolean {

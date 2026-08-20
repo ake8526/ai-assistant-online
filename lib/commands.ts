@@ -432,7 +432,25 @@ function peelSchedulePhrases(text: string): string {
  * types, what is left over is the part that could be a name.
  */
 const CALENDAR_TALK =
-  /(?:และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|\d+|[:.,\s/-])/gi;
+  /(?:และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|\d+|[:.,\s/-])/gi;
+
+/**
+ * Day and time expressions that get typed straight onto a name, because Thai
+ * puts no space between words: "นัดกรพรุ่งนี้" is กร + พรุ่งนี้, and looking up
+ * "กรพรุ่งนี้" in the directory finds nobody. Only whole, unambiguous phrases
+ * are listed — "วันนี้" but never bare "วัน" — so a colleague called วันดี or
+ * ศุกร์ยังคงหาเจอ.
+ */
+const GLUED_WHEN =
+  /(?:พรุ่งนี้|วันนี้|มะรืนนี้|มะรืน|เมื่อวานนี้|เมื่อวาน|คืนนี้|เช้านี้|บ่ายนี้|เย็นนี้|สัปดาห์นี้|สัปดาห์หน้า|อาทิตย์นี้|อาทิตย์หน้า|เดือนนี้|เดือนหน้า|วันจันทร์|วันอังคาร|วันพุธ|วันพฤหัสบดี|วันพฤหัส|วันศุกร์|วันเสาร์|วันอาทิตย์|จันทร์นี้|อังคารนี้|พุธนี้|พฤหัสนี้|ศุกร์นี้|เสาร์นี้|อาทิตย์นี้|ตอนเช้า|ตอนบ่าย|ตอนเย็น|ทั้งวัน|กี่โมง)/gu;
+
+/** Pull the day/time phrase off a name that was typed against it. */
+function stripGluedWhen(raw: string): string {
+  return String(raw || "")
+    .replace(GLUED_WHEN, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 /**
  * True when nothing but calendar talk is left — "และวันพฤหัสล่ะ" is a follow-up
@@ -3893,8 +3911,19 @@ async function handleParsed(
   // the one place a bogus name can be dropped. A follow-up that only moves the
   // day — "และวันพฤหัสล่ะ" — must fall back to whoever was being discussed,
   // not be looked up in the directory as a person.
-  if (typeof params.person === "string" && isCalendarTalk(params.person)) {
-    delete params.person;
+  if (typeof params.person === "string") {
+    // "นัดกรพรุ่งนี้" arrives as person="กรพรุ่งนี้"; the name is กร, and the day
+    // belongs to the period the caller already parsed.
+    const name = stripGluedWhen(params.person);
+    if (!name || isCalendarTalk(name)) delete params.person;
+    else params.person = name;
+  }
+  if (Array.isArray(params.attendees)) {
+    const cleaned = (params.attendees as unknown[])
+      .map((a) => (typeof a === "string" ? stripGluedWhen(a) : ""))
+      .filter((a) => a && !isCalendarTalk(a));
+    if (cleaned.length) params.attendees = cleaned;
+    else delete params.attendees;
   }
 
   if (intent === "clear_memory") {
