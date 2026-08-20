@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { guard } from "@/lib/guard";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { PAUSABLE_JOBS, pauseState } from "@/lib/opsPause";
+import { cronWindow } from "@/lib/cronWindow";
 import { searchUsers } from "@/lib/graph";
 import { getSetting, setSetting } from "@/lib/store";
 
@@ -624,12 +625,30 @@ export async function GET(req: Request) {
   // Every mailbox that appears anywhere in this response, resolved once.
   const names = await displayNames([...new Set(rows.map((r) => r.upn || "").filter(Boolean))]);
 
+  // Whether the scheduler is open right now, and until when. Without this the
+  // activity table below reads as "these jobs are running" when every row in it
+  // is history — which is exactly how it was read.
+  const win = await cronWindow();
+  const nowMin = (() => {
+    const bkk = new Date(Date.now() + BKK_OFFSET_MS);
+    return bkk.getUTCHours() * 60 + bkk.getUTCMinutes();
+  })();
+  const hhmm = (m: number) =>
+    `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
   return NextResponse.json({
     date,
     today: date === bkkToday(),
     perms: gate.perms,
     resolvedUsers: resolved,
     names,
+    cronWindow: {
+      from: hhmm(win.from),
+      to: hhmm(win.to),
+      open: nowMin >= win.from && nowMin <= win.to,
+      nowClock: hhmm(nowMin),
+      source: win.source,
+    },
     truncated: rows.length >= MAX_ROWS,
     activityWindowMin: ACTIVITY_WINDOW_MS / 60_000,
     activity,

@@ -83,6 +83,7 @@ type LogResp = {
   truncated?: boolean;
   note?: string;
   activityWindowMin?: number;
+  cronWindow?: { from: string; to: string; open: boolean; nowClock: string; source: string };
   activity?: Activity[];
   shownCount?: number;
   matchedCount?: number;
@@ -574,6 +575,9 @@ const CSS = `
 .mlog .act table.mini{width:auto;margin-bottom:6px}
 .mlog .act table.mini td{border:0;padding:2px 14px 2px 0;font-size:14px;white-space:nowrap}
 .mlog .act .caret{color:var(--dim)}
+.mlog .closedwin{padding:7px 10px;border-bottom:1px solid var(--hair);background:rgba(240,180,41,.10);color:var(--amber);font-size:15px}
+.mlog .openwin{padding:7px 10px;border-bottom:1px solid var(--hair);background:rgba(57,211,83,.08);color:var(--green);font-size:15px}
+.mlog .act .stale{color:var(--amber)}
 .mlog .wholine{padding:5px 10px 7px;color:var(--ink);font-size:15px;border-bottom:1px solid var(--hair)}
 `;
 
@@ -1203,8 +1207,24 @@ function LogView({
         <div className="act">
           <div className="ah pix">
             งานตามเวลาที่ทำไปแล้ว · ย้อนหลัง {data.activityWindowMin ?? 30} นาที{" "}
-            <span className="dim">(งานที่หยุดไว้จะไม่แสดง)</span>
+            <span className="dim">(ประวัติ ไม่ใช่งานที่กำลังทำ · งานที่หยุดไว้จะไม่แสดง)</span>
           </div>
+          {/* The rows below are the last half hour of history. When the
+              scheduler is closed they are all in the past, and a row whose last
+              run was 16 minutes ago read as a job still going. */}
+          {data.cronWindow && !data.cronWindow.open && (
+            <div className="closedwin">
+              ⏸ <b>งานตั้งเวลาหยุดแล้ว</b> — ตอนนี้ {data.cronWindow.nowClock} อยู่นอกหน้าต่าง{" "}
+              {data.cronWindow.from}–{data.cronWindow.to} · จะเริ่มรอบใหม่พรุ่งนี้{" "}
+              {data.cronWindow.from} · <span className="dim">แถวด้านล่างคือรอบที่ทำไปแล้ว</span>
+            </div>
+          )}
+          {data.cronWindow?.open && (
+            <div className="openwin">
+              ● <b>อยู่ในหน้าต่างเวลาทำงาน</b> {data.cronWindow.from}–{data.cronWindow.to} · ตอนนี้{" "}
+              {data.cronWindow.nowClock}
+            </div>
+          )}
           {/* A polling job appearing here every few minutes is the system
               working, not a problem — which is not obvious from a list of
               repeated rows. Say which colour means what. */}
@@ -1248,7 +1268,11 @@ function LogView({
                         : a.users || "—"}
                     </td>
                     <td>
-                      {a.lastClock} <span className="dim">({ago(a.lastAgoSec)})</span>
+                      {a.lastClock}{" "}
+                      <span className={a.lastAgoSec > 360 ? "stale" : "dim"}>
+                        ({ago(a.lastAgoSec)}
+                        {a.lastAgoSec > 360 ? " · ไม่ได้ทำงานแล้ว" : ""})
+                      </span>
                     </td>
                     <td>
                       {a.ok > 0 && <span className="tag ok">สำเร็จ {a.ok}</span>}
