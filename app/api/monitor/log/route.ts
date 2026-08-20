@@ -3,6 +3,7 @@ import { guard } from "@/lib/guard";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { PAUSABLE_JOBS, pauseState } from "@/lib/opsPause";
 import { searchUsers } from "@/lib/graph";
+import { getSetting, setSetting } from "@/lib/store";
 
 // History feed for /monitor/log — "ดู log ย้อนหลัง".
 //
@@ -35,6 +36,64 @@ type TraceRow = {
 function shortUser(upn: string | null): string {
   if (!upn) return "—";
   return upn.split("@")[0] || upn;
+}
+
+/**
+ * Mailbox → the name people use for each other.
+ *
+ * "natthakrit.b" is a mailbox, not a person; on a page whose whole job is
+ * telling you who was served, it should say the name shown in the directory.
+ * Resolved through Graph and kept in one settings row, because names change
+ * about never and the alternative is a directory call per user per refresh.
+ */
+const NAMES_KEY = "display_names";
+const NAMES_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function displayNames(upns: string[]): Promise<Record<string, string>> {
+  const wanted = [...new Set(upns.filter((u) => u && u.includes("@")).map((u) => u.toLowerCase()))];
+  if (!wanted.length) return {};
+
+  let cache: Record<string, { name: string; ts: number }> = {};
+  try {
+    const raw = await getSetting("_ops", NAMES_KEY);
+    if (raw) cache = JSON.parse(raw) as typeof cache;
+  } catch {
+    cache = {};
+  }
+
+  const now = Date.now();
+  const missing = wanted.filter((u) => !cache[u]?.name || now - (cache[u]?.ts || 0) > NAMES_TTL_MS);
+  if (missing.length) {
+    await Promise.all(
+      missing.map(async (upn) => {
+        try {
+          const hit = (await searchUsers(upn, 1))[0];
+          const name = (hit?.displayName || "").trim();
+          // A lookup that just echoes the address is not a name — do not cache it
+          // as one, or the page shows the mailbox forever.
+          if (name && !name.includes("@")) cache[upn] = { name, ts: now };
+        } catch {
+          /* a directory hiccup must not fail the page */
+        }
+      })
+    );
+    try {
+      await setSetting("_ops", NAMES_KEY, JSON.stringify(cache));
+    } catch {
+      /* cache is an optimisation, not a requirement */
+    }
+  }
+
+  // Keyed by BOTH the full address and the local part, since the rows carry the
+  // short form and the client should not have to guess.
+  const out: Record<string, string> = {};
+  for (const upn of wanted) {
+    const name = cache[upn]?.name;
+    if (!name) continue;
+    out[upn] = name;
+    out[shortUser(upn)] = name;
+  }
+  return out;
 }
 
 /** Today in Bangkok, as YYYY-MM-DD. */
@@ -511,12 +570,33 @@ export async function GET(req: Request) {
         }
       }
 
+      // Per person, so a row can be opened instead of read as one blur: four
+      // quiet runs for one colleague and four failures for another are not the
+      // same morning, and the folded row cannot tell them apart.
+      const perUser = new Map<
+        string,
+        { user: string; runs: number; ok: number; quiet: number; errors: number; incomplete: number; lastClock: string }
+      >();
+      for (const j of list) {
+        const row =
+          perUser.get(j.user) ||
+          { user: j.user, runs: 0, ok: 0, quiet: 0, errors: 0, incomplete: 0, lastClock: j.clock };
+        row.runs++;
+        // the outcome is called "error"; the tally field is "errors"
+        if (j.outcome === "error") row.errors++;
+        else row[j.outcome]++;
+        perUser.set(j.user, row);
+      }
+
       return {
         title,
         runs: list.length,
         users: [...new Set(list.map((j) => j.user))].length,
         /** Who this job ran for — the count alone could not be clicked into. */
         userList: [...new Set(list.map((j) => j.user))].slice(0, 12),
+        byUser: [...perUser.values()].sort(
+          (a, b) => b.errors + b.incomplete - (a.errors + a.incomplete) || b.runs - a.runs
+        ),
         lastClock: newest.clock,
         lastAgoSec: Math.max(0, Math.round((Date.now() - Date.parse(newest.startedAt)) / 1000)),
         ok: list.filter((j) => j.outcome === "ok").length,
@@ -538,11 +618,15 @@ export async function GET(req: Request) {
     })
     .sort((a, b) => a.lastAgoSec - b.lastAgoSec);
 
+  // Every mailbox that appears anywhere in this response, resolved once.
+  const names = await displayNames([...new Set(rows.map((r) => r.upn || "").filter(Boolean))]);
+
   return NextResponse.json({
     date,
     today: date === bkkToday(),
     perms: gate.perms,
     resolvedUsers: resolved,
+    names,
     truncated: rows.length >= MAX_ROWS,
     activityWindowMin: ACTIVITY_WINDOW_MS / 60_000,
     activity,

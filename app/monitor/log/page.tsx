@@ -29,11 +29,21 @@ type ActivityReason = {
   traceId: string;
   clock: string;
 };
+type ActivityUser = {
+  user: string;
+  runs: number;
+  ok: number;
+  quiet: number;
+  errors: number;
+  incomplete: number;
+  lastClock: string;
+};
 type Activity = {
   title: string;
   runs: number;
   users: number;
   userList?: string[];
+  byUser?: ActivityUser[];
   lastClock: string;
   lastAgoSec: number;
   ok: number;
@@ -66,6 +76,8 @@ type LogResp = {
   today?: boolean;
   perms?: string[];
   resolvedUsers?: { mail: string; name: string }[] | null;
+  /** mailbox (full and local part) → the name shown in the directory */
+  names?: Record<string, string>;
   truncated?: boolean;
   note?: string;
   activityWindowMin?: number;
@@ -555,16 +567,25 @@ const CSS = `
 .mlog .act tr.reason td{border-top:0;padding-top:0;padding-bottom:7px;color:var(--ink);font-size:14px;line-height:1.6}
 .mlog button.openjob{font-family:inherit;font-size:13px;color:var(--amber);background:transparent;border:1px solid var(--amber);border-radius:4px;padding:1px 7px;margin-left:6px;cursor:pointer}
 .mlog button.openjob:hover{background:var(--amber);color:#0a0a0a}
+.mlog .act tr.detail td{border-top:0;padding:2px 0 10px}
+.mlog .act .dh{color:var(--dim);font-size:13px;margin:2px 0 4px}
+.mlog .act table.mini{width:auto;margin-bottom:6px}
+.mlog .act table.mini td{border:0;padding:2px 14px 2px 0;font-size:14px;white-space:nowrap}
+.mlog .act .caret{color:var(--dim)}
 `;
 
 function JobRow({
   job,
   canStop,
   onClose,
+  nameOf,
+  nameFull,
 }: {
   job: LogJob;
   canStop: boolean;
   onClose: (traceId: string) => Promise<string>;
+  nameOf: (user: string) => string;
+  nameFull: (user: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -574,7 +595,7 @@ function JobRow({
       <div className="jh" onClick={() => setOpen((v) => !v)}>
         <span className={`dot ${job.outcome}`} title={OUTCOME_TH[job.outcome]} />
         <span className="t">{job.clock}</span>
-        <span className="u">{job.user}</span>
+        <span className="u" title={nameFull(job.user)}>{nameOf(job.user)}</span>
         <span className="c">{channelTH(job.channel)}</span>
         <span className="ttl">{titleShort(job.title)}</span>
         <span className="d">
@@ -651,6 +672,8 @@ function LogView({
   /** One job by id — the API can already fetch a single trace; the page could
    *  not ask for it, so "open the job that failed" had nowhere to go. */
   const [trace, setTrace] = useState("");
+  /** Which activity row is open. */
+  const [openAct, setOpenAct] = useState("");
   const [outcome, setOutcome] = useState("");
   const [calOpen, setCalOpen] = useState(false);
   const [data, setData] = useState<LogResp | null>(null);
@@ -800,6 +823,42 @@ function LogView({
   }, [getToken, load]);
 
   const can = (p: string) => !!data?.perms?.includes(p);
+
+  /**
+   * The directory stores "Supakorn Khamsuwan (กร ศุภกร ขำสุวรรณ)" — every
+   * colleague's full name twice over, which no table column can hold. What
+   * people call each other is the nickname in the brackets, so that is the
+   * label; the full name and the mailbox stay in the tooltip.
+   *
+   * Nicknames do collide here (the assistant has a whole command for finding
+   * duplicates), so when two of the visible names shorten to the same thing,
+   * both keep a given name to stay tellable apart.
+   */
+  const nameLabels = React.useMemo(() => {
+    const names = data?.names || {};
+    const nickOf = (full: string) => {
+      const inside = full.match(/\(([^)]+)\)/)?.[1]?.trim();
+      const parts = (inside || full).split(/\s+/).filter(Boolean);
+      return { short: parts[0] || full, long: parts.slice(0, 2).join(" ") || full };
+    };
+    const seen = new Map<string, number>();
+    for (const full of new Set(Object.values(names))) {
+      const s = nickOf(full).short;
+      seen.set(s, (seen.get(s) || 0) + 1);
+    }
+    const out: Record<string, string> = {};
+    for (const [key, full] of Object.entries(names)) {
+      const { short, long } = nickOf(full);
+      out[key] = (seen.get(short) || 0) > 1 ? long : short;
+    }
+    return out;
+  }, [data?.names]);
+
+  /** Short label for a row. */
+  const nameOf = (user: string) => (user && nameLabels[user]) || user;
+  /** Everything we know, for the tooltip. */
+  const nameFull = (user: string) =>
+    data?.names?.[user] ? `${data.names[user]} · ${user}` : user;
   // One dead job at a time: releases whatever locks it left and writes a closing
   // line into its own trace, so the history keeps its shape.
   const closeJob = useCallback(
@@ -1017,7 +1076,9 @@ function LogView({
                 {live.running.map((r) => (
                   <tr key={r.traceId}>
                     <td className="n">{titleTH(r.title)}</td>
-                    <td className="u">{r.user}</td>
+                    <td className="u" title={nameFull(r.user)}>
+                      {nameOf(r.user)}
+                    </td>
                     <td>
                       <span className="tag run">{STEP_TH[r.step] || r.step}</span>{" "}
                       <span className="dim">{r.stepLabel}</span>
@@ -1117,15 +1178,22 @@ function LogView({
                 // no way to see what actually happened in it.
                 <React.Fragment key={a.title}>
                   <tr
-                    className={`click${q === a.title ? " on" : ""}`}
-                    title="คลิกเพื่อกรองรายการงานด้านล่างให้เหลือแต่งานนี้"
-                    onClick={() => setQ(q === a.title ? "" : a.title)}
+                    className={`click${openAct === a.title ? " on" : ""}`}
+                    title="คลิกเพื่อดูรายละเอียด — ใครบ้าง กี่รอบ ผลเป็นอย่างไร"
+                    onClick={() => setOpenAct((v) => (v === a.title ? "" : a.title))}
                   >
-                    <td className="n">{titleTH(a.title)}</td>
+                    <td className="n">
+                      <span className="caret">{openAct === a.title ? "▾" : "▸"}</span>{" "}
+                      {titleTH(a.title)}
+                    </td>
                     <td>{a.runs}</td>
-                    {/* The count could not be clicked into, so name the people. */}
-                    <td className="who" title={(a.userList || []).join(", ")}>
-                      {a.userList?.length ? a.userList.join(", ") : a.users || "—"}
+                    {/* A count of people could not be clicked into, and a mailbox
+                        is not a name — so: names, and the rest behind "+N คน". */}
+                    <td className="who" title={(a.userList || []).map(nameFull).join("\n")}>
+                      {a.userList?.length
+                        ? a.userList.slice(0, 3).map(nameOf).join(", ") +
+                          (a.users > 3 ? ` +${a.users - 3} คน` : "")
+                        : a.users || "—"}
                     </td>
                     <td>
                       {a.lastClock} <span className="dim">({ago(a.lastAgoSec)})</span>
@@ -1137,6 +1205,61 @@ function LogView({
                       {a.incomplete > 0 && <span className="tag inc">ไม่จบงาน {a.incomplete}</span>}
                     </td>
                   </tr>
+                  {openAct === a.title && (
+                    <tr className="detail">
+                      <td />
+                      <td colSpan={4}>
+                        <div className="dh">รายคน · {a.byUser?.length || 0} คน</div>
+                        <table className="mini">
+                          <tbody>
+                            {(a.byUser || []).map((u) => (
+                              <tr key={u.user}>
+                                <td className="who" title={nameFull(u.user)}>
+                                  {nameOf(u.user)}
+                                </td>
+                                <td>{u.runs} รอบ</td>
+                                <td>
+                                  {u.ok > 0 && <span className="tag ok">สำเร็จ {u.ok}</span>}
+                                  {u.quiet > 0 && (
+                                    <span className="tag quiet">ไม่มีอะไรต้องส่ง {u.quiet}</span>
+                                  )}
+                                  {u.errors > 0 && <span className="tag err">ผิดพลาด {u.errors}</span>}
+                                  {u.incomplete > 0 && (
+                                    <span className="tag inc">ไม่จบงาน {u.incomplete}</span>
+                                  )}
+                                </td>
+                                <td className="dim">ล่าสุด {u.lastClock}</td>
+                                <td>
+                                  <button
+                                    className="openjob"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTrace("");
+                                      setQ(a.title);
+                                      setUser(u.user);
+                                    }}
+                                  >
+                                    ดูงานของคนนี้ →
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <button
+                          className="openjob"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTrace("");
+                            setUser("");
+                            setQ(a.title);
+                          }}
+                        >
+                          ดูทุกงานของ “{titleTH(a.title)}” ใน log →
+                        </button>
+                      </td>
+                    </tr>
+                  )}
                   {/* Why, in the same table. A red count with the reason a click
                       and a scroll away was the whole complaint. */}
                   {(a.reasons || []).map((r) => (
@@ -1179,7 +1302,14 @@ function LogView({
       )}
 
       {data?.traces.map((j) => (
-        <JobRow key={j.traceId} job={j} canStop={can("jobs.stop")} onClose={closeJob} />
+        <JobRow
+          key={j.traceId}
+          job={j}
+          canStop={can("jobs.stop")}
+          onClose={closeJob}
+          nameOf={nameOf}
+          nameFull={nameFull}
+        />
       ))}
     </div>
   );
