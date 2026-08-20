@@ -590,6 +590,9 @@ export async function GET(req: Request) {
 
       return {
         title,
+        /** The pause switch this job answers to, when it has one — the activity
+         *  table lists recurring jobs, so it should be able to stop one. */
+        pauseKey: PAUSABLE_JOBS.find((p) => p.traceTitle === title)?.key || null,
         runs: list.length,
         users: [...new Set(list.map((j) => j.user))].length,
         /** Who this job ran for — the count alone could not be clicked into. */

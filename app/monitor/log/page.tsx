@@ -40,6 +40,8 @@ type ActivityUser = {
 };
 type Activity = {
   title: string;
+  /** the pause switch this job answers to, when it has one */
+  pauseKey?: string | null;
   runs: number;
   users: number;
   userList?: string[];
@@ -674,6 +676,8 @@ function LogView({
   const [trace, setTrace] = useState("");
   /** Which activity row is open. */
   const [openAct, setOpenAct] = useState("");
+  /** Which recurring job the user is about to stop, if any. */
+  const [pauseAsk, setPauseAsk] = useState<{ key: string; label: string } | null>(null);
   const [outcome, setOutcome] = useState("");
   const [calOpen, setCalOpen] = useState(false);
   const [data, setData] = useState<LogResp | null>(null);
@@ -823,6 +827,37 @@ function LogView({
   }, [getToken, load]);
 
   const can = (p: string) => !!data?.perms?.includes(p);
+
+  /**
+   * Stop ONE recurring job until midnight. The red button at the top stops the
+   * whole morning for everyone; this row is a single job, and there was no way
+   * to say "just this one" — the only per-row button was for closing a dead run,
+   * which does nothing for a job that is running and misbehaving.
+   */
+  const pauseJob = useCallback(
+    async (key: string, label: string) => {
+      setCancelling(true);
+      setCancelMsg("");
+      try {
+        const token = await getToken();
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const r = await fetch(`/api/monitor/cancel?kind=none&jobs=${encodeURIComponent(key)}`, {
+          method: "POST",
+          headers,
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        setCancelMsg(`หยุด “${label}” แล้ว — จะไม่ทำงานอีกจนถึงเที่ยงคืน (กด “เปิดกลับเลย” ได้ตลอด)`);
+        void load();
+      } catch (e) {
+        setCancelMsg(`หยุดไม่สำเร็จ: ${String(e).slice(0, 200)}`);
+      } finally {
+        setCancelling(false);
+      }
+    },
+    [getToken, load]
+  );
 
   /**
    * The directory stores "Supakorn Khamsuwan (กร ศุภกร ขำสุวรรณ)" — every
@@ -1027,6 +1062,43 @@ function LogView({
           </button>
         </div>
       )}
+      {pauseAsk && (
+        <div className="modal-back" onClick={() => setPauseAsk(null)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mh">หยุด “{pauseAsk.label}” ?</div>
+            <div className="mb">
+              <b>งานนี้จะไม่ทำงานอีกจนถึงเที่ยงคืน</b> แล้วกลับมาเองรอบแรกของพรุ่งนี้ ·
+              ระหว่างนี้จะไม่มีการแจ้งจากงานนี้เลย เช่น
+              <ul>
+                <li>แจ้งนัดใหม่ → มีคนนัดเข้ามาจะไม่มีใครบอก</li>
+                <li>สรุปประชุม → ประชุมจบแล้วจะไม่มีสรุปส่งให้</li>
+                <li>เตือนนัดค้างตอบ → คนที่ยังไม่ตอบจะไม่ถูกตาม</li>
+              </ul>
+              เปิดกลับได้ตลอดที่ปุ่ม “เปิดกลับเลย” ด้านบน
+            </div>
+            <div className="ma">
+              <button onClick={() => setPauseAsk(null)}>ยกเลิก</button>
+              <button
+                className="danger"
+                autoFocus
+                onClick={() => {
+                  const ask = pauseAsk;
+                  setPauseAsk(null);
+                  if (ask) void pauseJob(ask.key, ask.label);
+                }}
+              >
+                หยุดงานนี้
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!!data?.resolvedUsers?.length && (
         <div className="note match">
           ค้นชื่อเล่น “{user}” เจอใน M365: {data.resolvedUsers.map((r) => r.name).join(" · ")}
@@ -1203,6 +1275,20 @@ function LogView({
                       {a.quiet > 0 && <span className="tag quiet">ไม่มีอะไรต้องส่ง {a.quiet}</span>}
                       {a.errors > 0 && <span className="tag err">ผิดพลาด {a.errors}</span>}
                       {a.incomplete > 0 && <span className="tag inc">ไม่จบงาน {a.incomplete}</span>}
+                      {can("jobs.stop") && a.pauseKey && (
+                        <button
+                          className="stop1"
+                          style={{ marginLeft: 10, marginRight: 0 }}
+                          disabled={cancelling}
+                          title="หยุดงานตั้งเวลานี้ไม่ให้ทำงานอีกจนถึงเที่ยงคืน"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPauseAsk({ key: a.pauseKey as string, label: titleTH(a.title) });
+                          }}
+                        >
+                          ■ หยุดงานนี้
+                        </button>
+                      )}
                     </td>
                   </tr>
                   {openAct === a.title && (

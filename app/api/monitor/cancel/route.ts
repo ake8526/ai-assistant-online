@@ -3,7 +3,7 @@ import { guard } from "@/lib/guard";
 import { runWithTrace, trace } from "@/lib/trace";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { alreadySentToday, clearInflight, markSent, type NotifyKind } from "@/lib/notify";
-import { PAUSABLE_JOBS, pauseJobs, resumeJobs, type PausableJob } from "@/lib/opsPause";
+import { PAUSABLE_JOBS, pauseJobs, pauseState, resumeJobs, type PausableJob } from "@/lib/opsPause";
 
 // Stop pending / looping scheduled work — the button behind /monitor "หยุดงานค้าง".
 //
@@ -61,8 +61,17 @@ export async function POST(req: Request) {
           PAUSABLE_JOBS.some((p) => p.key === j)
         );
   const kindParam = (url.searchParams.get("kind") || "both").toLowerCase();
+  // kind=none — pause the named jobs and touch nobody's deliveries. Stopping one
+  // polling job from the activity table must not also mark everyone's morning
+  // as sent, which is what this route does for the big red button.
   const kinds: NotifyKind[] =
-    kindParam === "brief" ? ["brief"] : kindParam === "news" ? ["news"] : ["brief", "news"];
+    kindParam === "none"
+      ? []
+      : kindParam === "brief"
+        ? ["brief"]
+        : kindParam === "news"
+          ? ["news"]
+          : ["brief", "news"];
 
   const users = scope === "me" && caller.includes("@") ? [caller] : await linkedUsers();
 
@@ -83,14 +92,26 @@ export async function POST(req: Request) {
     }
   }
 
-  const paused = pausedJobs.length ? await pauseJobs(pausedJobs) : null;
+  // Merge with whatever is already paused — pausing one job must not quietly
+  // release another.
+  const current = await pauseState();
+  const merged = [...new Set([...(current?.jobs || []), ...pausedJobs])];
+  const paused = pausedJobs.length ? await pauseJobs(merged) : null;
 
   // Record it in the same trace log the monitor reads, so a stopped morning is
   // explainable later ("ทำไมวันนั้นไม่มีสรุปเช้า").
   await runWithTrace({ upn: caller.includes("@") ? caller : undefined, channel: "web" }, async () => {
-    trace("receive", "หยุดงานค้างจากหน้า Monitor");
-    const pausedNote = paused ? ` · พัก cron ${paused.jobs.length} งาน` : "";
-    trace("reply", `หยุดแล้ว ${count} งาน · ${users.length} คน (${kinds.join("+")})${pausedNote}`);
+    const names = pausedJobs
+      .map((j) => PAUSABLE_JOBS.find((p) => p.key === j)?.label || j)
+      .join(" · ");
+    trace("receive", kinds.length ? "หยุดงานค้างจากหน้า Monitor" : `หยุดงานตั้งเวลาจากหน้า Monitor · ${names}`);
+    const pausedNote = paused ? ` · พักงานตั้งเวลา ${names} ถึงเที่ยงคืน` : "";
+    trace(
+      "reply",
+      kinds.length
+        ? `หยุดแล้ว ${count} งาน · ${users.length} คน (${kinds.join("+")})${pausedNote}`
+        : `พักงานตั้งเวลาแล้ว: ${names} (ถึงเที่ยงคืน)`
+    );
   });
 
   return NextResponse.json({
