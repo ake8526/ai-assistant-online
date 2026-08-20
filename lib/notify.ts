@@ -138,6 +138,17 @@ function bkkNow(): { min: number; day: number; date: string } {
  *  deliver before the user's time. */
 export const NOTIFY_EARLY_SLACK_MIN = 0;
 
+/**
+ * How late a delivery may still go out, counted from the time the user set.
+ *
+ * "Due until it is sent" was the old rule, so a 07:00 brief was still being
+ * rebuilt and retried at 15:00 — a morning briefing that arrives in the
+ * afternoon is not what anyone asked for, and when the send itself is broken it
+ * is a loop that runs until 20:55. Past this window the day is simply missed:
+ * the agenda is stale, the news is stale, and tomorrow's run is unaffected.
+ */
+export const NOTIFY_LATE_CUTOFF_MIN = 30;
+
 /** Minimum gap between the news push and the agenda push. Small on purpose: the
  *  1-minute spacing comes from brief.time = news.time + 1, this only stops the
  *  two landing in the same second when a late catch-up run sends both at once. */
@@ -179,9 +190,10 @@ function briefMustWaitForNews(
 }
 
 /** Due-check with no I/O — `rows` must cover NOTIFY_STATE_KEYS.
- *  Due when Bangkok wall-clock has reached the user's set time (HH:MM) and the
- *  kind has not gone out today. The Worker polls every minute, so "due" normally
- *  turns true on the exact minute; a late catch-up still delivers the day. */
+ *  Due inside the window [set time − early slack, set time + NOTIFY_LATE_CUTOFF_MIN]
+ *  when the kind has not gone out today. The Worker polls every minute, so "due"
+ *  normally turns true on the exact minute; a catch-up run still delivers the
+ *  day as long as it is inside the window. */
 export function isDueFromState(rows: Record<string, string>, kind: NotifyKind): boolean {
   const all = notifyConfigFromSettings(rows);
   const cfg = all[kind];
@@ -191,9 +203,27 @@ export function isDueFromState(rows: Record<string, string>, kind: NotifyKind): 
   const [hh, mm] = cfg.time.split(":").map((x) => parseInt(x, 10));
   const dueMin = (hh || 0) * 60 + (mm || 0);
   if (at.min < dueMin - NOTIFY_EARLY_SLACK_MIN) return false;
+  if (at.min > dueMin + NOTIFY_LATE_CUTOFF_MIN) return false; // too late to be today's delivery
   if (sentDate(rows[`${kind}_last_sent`] ?? null) === at.date) return false; // once per day
   if (kind === "brief" && briefMustWaitForNews(rows, all.news, at, dueMin)) return false;
   return true;
+}
+
+/**
+ * Was this kind due earlier today, never sent, and is the window now closed?
+ * The answer the log should carry: "07:00 came and went and nothing arrived",
+ * rather than silence.
+ */
+export function missedFromState(rows: Record<string, string>, kind: NotifyKind): boolean {
+  const all = notifyConfigFromSettings(rows);
+  const cfg = all[kind];
+  if (!cfg.enabled || !cfg.days.length) return false;
+  const at = bkkNow();
+  if (!cfg.days.includes(at.day)) return false;
+  const [hh, mm] = cfg.time.split(":").map((x) => parseInt(x, 10));
+  const dueMin = (hh || 0) * 60 + (mm || 0);
+  if (at.min <= dueMin + NOTIFY_LATE_CUTOFF_MIN) return false; // window still open
+  return sentDate(rows[`${kind}_last_sent`] ?? null) !== at.date;
 }
 
 export async function isDueNow(upn: string, kind: NotifyKind): Promise<boolean> {

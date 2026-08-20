@@ -200,12 +200,19 @@ async function run(req: Request) {
       } else {
         users = await linkedUsers();
       }
-      // One query decides who is due. This runs every minute all morning and
-      // almost always finds nobody — checking per user per kind cost 4-6s, which
-      // the "arrive at 07:00" target cannot spare.
-      // Nothing can go out until the quota resets with the month — say it once
-      // and stop, instead of rebuilding every brief every 5 minutes to fail at
-      // the last step. force=1 (a manual send) still goes through.
+      // One query decides who is due, before anything else is asked: outside the
+      // delivery window (set time + NOTIFY_LATE_CUTOFF_MIN) there is nobody to
+      // serve, so the tick must cost nothing and say nothing — it fires every
+      // 5 minutes until 20:55.
+      const due = force ? null : await dueNowForUsers(users);
+      const anyDue = !due || users.some((u) => due[u]?.news || due[u]?.brief);
+      if (!anyDue) {
+        return NextResponse.json({ ok: true, only, skipped: "nobody due" });
+      }
+
+      // Someone IS due. Nothing can go out until the quota resets with the
+      // month, so say it once and stop, instead of rebuilding every brief to
+      // fail at the last step. force=1 (a manual send) still goes through.
       if (!force && (await pushQuotaGone())) {
         await runWithTrace({ channel: "cron" }, async () => {
           trace("receive", "cron · สรุปตารางเช้า");
@@ -225,7 +232,6 @@ async function run(req: Request) {
             brief: only === "news" ? null : await jobSkipReason("brief"),
             news: only === "brief" ? null : await jobSkipReason("news"),
           };
-      const due = force ? null : await dueNowForUsers(users);
       const results: Record<string, { brief: string; news: string }> = {};
       for (const upn of users) {
         const d = due?.[upn];
