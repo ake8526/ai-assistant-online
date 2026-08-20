@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkCronSecret } from "@/lib/auth";
+import { outsideCronWindow } from "@/lib/cronWindow";
 import { checkDue } from "@/lib/followup";
 import { assertConfigured } from "@/lib/supabaseServer";
 
@@ -18,6 +19,9 @@ async function run(req: Request) {
   try {
     assertConfigured();
     if (!checkCronSecret(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    // Same rule as every other scheduled job: outside the window, nothing runs.
+    const closed = await outsideCronWindow();
+    if (closed) return NextResponse.json({ ok: true, skipped: closed });
     const reminded = await checkDue();
     return NextResponse.json({ ok: true, reminded });
   } catch (e) {

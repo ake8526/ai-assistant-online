@@ -4,6 +4,7 @@ import { nudgePendingMeetingInvites } from "@/lib/meetingInvite";
 import { assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace } from "@/lib/trace";
 import { jobSkipReason } from "@/lib/jobHealth";
+import { outsideCronWindow } from "@/lib/cronWindow";
 
 export const maxDuration = 60;
 
@@ -12,6 +13,8 @@ async function run(req: Request) {
   try {
     assertConfigured();
     if (!checkCronSecret(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const closed = await outsideCronWindow();
+    if (closed) return NextResponse.json({ ok: true, skipped: closed });
     const skip = await jobSkipReason("nudge");
     if (skip) return NextResponse.json({ ok: true, skipped: skip });
     const result = await runWithTrace({ channel: "cron" }, async () => {

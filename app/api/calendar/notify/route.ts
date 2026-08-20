@@ -5,6 +5,7 @@ import { nudgePendingMeetingInvites } from "@/lib/meetingInvite";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace } from "@/lib/trace";
 import { jobSkipReason } from "@/lib/jobHealth";
+import { outsideCronWindow } from "@/lib/cronWindow";
 
 export const maxDuration = 120;
 
@@ -14,6 +15,11 @@ async function run(req: Request) {
   try {
     assertConfigured();
     if (!checkCronSecret(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+    // Outside the scheduled window there is no scheduled work: past 30 minutes
+    // from the times that were set, everything stops until the next round.
+    const closed = await outsideCronWindow();
+    if (closed) return NextResponse.json({ ok: true, skipped: closed });
 
     // Paused from /monitor/log, or paused by itself after half an hour of runs
     // that never finished — poll nothing until the pause lapses.

@@ -574,20 +574,21 @@ const CSS = `
 .mlog .act table.mini{width:auto;margin-bottom:6px}
 .mlog .act table.mini td{border:0;padding:2px 14px 2px 0;font-size:14px;white-space:nowrap}
 .mlog .act .caret{color:var(--dim)}
+.mlog .wholine{padding:5px 10px 7px;color:var(--ink);font-size:15px;border-bottom:1px solid var(--hair)}
 `;
 
 function JobRow({
   job,
   canStop,
   onClose,
-  nameOf,
   nameFull,
+  nameLong,
 }: {
   job: LogJob;
   canStop: boolean;
   onClose: (traceId: string) => Promise<string>;
-  nameOf: (user: string) => string;
   nameFull: (user: string) => string;
+  nameLong: (user: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -597,7 +598,7 @@ function JobRow({
       <div className="jh" onClick={() => setOpen((v) => !v)}>
         <span className={`dot ${job.outcome}`} title={OUTCOME_TH[job.outcome]} />
         <span className="t">{job.clock}</span>
-        <span className="u" title={nameFull(job.user)}>{nameOf(job.user)}</span>
+        <span className="u" title={nameFull(job.user)}>{job.user}</span>
         <span className="c">{channelTH(job.channel)}</span>
         <span className="ttl">{titleShort(job.title)}</span>
         <span className="d">
@@ -626,6 +627,10 @@ function JobRow({
       </div>
       {open && (
         <div className="steps">
+          {/* Room to read it here, unlike the row above. */}
+          <div className="wholine">
+            👤 {nameLong(job.user)} <span className="dim">· {job.user}</span>
+          </div>
           {job.diagnosis && (
             <div className="why">
               <div>⚠️ {job.diagnosis}</div>
@@ -859,39 +864,14 @@ function LogView({
     [getToken, load]
   );
 
-  /**
-   * The directory stores "Supakorn Khamsuwan (กร ศุภกร ขำสุวรรณ)" — every
-   * colleague's full name twice over, which no table column can hold. What
-   * people call each other is the nickname in the brackets, so that is the
-   * label; the full name and the mailbox stay in the tooltip.
-   *
-   * Nicknames do collide here (the assistant has a whole command for finding
-   * duplicates), so when two of the visible names shorten to the same thing,
-   * both keep a given name to stay tellable apart.
-   */
-  const nameLabels = React.useMemo(() => {
-    const names = data?.names || {};
-    const nickOf = (full: string) => {
-      const inside = full.match(/\(([^)]+)\)/)?.[1]?.trim();
-      const parts = (inside || full).split(/\s+/).filter(Boolean);
-      return { short: parts[0] || full, long: parts.slice(0, 2).join(" ") || full };
-    };
-    const seen = new Map<string, number>();
-    for (const full of new Set(Object.values(names))) {
-      const s = nickOf(full).short;
-      seen.set(s, (seen.get(s) || 0) + 1);
-    }
-    const out: Record<string, string> = {};
-    for (const [key, full] of Object.entries(names)) {
-      const { short, long } = nickOf(full);
-      out[key] = (seen.get(short) || 0) > 1 ? long : short;
-    }
-    return out;
-  }, [data?.names]);
+  // The tables keep the mailbox name without the domain — short, unique, and
+  // what this page has always shown. The directory name is stored as
+  // "Supakorn Khamsuwan (กร ศุภกร ขำสุวรรณ)", too long for any column, so it
+  // appears when a row is opened, where there is room to read it.
 
-  /** Short label for a row. */
-  const nameOf = (user: string) => (user && nameLabels[user]) || user;
-  /** Everything we know, for the tooltip. */
+  /** The directory name in full — for anywhere there is room to read it. */
+  const nameLong = (user: string) => data?.names?.[user] || user;
+  /** Everything we know, for a tooltip. */
   const nameFull = (user: string) =>
     data?.names?.[user] ? `${data.names[user]} · ${user}` : user;
   // One dead job at a time: releases whatever locks it left and writes a closing
@@ -1149,7 +1129,7 @@ function LogView({
                   <tr key={r.traceId}>
                     <td className="n">{titleTH(r.title)}</td>
                     <td className="u" title={nameFull(r.user)}>
-                      {nameOf(r.user)}
+                      {r.user}
                     </td>
                     <td>
                       <span className="tag run">{STEP_TH[r.step] || r.step}</span>{" "}
@@ -1263,7 +1243,7 @@ function LogView({
                         is not a name — so: names, and the rest behind "+N คน". */}
                     <td className="who" title={(a.userList || []).map(nameFull).join("\n")}>
                       {a.userList?.length
-                        ? a.userList.slice(0, 3).map(nameOf).join(", ") +
+                        ? a.userList.slice(0, 3).join(", ") +
                           (a.users > 3 ? ` +${a.users - 3} คน` : "")
                         : a.users || "—"}
                     </td>
@@ -1300,8 +1280,9 @@ function LogView({
                           <tbody>
                             {(a.byUser || []).map((u) => (
                               <tr key={u.user}>
-                                <td className="who" title={nameFull(u.user)}>
-                                  {nameOf(u.user)}
+                                <td className="who" title={u.user}>
+                                  {nameLong(u.user)}{" "}
+                                  <span className="dim">· {u.user}</span>
                                 </td>
                                 <td>{u.runs} รอบ</td>
                                 <td>
@@ -1393,8 +1374,8 @@ function LogView({
           job={j}
           canStop={can("jobs.stop")}
           onClose={closeJob}
-          nameOf={nameOf}
           nameFull={nameFull}
+          nameLong={nameLong}
         />
       ))}
     </div>
