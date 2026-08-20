@@ -433,7 +433,7 @@ function peelSchedulePhrases(text: string): string {
  * types, what is left over is the part that could be a name.
  */
 const CALENDAR_TALK =
-  /(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ต้อง|ให้|ว่า|ของ|เอง|ตรวจ|ช่วย|บอก|ทราบ|และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|ไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|\d+|[:.,\s/-])/gi;
+  /(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ต้อง|ให้|ว่า|ของ|เอง|ตรวจ|ช่วย|บอก|ทราบ|อยาก|ได้|ทั้ง|หมด|เอา|สรุป|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม|และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|ไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|\d+|[:.,\s/-])/gi;
 
 /**
  * Day and time expressions that get typed straight onto a name, because Thai
@@ -514,7 +514,11 @@ const REQUEST_WORDS = /(?:นัด|ตาราง|ประชุม|คิว
 /** Peel the request off a candidate name; "" when nothing person-like is left. */
 function nameFromCandidate(raw: string): string {
   const s = String(raw || "").trim();
-  if (!s || s.includes("@")) return s;
+  if (!s) return "";
+  // An address inside a sentence is the answer, not the sentence:
+  // "สรุปตารางของ someone@ktisgroup.com ทั้งเดือน" was used whole as the name.
+  const mail = s.match(/[^\s<>(),;]+@[^\s<>(),;]+/)?.[0];
+  if (mail) return mail;
   const wordy = s.split(/\s+/).filter(Boolean).length > 1 || s.replace(/\s+/g, "").length > 12;
   if (!wordy && !REQUEST_WORDS.test(s)) return s;
   const residue = s.replace(CALENDAR_TALK, " ").replace(/\s+/g, " ").trim();
@@ -4094,6 +4098,31 @@ async function handleParsed(
     if (!name || isCalendarTalk(name) || looksLikeSentence(name)) delete params.person;
     else params.person = name;
   }
+  // "สรุปตารางเวลาของแบงค์เดือนสิงหาคม" came back as get_brief — the morning
+  // brief, which is always today and always the asker, so both the colleague
+  // and the month were dropped and the reply was this person's own two
+  // meetings. A brief that names somebody, or asks for a stretch longer than
+  // today, is a calendar listing instead.
+  if (intent === "get_brief") {
+    const who =
+      (typeof params.person === "string" && params.person.trim()) || personFromText(text);
+    const wider = /(?:เดือน|สัปดาห์|อาทิตย์|ทั้งเดือน|ทั้งสัปดาห์|พรุ่งนี้|มะรืน|ย้อนหลัง|ที่ผ่านมา)/u.test(text);
+    if (who || wider) {
+      intent = "list_meetings";
+      if (who) params.person = who;
+      if (!params.period && !params.date && !params.weekday) {
+        params.period = /(?:เดือน|ทั้งเดือน)/u.test(text)
+          ? "month"
+          : /(?:สัปดาห์|อาทิตย์)/u.test(text)
+            ? "week"
+            : /พรุ่งนี้/u.test(text)
+              ? "tomorrow"
+              : "today";
+      }
+      trace("parse", `★ ปรับเป็น list_meetings (${who ? "มีชื่อคน" : "ช่วงกว้างกว่าวันนี้"})`);
+    }
+  }
+
   if (Array.isArray(params.attendees)) {
     const cleaned = (params.attendees as unknown[])
       .map((a) => (typeof a === "string" ? nameFromCandidate(stripGluedWhen(a)) : ""))
