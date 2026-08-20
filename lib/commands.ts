@@ -432,7 +432,7 @@ function peelSchedulePhrases(text: string): string {
  * types, what is left over is the part that could be a name.
  */
 const CALENDAR_TALK =
-  /(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ต้อง|ให้|ว่า|และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|\d+|[:.,\s/-])/gi;
+  /(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ต้อง|ให้|ว่า|ของ|เอง|ตรวจ|ช่วย|บอก|ทราบ|และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|ไหน|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|\d+|[:.,\s/-])/gi;
 
 /**
  * Day and time expressions that get typed straight onto a name, because Thai
@@ -499,6 +499,26 @@ function looksLikeSentence(s: string): boolean {
   if (/\b(?:i|me|my|mine|myself)\b/i.test(t)) return true;
   if (t.split(/\s+/).filter(Boolean).length > 3) return true;
   return t.replace(/\s+/g, "").length > 24;
+}
+
+/**
+ * Words that belong to a request, never to a person: if one of these is inside
+ * the candidate then it is still carrying the sentence around the name
+ * ("นัดของส้ม", "ส้มเอง", "ตรวจตารางนัด") and the calendar stripper should have
+ * another go at it. Deliberately narrow — a colleague called วันดี or ศุกร์
+ * contains none of them, so their name survives untouched.
+ */
+const REQUEST_WORDS = /(?:นัด|ตาราง|ประชุม|คิว|ของ|เอง|ตรวจ|ช่วย|เช็ค|เช็ก|ว่าง|เวลา|ขอดู|ขอ|ดู)/u;
+
+/** Peel the request off a candidate name; "" when nothing person-like is left. */
+function nameFromCandidate(raw: string): string {
+  const s = String(raw || "").trim();
+  if (!s || s.includes("@")) return s;
+  const wordy = s.split(/\s+/).filter(Boolean).length > 1 || s.replace(/\s+/g, "").length > 12;
+  if (!wordy && !REQUEST_WORDS.test(s)) return s;
+  const residue = s.replace(CALENDAR_TALK, " ").replace(/\s+/g, " ").trim();
+  if (residue && residue.replace(/\s+/g, "").length <= 20) return residue;
+  return residue ? s : "";
 }
 
 function calendarSuggestions(kind: "meetings" | "free", period?: string): { label: string; text: string }[] {
@@ -589,6 +609,13 @@ function personFromText(text: string): string {
   // leftover “นัดเบส” / “ประชุมเบส” after peeling ดู
   s = s.replace(/^(?:นัด|ประชุม)\s*/u, "").trim();
   if (isCalendarTalk(s)) return "";
+  // Still holding a request rather than a name ("ตรวจตารางนัด ของฉัน",
+  // "นัดของส้ม", "ส้มเอง")? Then strip every calendar word out of it and see
+  // what is left: whatever survives is the part that could be a person. Only
+  // tried when the candidate is too long or too wordy to be a name already, so
+  // a colleague whose name contains a calendar word ("วันดี") is left alone.
+  s = nameFromCandidate(s);
+  if (!s) return "";
   // The same shape test the parsed params get: what is left of a whole
   // question (“ตอนนี้ผมต้องประชุมอะไรรึปล่าวเช็คที”) is prose, not a colleague.
   if (looksLikeSentence(s)) return "";
@@ -3941,13 +3968,13 @@ async function handleParsed(
   if (typeof params.person === "string") {
     // "นัดกรพรุ่งนี้" arrives as person="กรพรุ่งนี้"; the name is กร, and the day
     // belongs to the period the caller already parsed.
-    const name = stripGluedWhen(params.person);
+    const name = nameFromCandidate(stripGluedWhen(params.person));
     if (!name || isCalendarTalk(name) || looksLikeSentence(name)) delete params.person;
     else params.person = name;
   }
   if (Array.isArray(params.attendees)) {
     const cleaned = (params.attendees as unknown[])
-      .map((a) => (typeof a === "string" ? stripGluedWhen(a) : ""))
+      .map((a) => (typeof a === "string" ? nameFromCandidate(stripGluedWhen(a)) : ""))
       .filter((a) => a && !isCalendarTalk(a) && !looksLikeSentence(a));
     if (cleaned.length) params.attendees = cleaned;
     else delete params.attendees;
