@@ -541,6 +541,7 @@ const CSS = `
 .mlog button.stop1:hover:not(:disabled){background:var(--red);color:#fff}
 .mlog button.stop1:disabled{opacity:.5;cursor:default}
 .mlog .closedmini{color:var(--green);font-size:13px;margin-right:10px}
+.mlog .ahnote{padding:6px 10px;border-bottom:1px solid var(--hair);color:var(--dim);font-size:13px;line-height:1.9}
 `;
 
 function JobRow({
@@ -1068,6 +1069,14 @@ function LogView({
             งานตามเวลาที่ทำไปแล้ว · ย้อนหลัง {data.activityWindowMin ?? 30} นาที{" "}
             <span className="dim">(งานที่หยุดไว้จะไม่แสดง)</span>
           </div>
+          {/* A polling job appearing here every few minutes is the system
+              working, not a problem — which is not obvious from a list of
+              repeated rows. Say which colour means what. */}
+          <div className="ahnote">
+            <span className="tag quiet">ไม่มีอะไรต้องส่ง</span> = ทำงานปกติ รอบนั้นไม่มีอะไรต้องแจ้ง (ต้องวนอยู่ตลอด
+            ไม่ใช่ปัญหา) · <span className="tag err">ผิดพลาด</span> = รอบนั้นล้ม ·{" "}
+            <span className="tag inc">ไม่จบงาน</span> = ค้างกลางทาง — ถ้าล้ม/ค้างซ้ำเกิน 30 นาที ระบบจะหยุดยิงซ้ำเอง
+          </div>
           <table>
             <thead>
               <tr>
@@ -1089,7 +1098,7 @@ function LogView({
                   title="คลิกเพื่อดูรายละเอียดงานนี้"
                   onClick={() => setQ(q === a.title ? "" : a.title)}
                 >
-                  <td className="n">{a.title}</td>
+                  <td className="n">{titleTH(a.title)}</td>
                   <td>{a.runs}</td>
                   <td>{a.users || "—"}</td>
                   <td>
