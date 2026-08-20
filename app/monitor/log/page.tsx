@@ -128,6 +128,11 @@ const channelTH = (c: string) => CHANNEL_TH[c] || c;
 const titleShort = (t: string) => t.replace(/^cron[\s]*·[\s]*/, "");
 const titleTH = (t: string) => t.replace(/^cron[\s]*·[\s]*/, "ตั้งเวลา · ");
 
+/** A scheduled job that has not run for longer than this is not cycling any
+ *  more — the fastest of them ticks every 5 minutes. Past it, the row is
+ *  history and belongs in the day's log below, not in this panel. */
+const STILL_CYCLING_SEC = 360;
+
 const OUTCOME_TH: Record<LogJob["outcome"], string> = {
   ok: "สำเร็จ",
   quiet: "ไม่มีอะไรต้องส่ง",
@@ -835,6 +840,9 @@ function LogView({
     }
   }, [getToken, load]);
 
+  /** Only the jobs still cycling — see STILL_CYCLING_SEC. */
+  const cycling = (data?.activity || []).filter((a) => a.lastAgoSec <= STILL_CYCLING_SEC);
+
   const can = (p: string) => !!data?.perms?.includes(p);
 
   /**
@@ -1203,28 +1211,31 @@ function LogView({
         </div>
       )}
 
-      {data?.today && !!data.activity?.length && (
+      {data?.today && (data.cronWindow?.open === false || !!cycling.length) && (
         <div className="act">
-          <div className="ah pix">
-            งานตามเวลาที่ทำไปแล้ว · ย้อนหลัง {data.activityWindowMin ?? 30} นาที{" "}
-            <span className="dim">(ประวัติ ไม่ใช่งานที่กำลังทำ · งานที่หยุดไว้จะไม่แสดง)</span>
-          </div>
-          {/* The rows below are the last half hour of history. When the
-              scheduler is closed they are all in the past, and a row whose last
-              run was 16 minutes ago read as a job still going. */}
-          {data.cronWindow && !data.cronWindow.open && (
+          {/* Stopped jobs are not listed here at all. Keeping them visible —
+              even labelled as history — read as "still running" every time, and
+              the day's full log is directly below anyway. */}
+          {data.cronWindow && !data.cronWindow.open ? (
             <div className="closedwin">
               ⏸ <b>งานตั้งเวลาหยุดแล้ว</b> — ตอนนี้ {data.cronWindow.nowClock} อยู่นอกหน้าต่าง{" "}
               {data.cronWindow.from}–{data.cronWindow.to} · จะเริ่มรอบใหม่พรุ่งนี้{" "}
-              {data.cronWindow.from} · <span className="dim">แถวด้านล่างคือรอบที่ทำไปแล้ว</span>
+              {data.cronWindow.from}
             </div>
-          )}
-          {data.cronWindow?.open && (
-            <div className="openwin">
-              ● <b>อยู่ในหน้าต่างเวลาทำงาน</b> {data.cronWindow.from}–{data.cronWindow.to} · ตอนนี้{" "}
-              {data.cronWindow.nowClock}
-            </div>
-          )}
+          ) : (
+            <>
+              <div className="ah pix">
+                งานตั้งเวลาที่วนอยู่ตอนนี้{" "}
+                <span className="dim">
+                  (ทำไปแล้วภายใน {Math.round(STILL_CYCLING_SEC / 60)} นาที · งานที่หยุดไว้จะไม่แสดง)
+                </span>
+              </div>
+              {data.cronWindow?.open && (
+                <div className="openwin">
+                  ● <b>อยู่ในหน้าต่างเวลาทำงาน</b> {data.cronWindow.from}–{data.cronWindow.to} · ตอนนี้{" "}
+                  {data.cronWindow.nowClock}
+                </div>
+              )}
           {/* A polling job appearing here every few minutes is the system
               working, not a problem — which is not obvious from a list of
               repeated rows. Say which colour means what. */}
@@ -1244,7 +1255,7 @@ function LogView({
               </tr>
             </thead>
             <tbody>
-              {data.activity.map((a) => (
+              {cycling.map((a) => (
                 // Clicking a row filters the list below to that job — the
                 // summary was a dead end otherwise: it names a job and gives you
                 // no way to see what actually happened in it.
@@ -1268,11 +1279,7 @@ function LogView({
                         : a.users || "—"}
                     </td>
                     <td>
-                      {a.lastClock}{" "}
-                      <span className={a.lastAgoSec > 360 ? "stale" : "dim"}>
-                        ({ago(a.lastAgoSec)}
-                        {a.lastAgoSec > 360 ? " · ไม่ได้ทำงานแล้ว" : ""})
-                      </span>
+                      {a.lastClock} <span className="dim">({ago(a.lastAgoSec)})</span>
                     </td>
                     <td>
                       {a.ok > 0 && <span className="tag ok">สำเร็จ {a.ok}</span>}
@@ -1379,6 +1386,8 @@ function LogView({
               ))}
             </tbody>
           </table>
+            </>
+          )}
         </div>
       )}
 
