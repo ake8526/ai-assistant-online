@@ -447,6 +447,162 @@ export async function runScheduledForUser(
  * Deliberately does NOT claim the meeting: the scheduled run must still deliver
  * it normally afterwards. Nothing is pushed from here.
  */
+/**
+ * A sample transcript, for testing the summariser when no real meeting has one.
+ *
+ * Every meeting in the last week can be transcript-less — Teams only produces
+ * one when recording or transcription was switched on — and then there is
+ * nothing to summarise and nothing to look at. This runs the real summariser
+ * over invented text so the shape, the Thai, the action items and the link can
+ * all be seen. It is labelled as invented wherever it is shown; a demo passed
+ * off as a real summary would be worse than no demo.
+ */
+const DEMO_TRANSCRIPT = [
+  "เอก: เปิดประชุมครับ วันนี้มี 3 เรื่อง — ความคืบหน้า AI Assistant, โควตา LINE, แล้วแผนอบรมผู้ใช้",
+  "แบงค์: เรื่องแรก ระบบส่งบรีฟเช้าทำงานได้ปกติแล้วครับ แต่เดือนนี้โควตา push ของ LINE หมด ทำให้ส่งไม่ออกตั้งแต่กลางเดือน",
+  "เอก: แปลว่าต้องอัปเกรดแพลนหรือรอรอบเดือนใหม่",
+  "แบงค์: ครับ ผมจะทำตัวเลขเทียบราคาแพลนให้ดูภายในวันศุกร์",
+  "นนท์: ฝั่งผู้ใช้ ผมเก็บ feedback มาได้ 8 คน ส่วนใหญ่ติดเรื่องต้องผูกบัญชีก่อนใช้ อยากให้มีคู่มือสั้น ๆ",
+  "เอก: งั้นนนท์ทำคู่มือ 1 หน้า ส่งในกลุ่มภายในอังคารหน้านะ",
+  "นนท์: รับครับ",
+  "กร: เรื่องอบรม ผมขอจัดรอบแรก 27 ส.ค. บ่ายสอง ห้องประชุมชั้น 3 รับ 15 คน",
+  "เอก: โอเค กรจองห้องแล้วส่งลิงก์ลงทะเบียนให้ผมดูก่อนประกาศ",
+  "กร: ครับ จะจองวันนี้",
+  "เอก: สรุปว่ารอตัวเลขแพลน LINE จากแบงค์ศุกร์นี้ คู่มือจากนนท์อังคารหน้า และห้องอบรมจากกร ปิดประชุมครับ",
+].join("\n");
+
+/** Run the real summariser over the sample transcript. */
+export async function buildDemoSummary(): Promise<{
+  id: string;
+  subject: string;
+  when: string;
+  text: string;
+  actionItems: string[];
+}> {
+  const subject = "ตัวอย่าง · ประชุมทีม AI Assistant (transcript สมมติ)";
+  const result = await summarize(DEMO_TRANSCRIPT, subject);
+  const message = formatSummary(subject, result);
+  const actionItems = (result.action_items || []).map(
+    (it) => `${it.task} — ${it.owner || "ไม่ระบุ"} (กำหนด: ${it.due || "ไม่ระบุกำหนด"})`
+  );
+  const pageId = summaryIdFor(`demo:${Date.now()}`);
+  const payload = { subject, when: "ตัวอย่าง", text: message, actionItems, createdAt: Date.now() };
+  await saveSummaryPage(pageId, payload);
+  return { id: pageId, ...payload };
+}
+
+/** One line per meeting, for picking which to test. */
+export type TestMeetingChoice = {
+  index: number;
+  subject: string;
+  when: string;
+  hasTranscript: boolean;
+  summarised: boolean;
+};
+
+/**
+ * The meetings a summary can be tested against: online meetings that have
+ * ended in the lookback window, newest first. Whether each one has a
+ * transcript is checked here rather than left to fail later — "no transcript"
+ * is the usual reason a summary never arrives, and it is worth seeing in the
+ * list instead of after picking.
+ */
+export async function listTestMeetings(
+  userUpn: string,
+  lookbackHours = 24 * 7,
+  max = 8
+): Promise<TestMeetingChoice[]> {
+  const events = await getRecentOnlineEvents(userUpn, lookbackHours);
+  const ordered = [...events].sort((a, b) => {
+    const ta = a.end?.dateTime ? Date.parse(a.end.dateTime) : 0;
+    const tb = b.end?.dateTime ? Date.parse(b.end.dateTime) : 0;
+    return tb - ta;
+  });
+
+  const out: TestMeetingChoice[] = [];
+  for (const ev of ordered.slice(0, max)) {
+    const eventId = (ev as { id?: string }).id || "";
+    const pageId = summaryIdFor(seenKeyForMeeting(ev, eventId));
+    const summarised = !!(await loadSummaryPage(pageId));
+    let hasTranscript = summarised;
+    if (!hasTranscript) {
+      try {
+        hasTranscript = !!(await getTranscriptText(userUpn, ev));
+      } catch {
+        hasTranscript = false;
+      }
+    }
+    out.push({
+      index: out.length + 1,
+      subject: subjectOf(ev),
+      when: meetingWhen(ev),
+      hasTranscript,
+      summarised,
+    });
+  }
+  return out;
+}
+
+/**
+ * Summarise ONE named meeting on demand: the subject as typed (or its number
+ * from listTestMeetings), rather than "whatever ran most recently". Reuses a
+ * summary already built for that meeting, so asking twice costs one LLM call.
+ */
+export async function buildTestSummary(
+  userUpn: string,
+  query: string,
+  lookbackHours = 24 * 7
+): Promise<
+  | { ok: true; id: string; subject: string; when: string; text: string; actionItems: string[]; reused: boolean }
+  | { ok: false; reason: "not_found" | "no_transcript" | "none_at_all"; subject?: string; choices: TestMeetingChoice[] }
+> {
+  const events = await getRecentOnlineEvents(userUpn, lookbackHours);
+  const ordered = [...events].sort((a, b) => {
+    const ta = a.end?.dateTime ? Date.parse(a.end.dateTime) : 0;
+    const tb = b.end?.dateTime ? Date.parse(b.end.dateTime) : 0;
+    return tb - ta;
+  });
+  const choices = await listTestMeetings(userUpn, lookbackHours);
+  if (!ordered.length) return { ok: false, reason: "none_at_all", choices };
+
+  const q = query.trim().toLowerCase();
+  const asIndex = /^\d+$/.test(q) ? parseInt(q, 10) : 0;
+  const picked =
+    asIndex >= 1 && asIndex <= ordered.length
+      ? ordered[asIndex - 1]
+      : ordered.find((ev) => subjectOf(ev).toLowerCase().includes(q)) ||
+        // a looser pass: any word of the query in the subject
+        ordered.find((ev) => {
+          const s = subjectOf(ev).toLowerCase();
+          return q.split(/\s+/).filter((w) => w.length > 1).some((w) => s.includes(w));
+        });
+
+  if (!picked) return { ok: false, reason: "not_found", choices };
+
+  const eventId = (picked as { id?: string }).id || "";
+  const pageId = summaryIdFor(seenKeyForMeeting(picked, eventId));
+  const existing = await loadSummaryPage(pageId);
+  if (existing) return { ok: true, id: pageId, ...existing, reused: true };
+
+  const text = await getTranscriptText(userUpn, picked);
+  if (!text) return { ok: false, reason: "no_transcript", subject: subjectOf(picked), choices };
+
+  const result = await summarize(text, subjectOf(picked));
+  const message = formatSummary(subjectOf(picked), result);
+  const actionItems = (result.action_items || []).map(
+    (it) => `${it.task} — ${it.owner || "ไม่ระบุ"} (กำหนด: ${it.due || "ไม่ระบุกำหนด"})`
+  );
+  const payload = {
+    subject: subjectOf(picked),
+    when: meetingWhen(picked),
+    text: message,
+    actionItems,
+    createdAt: Date.now(),
+  };
+  await saveSummaryPage(pageId, payload);
+  return { ok: true, id: pageId, ...payload, reused: false };
+}
+
 export async function buildPreviewSummary(
   userUpn: string,
   lookbackHours = 72

@@ -675,6 +675,12 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   if (t === "__preview_summary_link__" || /^\/?test\s*(ประชุม|สรุป|summary|mt)$/i.test(t)) {
     return { intent: "preview_summary_link", params: {} };
   }
+  // /test_meeting <เรื่อง> — summarise a named meeting now, without waiting for
+  // the scheduled run. No LLM needed to understand it: the subject is typed.
+  {
+    const m = /^(?:__test_meeting__|\/?test[_\s]?meeting)\s*(.*)$/i.exec(t);
+    if (m) return { intent: "test_meeting", params: { query: (m[1] || "").trim() } };
+  }
 
   // Multi-person first (before single-person “ดูตาราง…”) — “ดูตารางเบสกับพี่แบง”
   {
@@ -3805,6 +3811,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       quick?.intent === "clear_work_location" ||
       quick?.intent === "ack" ||
       quick?.intent === "preview_summary_link" ||
+      quick?.intent === "test_meeting" ||
       quick?.intent === "preview_morning" ||
       quick?.intent === "search_files"
     ) {
@@ -3929,6 +3936,103 @@ async function handleParsed(
       reply: await previewSummaryLinkMessage(userUpn),
       suggestions: [
         { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
+        { label: "ตารางวันนี้", text: "ตารางวันนี้" },
+      ],
+    };
+  }
+
+  if (intent === "test_meeting") {
+    const query = String(params.query || "").trim();
+    const { listTestMeetings, buildTestSummary } = await import("@/lib/meetings");
+    const { buildSummaryUrl, summaryTeaser } = await import("@/lib/summaryPage");
+
+    /** The pick-one list, shown when no subject was given or none matched. */
+    const listReply = (choices: Awaited<ReturnType<typeof listTestMeetings>>, head: string) => {
+      if (!choices.length) {
+        return (
+          `${head}\n\n` +
+          "ไม่พบประชุมออนไลน์ที่จบแล้วใน 7 วันที่ผ่านมา — สรุปประชุมต้องมีประชุมที่บันทึก transcript ไว้ก่อนครับ"
+        );
+      }
+      const lines = choices.map(
+        (c) =>
+          `${c.index}) ${c.subject} · ${c.when}` +
+          (c.summarised ? " ✅ สรุปแล้ว" : c.hasTranscript ? " 📝 มี transcript" : " ⚠️ ไม่มี transcript")
+      );
+      return [
+        head,
+        "",
+        ...lines,
+        "",
+        "พิมพ์ /test_meeting <เลข> หรือ /test_meeting <ชื่อเรื่อง>",
+        "อยากเห็นรูปแบบสรุปก่อน (ไม่ต้องมี transcript): /test_meeting demo",
+      ].join("\n");
+    };
+
+    // "demo" — run the summariser over a sample transcript. Teams only makes a
+    // transcript when recording was on, so a week can pass with nothing real to
+    // summarise, and then there is nothing to look at either.
+    if (/^(demo|ตัวอย่าง|sample)$/i.test(query)) {
+      trace("fetch", "ทดสอบสรุปประชุม · ตัวอย่าง transcript สมมติ");
+      const { buildDemoSummary } = await import("@/lib/meetings");
+      const demo = await buildDemoSummary();
+      trace("compose", "สรุปประชุมตัวอย่าง");
+      return {
+        intent: "test_meeting",
+        reply: [
+          "🧪 ตัวอย่างสรุปประชุม — transcript สมมติ ไม่ใช่ประชุมจริง",
+          "",
+          demo.text,
+          "",
+          "— ข้อความที่จะส่งจริงจะมาแบบนี้ —",
+          summaryTeaser(demo.subject, demo.when, demo.text, buildSummaryUrl(demo.id)),
+        ].join("\n"),
+        suggestions: [
+          { label: "ทดสอบประชุมจริง", text: "/test_meeting" },
+          { label: "ตารางวันนี้", text: "ตารางวันนี้" },
+        ],
+      };
+    }
+
+    if (!query) {
+      trace("fetch", "ทดสอบสรุปประชุม · ขอรายการให้เลือก");
+      const choices = await listTestMeetings(userUpn);
+      return {
+        intent: "test_meeting",
+        reply: listReply(choices, "🧪 ทดสอบสรุปประชุม — เลือกประชุมที่ต้องการ"),
+      };
+    }
+
+    trace("fetch", `ทดสอบสรุปประชุม · ${query.slice(0, 40)}`);
+    const res = await buildTestSummary(userUpn, query);
+    if (!res.ok) {
+      const head =
+        res.reason === "no_transcript"
+          ? `⚠️ ประชุม “${res.subject}” ไม่มี transcript ให้สรุปครับ (ต้องเปิดบันทึก/ถอดเสียงใน Teams ตอนประชุม)`
+          : res.reason === "not_found"
+            ? `หาประชุมชื่อ “${query}” ไม่เจอใน 7 วันที่ผ่านมาครับ`
+            : "ไม่พบประชุมออนไลน์ที่จบแล้วใน 7 วันที่ผ่านมาครับ";
+      trace("reply", `ทดสอบสรุปประชุม · ${res.reason}`, "skip");
+      return { intent: "test_meeting", reply: listReply(res.choices, head) };
+    }
+
+    trace("compose", `สรุปประชุมทดสอบ · ${res.reused ? "ใช้ของที่สรุปไว้แล้ว" : "สรุปใหม่"}`);
+    const url = buildSummaryUrl(res.id);
+    // The summary in full — this is a test, the point is to read it — followed
+    // by the message shape that would actually be delivered.
+    const reply = [
+      `🧪 ทดสอบสรุปประชุม${res.reused ? " (ใช้สรุปที่เคยทำไว้)" : ""}`,
+      "",
+      res.text,
+      "",
+      "— ข้อความที่จะส่งจริงจะมาแบบนี้ —",
+      summaryTeaser(res.subject, res.when, res.text, url),
+    ].join("\n");
+    return {
+      intent: "test_meeting",
+      reply,
+      suggestions: [
+        { label: "ทดสอบอันอื่น", text: "/test_meeting" },
         { label: "ตารางวันนี้", text: "ตารางวันนี้" },
       ],
     };
