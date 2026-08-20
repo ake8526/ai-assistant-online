@@ -88,6 +88,22 @@ const STEP_TH: Record<string, string> = {
   error: "ล้มเหลว",
 };
 
+/** "cron" is the machine's word for it. On a page people read to find out what
+ *  the assistant did, this column should say what kind of trigger it was. The
+ *  filter still sends the stored value ("cron") — only the label changes. */
+const CHANNEL_TH: Record<string, string> = {
+  cron: "ตั้งเวลา",
+  line: "LINE",
+  web: "เว็บ",
+  ops: "ระบบ",
+};
+const channelTH = (c: string) => CHANNEL_TH[c] || c;
+/** Job titles are stored as "cron · สรุปตารางเช้า". Where the row already has a
+ *  channel column saying "ตั้งเวลา", repeating it in the title is noise — strip
+ *  it there, translate it where the title stands alone. */
+const titleShort = (t: string) => t.replace(/^cron[\s]*·[\s]*/, "");
+const titleTH = (t: string) => t.replace(/^cron[\s]*·[\s]*/, "ตั้งเวลา · ");
+
 const OUTCOME_TH: Record<LogJob["outcome"], string> = {
   ok: "สำเร็จ",
   quiet: "ไม่มีอะไรต้องส่ง",
@@ -521,6 +537,10 @@ const CSS = `
 .mlog .modal .mb ul{margin:8px 0 0 18px;color:var(--dim)}
 .mlog .modal .mb li{margin-bottom:2px}
 .mlog .modal .ma{display:flex;gap:8px;justify-content:flex-end;padding:10px 12px;border-top:2px solid var(--hair);background:var(--panel2)}
+.mlog button.stop1{font-family:inherit;font-size:15px;color:var(--red);background:transparent;border:2px solid var(--red);border-radius:4px;padding:2px 8px;margin-right:10px;cursor:pointer}
+.mlog button.stop1:hover:not(:disabled){background:var(--red);color:#fff}
+.mlog button.stop1:disabled{opacity:.5;cursor:default}
+.mlog .closedmini{color:var(--green);font-size:13px;margin-right:10px}
 `;
 
 function JobRow({
@@ -541,9 +561,29 @@ function JobRow({
         <span className={`dot ${job.outcome}`} title={OUTCOME_TH[job.outcome]} />
         <span className="t">{job.clock}</span>
         <span className="u">{job.user}</span>
-        <span className="c">{job.channel}</span>
-        <span className="ttl">{job.title}</span>
+        <span className="c">{channelTH(job.channel)}</span>
+        <span className="ttl">{titleShort(job.title)}</span>
         <span className="d">
+          {/* Stopping a single job used to mean opening its row first, so on a
+              day with one stuck job among a thousand it could not be found. */}
+          {canStop && job.outcome === "incomplete" && !closed && (
+            <button
+              className="stop1"
+              disabled={closing}
+              title="ปิดงานค้างนี้อันเดียว (ไม่กระทบงานอื่น)"
+              onClick={async (e) => {
+                e.stopPropagation();
+                setClosing(true);
+                setClosed(await onClose(job.traceId));
+                setClosing(false);
+              }}
+            >
+              {closing ? "กำลังปิด…" : "■ หยุดงานนี้"}
+            </button>
+          )}
+          {/* Say what happened on the row itself — the full message used to live
+              inside the panel, so from a collapsed row the button just vanished. */}
+          {closed && <span className="closedmini" title={closed}>ปิดแล้ว ✓</span>}
           {job.events.length} ขั้น · {(job.durationMs / 1000).toFixed(1)}s {open ? "▾" : "▸"}
         </span>
       </div>
@@ -718,6 +758,28 @@ function LogView({
     }
   }, [getToken, load, alsoPauseCron]);
 
+  // A pause can now start on its own (a job that stopped finishing is paused by
+  // the scheduler), so waiting until midnight is no longer an acceptable only
+  // way out — undo has to be one click from the banner that announces it.
+  const resumeCron = useCallback(async () => {
+    setCancelling(true);
+    setCancelMsg("");
+    try {
+      const token = await getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const r = await fetch("/api/monitor/cancel?resume=1", { method: "POST", headers });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      setCancelMsg("เปิดงานที่หยุดไว้กลับแล้ว — รอบต่อไปจะทำงานตามปกติ");
+      void load();
+    } catch (e) {
+      setCancelMsg(`เปิดกลับไม่สำเร็จ: ${String(e).slice(0, 200)}`);
+    } finally {
+      setCancelling(false);
+    }
+  }, [getToken, load]);
+
   const can = (p: string) => !!data?.perms?.includes(p);
   // One dead job at a time: releases whatever locks it left and writes a closing
   // line into its own trace, so the history keeps its shape.
@@ -797,8 +859,9 @@ function LogView({
         <select value={channel} onChange={(e) => setChannel(e.target.value)}>
           <option value="">ทุกช่องทาง</option>
           <option value="line">LINE</option>
-          <option value="web">Web</option>
-          <option value="cron">Cron</option>
+          <option value="web">เว็บ</option>
+          <option value="cron">ตั้งเวลา (งานที่รันเอง)</option>
+          <option value="ops">ระบบ</option>
         </select>
         <input placeholder="ค้นในคำอธิบาย เช่น สรุปตารางเช้า" value={q} onChange={(e) => setQ(e.target.value)} />
         <button
@@ -901,8 +964,15 @@ function LogView({
             <div className="paused">
               <span>
                 ⏸ หยุดไว้: {live.paused.labels.join(" · ")}{" "}
-                <span className="dim">— กลับมาทำงานเองรอบแรกของพรุ่งนี้</span>
+                <span className="dim">
+                  — ไม่ยิงซ้ำจนถึง {live.paused.untilClock} แล้วกลับมาทำงานเอง
+                </span>
               </span>
+              {can("jobs.stop") && (
+                <button onClick={() => void resumeCron()} disabled={cancelling}>
+                  {cancelling ? "กำลังเปิด…" : "▶ เปิดกลับเลย"}
+                </button>
+              )}
             </div>
           )}
           {live.running.length === 0 ? (
@@ -916,12 +986,13 @@ function LogView({
                   <th>ขั้นที่ทำอยู่</th>
                   <th>เริ่ม</th>
                   <th>ผ่านไป</th>
+                  {can("jobs.stop") && <th>หยุด</th>}
                 </tr>
               </thead>
               <tbody>
                 {live.running.map((r) => (
                   <tr key={r.traceId}>
-                    <td className="n">{r.title}</td>
+                    <td className="n">{titleTH(r.title)}</td>
                     <td className="u">{r.user}</td>
                     <td>
                       <span className="tag run">{STEP_TH[r.step] || r.step}</span>{" "}
@@ -929,6 +1000,21 @@ function LogView({
                     </td>
                     <td className="dim">{r.startedClock}</td>
                     <td>{r.elapsedSec}s</td>
+                    {can("jobs.stop") && (
+                      <td>
+                        <button
+                          className="stop1"
+                          disabled={cancelling}
+                          title="ปิดงานนี้อันเดียว — ถ้ามันยังขยับอยู่ (ไม่ถึง 45 วิ) ระบบจะไม่ฆ่ากลางทาง"
+                          onClick={async () => {
+                            setCancelMsg(await closeJob(r.traceId));
+                            void load();
+                          }}
+                        >
+                          ■ หยุดงานนี้
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

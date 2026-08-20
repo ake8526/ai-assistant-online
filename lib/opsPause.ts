@@ -13,7 +13,7 @@ import { getSetting, setSetting } from "@/lib/store";
 const OWNER = "_ops";
 const KEY = "paused_jobs";
 
-export type PausableJob = "calendar" | "summaries" | "nudge";
+export type PausableJob = "calendar" | "summaries" | "nudge" | "brief" | "news";
 
 /** `traceTitle` must match the job's own trace("receive", …) label — it is how
  *  /monitor/log marks a paused job in the history table it already rendered. */
@@ -21,6 +21,11 @@ export const PAUSABLE_JOBS: { key: PausableJob; label: string; traceTitle: strin
   { key: "calendar", label: "แจ้งนัดใหม่", traceTitle: "cron · แจ้งนัดใหม่" },
   { key: "summaries", label: "สรุปประชุม", traceTitle: "cron · สรุปประชุม" },
   { key: "nudge", label: "เตือนนัดค้างตอบ", traceTitle: "cron · เตือนนัดค้างตอบ" },
+  // The catch-up tick retries these every 5 minutes until 20:55, so when the
+  // send itself is broken they are the loudest loop of all — 48 failed runs of
+  // "สรุปตารางเช้า" in half an hour. They could not be stopped before.
+  { key: "brief", label: "สรุปตารางเช้า", traceTitle: "cron · สรุปตารางเช้า" },
+  { key: "news", label: "ส่งข่าวเช้า", traceTitle: "cron · ส่งข่าวเช้า" },
 ];
 
 type PauseState = { jobs: PausableJob[]; until: number };

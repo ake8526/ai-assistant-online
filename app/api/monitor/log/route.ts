@@ -247,11 +247,74 @@ export async function GET(req: Request) {
     }
   }
 
+  // A label or step filter matches a SINGLE STAGE, but the unit of this page is
+  // the job. Filtering rows directly returned just the matching stage of each
+  // job, so every job arrived with one lonely row: no ending stage → counted as
+  // "ไม่จบงาน", and opening it showed a one-line detail with no user attached.
+  // Clicking "เตือนนัดค้างตอบ" in the activity table (which sets q=title, and a
+  // title only ever appears on the receive row) made that the normal case.
+  //
+  // So: when such a filter is on, first collect the trace_ids that match, then
+  // fetch those jobs whole. The filter now means "jobs that contain a matching
+  // stage", which is what a person reading this page means by it.
+  const PAGE = 1000;
+  const stageFilter = !traceId && (!!q || !!step);
+  let matchedTraceIds: string[] | null = null;
+  if (stageFilter) {
+    const ids = new Set<string>();
+    for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
+      let idq = admin
+        .from("agent_traces")
+        .select("trace_id")
+        .gte("created_at", from)
+        .lt("created_at", to)
+        .order("id", { ascending: true })
+        .range(offset, offset + PAGE - 1);
+      if (resolved) idq = idq.in("upn", resolved.map((r) => r.mail));
+      else if (user) idq = idq.ilike("upn", `${user}%`);
+      if (channel) idq = idq.eq("channel", channel);
+      if (step) idq = idq.eq("step", step);
+      if (q) idq = idq.ilike("label", `%${q}%`);
+
+      const { data, error } = await idq;
+      if (error) {
+        if (tableMissing(error as { code?: string; message?: string })) break;
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      const page = (data as { trace_id: string }[]) || [];
+      for (const r of page) ids.add(r.trace_id);
+      if (page.length < PAGE) break;
+    }
+    matchedTraceIds = [...ids];
+    if (!matchedTraceIds.length) {
+      return NextResponse.json({
+        date,
+        today: date === bkkToday(),
+        perms: gate.perms,
+        resolvedUsers: resolved,
+        activityWindowMin: 30,
+        activity: [],
+        shownCount: 0,
+        matchedCount: 0,
+        summary: { traces: 0, events: 0, ok: 0, quiet: 0, errors: 0, incomplete: 0, users: [], channels: [] },
+        traces: [],
+      });
+    }
+  }
+
   // PostgREST caps a single response at 1000 rows, and one busy morning easily
   // passes that — page through so a day is never silently cut short.
-  const PAGE = 1000;
   const rows: TraceRow[] = [];
-  for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
+  // An `in` list goes into the URL, so ask for the jobs in batches.
+  const ID_BATCH = 60;
+  const idBatches: (string[] | null)[] = matchedTraceIds
+    ? Array.from({ length: Math.ceil(matchedTraceIds.length / ID_BATCH) }, (_, i) =>
+        matchedTraceIds!.slice(i * ID_BATCH, (i + 1) * ID_BATCH)
+      )
+    : [null];
+
+  for (const batch of idBatches) {
+   for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
     let query = admin
       .from("agent_traces")
       .select("id,trace_id,upn,channel,step,label,status,seq,ms,created_at")
@@ -261,13 +324,14 @@ export async function GET(req: Request) {
     if (traceId) {
       // A single job — ignore the day window so a trace can be opened from any day.
       query = query.eq("trace_id", traceId);
+    } else if (batch) {
+      // Whole jobs, selected above. No stage filter here — that is the point.
+      query = query.in("trace_id", batch);
     } else {
       query = query.gte("created_at", from).lt("created_at", to);
       if (resolved) query = query.in("upn", resolved.map((r) => r.mail));
       else if (user) query = query.ilike("upn", `${user}%`);
       if (channel) query = query.eq("channel", channel);
-      if (step) query = query.eq("step", step);
-      if (q) query = query.ilike("label", `%${q}%`);
     }
 
     const { data, error } = await query;
@@ -285,6 +349,7 @@ export async function GET(req: Request) {
     const page = (data as TraceRow[]) || [];
     rows.push(...page);
     if (page.length < PAGE) break;
+   }
   }
 
   // Group into jobs. A trace = one incoming request (LINE message, cron tick, …)

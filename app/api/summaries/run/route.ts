@@ -3,7 +3,7 @@ import { AuthError, checkCronSecret, requireUser } from "@/lib/auth";
 import { runScheduledForUser } from "@/lib/meetings";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace } from "@/lib/trace";
-import { isJobPaused } from "@/lib/opsPause";
+import { jobSkipReason } from "@/lib/jobHealth";
 import { getSetting, setSetting } from "@/lib/store";
 
 // One cron run at a time. A pass can take minutes (a transcript per meeting,
@@ -48,7 +48,8 @@ async function run(req: Request) {
     if (checkCronSecret(req)) {
       // Paused from /monitor/log. A signed-in user asking for it by hand is
       // never blocked — the pause is for the scheduler only.
-      if (await isJobPaused("summaries")) return NextResponse.json({ ok: true, paused: "summaries" });
+      const skip = await jobSkipReason("summaries");
+      if (skip) return NextResponse.json({ ok: true, skipped: skip });
       if (!(await takeLock())) return NextResponse.json({ ok: true, skipped: "another run in progress" });
       locked = true;
       users = await linkedUsers();

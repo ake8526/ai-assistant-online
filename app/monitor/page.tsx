@@ -48,8 +48,10 @@ const STEP_TH: Record<string, string> = {
 
 function channelLabel(ch: string): string {
   if (ch === "line") return "LINE";
-  if (ch === "web") return "Web";
-  if (ch === "cron") return "Cron";
+  if (ch === "web") return "เว็บ";
+  // "Cron" is the scheduler's name for itself, not a word this audience uses.
+  if (ch === "cron") return "ตั้งเวลา";
+  if (ch === "ops") return "ระบบ";
   return ch || "?";
 }
 
@@ -1323,7 +1325,12 @@ function MonitorRoom({
     mailHasParcelRef.current = false;
   }, [setAgent]);
 
-  const applyEvent = useCallback(async (e: MonEvent) => {
+  const applyEvent = useCallback(async (raw: MonEvent) => {
+    // Job titles are stored as "cron · …". Translate the prefix once here, at the
+    // door, so every panel below shows a word the room's audience uses.
+    const e: MonEvent = raw.label
+      ? { ...raw, label: raw.label.replace(/^cron[\s]*·[\s]*/, "ตั้งเวลา · ") }
+      : raw;
     const isNews = /📰/.test(e.label || "");
     const now = e.at ? new Date(e.at).getTime() : Date.now();
     const map = jobsMapRef.current;

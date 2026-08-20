@@ -5,6 +5,7 @@ import { admin } from "@/lib/supabaseServer";
 import { getLineId, pushLineMessages } from "@/lib/line";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { fmtDateTime, fmtTime, parseWall, parseHHMM, addMinutes, wallIso, wallToUtcIso } from "@/lib/time";
+import { trace } from "@/lib/trace";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Re-ping unanswered LINE invitees this often. */
@@ -13,6 +14,15 @@ const NUDGE_INTERVAL_MS = 60 * 60 * 1000;
 const HOST_ESCALATE_DAY_MS = 24 * 60 * 60 * 1000;
 /** Escalate to organizer when meeting starts within this window. */
 const HOST_ESCALATE_NEAR_MS = 2 * 60 * 60 * 1000;
+/** Log labels: mailbox local part only, same minimal-PII rule /monitor/log
+ *  already applies to the "คน" column. */
+const shortUpn = (upn: string) => (upn || "?").split("@")[0] || upn;
+/** Meeting subject, trimmed. Auditing "which invite is stuck" is impossible
+ *  without it, and the log is already behind the log.view permission. */
+const shortSubject = (s: string) => (s || "(ไม่มีหัวข้อ)").replace(/\s+/g, " ").slice(0, 48);
+const agoLabel = (ms: number) =>
+  ms < 60 * 60_000 ? `${Math.round(ms / 60_000)} นาที` : `${Math.round(ms / 3_600_000)} ชม.`;
+
 const PENDING_RSVP_KEY = "_mt_rsvp_pending";
 const HOST_EDIT_KEY = "_mt_host_edit";
 
@@ -1173,6 +1183,9 @@ export async function tryHandleHostEditText(
  * organizer after 1 day or when the meeting is near — ask what to do next.
  */
 export async function nudgePendingMeetingInvites(): Promise<{
+  /** Invite records read from storage — a run that examined none is a different
+   *  story from one that examined ten and found them all answered. */
+  records: number;
   scanned: number;
   nudged: number;
   hostAlerts: number;
@@ -1190,8 +1203,11 @@ export async function nudgePendingMeetingInvites(): Promise<{
     rows = (data || []) as typeof rows;
   } catch (e) {
     console.warn("[mt-invite] nudge scan failed", String(e).slice(0, 120));
-    return { scanned: 0, nudged: 0, hostAlerts: 0, details };
+    trace("error", `อ่านรายการนัดค้างตอบไม่ได้ · ${String(e).slice(0, 90)}`, "error");
+    return { records: 0, scanned: 0, nudged: 0, hostAlerts: 0, details };
   }
+
+  trace("fetch", `อ่านคำขอนัด ${rows.length} รายการ`);
 
   for (const row of rows) {
     let rec: MeetingInviteRecord;
@@ -1218,6 +1234,14 @@ export async function nudgePendingMeetingInvites(): Promise<{
     const awaiting = linkedAwaitList(rec).filter((u) => !rec.responses[u]);
     if (!awaiting.length) continue;
 
+    // The whole point of this job, spelled out in the log: whose reply is
+    // missing, on which meeting, and for how long.
+    trace(
+      "fetch",
+      `ค้างตอบ · ${shortSubject(rec.subject)} · รอ ${awaiting.map(shortUpn).join(", ")} · ` +
+        `ขอไป ${agoLabel(now - rec.ts)}แล้ว · เจ้าของนัด ${shortUpn(rec.organizerUpn)}`
+    );
+
     rec.nudgeAt = rec.nudgeAt || {};
     let changed = false;
     const msg = inviteMessage(rec, { nudge: true });
@@ -1235,8 +1259,14 @@ export async function nudgePendingMeetingInvites(): Promise<{
         nudged++;
         changed = true;
         details.push({ inviteId: rec.id, upn });
+        trace("compose", `เตือน ${shortUpn(upn)} · ${shortSubject(rec.subject)}`);
       } catch (e) {
         console.warn("[mt-invite] nudge push failed", upn, String(e).slice(0, 120));
+        trace(
+          "error",
+          `เตือน ${shortUpn(upn)} ไม่สำเร็จ · ${shortSubject(rec.subject)} · ${String(e).slice(0, 70)}`,
+          "error"
+        );
       }
     }
 
@@ -1251,6 +1281,12 @@ export async function nudgePendingMeetingInvites(): Promise<{
 
     if (escalate) {
       const ok = await notifyHostUnanswered(rec, awaiting, escalate);
+      trace(
+        ok ? "compose" : "error",
+        `แจ้งเจ้าของนัด ${shortUpn(rec.organizerUpn)} (${escalate === "near" ? "ใกล้เวลานัด" : "ครบ 1 วัน"}) · ` +
+          `${shortSubject(rec.subject)}${ok ? "" : " · ส่งไม่สำเร็จ"}`,
+        ok ? "done" : "error"
+      );
       if (ok) {
         if (escalate === "near") rec.hostAlertNear = true;
         if (escalate === "day") rec.hostAlertDay = true;
@@ -1266,7 +1302,7 @@ export async function nudgePendingMeetingInvites(): Promise<{
     }
   }
 
-  return { scanned, nudged, hostAlerts, details };
+  return { records: rows.length, scanned, nudged, hostAlerts, details };
 }
 
 async function notifyHostUnanswered(

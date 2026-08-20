@@ -105,6 +105,26 @@ export async function lineQuotaLeft(): Promise<number | null> {
   return Math.max(0, r.limit - r.used);
 }
 
+/**
+ * No pushes left this month.
+ *
+ * The catch-up tick asks this before building anything: the quota resets with
+ * the billing month, not the day, so a morning that failed on quota can never
+ * succeed later today. Retrying it every 5 minutes until 20:55 only burns Graph
+ * and LLM calls and fills /monitor/log with hundreds of identical failures.
+ *
+ * Reads the same cached quota reading as assertQuota, so this costs nothing per
+ * tick. Unknown or unlimited plans answer false — let LINE decide.
+ */
+export async function pushQuotaGone(): Promise<boolean> {
+  try {
+    const left = await lineQuotaLeft();
+    return left !== null && left <= 0;
+  } catch {
+    return false;
+  }
+}
+
 export class LineQuotaError extends Error {
   constructor(left: number) {
     super(`LINE push quota exhausted (เหลือ ${left} ข้อความในเดือนนี้)`);

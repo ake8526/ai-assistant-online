@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { AuthError, checkCronSecret, requireUser } from "@/lib/auth";
 import { buildMorningAgenda, runForUser, type MorningAgenda } from "@/lib/brief";
 import { buildDigest, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
-import { resolveLinkedUpn, sendLine } from "@/lib/line";
+import { pushQuotaGone, resolveLinkedUpn, sendLine } from "@/lib/line";
+import { jobSkipReason } from "@/lib/jobHealth";
 import {
   clearBriefPrewarm,
   clearNewsPrewarm,
@@ -154,16 +155,23 @@ async function pushNews(upn: string, force: boolean): Promise<string> {
 async function deliverMorningForUser(
   upn: string,
   force: boolean,
-  only: OnlyKind
+  only: OnlyKind,
+  /** Set when the job has been paused (by hand or by itself) — reported per user
+   *  so the response still says why nobody was served. */
+  paused: { brief: string | null; news: string | null } = { brief: null, news: null }
 ): Promise<{ brief: string; news: string }> {
+  const doBrief = async () =>
+    paused.brief ? `skip (${paused.brief})` : pushBrief(upn, force);
+  const doNews = async () => (paused.news ? `skip (${paused.news})` : pushNews(upn, force));
+
   if (only === "brief") {
-    return { brief: await pushBrief(upn, force), news: "skip (only=brief)" };
+    return { brief: await doBrief(), news: "skip (only=brief)" };
   }
   if (only === "news") {
-    return { brief: "skip (only=news)", news: await pushNews(upn, force) };
+    return { brief: "skip (only=news)", news: await doNews() };
   }
-  const news = await pushNews(upn, force);
-  return { brief: await pushBrief(upn, force), news };
+  const news = await doNews();
+  return { brief: await doBrief(), news };
 }
 
 export async function POST(req: Request) {
@@ -195,6 +203,28 @@ async function run(req: Request) {
       // One query decides who is due. This runs every minute all morning and
       // almost always finds nobody — checking per user per kind cost 4-6s, which
       // the "arrive at 07:00" target cannot spare.
+      // Nothing can go out until the quota resets with the month — say it once
+      // and stop, instead of rebuilding every brief every 5 minutes to fail at
+      // the last step. force=1 (a manual send) still goes through.
+      if (!force && (await pushQuotaGone())) {
+        await runWithTrace({ channel: "cron" }, async () => {
+          trace("receive", "cron · สรุปตารางเช้า");
+          trace(
+            "reply",
+            "ข้ามรอบส่ง · โควตา push ของ LINE หมดเดือนนี้ (จะส่งได้อีกครั้งเมื่อโควตารีเซ็ต)",
+            "skip"
+          );
+        });
+        return NextResponse.json({ ok: true, only, skipped: "line-quota-exhausted" });
+      }
+      // Paused from /monitor/log, or paused by itself after half an hour of runs
+      // that kept failing. Checked once for the whole tick, not per user.
+      const paused = force
+        ? { brief: null, news: null }
+        : {
+            brief: only === "news" ? null : await jobSkipReason("brief"),
+            news: only === "brief" ? null : await jobSkipReason("news"),
+          };
       const due = force ? null : await dueNowForUsers(users);
       const results: Record<string, { brief: string; news: string }> = {};
       for (const upn of users) {
@@ -204,7 +234,7 @@ async function run(req: Request) {
           continue;
         }
         try {
-          results[upn] = await deliverMorningForUser(upn, force, only);
+          results[upn] = await deliverMorningForUser(upn, force, only, paused);
         } catch (e) {
           results[upn] = {
             brief: `ERROR: ${String(e).slice(0, 150)}`,
