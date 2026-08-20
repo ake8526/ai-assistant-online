@@ -479,13 +479,44 @@ export async function GET(req: Request) {
     if (list) list.push(j);
     else groups.set(j.title, [j]);
   }
+  /** For a failed job: the stage that carries the reason, which is the last
+   *  error stage — or the last stage at all when it died without saying why. */
+  function failureLabel(j: Job): string {
+    const err = [...j.events].reverse().find((e) => e.status === "error" || e.step === "error");
+    const last = j.events[j.events.length - 1];
+    return (err?.label || last?.label || "ไม่ได้บันทึกสาเหตุ").slice(0, 140);
+  }
+
   const activity = [...groups.entries()]
     .map(([title, list]) => {
       const newest = list[0]; // jobs are newest-first
+
+      // A count of problems answers "how many" and nothing else; the two
+      // questions actually being asked of this table are "who" and "why".
+      // Fold the failures by reason, keeping the people and one trace id per
+      // reason so the row can open the job that proves it.
+      const byReason = new Map<
+        string,
+        { n: number; users: Set<string>; traceId: string; lastClock: string }
+      >();
+      for (const j of list) {
+        if (j.outcome !== "error" && j.outcome !== "incomplete") continue;
+        const label = j.outcome === "incomplete" ? `ค้างที่ขั้น “${j.events[j.events.length - 1]?.step || "?"}” · ไม่ได้บันทึกสาเหตุ` : failureLabel(j);
+        const hit = byReason.get(label);
+        if (hit) {
+          hit.n++;
+          hit.users.add(j.user);
+        } else {
+          byReason.set(label, { n: 1, users: new Set([j.user]), traceId: j.traceId, lastClock: j.clock });
+        }
+      }
+
       return {
         title,
         runs: list.length,
         users: [...new Set(list.map((j) => j.user))].length,
+        /** Who this job ran for — the count alone could not be clicked into. */
+        userList: [...new Set(list.map((j) => j.user))].slice(0, 12),
         lastClock: newest.clock,
         lastAgoSec: Math.max(0, Math.round((Date.now() - Date.parse(newest.startedAt)) / 1000)),
         ok: list.filter((j) => j.outcome === "ok").length,
@@ -493,6 +524,16 @@ export async function GET(req: Request) {
         errors: list.filter((j) => j.outcome === "error").length,
         incomplete: list.filter((j) => j.outcome === "incomplete").length,
         channel: newest.channel,
+        reasons: [...byReason.entries()]
+          .sort((a, b) => b[1].n - a[1].n)
+          .slice(0, 4)
+          .map(([label, v]) => ({
+            label,
+            n: v.n,
+            users: [...v.users].slice(0, 8),
+            traceId: v.traceId,
+            clock: v.lastClock,
+          })),
       };
     })
     .sort((a, b) => a.lastAgoSec - b.lastAgoSec);

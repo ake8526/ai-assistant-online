@@ -22,10 +22,18 @@ type LogJob = {
   diagnosis?: string;
   events: LogEvent[];
 };
+type ActivityReason = {
+  label: string;
+  n: number;
+  users: string[];
+  traceId: string;
+  clock: string;
+};
 type Activity = {
   title: string;
   runs: number;
   users: number;
+  userList?: string[];
   lastClock: string;
   lastAgoSec: number;
   ok: number;
@@ -33,6 +41,7 @@ type Activity = {
   errors: number;
   incomplete: number;
   channel: string;
+  reasons?: ActivityReason[];
 };
 type RunningJob = {
   traceId: string;
@@ -542,6 +551,10 @@ const CSS = `
 .mlog button.stop1:disabled{opacity:.5;cursor:default}
 .mlog .closedmini{color:var(--green);font-size:13px;margin-right:10px}
 .mlog .ahnote{padding:6px 10px;border-bottom:1px solid var(--hair);color:var(--dim);font-size:13px;line-height:1.9}
+.mlog .act td.who{color:var(--ink);font-size:14px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mlog .act tr.reason td{border-top:0;padding-top:0;padding-bottom:7px;color:var(--ink);font-size:14px;line-height:1.6}
+.mlog button.openjob{font-family:inherit;font-size:13px;color:var(--amber);background:transparent;border:1px solid var(--amber);border-radius:4px;padding:1px 7px;margin-left:6px;cursor:pointer}
+.mlog button.openjob:hover{background:var(--amber);color:#0a0a0a}
 `;
 
 function JobRow({
@@ -613,7 +626,8 @@ function JobRow({
             <div key={i} className={`ev${e.status === "error" || e.step === "error" ? " error" : ""}`}>
               <span>{e.clock}</span>
               <span className="st">{STEP_TH[e.step] || e.step}</span>
-              <span className="lb">{e.label || "—"}</span>
+              {/* the receive stage carries the job title, prefix and all */}
+              <span className="lb">{e.label ? titleTH(e.label) : "—"}</span>
               <span>+{(e.ms / 1000).toFixed(1)}s</span>
             </div>
           ))}
@@ -634,6 +648,9 @@ function LogView({
   const [user, setUser] = useState("");
   const [channel, setChannel] = useState("");
   const [q, setQ] = useState("");
+  /** One job by id — the API can already fetch a single trace; the page could
+   *  not ask for it, so "open the job that failed" had nowhere to go. */
+  const [trace, setTrace] = useState("");
   const [outcome, setOutcome] = useState("");
   const [calOpen, setCalOpen] = useState(false);
   const [data, setData] = useState<LogResp | null>(null);
@@ -658,6 +675,7 @@ function LogView({
       if (user) p.set("user", user);
       if (channel) p.set("channel", channel);
       if (q) p.set("q", q);
+      if (trace) p.set("trace", trace);
       if (outcome) p.set("outcome", outcome);
       const r = await fetch(`/api/monitor/log?${p}`, { headers, cache: "no-store" });
       const d = await r.json();
@@ -683,7 +701,7 @@ function LogView({
     } finally {
       setLoading(false);
     }
-  }, [getToken, date, user, channel, q, outcome]);
+  }, [getToken, date, user, channel, q, trace, outcome]);
 
   // Debounced: the user/keyword boxes change on every keystroke, and a query per
   // keystroke would hammer a table that holds every stage of every request.
@@ -872,6 +890,11 @@ function LogView({
           เฉพาะที่มีปัญหา
         </button>
         <button onClick={() => void load()}>{loading ? "กำลังโหลด…" : "รีเฟรช"}</button>
+        {trace && (
+          <button onClick={() => setTrace("")} title="เลิกดูงานเดียว กลับไปดูทั้งวัน">
+            ← เลิกดูงานเดียว
+          </button>
+        )}
         <div className="spacer" />
         {can("jobs.stop") && (
           <button className="danger" onClick={() => setConfirmOpen(true)} disabled={cancelling}>
@@ -1092,25 +1115,53 @@ function LogView({
                 // Clicking a row filters the list below to that job — the
                 // summary was a dead end otherwise: it names a job and gives you
                 // no way to see what actually happened in it.
-                <tr
-                  key={a.title}
-                  className={`click${q === a.title ? " on" : ""}`}
-                  title="คลิกเพื่อดูรายละเอียดงานนี้"
-                  onClick={() => setQ(q === a.title ? "" : a.title)}
-                >
-                  <td className="n">{titleTH(a.title)}</td>
-                  <td>{a.runs}</td>
-                  <td>{a.users || "—"}</td>
-                  <td>
-                    {a.lastClock} <span className="dim">({ago(a.lastAgoSec)})</span>
-                  </td>
-                  <td>
-                    {a.ok > 0 && <span className="tag ok">สำเร็จ {a.ok}</span>}
-                    {a.quiet > 0 && <span className="tag quiet">ไม่มีอะไรต้องส่ง {a.quiet}</span>}
-                    {a.errors > 0 && <span className="tag err">ผิดพลาด {a.errors}</span>}
-                    {a.incomplete > 0 && <span className="tag inc">ไม่จบงาน {a.incomplete}</span>}
-                  </td>
-                </tr>
+                <React.Fragment key={a.title}>
+                  <tr
+                    className={`click${q === a.title ? " on" : ""}`}
+                    title="คลิกเพื่อกรองรายการงานด้านล่างให้เหลือแต่งานนี้"
+                    onClick={() => setQ(q === a.title ? "" : a.title)}
+                  >
+                    <td className="n">{titleTH(a.title)}</td>
+                    <td>{a.runs}</td>
+                    {/* The count could not be clicked into, so name the people. */}
+                    <td className="who" title={(a.userList || []).join(", ")}>
+                      {a.userList?.length ? a.userList.join(", ") : a.users || "—"}
+                    </td>
+                    <td>
+                      {a.lastClock} <span className="dim">({ago(a.lastAgoSec)})</span>
+                    </td>
+                    <td>
+                      {a.ok > 0 && <span className="tag ok">สำเร็จ {a.ok}</span>}
+                      {a.quiet > 0 && <span className="tag quiet">ไม่มีอะไรต้องส่ง {a.quiet}</span>}
+                      {a.errors > 0 && <span className="tag err">ผิดพลาด {a.errors}</span>}
+                      {a.incomplete > 0 && <span className="tag inc">ไม่จบงาน {a.incomplete}</span>}
+                    </td>
+                  </tr>
+                  {/* Why, in the same table. A red count with the reason a click
+                      and a scroll away was the whole complaint. */}
+                  {(a.reasons || []).map((r) => (
+                    <tr key={a.title + r.label} className="reason">
+                      <td />
+                      <td colSpan={4}>
+                        <span className="tag err">×{r.n}</span> {r.label}
+                        <span className="dim">
+                          {" "}
+                          · {r.users.join(", ")} · ครั้งล่าสุด {r.clock}
+                        </span>{" "}
+                        <button
+                          className="openjob"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setQ("");
+                            setTrace(r.traceId);
+                          }}
+                        >
+                          เปิดงานที่ล้ม →
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
