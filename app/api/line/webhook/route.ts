@@ -573,14 +573,20 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
   // the full text (quick-reply labels stop at 20 characters) and nothing is
   // hidden off the side of the screen.
   if (res.flex) {
-    await replyLineMessages(replyToken, [
-      {
-        type: "flex",
-        altText: res.flex.altText.slice(0, 400),
-        contents: res.flex.contents,
-        ...(qr ? { quickReply: qr } : {}),
-      },
-    ]);
+    const messages: Record<string, unknown>[] = [];
+    if (res.reply && res.reply.trim()) {
+      messages.push({
+        type: "text",
+        text: reply.slice(0, 4900),
+      });
+    }
+    messages.push({
+      type: "flex",
+      altText: res.flex.altText.slice(0, 400),
+      contents: res.flex.contents,
+      ...(qr ? { quickReply: qr } : {}),
+    });
+    await replyLineMessages(replyToken, messages as Parameters<typeof replyLineMessages>[1]);
     return;
   }
   if (qr) {

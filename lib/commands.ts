@@ -6218,10 +6218,10 @@ async function handleParsed(
     // Style 3 (Concise & Powerful):
     // "ผมคือ **KTIS AI Assistant** 🤖 ผู้ช่วยส่วนตัวระดับ Advance ของชาว KTIS Group ครับ!\n\nออกแบบมาเพื่อช่วยให้ชีวิตการทำงานของคุณง่ายและเร็วขึ้น 10 เท่า ทั้ง **ดูตารางนัดหมาย, สรุปการประชุมอัตโนมัติ, แจ้งเตือนงานติดตาม, และคัดกรองข่าวสำคัญประจำวัน**\n\nพิมพ์สั่งงานหรือกดเมนูด้านล่าง แล้วสัมผัสความสะดวกได้เลยครับ 👇"
 
-    const { helpMenuFlex, helpMenuText, visibleTopics } = await import("@/lib/help");
+    const { helpMenuFlex, visibleTopics } = await import("@/lib/help");
     return {
       intent: "who_are_you",
-      reply: `${style2}\n\n📖 **เมนูคำสั่งและสิ่งที่คุณสามารถสั่งผมได้:**\n\n${helpMenuText()}`,
+      reply: style2,
       flex: helpMenuFlex(),
       suggestions: [
         ...visibleTopics().slice(0, 8).map((x) => ({ label: x.chip, text: x.chip })),
