@@ -2013,7 +2013,11 @@ function formatEventsSimple(events: GraphEvent[], label: string): string {
       lines.push(`— ${d} —`);
       lastDay = d;
     }
-    lines.push(`  ${tt} · ${ev.subject || "(ไม่มีหัวข้อ)"}`);
+    const bodyText = ev.body?.content || ev.bodyPreview || "";
+    const hasOnline = ev.onlineMeeting || /teams\.microsoft\.com|meet\.google\.com|zoom\.us/i.test(bodyText);
+    const loc = ev.location?.displayName ? ` 📍 ${ev.location.displayName}` : "";
+    const onlineTag = hasOnline ? " 💻 ประชุมออนไลน์ (มีลิงก์ Teams)" : "";
+    lines.push(`  ${tt} · ${ev.subject || "(ไม่มีหัวข้อ)"}${loc}${onlineTag}`);
   }
   return lines.join("\n");
 }

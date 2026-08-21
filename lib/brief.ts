@@ -143,7 +143,9 @@ export function formatAgendaList(
   events.forEach((ev, i) => {
     const subj = (ev.subject || "(ไม่มีหัวข้อ)").trim();
     const who = ev.organizer?.emailAddress?.name || ev.organizer?.emailAddress?.address || "";
-    const loc = ev.location?.displayName || (ev.onlineMeeting ? "ออนไลน์ (Teams)" : "");
+    const bodyText = ev.body?.content || ev.bodyPreview || "";
+    const hasOnline = ev.onlineMeeting || /teams\.microsoft\.com|meet\.google\.com|zoom\.us/i.test(bodyText);
+    const loc = ev.location?.displayName || (hasOnline ? "ออนไลน์ (มีลิงก์ MS Teams)" : "");
     const people = (ev.attendees || [])
       .map((a) => a.emailAddress?.name || a.emailAddress?.address || "")
       .filter(Boolean)
