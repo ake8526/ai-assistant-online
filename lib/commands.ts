@@ -1692,6 +1692,19 @@ async function parseIntent(
     };
   }
 
+  // Request direct meeting link: "ขอลิงก์ประชุมวันที่ 21", "ขอลิงค์ ms teams", "ขอลิงก์ teams"
+  if (/(?:ขอ|ส่ง|อยากได้|เอา)?\s*(?:ลิงก์|ลิงค์|link)\s*(?:ประชุม|teams|ms\s*teams|zoom)?/i.test(textClean)) {
+    const dayM = dayHintFromText(textClean);
+    const dateStr = dayM ? wallIso(dayM.start).split("T")[0] : undefined;
+    const idxMatch = textClean.match(/(?:นัด|อัน|ที่)\s*(\d{1,2})/);
+    const meeting_index = idxMatch ? Number(idxMatch[1]) : 1;
+    return {
+      intent: "get_meeting_link",
+      params: { meeting_index, date: dateStr },
+      source: "quick",
+    };
+  }
+
   // “มีอีกไหม” after nickname duplicate list — next page / confirm complete (no re-dump)
   const moreNick =
     /^(มีอีก|มีเพิ่ม|ดูต่อ|ต่อไป|หน้าต่อไป|หน้าถัดไป)(ไหม|มั้ย)?$|^มีอีกไหม$|^อีกไหม$|^อีกมั้ย$|^ครบยัง$|^มีหมดแล้วไหม$/i.test(
@@ -4657,10 +4670,30 @@ async function handleParsed(
     const idx = Number(params.meeting_index ?? params.index ?? 0);
     let eventId = "";
     let fallback: import("@/lib/graph").GraphEvent | undefined;
-    const entry = idx ? await resolveAgendaEntry(userUpn, idx) : null;
-    if (entry) {
-      eventId = entry.eventId;
-      fallback = entry.event;
+
+    // Handle date parameter (e.g. "ขอลิงก์ประชุมวันที่ 21")
+    if (params.date) {
+      const dateStr = String(params.date);
+      const dayRange = resolveDay(dateStr);
+      if (dayRange) {
+        const events = await getEventsRange(userUpn, wallIso(dayRange.start), wallIso(dayRange.end));
+        if (events.length) {
+          const targetIndex = idx && idx <= events.length ? idx - 1 : 0;
+          const hit = events[targetIndex];
+          if (hit?.id) {
+            eventId = hit.id;
+            fallback = hit;
+          }
+        }
+      }
+    }
+
+    if (!eventId) {
+      const entry = idx ? await resolveAgendaEntry(userUpn, idx) : null;
+      if (entry) {
+        eventId = entry.eventId;
+        fallback = entry.event;
+      }
     }
     if (!eventId && params.subject) {
       const agenda = await buildMorningAgenda(userUpn);
@@ -4679,6 +4712,65 @@ async function handleParsed(
     }
     const reply = await buildMeetingPrep(userUpn, eventId, fallback);
     return { intent: "meeting_prep", reply };
+  }
+
+  if (intent === "get_meeting_link") {
+    const denied = needCalendarConsent();
+    if (denied) return denied;
+    const idx = Number(params.meeting_index ?? params.index ?? 0);
+    let event: import("@/lib/graph").GraphEvent | undefined;
+
+    if (params.date) {
+      const dateStr = String(params.date);
+      const dayRange = resolveDay(dateStr);
+      if (dayRange) {
+        const events = await getEventsRange(userUpn, wallIso(dayRange.start), wallIso(dayRange.end));
+        if (events.length) {
+          const targetIndex = idx && idx <= events.length ? idx - 1 : 0;
+          event = events[targetIndex];
+        }
+      }
+    }
+
+    if (!event) {
+      const entry = idx ? await resolveAgendaEntry(userUpn, idx) : null;
+      if (entry?.event) {
+        event = entry.event;
+      }
+    }
+
+    if (!event) {
+      const agenda = await buildMorningAgenda(userUpn);
+      if (agenda.events.length) {
+        event = agenda.events[0];
+      }
+    }
+
+    if (!event) {
+      return { intent: "get_meeting_link", reply: "ไม่พบลิงก์ประชุมในวันที่ระบุครับ" };
+    }
+
+    const bodyHtml = event.body?.content || "";
+    const bodyText = stripHtml(bodyHtml) || (event.bodyPreview || "");
+    const urls = extractUrls(bodyHtml + "\n" + bodyText);
+    const teamsLink =
+      event.onlineMeeting?.joinUrl ||
+      urls.find((u) => u.includes("teams.microsoft.com/l/meetup-join")) ||
+      urls.find((u) => u.includes("meet.google.com") || u.includes("zoom.us")) ||
+      (bodyHtml.match(/https:\/\/[^\s"'<>]+/i)?.[0] ?? undefined);
+
+    const subj = event.subject || "ประชุม";
+    if (teamsLink) {
+      return {
+        intent: "get_meeting_link",
+        reply: `🔗 ลิงก์เข้าประชุม "${subj}":\n${teamsLink}`,
+      };
+    } else {
+      return {
+        intent: "get_meeting_link",
+        reply: `📌 นัด "${subj}" ไม่พบลิงก์ MS Teams หรือลิงก์ประชุมออนไลน์แนบอยู่ในระบบครับ`,
+      };
+    }
   }
 
   if (intent === "get_news") {
