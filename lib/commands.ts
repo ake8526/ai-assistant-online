@@ -4125,7 +4125,8 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       quick?.intent === "meeting_durations" ||
       quick?.intent === "help_menu" ||
       quick?.intent === "preview_morning" ||
-      quick?.intent === "search_files"
+      quick?.intent === "search_files" ||
+      quick?.intent === "add_sample_tasks"
     ) {
       trace("parse", `★ AI:NONE · intent=${quick.intent} (กฎตายตัว ไม่เรียก API)`);
       return await handleParsed(userUpn, text, context, lite, quick.intent, quick.params);
