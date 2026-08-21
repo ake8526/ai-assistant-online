@@ -197,8 +197,8 @@
   /* ALL FUNCTIONS — the whole feature list on one screen.
      Not masonry: the cards run 250–350px against an ~830px panel, so only two
      or three fit a column and the leftover quantum (200px+) always showed as a
-     dead band. A fixed 4x2 grid of equal cards fills the panel exactly; the
-     cards were merged down to eight so each one has room to breathe. */
+     dead band. A fixed grid of equal cards fills the panel exactly; the cards were
+     merged down to nine (3x3) so each one has room to breathe. */
   #all {
     justify-content: flex-start; gap: 0;
     /* cap the height so the grid sizes to the screen instead of running past it */
@@ -258,27 +258,26 @@
     font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px;
     background: rgba(255,255,255,.06); border-radius: 5px; padding: 1px 4px; color: var(--ink);
   }
-  /* Big screen with real height — the case this section is designed for: two
-     rows of four equal cards filling the panel exactly, nothing to scroll.
-     Gated on HEIGHT as well as width: at 1366x768 the same grid gave rows of
-     180px and every one of the eight cards needed its own scrollbar. */
-  @media (min-width: 1500px) and (min-height: 930px) {
-    .func-grid {
-      height: 100%; align-items: stretch;
-      grid-template-columns: repeat(4, 1fr);
-      grid-template-rows: repeat(2, 1fr);
-    }
-    .fg ul { overflow-y: auto; }
-  }
-  /* Mid-size but tall (e.g. 1280x1024): three columns, three rows, and the last
-     card takes the spare cell so no hole is left. */
-  @media (min-width: 1180px) and (max-width: 1499px) and (min-height: 1000px) {
+  /* Big screen with real height — the case this section is designed for:
+     three rows of three equal cards filling the panel exactly, nothing to
+     scroll. Gated on HEIGHT as well as width: at 1366x768 the same grid gave
+     rows of 180px and every card needed its own scrollbar. */
+  @media (min-width: 1180px) and (min-height: 930px) {
     .func-grid {
       height: 100%; align-items: stretch;
       grid-template-columns: repeat(3, 1fr);
       grid-template-rows: repeat(3, 1fr);
     }
-    .func-grid .fg:last-child { grid-column: span 2; }
+    /* Three rows leave a card ~265px instead of ~415px, so the text tightens to
+       match: without this, seven of the nine cards carried their own scrollbar,
+       which is the dead-band problem again in a smaller box. The cards are wider
+       in this layout (three across the panel), so shorter lines cost nothing. */
+    .fg { padding: 12px 15px 11px; }
+    .fg h3 { font-size: 15.5px; margin-bottom: 2px; }
+    .fg h3 i { font-size: 16px; }
+    .fg .tagline { font-size: 11.5px; margin-bottom: 7px; padding-bottom: 7px; }
+    .fg li { font-size: 12.9px; line-height: 1.4; margin-bottom: 3px; }
+    .fg li code { font-size: 11.8px; }
     .fg ul { overflow-y: auto; }
   }
   @media (max-width: 700px) {
@@ -1137,6 +1136,19 @@
           </article>
 
           <article class="fg">
+            <h3><i>📖</i>คู่มือคำสั่งในแชท</h3>
+            <div class="tagline">จำคำสั่งไม่ได้ก็ถามมันได้เลย</div>
+            <ul>
+              <li>พิมพ์ <code>ทำอะไรได้บ้าง</code> <code>ขอคำสั่ง</code> <code>/คำสั่ง</code> <code>/ช่วยเหลือ</code> <code>ช่วยด้วย</code> — <b>21 คำ</b>เข้าเมนูเดียวกัน</li>
+              <li>ตอบมาเป็น<b>การ์ดแตะได้ทุกบรรทัด</b> — แตะแล้วส่งคำสั่งเข้าแชททันที ไม่ต้องพิมพ์ ไม่ต้องเข้าลิงก์</li>
+              <li>แบ่ง <b>8 หมวด</b>: ตารางฉัน / ตารางคนอื่น / นัดประชุม / สรุปประชุม / งานที่ต้องตาม / ไฟล์ / ข่าว / คำสั่ง /</li>
+              <li>แถวในการ์ดโชว์<b>คำสั่งเต็มประโยค</b> เช่น <code>หาเวลาที่เบสกับนนท์ว่างตรงกันวันจันทร์</code></li>
+              <li>อ่านแบบหน้าเว็บหรือส่งต่อให้เพื่อนร่วมงาน: <b>/help</b></li>
+              <li>คำสั่งในคู่มือดึงจากโค้ดจริงชุดเดียว — <b>ไม่มีคู่มือล้าสมัย</b></li>
+            </ul>
+          </article>
+
+          <article class="fg">
             <h3><i>📅</i>ปฏิทิน &amp; นัดประชุม</h3>
             <div class="tagline">ต่อกับ Outlook / M365 ของบริษัท</div>
             <ul>
@@ -1218,11 +1230,10 @@
             <h3><i>🖥️</i>ห้องทำงาน · ตัวตั้งเวลา · สิทธิ์</h3>
             <div class="tagline">ดูได้ว่าระบบทำอะไรอยู่</div>
             <ul>
-              <li><code>/monitor</code> เห็นงานที่ทำสด · <code>/monitor/log</code> ประวัติรายวัน + สถานะ <b>“ไม่จบงาน”</b> + ปุ่มหยุดงานค้าง</li>
-              <li><code>/monitor/admin</code> — <b>4 สิทธิ์</b>: ดูห้องทำงาน · ดู log · หยุดงานค้าง · จัดการสิทธิ์</li>
-              <li><b>ตัวตั้งเวลาหลัก = Cloudflare Worker</b> — เคาะทุกนาที 05:30–08:20 · ทุก 5 นาที ถึง 20:55 (Vercel Cron / GitHub Actions เป็นตัวสำรอง)</li>
+              <li><code>/monitor</code> งานที่ทำสด · <code>/monitor/log</code> ประวัติรายวัน + สถานะ <b>“ไม่จบงาน”</b> + ปุ่มหยุดงานค้าง · <code>/monitor/admin</code> จัดการ <b>4 สิทธิ์</b></li>
+              <li><b>ตัวตั้งเวลาหลัก = Cloudflare Worker</b> — ทุกนาที 05:30–08:20 · ทุก 5 นาทีถึง 20:55 (Vercel Cron / GitHub Actions สำรอง)</li>
               <li>งานไหน<b>ไม่จบเกิน 30 นาที</b> ระบบ<b>หยุดยิงซ้ำเอง</b> พร้อมบอกเหตุผลใน log และกดเปิดกลับได้</li>
-              <li>ข่าวตามหัวข้อ = <b>NewsData.io</b> · LLM แยกสองชั้น (แยกเจตนา + สรุป) · ข้อมูลอยู่บน <b>Supabase</b></li>
+              <li>ข่าวตามหัวข้อ = <b>NewsData.io</b> · LLM สองชั้น (แยกเจตนา + สรุป) · ข้อมูลบน <b>Supabase</b></li>
               <li>ลิงก์ <code>/n/…</code> และ <code>/s/…</code> ใช้โทเคนเซ็น+หมดอายุ เปิดจาก LINE ได้ไม่ต้องล็อกอิน</li>
             </ul>
           </article>
