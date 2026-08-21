@@ -17,6 +17,7 @@ export async function GET(req: Request) {
     const offset = parseInt(url.searchParams.get("offset") || "0", 10);
     const search = (url.searchParams.get("search") || "").trim();
     const channel = (url.searchParams.get("channel") || "").trim();
+    const role = (url.searchParams.get("role") || "").trim();
     const user = (url.searchParams.get("user") || "").trim();
     const date = (url.searchParams.get("date") || "").trim(); // YYYY-MM-DD
 
