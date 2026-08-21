@@ -5738,7 +5738,18 @@ async function handleParsed(
   if (intent === "list_tasks") {
     const tasks = await listTasks(userUpn);
     const pending = tasks.filter((t) => t.status === "pending" || t.status === "overdue");
-    return { intent, reply: `มีงานค้าง ${pending.length} รายการ`, data: pending };
+    if (!pending.length) {
+      return { intent, reply: "ไม่มีงานติดตามค้างอยู่ครับ 👍" };
+    }
+    const lines = [`📌 งานที่ต้องติดตามค้างอยู่ (${pending.length} รายการ):`, ""];
+    pending.forEach((t, i) => {
+      const dueStr = t.due ? ` (กำหนดส่ง: ${t.due})` : "";
+      const resp = t.responsible ? ` [ผู้รับผิดชอบ: ${t.responsible}]` : "";
+      const stTag = t.status === "overdue" ? " ⚠️ เกินกำหนด" : "";
+      lines.push(`${i + 1}) ${t.title}${dueStr}${resp}${stTag}`);
+    });
+    lines.push("\nพิมพ์ เช่น “ปิดงาน 1” เพื่อทำเครื่องหมายสำเร็จ");
+    return { intent, reply: lines.join("\n"), data: pending };
   }
 
   if (intent === "add_task") {
