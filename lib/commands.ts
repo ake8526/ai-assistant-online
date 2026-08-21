@@ -1694,7 +1694,7 @@ async function parseIntent(
   // invented tasks and silently dropped the real one.
   const wantsSampleTasks =
     /(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม)?/i.test(textClean) &&
-    (/(?:ทดสอบ|ตัวอย่าง|สมมติ)/i.test(textClean) || /\d{1,2}\s*งาน/i.test(textClean) || /^(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม)?(?:\s*ให้)?(?:\s*\d{1,2}\s*งาน)?(?:\s*ที|\s*ครับ|\s*ค่ะ)?$/i.test(textClean));
+    (/(?:ทดสอบ|ตัวอย่าง|สมมติ)/i.test(textClean) || /\d{1,2}\s*งาน/i.test(textClean) || /^(?:ขอ)?\s*(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม)?(?:\s*ให้)?(?:\s*\d{1,2}\s*งาน)?(?:\s*ที|\s*ครับ|\s*ค่ะ)?$/i.test(textClean));
   if (wantsSampleTasks) {
     const countMatch = textClean.match(/(\d{1,2})\s*งาน/);
     const count = countMatch ? Math.min(Number(countMatch[1]), 5) : 2;
@@ -5817,7 +5817,7 @@ async function handleParsed(
     ];
 
     const addedList: string[] = [];
-    const timestampStr = new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+    let lastError = "";
     for (let i = 0; i < count; i++) {
       const s = samples[i % samples.length];
       const titleWithTime = count > 1 ? `${s.title} (${i + 1})` : s.title;
@@ -5827,7 +5827,8 @@ async function handleParsed(
           title: titleWithTime,
           responsible: s.responsible,
           responsible_upn: null,
-          due: s.due,
+          // Thai wording straight into a timestamp column threw on every row
+          due: normalizeDue(s.due),
           source: "manual",
         });
         if (tid) {
@@ -5835,13 +5836,15 @@ async function handleParsed(
         }
       } catch (err) {
         console.error("[add_sample_tasks] error adding task:", err);
+        lastError = String(err).slice(0, 160);
+        trace("fetch", `เพิ่มงานตัวอย่างไม่สำเร็จ: ${lastError}`, "error");
       }
     }
 
     if (!addedList.length) {
       return {
         intent: "add_task",
-        reply: "⚠️ เกิดข้อผิดพลาดในการบันทึกงานลงฐานข้อมูล กรุณาลองใหม่อีกครั้งครับ",
+        reply: `⚠️ บันทึกงานลงฐานข้อมูลไม่สำเร็จครับ${lastError ? `\n(${lastError})` : ""}`,
       };
     }
 

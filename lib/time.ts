@@ -554,9 +554,58 @@ export function fmtHHMM(minutes: number): string {
 }
 
 /**
+ * A deadline written the way people say it: "พรุ่งนี้ 17:00", "วันศุกร์นี้",
+ * "จันทร์ 12:00", "31 ก.ค.". Returns UTC ISO, or null when no day can be found.
+ *
+ * A due with no clock lands at 17:00 — end of the working day is what a
+ * deadline without a time means here, and midnight would read as overdue all
+ * afternoon.
+ */
+/**
+ * "พรุ่งนี้", "มะรืน", "อีก 3 วัน", "สิ้นเดือน" — counted from today, not looked up.
+ * periodRange() answers the same question for calendar views but has no way to
+ * say "that is not a day", which a due date needs.
+ */
+function relativeDay(text: string): { start: Date; end: Date; label: string } | null {
+  const t = (text || "").replace(/\s+/g, "").trim();
+  if (!t) return null;
+  const today = startOfDay(nowWall());
+  const day = (d: Date, label: string) => ({ start: d, end: endOfDay(d), label });
+  if (/^(?:วันนี้|คืนนี้|เช้านี้|บ่ายนี้|เย็นนี้)$/.test(t)) return day(today, "วันนี้");
+  if (/^พรุ่ง(?:นี้)?$/.test(t)) return day(addDays(today, 1), "พรุ่งนี้");
+  if (/^มะรืน(?:นี้)?$/.test(t)) return day(addDays(today, 2), "มะรืนนี้");
+  const inDays = t.match(/^อีก(\d{1,2})วัน$/);
+  if (inDays) return day(addDays(today, Number(inDays[1])), `อีก ${inDays[1]} วัน`);
+  if (/^(?:สัปดาห์|อาทิตย์)หน้า$/.test(t)) return day(addDays(today, 7), "สัปดาห์หน้า");
+  if (/^สิ้นเดือน(?:นี้)?$/.test(t)) {
+    const last = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+    return day(last, "สิ้นเดือน");
+  }
+  return null;
+}
+
+function thaiDueToIso(s: string): string | null {
+  const clock = parseThaiClockToHHMM(s);
+  // strip the time wording so only the day is left: "จันทร์ 9 โมง" → "จันทร์"
+  const dayText = s
+    .replace(/\d{1,2}[:.]\d{2}/g, " ")
+    .replace(/\d{1,2}\s*(?:โมง|ทุ่ม|นาฬิกา)(?:เช้า|เย็น|ครื่ง)?/g, " ")
+    .replace(/(?:เที่ยง(?:วัน|คืน)?|ตอนเช้า|ตอนบ่าย|ตอนเย็น|บ่ายสอง|บ่ายสาม|บ่ายโมง)/g, " ")
+    .replace(/(?:เวลา|ตอน|ก่อน|ภายใน|ไม่เกิน)/g, " ")
+    .trim();
+  const day = relativeDay(dayText) || resolveDay(dayText) || resolveThaiDateInText(dayText) || resolveWeekday(dayText);
+  if (!day) return null;
+  const hhmm = clock || "17:00";
+  const [h, mi] = hhmm.split(":").map(Number);
+  const wall = startOfDay(day.start);
+  wall.setUTCHours(h, mi, 0, 0);
+  return wallToUtcIso(wall);
+}
+
+/**
  * Normalize a free-text due date to a real UTC ISO string (or null).
- * Accepts ISO "YYYY-MM-DD[ HH:MM]" and Thai-style day-first "DD/MM/YYYY [HH:MM]".
- * Relative words ("พรุ่งนี้") return null — the task keeps no deadline.
+ * Accepts ISO "YYYY-MM-DD[ HH:MM]", Thai-style day-first "DD/MM/YYYY [HH:MM]",
+ * and relative Thai wording via thaiDueToIso.
  */
 export function normalizeDue(dueRaw: unknown): string | null {
   const s = String(dueRaw ?? "").trim();
@@ -564,7 +613,7 @@ export function normalizeDue(dueRaw: unknown): string | null {
   const m = s.match(
     /^(?:(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?)(?:[T ](\d{1,2}):(\d{2}))?/
   );
-  if (!m) return null;
+  if (!m) return thaiDueToIso(s);
   let y: number, mo: number, day: number;
   if (m[1]) {
     y = Number(m[1]);
