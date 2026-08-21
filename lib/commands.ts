@@ -5814,11 +5814,17 @@ async function handleParsed(
     const addedList: string[] = [];
     for (let i = 0; i < count; i++) {
       const s = samples[i % samples.length];
+      let respUpn: string | null = null;
+      try {
+        respUpn = await resolveResponsible(s.responsible);
+      } catch {
+        respUpn = null;
+      }
       const tid = await addTask({
         owner_upn: userUpn,
         title: s.title,
         responsible: s.responsible,
-        responsible_upn: await resolveResponsible(s.responsible),
+        responsible_upn: respUpn,
         due: s.due,
         source: "manual",
       });
