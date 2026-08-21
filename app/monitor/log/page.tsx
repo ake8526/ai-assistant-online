@@ -446,6 +446,133 @@ function DateField({
   );
 }
 
+function UserAutocompleteInput({
+  value,
+  onChange,
+  placeholder,
+  getToken,
+  style,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  getToken: () => Promise<string | null>;
+  style?: React.CSSProperties;
+}) {
+  const [open, setOpen] = useState(false);
+  const [hits, setHits] = useState<{ mail: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const wrapRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const q = value.trim();
+    if (!open || q.length < 1) {
+      setHits([]);
+      return;
+    }
+    let alive = true;
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const token = await getToken();
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`, { headers });
+        if (!res.ok) return;
+        const d = (await res.json()) as { users?: { mail: string; name: string }[] };
+        if (alive && d.users) {
+          setHits(d.users);
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [value, open, getToken]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative", display: "inline-block", ...style }}>
+      <input
+        placeholder={placeholder || "ผู้ใช้ — ชื่อ/อีเมล"}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        style={{ width: "100%" }}
+      />
+      {open && (hits.length > 0 || loading) && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            minWidth: "260px",
+            background: "#121212",
+            border: "1px solid #ee1b24",
+            zIndex: 100,
+            marginTop: "2px",
+            maxHeight: "220px",
+            overflowY: "auto",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.8)",
+          }}
+        >
+          {loading && hits.length === 0 && (
+            <div style={{ padding: "6px 10px", fontSize: "14px", color: "var(--dim)" }}>
+              กำลังค้นหา…
+            </div>
+          )}
+          {hits.map((u) => (
+            <div
+              key={u.mail}
+              onClick={() => {
+                const nick = u.name ? u.name.split(" ")[0] || u.mail.split("@")[0] : u.mail.split("@")[0];
+                onChange(u.mail.split("@")[0] || u.mail);
+                setOpen(false);
+              }}
+              style={{
+                padding: "6px 10px",
+                cursor: "pointer",
+                borderBottom: "1px solid #222",
+                display: "flex",
+                flexDirection: "column",
+                gap: "2px",
+              }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#222")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
+            >
+              <div style={{ fontSize: "15px", color: "#f5f5f5", fontWeight: "bold" }}>
+                {u.name}
+              </div>
+              <div style={{ fontSize: "13px", color: "var(--dim)" }}>
+                {u.mail}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@500;700&family=Press+Start+2P&family=VT323&display=swap');
 .mlog{--bg:#0a0a0a;--panel:#121212;--panel2:#171717;--ink:#f5f5f5;--dim:#7c7c7c;--red:#ee1b24;--green:#39d353;--amber:#f0b429;--hair:#262626;
@@ -999,10 +1126,12 @@ function LogView({
           วันถัดไป ▶
         </button>
         <button onClick={() => setDate(bkkToday())}>วันนี้</button>
-        <input
+        <UserAutocompleteInput
           placeholder="ผู้ใช้ — ชื่อเล่นก็ได้ เช่น เอก"
           value={user}
-          onChange={(e) => setUser(e.target.value)}
+          onChange={(val) => setUser(val)}
+          getToken={getToken}
+          style={{ width: "200px" }}
         />
         <select value={channel} onChange={(e) => setChannel(e.target.value)}>
           <option value="">ทุกช่องทาง</option>
@@ -1536,11 +1665,12 @@ function ChatLogView({ getToken }: { getToken: () => Promise<string | null> }) {
         </button>
         <button onClick={() => setChatDate("")} className={!chatDate ? "on" : ""}>ทุกวัน</button>
 
-        <input
-          placeholder="ผู้ใช้ — เช่น weerasak.pi"
+        <UserAutocompleteInput
+          placeholder="ผู้ใช้ — ชื่อ/อีเมล เช่น weerasak"
           value={user}
-          onChange={(e) => setUser(e.target.value)}
-          style={{ width: "170px" }}
+          onChange={(val) => setUser(val)}
+          getToken={getToken}
+          style={{ width: "210px" }}
         />
         <input
           placeholder="ค้นคำในข้อความ..."
