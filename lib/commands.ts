@@ -1688,12 +1688,14 @@ async function parseIntent(
   const textLower = textClean.toLowerCase();
 
   // Fast deterministic shortcuts — skip LLM so LINE replies before the reply-token expires.
-  if (
-    /(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม|ทดสอบ)?/i.test(textClean) ||
-    /งานติดตาม.*(\d{1,2})?\s*งาน/i.test(textClean) ||
-    /เพิ่มงาน/i.test(textClean) ||
-    /สร้างงาน/i.test(textClean)
-  ) {
+  //
+  // Sample data only when the person asks for sample data. Matching every
+  // "เพิ่มงาน…" turned "เพิ่มงาน ทำสลิปการประชุม พรุ่งนี้ 17:00" into two
+  // invented tasks and silently dropped the real one.
+  const wantsSampleTasks =
+    /(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม)?/i.test(textClean) &&
+    (/(?:ทดสอบ|ตัวอย่าง|สมมติ)/i.test(textClean) || /\d{1,2}\s*งาน/i.test(textClean) || /^(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม)?(?:\s*ให้)?(?:\s*\d{1,2}\s*งาน)?(?:\s*ที|\s*ครับ|\s*ค่ะ)?$/i.test(textClean));
+  if (wantsSampleTasks) {
     const countMatch = textClean.match(/(\d{1,2})\s*งาน/);
     const count = countMatch ? Math.min(Number(countMatch[1]), 5) : 2;
     return {
@@ -1752,17 +1754,6 @@ async function parseIntent(
         source: "quick",
       };
     }
-  }
-
-  // Quick add sample tasks shortcut: "เพิ่มงานติดตามให้ 2 งานที", "สร้างงานทดสอบ 2 งาน", "เพิ่มงานทดสอบ", "เพิ่มงาน 2 งาน"
-  if (/(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม|ทดสอบ)?(?:\s*ให้)?\s*(\d{1,2})?\s*งาน/i.test(textClean) || /งานติดตาม.*(\d{1,2})\s*งาน/i.test(textClean)) {
-    const countMatch = textClean.match(/(\d{1,2})\s*งาน/);
-    const count = countMatch ? Math.min(Number(countMatch[1]), 5) : 2;
-    return {
-      intent: "add_sample_tasks",
-      params: { count },
-      source: "quick",
-    };
   }
 
   // “มีอีกไหม” after nickname duplicate list — next page / confirm complete (no re-dump)
