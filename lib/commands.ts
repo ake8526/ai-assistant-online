@@ -1733,7 +1733,10 @@ async function parseIntent(
   }
 
   // Quick task closure confirmation handling: "ยืนยันปิดงาน", "ยืนยัน"
-  if (context?.last_intent === "confirm_complete_task" && /^(?:ยืนยัน|ตกลง|ปิดเลย|ใช่|ปิด|confirm|ok|yes)$/i.test(textClean)) {
+  if (
+    context?.last_intent === "confirm_complete_task" &&
+    /^(?:ยืนยันปิดงาน|ยืนยัน|ตกลง|ปิดเลย|ใช่|ปิด|confirm|ok|yes)$/i.test(textClean)
+  ) {
     const pendingTargetIds = (context?.pending_task_ids as number[]) || [];
     if (pendingTargetIds.length) {
       return {
@@ -5935,11 +5938,11 @@ async function handleParsed(
           intent: "confirm_complete_task",
           pending_task_ids: matchedTasks.map((t) => t.id),
           reply:
-            `⚠️ **ยืนยันการปิดงาน ${matchedTasks.length} รายการต่อไปนี้ไหมครับ?**\n\n` +
+            `⚠️ ยืนยันการปิดงาน ${matchedTasks.length} รายการต่อไปนี้ไหมครับ?\n\n` +
             `${confirmList}\n\n` +
-            `พิมพ์ **“ยืนยัน”** หรือ **“ปิดเลย”** เพื่อทำต่อ`,
+            `กดปุ่ม “ยืนยันปิดงาน” ด้านล่าง หรือพิมพ์ “ปิดเลย”`,
           suggestions: [
-            { label: "ยืนยันปิดงาน", text: "ยืนยัน" },
+            { label: "ยืนยันปิดงาน", text: "ยืนยันปิดงาน" },
             { label: "ยกเลิก", text: "ดูงานที่ต้องติดตาม" },
           ],
         };

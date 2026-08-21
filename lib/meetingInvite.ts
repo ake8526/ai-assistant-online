@@ -4,7 +4,7 @@
 import { admin } from "@/lib/supabaseServer";
 import { getLineId, pushLineMessages } from "@/lib/line";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
-import { fmtDateTime, fmtTime, parseWall, parseHHMM, addMinutes, wallIso, wallToUtcIso } from "@/lib/time";
+import { fmtDateTime, fmtTime, nowWall, parseWall, parseHHMM, addMinutes, wallIso, wallToUtcIso } from "@/lib/time";
 import { trace } from "@/lib/trace";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -91,13 +91,26 @@ async function setPendingRsvp(attendeeUpn: string, rec: MeetingInviteRecord): Pr
   await setSetting(attendeeUpn.toLowerCase(), PENDING_RSVP_KEY, JSON.stringify(pending));
 }
 
+/** A meeting that has already finished cannot be waiting for an RSVP. */
+function alreadyOver(endWall?: string): boolean {
+  if (!endWall) return false;
+  const end = parseWall(endWall);
+  return !!end && end.getTime() < nowWall().getTime();
+}
+
 export async function getPendingRsvp(attendeeUpn: string): Promise<PendingRsvp | null> {
   const who = attendeeUpn.toLowerCase();
   try {
     const raw = await getSetting(who, PENDING_RSVP_KEY);
     if (raw) {
       const p = JSON.parse(raw) as PendingRsvp;
-      if (p?.inviteId && p?.organizerUpn && p.ts && Date.now() - p.ts <= INVITE_TTL_MS) {
+      if (
+        p?.inviteId &&
+        p?.organizerUpn &&
+        p.ts &&
+        Date.now() - p.ts <= INVITE_TTL_MS &&
+        !alreadyOver(p.end)
+      ) {
         return p;
       }
       await deleteSetting(who, PENDING_RSVP_KEY).catch(() => undefined);
@@ -115,6 +128,12 @@ export async function getPendingRsvp(attendeeUpn: string): Promise<PendingRsvp |
         if (!rec?.id || !rec.ts || Date.now() - rec.ts > INVITE_TTL_MS) continue;
         const inList = (rec.attendees || []).some((a) => a.toLowerCase() === who);
         if (!inList) continue;
+        // Settled or finished invites are not questions any more. Treating them
+        // as pending meant a bare "ยืนยัน" — meant for something else entirely —
+        // accepted an invite from the day before and booked it.
+        if (rec.status === "cancelled" || rec.status === "booked") continue;
+        if (rec.responses?.[who]) continue;
+        if (alreadyOver(rec.end)) continue;
         if (!best || rec.ts > best.ts) {
           best = {
             organizerUpn: rec.organizerUpn,

@@ -1357,7 +1357,16 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     }
 
     // Meeting RSVP / reschedule by text — before news onboarding
-    {
+    //
+    // "ยืนยัน" is how someone accepts an invite AND how they confirm anything
+    // else. When the assistant has just asked a yes/no of its own, that answer
+    // belongs to the question on screen: a bare confirm here once accepted a
+    // stale invite and booked a meeting nobody asked for.
+    const ctxNow = await loadCtx(upn);
+    const awaitingOwnConfirm =
+      ctxNow?.last_intent === "confirm_complete_task" &&
+      /^(?:ยืนยัน|ยืนยันปิดงาน|ตกลง|ปิดเลย|ใช่|ปิด|confirm|ok|yes)$/i.test(text.trim());
+    if (!awaitingOwnConfirm) {
       const hostEdit = await tryHandleHostEditText(upn, text);
       if (hostEdit) {
         await replyLineMessages(ev.replyToken, [
