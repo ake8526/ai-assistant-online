@@ -226,24 +226,30 @@ function cellSvg(
   <text x="${cx}" y="${subY}" text-anchor="middle" font-size="${subSize}" fill="${iconKind === "soon" ? "#94a3b8" : "#4b5563"}" font-family="NotoThai, DejaVu Sans, Arial, sans-serif">${sub}</text>`;
 }
 
+/** Width/height straight out of the PNG's IHDR chunk — no image library. */
+function pngSize(buf: Buffer): { width: number; height: number } | null {
+  if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47) return null;
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
 /** PNG buffer for LINE rich menu upload (≤1MB, 2500×1686 full). */
 export async function buildRichMenuPng(opts?: { force?: boolean }): Promise<Buffer> {
-  const sharp = (await import("sharp")).default;
   const path = await import("path");
   const fs = await import("fs");
 
-  // Prefer pre-rendered full-size asset (Thai fonts baked in).
+  // Prefer the pre-rendered asset (Thai fonts baked in) and read its size from
+  // the PNG header rather than through sharp: sharp's native libvips is not
+  // present on the serverless runtime, so importing it up here made registering
+  // the menu fail even when the finished image was sitting right there.
   const staticPath = path.join(process.cwd(), "assets", "line-rich-menu.png");
   if (!opts?.force && fs.existsSync(staticPath)) {
     const existing = fs.readFileSync(staticPath);
-    try {
-      const meta = await sharp(existing).metadata();
-      if (meta.width === W && meta.height === H) return existing;
-    } catch {
-      /* regenerate below */
-    }
+    const meta = pngSize(existing);
+    if (meta && meta.width === W && meta.height === H) return existing;
   }
 
+  // Rendering needs sharp; only reached when the asset is missing or stale.
+  const sharp = (await import("sharp")).default;
   const os = await import("os");
   const fontsDir = path.join(process.cwd(), "assets", "fonts");
   const confPath = path.join(os.tmpdir(), `fontconfig-ktis-${process.pid}.conf`);
