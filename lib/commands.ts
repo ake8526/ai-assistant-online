@@ -45,7 +45,7 @@ import { getUserGraphToken } from "@/lib/graphAuth";
 import { chat, llmUserErrorMessage } from "@/lib/llm";
 import { gpsCapturePageUrl } from "@/lib/gpsCapture";
 import { listRecentOnline } from "@/lib/meetings";
-import { HELP_TOPICS, findHelpTopic, helpMenuText, helpTopicText } from "@/lib/help";
+import { HELP_TOPICS, findHelpTopic, helpMenuFlex, helpMenuText, helpTopicFlex, helpTopicText } from "@/lib/help";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { busyRanges, findCommonSlots, formatBusy, formatFree, freeRanges, wantsLunchIncluded } from "@/lib/scheduling";
@@ -210,6 +210,8 @@ export type CommandResult = {
   uri_actions?: { label: string; uri: string }[];
   /** LINE quick-reply follow-ups (message actions). */
   suggestions?: { label: string; text: string }[];
+  /** A Flex card to send instead of the plain text bubble (LINE only). */
+  flex?: { altText: string; contents: object };
   /** Show OneDrive folder path in file list (detailText). */
   show_file_location?: boolean;
   /** LINE get_news: interim reply; digest continues on line-now / after(). */
@@ -4247,6 +4249,7 @@ async function handleParsed(
       return {
         intent: "help_menu",
         reply: helpTopicText(topic),
+        flex: helpTopicFlex(topic),
         suggestions: [
           ...topic.commands.slice(0, 11).map((c) => ({ label: c.label, text: c.text })),
           { label: "◀ หมวดอื่น", text: "/ช่วยเหลือ" },
@@ -4257,6 +4260,7 @@ async function handleParsed(
     return {
       intent: "help_menu",
       reply: helpMenuText(),
+      flex: helpMenuFlex(),
       // One chip per topic; the label is already trimmed to LINE's 20 characters
       // in lib/help.ts, and LINE shows 13 at most — eight topics fit with room.
       suggestions: HELP_TOPICS.map((x) => ({ label: x.chip, text: x.chip })),

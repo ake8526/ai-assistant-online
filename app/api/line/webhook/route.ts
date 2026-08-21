@@ -568,6 +568,20 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
   reply += detailText(res, upn);
 
   const qr = quickReplyFor(res, upn);
+  // A Flex card when the reply is really a list of things to tap: the rows show
+  // the full text (quick-reply labels stop at 20 characters) and nothing is
+  // hidden off the side of the screen.
+  if (res.flex) {
+    await replyLineMessages(replyToken, [
+      {
+        type: "flex",
+        altText: res.flex.altText.slice(0, 400),
+        contents: res.flex.contents,
+        ...(qr ? { quickReply: qr } : {}),
+      },
+    ]);
+    return;
+  }
   if (qr) {
     await replyLineMessages(replyToken, [{ type: "text", text: reply.slice(0, 4900), quickReply: qr }]);
   } else {

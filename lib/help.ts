@@ -199,10 +199,8 @@ export function helpMenuText(): string {
     " • นัดประชุม",
     " • ข่าววันนี้",
     "",
-    "กดปุ่มด้านล่างเพื่อดูคำสั่งของแต่ละหมวด",
-    "แล้วกดคำสั่งที่ต้องการได้เลย ไม่ต้องพิมพ์เอง",
-    "",
-    `(อ่านแบบหน้าเว็บ: ${helpUrl()})`,
+    "แตะหมวดที่ต้องการในการ์ดด้านล่าง",
+    "แล้วแตะคำสั่งได้เลย ไม่ต้องพิมพ์เอง",
   ].join("\n");
 }
 
@@ -235,4 +233,77 @@ export function findHelpTopic(text: string): HelpTopic | null {
     HELP_TOPICS.find((h) => `${h.emoji} ${h.title}`.toLowerCase() === t) ||
     null
   );
+}
+
+// ---------------------------------------------------------------------------
+// Flex cards
+//
+// A quick reply can only show 20 characters and LINE scrolls the strip
+// sideways, so a nine-item menu showed three items and hid the rest. A Flex
+// box takes an action of its own: the row displays the full command, the tap
+// sends it as a message. Same effect as typing, no browser in the way.
+
+const ROW_ARROW = { type: "text", text: "›", size: "lg", color: "#9aa3b2", flex: 0, align: "end" };
+
+function tapRow(display: string, send: string, sub?: string) {
+  const label: object[] = [{ type: "text", text: display, size: "sm", color: "#111111", weight: "bold", wrap: true }];
+  if (sub) label.push({ type: "text", text: sub, size: "xxs", color: "#8b93a3", wrap: true, margin: "xs" });
+  return {
+    type: "box",
+    layout: "horizontal",
+    spacing: "sm",
+    paddingAll: "10px",
+    backgroundColor: "#f4f6f8",
+    cornerRadius: "8px",
+    margin: "sm",
+    action: { type: "message", label: display.slice(0, 20), text: send },
+    contents: [{ type: "box", layout: "vertical", flex: 1, contents: label }, ROW_ARROW],
+  };
+}
+
+function card(title: string, subtitle: string, rows: object[]): object {
+  return {
+    type: "bubble",
+    size: "mega",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: "#06c755",
+      paddingAll: "14px",
+      contents: [
+        { type: "text", text: title, color: "#ffffff", weight: "bold", size: "md", wrap: true },
+        { type: "text", text: subtitle, color: "#e6fff0", size: "xs", wrap: true, margin: "xs" },
+      ],
+    },
+    body: { type: "box", layout: "vertical", paddingAll: "12px", contents: rows },
+  };
+}
+
+/** The category card: nine rows, all visible, one tap each. */
+export function helpMenuFlex(): { altText: string; contents: object } {
+  const rows = HELP_TOPICS.map((t) => tapRow(`${t.emoji} ${t.title}`, t.chip, t.hint));
+  return {
+    altText: "คู่มือคำสั่ง — แตะหมวดที่ต้องการ",
+    contents: card("📖 สั่งงานอะไรได้บ้าง", "แตะหมวดเพื่อดูคำสั่ง แล้วแตะคำสั่งเพื่อสั่งงานได้เลย", rows),
+  };
+}
+
+/** One category: every command is a row, shown in full and sent on tap. */
+export function helpTopicFlex(topic: HelpTopic): { altText: string; contents: object } {
+  const rows: object[] = topic.commands.map((c) => tapRow(c.text, c.text));
+  if (topic.note) {
+    rows.push({
+      type: "text",
+      text: `💡 ${topic.note}`,
+      size: "xxs",
+      color: "#69707d",
+      wrap: true,
+      margin: "lg",
+    });
+  }
+  rows.push(tapRow("◀ ดูหมวดอื่น", "/ช่วยเหลือ"));
+  return {
+    altText: `${topic.title} — แตะคำสั่งที่ต้องการ`,
+    contents: card(`${topic.emoji} ${topic.title}`, topic.hint, rows),
+  };
 }
