@@ -292,7 +292,7 @@ const PREP_SYSTEM = `คุณคือผู้ช่วยเตรียม�
 รูปแบบคำตอบ:
 1) บรรทัดแรก: 📌 สรุปสั้น ๆ ว่านัดนี้เกี่ยวกับอะไร (จากหัวข้อ + รายละเอียด)
 2) 📄 สิ่งที่อ่านจากอีเมล/เอกสาร/ลิงก์ (สรุปประเด็นสำคัญเป็นข้อ ๆ — ถ้าไม่มีเอกสารให้บอกตรง ๆ)
-3) ✅ ต้องเตรียม / ต้องทำก่อนเข้าประชุม — เขียนเป็นสิ่งที่ทำได้เลย ไม่ใช่ "ลองคิดโจทย์" หรือ "เตรียมตัวอย่าง"
+3) ✅ ต้องเตรียม / ต้องทำก่อนเข้าประชุม — เขียนเป็นสิ่งที่ทำได้เลย ไม่ใช่ "ลองคิดโจทย์" หรือ "เตรียมตัวอย่าง" (ถ้ามี teams_join_url ในข้อมูล ให้แสดงลิงก์เข้านัด Teams เด่นชัดในส่วนนี้ด้วย)
 4) 💬 ประโยคที่พูดได้เลยในที่ประชุม — เขียนเป็น "คำพูดจริง" ที่ยกไปพูดได้ทันที 3–5 ประโยค
    ใส่เครื่องหมายคำพูดทุกประโยค เช่น
    • "ผมขอเริ่มจากสถานะล่าสุดก่อนนะครับ ตอนนี้ระบบทดสอบไปได้ถึงขั้นไหนแล้ว"
@@ -412,6 +412,11 @@ export async function buildMeetingPrep(userUpn: string, eventId: string, fallbac
     userLinked.push(row);
   }
 
+  const teamsJoinUrl =
+    ev.onlineMeeting?.joinUrl ||
+    urls.find((u) => u.includes("teams.microsoft.com/l/meetup-join")) ||
+    (bodyHtml.match(/https:\/\/teams\.microsoft\.com\/l\/meetup-join\/[^\s"'<>]+/i)?.[0] ?? undefined);
+
   const payload = {
     meeting: {
       subject: ev.subject,
@@ -419,6 +424,7 @@ export async function buildMeetingPrep(userUpn: string, eventId: string, fallbac
       end: ev.end?.dateTime,
       location: ev.location?.displayName,
       online: !!ev.onlineMeeting,
+      teams_join_url: teamsJoinUrl,
       organizer: ev.organizer?.emailAddress,
       attendees: (ev.attendees || []).map((a) => a.emailAddress).filter(Boolean).slice(0, 15),
       webLink: ev.webLink,
