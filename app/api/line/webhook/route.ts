@@ -566,6 +566,7 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
   let reply = res.reply || "รับทราบครับ";
   if (res.map_url) reply += `\n🗺️ ${res.map_url}`;
   reply += detailText(res, upn);
+  reply = plainForLine(reply);
 
   const qr = quickReplyFor(res, upn);
   // A Flex card when the reply is really a list of things to tap: the rows show
@@ -587,6 +588,15 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
   } else {
     await replyLine(replyToken, reply);
   }
+}
+
+/**
+ * LINE renders no markdown, so "**เสร็จแล้ว**" arrives with the asterisks
+ * showing. Replies are written once and go to both LINE and the web chat, so
+ * the stars come off here rather than in a dozen message strings.
+ */
+function plainForLine(text: string): string {
+  return (text || "").replace(/\*\*([\s\S]+?)\*\*/g, "$1");
 }
 
 function validSignature(rawBody: string, signature: string | null): boolean {
