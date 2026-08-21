@@ -17,7 +17,8 @@ export async function GET(req: Request) {
     const offset = parseInt(url.searchParams.get("offset") || "0", 10);
     const search = (url.searchParams.get("search") || "").trim();
     const channel = (url.searchParams.get("channel") || "").trim();
-    const role = (url.searchParams.get("role") || "").trim();
+    const user = (url.searchParams.get("user") || "").trim();
+    const date = (url.searchParams.get("date") || "").trim(); // YYYY-MM-DD
 
     let query = admin
       .from("chat_logs")
@@ -25,6 +26,15 @@ export async function GET(req: Request) {
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      // Bangkok timezone offset (+07:00) range calculation
+      const dayStart = new Date(`${date}T00:00:00+07:00`).toISOString();
+      const dayEnd = new Date(`${date}T23:59:59.999+07:00`).toISOString();
+      query = query.gte("created_at", dayStart).lte("created_at", dayEnd);
+    }
+    if (user) {
+      query = query.or(`user_upn.ilike.%${user}%,session_id.ilike.%${user}%`);
+    }
     if (search) {
       query = query.or(`content.ilike.%${search}%,user_upn.ilike.%${search}%,session_id.ilike.%${search}%`);
     }

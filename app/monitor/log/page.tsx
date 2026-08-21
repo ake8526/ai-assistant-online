@@ -1476,6 +1476,9 @@ function ChatLogView({ getToken }: { getToken: () => Promise<string | null> }) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [user, setUser] = useState("");
+  const [chatDate, setChatDate] = useState("");
+  const [calOpen, setCalOpen] = useState(false);
   const [channel, setChannel] = useState("");
   const [role, setRole] = useState("");
   const [note, setNote] = useState("");
@@ -1489,6 +1492,8 @@ function ChatLogView({ getToken }: { getToken: () => Promise<string | null> }) {
       if (token) headers.Authorization = `Bearer ${token}`;
       const p = new URLSearchParams();
       if (search) p.set("search", search);
+      if (user) p.set("user", user);
+      if (chatDate) p.set("date", chatDate);
       if (channel) p.set("channel", channel);
       if (role) p.set("role", role);
       p.set("limit", "100");
@@ -1505,7 +1510,7 @@ function ChatLogView({ getToken }: { getToken: () => Promise<string | null> }) {
     } finally {
       setLoading(false);
     }
-  }, [getToken, search, channel, role]);
+  }, [getToken, search, user, chatDate, channel, role]);
 
   useEffect(() => {
     let alive = true;
@@ -1524,11 +1529,24 @@ function ChatLogView({ getToken }: { getToken: () => Promise<string | null> }) {
   return (
     <div style={{ marginTop: "12px" }}>
       <div className="bar">
+        <button onClick={() => setChatDate(shiftDate(chatDate || bkkToday(), -1))}>◀ วันก่อน</button>
+        <DateField value={chatDate || bkkToday()} onChange={setChatDate} onOpenCal={() => setCalOpen(true)} />
+        <button onClick={() => setChatDate(shiftDate(chatDate || bkkToday(), 1))} disabled={(chatDate || bkkToday()) >= bkkToday()}>
+          วันถัดไป ▶
+        </button>
+        <button onClick={() => setChatDate("")} className={!chatDate ? "on" : ""}>ทุกวัน</button>
+
         <input
-          placeholder="ค้นหาข้อความ หรือ อีเมลผู้ใช้..."
+          placeholder="ผู้ใช้ — เช่น weerasak.pi"
+          value={user}
+          onChange={(e) => setUser(e.target.value)}
+          style={{ width: "170px" }}
+        />
+        <input
+          placeholder="ค้นคำในข้อความ..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ minWidth: "260px" }}
+          style={{ minWidth: "180px" }}
         />
         <select value={channel} onChange={(e) => setChannel(e.target.value)}>
           <option value="">ทุกช่องทาง</option>
@@ -1544,6 +1562,18 @@ function ChatLogView({ getToken }: { getToken: () => Promise<string | null> }) {
         <div className="spacer" />
         <span className="stat">รวมทั้งหมด: <b>{total}</b> ข้อความ</span>
       </div>
+
+      {calOpen && (
+        <CalendarModal
+          getToken={getToken}
+          value={chatDate || bkkToday()}
+          onPick={(iso) => {
+            setChatDate(iso);
+            setCalOpen(false);
+          }}
+          onClose={() => setCalOpen(false)}
+        />
+      )}
 
       {note && <div className="note" style={{ borderColor: "var(--amber)", color: "var(--amber)" }}>⚠️ {note}</div>}
 
