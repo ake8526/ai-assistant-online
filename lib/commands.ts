@@ -4011,6 +4011,13 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     .replace(/\s+/g, " ")
     .trim();
 
+  // Deterministic quick intent shortcuts at the very top of handle:
+  const quickTop = await parseIntent(text, context);
+  if (quickTop.source === "quick") {
+    trace("parse", `★ AI:NONE · intent=${quickTop.intent} (กฎตายตัว ไม่เรียก API)`);
+    return await handleParsed(userUpn, text, context, lite, quickTop.intent, quickTop.params);
+  }
+
   // Pending duration after “จองตาราง … เวลา …”
   if (context?.pending_self_book) {
     const p = context.pending_self_book;
