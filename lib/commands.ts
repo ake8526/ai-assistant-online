@@ -1709,6 +1709,18 @@ async function parseIntent(
     };
   }
 
+  // Quick task closure confirmation handling: "ยืนยันปิดงาน", "ยืนยัน"
+  if (context?.last_intent === "confirm_complete_task" && /^(?:ยืนยัน|ตกลง|ปิดเลย|ใช่|ปิด|confirm|ok|yes)$/i.test(textClean)) {
+    const pendingTargetIds = (context?.pending_task_ids as number[]) || [];
+    if (pendingTargetIds.length) {
+      return {
+        intent: "complete_task",
+        params: { task_ids: pendingTargetIds, confirmed: true },
+        source: "quick",
+      };
+    }
+  }
+
   // Quick task closure: "ปิดงาน 1 2 3", "ปิดงาน 1,2,3", "ปิดงาน 1 2"
   const closeTasksMatch = textClean.match(/^(?:ปิดงาน|เสร็จงาน|ลบงาน|ทำเสร็จแล้ว)\s+((?:[#\s,]*\d+)+)$/i);
   if (closeTasksMatch) {
@@ -5784,29 +5796,52 @@ async function handleParsed(
     const rawIds = Array.isArray(params.task_ids) ? (params.task_ids as number[]) : [];
     const singleTid = Number(params.task_id);
     const targetNumbers = rawIds.length ? rawIds : singleTid ? [singleTid] : [];
+    const isConfirmed = !!params.confirmed;
 
     if (targetNumbers.length > 0) {
       const pending = (await listTasks(userUpn)).filter(
         (t) => t.status === "pending" || t.status === "overdue"
       );
-      const closedTitles: string[] = [];
+      const matchedTasks: { id: number; title: string }[] = [];
 
       for (const num of targetNumbers) {
-        // First try matching exact task ID
         let target = pending.find((t) => t.id === num);
-        // If not found by exact DB id, match by list sequence index (1-based: 1 = pending[0])
         if (!target && num >= 1 && num <= pending.length) {
           target = pending[num - 1];
         }
-
         if (target) {
-          await updateTaskStatus(target.id, "done");
-          closedTitles.push(`• ${target.title}`);
+          matchedTasks.push({ id: target.id, title: target.title });
         } else {
-          // Fallback: try update directly by ID
-          if (await updateTaskStatus(num, "done")) {
-            closedTitles.push(`• งาน #${num}`);
-          }
+          matchedTasks.push({ id: num, title: `งาน #${num}` });
+        }
+      }
+
+      if (!matchedTasks.length) {
+        return { intent, reply: "ไม่พบงานหมายเลขที่ระบุครับ" };
+      }
+
+      // If not confirmed yet, ask user for confirmation first!
+      if (!isConfirmed) {
+        const confirmList = matchedTasks.map((t) => `• ${t.title}`).join("\n");
+        return {
+          intent: "confirm_complete_task",
+          pending_task_ids: matchedTasks.map((t) => t.id),
+          reply:
+            `⚠️ **ยืนยันการปิดงาน ${matchedTasks.length} รายการต่อไปนี้ไหมครับ?**\n\n` +
+            `${confirmList}\n\n` +
+            `พิมพ์ **“ยืนยัน”** หรือ **“ปิดเลย”** เพื่อทำต่อ`,
+          suggestions: [
+            { label: "ยืนยันปิดงาน", text: "ยืนยัน" },
+            { label: "ยกเลิก", text: "ดูงานที่ต้องติดตาม" },
+          ],
+        };
+      }
+
+      // Confirmed: Execute the status updates
+      const closedTitles: string[] = [];
+      for (const t of matchedTasks) {
+        if (await updateTaskStatus(t.id, "done")) {
+          closedTitles.push(`• ${t.title}`);
         }
       }
 
@@ -5816,7 +5851,7 @@ async function handleParsed(
           reply: `✅ ปิดงาน ${closedTitles.length} รายการแล้วครับ:\n${closedTitles.join("\n")}`,
         };
       }
-      return { intent, reply: "ไม่พบงานหมายเลขที่ระบุครับ" };
+      return { intent, reply: "เกิดข้อผิดพลาด ไม่สามารถปิดงานที่ระบุได้ครับ" };
     }
 
     // The overdue reminder shows task TITLES, so that is what people type back
