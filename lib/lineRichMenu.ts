@@ -312,7 +312,9 @@ export function richMenuReply(text: string): object[] | null {
             { type: "uri", label: "เปิดหน้าตั้งค่าเว็บ", uri: settingsUrl },
             { type: "message", label: "ตั้งค่าข่าว", text: "ตั้งค่าข่าว" },
             { type: "message", label: "ตารางวันนี้", text: "/ตารางวันนี้" },
-            { type: "message", label: "ช่วยเหลือ", text: "/ช่วยเหลือ" },
+            // The manual: the answer to "what can I even type?" — a button, not
+            // something to be told about once and forgotten.
+            { type: "message", label: "📖 คู่มือคำสั่ง", text: "/ช่วยเหลือ" },
           ],
         },
       },
@@ -320,6 +322,7 @@ export function richMenuReply(text: string): object[] | null {
         type: "text",
         text: "คำสั่งอื่น: /นัดพรุ่งนี้ · /ล้างความจำ · /ยกเลิก · สิทธิ์ปฏิทิน",
         quickReply: qrItems([
+          { label: "📖 คู่มือคำสั่ง", text: "/ช่วยเหลือ" },
           { label: "/นัดพรุ่งนี้", text: "/นัดพรุ่งนี้" },
           { label: "/ล้างความจำ", text: "/ล้างความจำ" },
           { label: "/ยกเลิก", text: "/ยกเลิก" },

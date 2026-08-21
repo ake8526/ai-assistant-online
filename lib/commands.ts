@@ -45,6 +45,7 @@ import { getUserGraphToken } from "@/lib/graphAuth";
 import { chat, llmUserErrorMessage } from "@/lib/llm";
 import { gpsCapturePageUrl } from "@/lib/gpsCapture";
 import { listRecentOnline } from "@/lib/meetings";
+import { HELP_TOPICS, findHelpTopic, helpMenuText, helpTopicText } from "@/lib/help";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { busyRanges, findCommonSlots, formatBusy, formatFree, freeRanges, wantsLunchIncluded } from "@/lib/scheduling";
@@ -758,6 +759,16 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   if (t === "__preview_summary_link__" || /^\/?test\s*(ประชุม|สรุป|summary|mt)$/i.test(t)) {
     return { intent: "preview_summary_link", params: {} };
   }
+  // "ทำอะไรได้บ้าง" — the question every new user asks first, and until now the
+  // only answer was whatever the model improvised. Fixed rules, no API call.
+  if (/^(?:\/?ช่วยเหลือ|ช่วยเรื่องอื่น|ทำอะไรได้(?:บ้าง)?|สั่งอะไรได้(?:บ้าง)?|มีคำสั่งอะไร(?:บ้าง)?|คู่มือ(?:การใช้งาน|คำสั่ง)?|help|เมนู)[!?.\s]*$/i.test(t)) {
+    return { intent: "help_menu", params: {} };
+  }
+  {
+    const topic = findHelpTopic(t);
+    if (topic) return { intent: "help_menu", params: { topic: topic.key } };
+  }
+
   // "ประชุมไปกี่นาที" / "ขอเวลาที่ใช้ในประชุมแต่ละอัน" — asked right after a list
   // of meetings, and answered by re-printing the same list until now. It is
   // calendar arithmetic, so no LLM is involved.
@@ -4033,6 +4044,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       quick?.intent === "preview_summary_link" ||
       quick?.intent === "test_meeting" ||
       quick?.intent === "meeting_durations" ||
+      quick?.intent === "help_menu" ||
       quick?.intent === "preview_morning" ||
       quick?.intent === "search_files"
     ) {
@@ -4199,6 +4211,30 @@ async function handleParsed(
         { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
         { label: "ตารางวันนี้", text: "ตารางวันนี้" },
       ],
+    };
+  }
+
+  if (intent === "help_menu") {
+    const key = String(params.topic || "").trim();
+    const topic = key ? HELP_TOPICS.find((x) => x.key === key) : null;
+    if (topic) {
+      trace("compose", `คู่มือ · ${topic.title}`);
+      return {
+        intent: "help_menu",
+        reply: helpTopicText(topic),
+        suggestions: [
+          ...topic.commands.slice(0, 3).map((c) => ({ label: c.slice(0, 20), text: c })),
+          { label: "◀ กลับเมนูคู่มือ", text: "/ช่วยเหลือ" },
+        ],
+      };
+    }
+    trace("compose", "คู่มือ · เมนูหมวด");
+    return {
+      intent: "help_menu",
+      reply: helpMenuText(),
+      // One chip per topic; the label is already trimmed to LINE's 20 characters
+      // in lib/help.ts, and LINE shows 13 at most — eight topics fit with room.
+      suggestions: HELP_TOPICS.map((x) => ({ label: x.chip, text: x.chip })),
     };
   }
 
