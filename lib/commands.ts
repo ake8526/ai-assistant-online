@@ -1709,6 +1709,19 @@ async function parseIntent(
     };
   }
 
+  // Quick task closure: "ปิดงาน 1 2 3", "ปิดงาน 1,2,3", "ปิดงาน 1 2"
+  const closeTasksMatch = textClean.match(/^(?:ปิดงาน|เสร็จงาน|ลบงาน|ทำเสร็จแล้ว)\s+((?:[#\s,]*\d+)+)$/i);
+  if (closeTasksMatch) {
+    const rawIds = closeTasksMatch[1].match(/\d+/g)?.map(Number) || [];
+    if (rawIds.length) {
+      return {
+        intent: "complete_task",
+        params: { task_ids: rawIds, task_id: rawIds[0] },
+        source: "quick",
+      };
+    }
+  }
+
   // “มีอีกไหม” after nickname duplicate list — next page / confirm complete (no re-dump)
   const moreNick =
     /^(มีอีก|มีเพิ่ม|ดูต่อ|ต่อไป|หน้าต่อไป|หน้าถัดไป)(ไหม|มั้ย)?$|^มีอีกไหม$|^อีกไหม$|^อีกมั้ย$|^ครบยัง$|^มีหมดแล้วไหม$/i.test(
@@ -5768,11 +5781,44 @@ async function handleParsed(
   }
 
   if (intent === "complete_task") {
-    const tid = Number(params.task_id);
-    if (tid) {
-      if (await updateTaskStatus(tid, "done")) return { intent, reply: `ปิดงาน #${tid} แล้ว` };
-      return { intent, reply: "ไม่พบงานหมายเลขนั้น" };
+    const rawIds = Array.isArray(params.task_ids) ? (params.task_ids as number[]) : [];
+    const singleTid = Number(params.task_id);
+    const targetNumbers = rawIds.length ? rawIds : singleTid ? [singleTid] : [];
+
+    if (targetNumbers.length > 0) {
+      const pending = (await listTasks(userUpn)).filter(
+        (t) => t.status === "pending" || t.status === "overdue"
+      );
+      const closedTitles: string[] = [];
+
+      for (const num of targetNumbers) {
+        // First try matching exact task ID
+        let target = pending.find((t) => t.id === num);
+        // If not found by exact DB id, match by list sequence index (1-based: 1 = pending[0])
+        if (!target && num >= 1 && num <= pending.length) {
+          target = pending[num - 1];
+        }
+
+        if (target) {
+          await updateTaskStatus(target.id, "done");
+          closedTitles.push(`• ${target.title}`);
+        } else {
+          // Fallback: try update directly by ID
+          if (await updateTaskStatus(num, "done")) {
+            closedTitles.push(`• งาน #${num}`);
+          }
+        }
+      }
+
+      if (closedTitles.length > 0) {
+        return {
+          intent,
+          reply: `✅ ปิดงาน ${closedTitles.length} รายการแล้วครับ:\n${closedTitles.join("\n")}`,
+        };
+      }
+      return { intent, reply: "ไม่พบงานหมายเลขที่ระบุครับ" };
     }
+
     // The overdue reminder shows task TITLES, so that is what people type back
     // ("test meeting ปิดงานเลย") — match on the title instead of demanding a number.
     const wanted = String(params.title || "").trim();
