@@ -25,8 +25,8 @@ export async function GET(req: Request) {
     let query = admin
       .from("chat_logs")
       .select("*", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false });
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
 
     if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
       // Bangkok timezone offset (+07:00) range calculation
