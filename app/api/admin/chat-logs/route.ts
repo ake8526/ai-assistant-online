@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/guard";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
+import { searchUsers } from "@/lib/graph";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,23 @@ export async function GET(req: Request) {
       query = query.gte("created_at", dayStart).lte("created_at", dayEnd);
     }
     if (user) {
-      query = query.or(`user_upn.ilike.%${user}%,session_id.ilike.%${user}%`);
+      if (!/^[ -~]+$/.test(user)) {
+        // Thai nickname search (e.g. บอม) via M365 Graph
+        try {
+          const hits = await searchUsers(user, 8);
+          const mails = hits.filter((h) => h.mail).map((h) => h.mail.toLowerCase());
+          if (mails.length > 0) {
+            const orConditions = mails.map((m) => `user_upn.ilike.%${m}%,session_id.ilike.%${m}%`).join(",");
+            query = query.or(orConditions);
+          } else {
+            query = query.or(`user_upn.ilike.%${user}%,session_id.ilike.%${user}%`);
+          }
+        } catch {
+          query = query.or(`user_upn.ilike.%${user}%,session_id.ilike.%${user}%`);
+        }
+      } else {
+        query = query.or(`user_upn.ilike.%${user}%,session_id.ilike.%${user}%`);
+      }
     }
     if (search) {
       query = query.or(`content.ilike.%${search}%,user_upn.ilike.%${search}%,session_id.ilike.%${search}%`);
