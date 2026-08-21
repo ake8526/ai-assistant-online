@@ -25,8 +25,7 @@ export async function GET(req: Request) {
     let query = admin
       .from("chat_logs")
       .select("*", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order("created_at", { ascending: false });
 
     if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
       // Bangkok timezone offset (+07:00) range calculation
@@ -34,27 +33,27 @@ export async function GET(req: Request) {
       const dayEnd = new Date(`${date}T23:59:59.999+07:00`).toISOString();
       query = query.gte("created_at", dayStart).lte("created_at", dayEnd);
     }
+
     if (user) {
+      let matchingMails: string[] = [];
       if (!/^[ -~]+$/.test(user)) {
-        // Thai nickname search (e.g. บอม) via M365 Graph
         try {
           const hits = await searchUsers(user, 8);
-          const mails = hits.filter((h) => h.mail).map((h) => h.mail.toLowerCase());
-          if (mails.length > 0) {
-            const orConditions = mails.map((m) => `user_upn.ilike.%${m}%,session_id.ilike.%${m}%`).join(",");
-            query = query.or(orConditions);
-          } else {
-            query = query.or(`user_upn.ilike.%${user}%,session_id.ilike.%${user}%`);
-          }
+          matchingMails = hits.filter((h) => h.mail).map((h) => h.mail.toLowerCase());
         } catch {
-          query = query.or(`user_upn.ilike.%${user}%,session_id.ilike.%${user}%`);
+          matchingMails = [];
         }
+      }
+      if (matchingMails.length > 0) {
+        const conds = matchingMails.flatMap((m) => [`user_upn.ilike.%${m}%`, `session_id.ilike.%${m}%`]);
+        query = query.or(conds.join(","));
       } else {
         query = query.or(`user_upn.ilike.%${user}%,session_id.ilike.%${user}%`);
       }
     }
+
     if (search) {
-      query = query.or(`content.ilike.%${search}%,user_upn.ilike.%${search}%,session_id.ilike.%${search}%`);
+      query = query.or(`content.ilike.%${search}%`);
     }
     if (channel) {
       query = query.eq("channel", channel);
@@ -62,6 +61,8 @@ export async function GET(req: Request) {
     if (role) {
       query = query.eq("role", role);
     }
+
+    query = query.range(offset, offset + limit - 1);
 
     const { data, count, error } = await query;
 
