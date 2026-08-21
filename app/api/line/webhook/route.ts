@@ -441,26 +441,17 @@ async function saveCtx(upn: string, prev: CommandContext | undefined, res: Comma
     ttl_ms: CHAT_MEMORY_TTL_MS,
   };
 
-  // Log user turn and assistant reply to chat_logs for LLM fine-tuning
-  if (userText?.trim()) {
+  // Log assistant reply to chat_logs for LLM fine-tuning
+  if (res.reply?.trim()) {
     after(async () => {
       await logChatTurn({
         session_id: upn,
         user_upn: upn,
         channel: "line",
-        role: "user",
-        content: userText,
+        role: "assistant",
+        content: res.reply,
+        metadata: { intent: res.intent },
       });
-      if (res.reply?.trim()) {
-        await logChatTurn({
-          session_id: upn,
-          user_upn: upn,
-          channel: "line",
-          role: "assistant",
-          content: res.reply,
-          metadata: { intent: res.intent },
-        });
-      }
     });
   }
 
@@ -1328,6 +1319,17 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     // Classic LINE 3-dot bubble (same as clip) — await so it starts before work.
     await showLineLoading(userId, 60);
 
+    // Log incoming user message immediately
+    after(async () => {
+      await logChatTurn({
+        session_id: upn,
+        user_upn: upn,
+        channel: "line",
+        role: "user",
+        content: text,
+      });
+    });
+
     // Meeting RSVP / reschedule by text — before news onboarding
     {
       const hostEdit = await tryHandleHostEditText(upn, text);
@@ -1339,11 +1341,29 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
             ...(hostEdit.quickReply ? { quickReply: hostEdit.quickReply } : {}),
           },
         ]);
+        after(async () => {
+          await logChatTurn({
+            session_id: upn,
+            user_upn: upn,
+            channel: "line",
+            role: "assistant",
+            content: hostEdit.reply,
+          });
+        });
         return;
       }
       const reschedule = await tryHandleMeetingRescheduleText(upn, text);
       if (reschedule) {
         await replyLine(ev.replyToken, reschedule.reply);
+        after(async () => {
+          await logChatTurn({
+            session_id: upn,
+            user_upn: upn,
+            channel: "line",
+            role: "assistant",
+            content: reschedule.reply,
+          });
+        });
         return;
       }
       const rsvp = await tryHandleMeetingRsvpText(upn, text);
@@ -1355,6 +1375,15 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
             ...(rsvp.quickReply ? { quickReply: rsvp.quickReply } : {}),
           },
         ]);
+        after(async () => {
+          await logChatTurn({
+            session_id: upn,
+            user_upn: upn,
+            channel: "line",
+            role: "assistant",
+            content: rsvp.reply,
+          });
+        });
         return;
       }
       // Attendee typed cancel/decline/reschedule but invite pointer missing — don't dump into news welcome
