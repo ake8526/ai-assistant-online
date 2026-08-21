@@ -58,11 +58,10 @@ function agendaChoices(events: GraphEvent[]): AgendaChoice[] {
 function keywordsFromSubject(subject: string): string {
   if (!subject) return "";
   const words = subject.match(/[\w\u0E00-\u0E7F]+/g) || [];
-  const stop = new Set(["ประชุม", "meeting", "call", "sync", "review", "the", "and", "กับ", "เรื่อง"]);
-  return words
-    .filter((w) => !stop.has(w.toLowerCase()) && w.length > 1)
-    .slice(0, 4)
-    .join(" ");
+  const stop = new Set(["ประชุม", "meeting", "call", "sync", "review", "weekly", "daily", "monthly", "the", "and", "กับ", "เรื่อง", "update", "ติดตาม", "ประจำสัปดาห์"]);
+  const filtered = words.filter((w) => !stop.has(w.toLowerCase()) && w.length > 1);
+  if (!filtered.length) return "";
+  return filtered.slice(0, 4).join(" ");
 }
 
 function eventTimeRange(ev: GraphEvent): string {
@@ -74,7 +73,7 @@ function eventTimeRange(ev: GraphEvent): string {
   return b ? `${a}–${b}` : a;
 }
 
-function stripHtml(html: string): string {
+export function stripHtml(html: string): string {
   return html
     .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(/<br\s*\/?>/gi, "\n")
@@ -91,7 +90,7 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-function extractUrls(text: string): string[] {
+export function extractUrls(text: string): string[] {
   const found = text.match(/https?:\/\/[^\s<>"')\]]+/gi) || [];
   const clean = found.map((u) => u.replace(/[.,;:]+$/, ""));
   return Array.from(new Set(clean)).filter((u) => !/schemas\.microsoft|aka\.ms\/|teams\.microsoft\.com\/l\/meetup/i.test(u));
