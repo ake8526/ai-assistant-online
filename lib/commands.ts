@@ -1734,8 +1734,8 @@ async function parseIntent(
     }
   }
 
-  // Quick add sample tasks shortcut: "เพิ่มงานติดตามให้ 2 งานที", "สร้างงานทดสอบ 2 งาน", "เพิ่มงานทดสอบ"
-  if (/(?:เพิ่ม|สร้าง|ใส่)?\s*งาน(?:ติดตาม|ทดสอบ)?\s*(?:ให้)?\s*(\d{1,2})?\s*งาน/i.test(textClean)) {
+  // Quick add sample tasks shortcut: "เพิ่มงานติดตามให้ 2 งานที", "สร้างงานทดสอบ 2 งาน", "เพิ่มงานทดสอบ", "เพิ่มงาน 2 งาน"
+  if (/(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม|ทดสอบ)?(?:\s*ให้)?\s*(\d{1,2})?\s*งาน/i.test(textClean) || /งานติดตาม.*(\d{1,2})\s*งาน/i.test(textClean)) {
     const countMatch = textClean.match(/(\d{1,2})\s*งาน/);
     const count = countMatch ? Math.min(Number(countMatch[1]), 5) : 2;
     return {
