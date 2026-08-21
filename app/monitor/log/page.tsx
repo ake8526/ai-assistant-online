@@ -681,7 +681,23 @@ function LogView({
   getToken: () => Promise<string | null>;
   reauth: () => Promise<void>;
 }) {
-  const [tab, setTab] = useState<"system" | "chat">("system");
+  const [tab, setTab] = useState<"system" | "chat">(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      return p.get("tab") === "chat" ? "chat" : "system";
+    }
+    return "system";
+  });
+
+  const changeTab = (nextTab: "system" | "chat") => {
+    setTab(nextTab);
+    if (typeof window !== "undefined") {
+      const u = new URL(window.location.href);
+      u.searchParams.set("tab", nextTab);
+      window.history.replaceState(null, "", u.toString());
+    }
+  };
+
   const [date, setDate] = useState(bkkToday());
   const [user, setUser] = useState("");
   const [channel, setChannel] = useState("");
@@ -942,7 +958,7 @@ function LogView({
         <div className="spacer" />
         <button
           className={tab === "system" ? "on" : ""}
-          onClick={() => setTab("system")}
+          onClick={() => changeTab("system")}
           style={{ fontSize: "14px", padding: "3px 10px", margin: "0 2px" }}
         >
           ⚙️ System Traces
@@ -951,7 +967,7 @@ function LogView({
           <>
             <button
               className={tab === "chat" ? "on" : ""}
-              onClick={() => setTab("chat")}
+              onClick={() => changeTab("chat")}
               style={{ fontSize: "14px", padding: "3px 10px", margin: "0 2px" }}
             >
               💬 Chat History Logs
