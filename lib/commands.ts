@@ -138,6 +138,8 @@ export type CommandContext = {
   pending_avail_pick?: PendingAvailPick;
   /** Pending self calendar block — waiting for duration (minutes/hours). */
   pending_self_book?: PendingSelfBook;
+  /** Pending task IDs awaiting deletion/closure confirmation. */
+  pending_task_ids?: number[];
 };
 
 export type PendingSelfBook = {
@@ -192,6 +194,8 @@ export type CommandResult = {
   pending_avail_pick?: PendingAvailPick | null;
   /** Persist while waiting for “30 นาที” / “1 ชม.” after จองตาราง. */
   pending_self_book?: PendingSelfBook | null;
+  /** Persist task IDs awaiting deletion/closure confirmation. */
+  pending_task_ids?: number[] | null;
   meeting?: {
     attendees: string[];
     duration: number;
