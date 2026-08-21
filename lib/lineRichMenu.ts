@@ -1,7 +1,7 @@
-// LINE Rich Menu — 2×3 layout matching rich-menu-preview.html (draft B).
+// LINE Rich Menu — 3×3, nine tiles.
 // Note: do NOT import sharp at top-level — webhook imports this module on every message.
 
-export const RICH_MENU_NAME = "ktis-main-v5d-full";
+export const RICH_MENU_NAME = "ktis-main-v6-3x3";
 
 /** Strip invisible chars LINE sometimes appends (ZWSP etc.) so menu taps match. */
 export function sanitizeMenuText(text: string): string {
@@ -20,38 +20,66 @@ export function settingsPageUrl(): string {
 const W = 2500;
 const H = 1686; // full-size rich menu (ใหญ่กว่า compact 843)
 const COL = Math.floor(W / 3); // 833
-const ROW = Math.floor(H / 2); // 843
-const COL3 = W - COL * 2; // 834
-const ROW2 = H - ROW; // 843
+const COL3 = W - COL * 2; // 834 — the last column absorbs the rounding
+const ROW = Math.floor(H / 3); // 562
+const ROW3 = H - ROW * 2; // 562 — same for the last row
+/** Left edge of column i (0-2). */
+const cx3 = (i: number) => COL * i;
+/** Top edge of row i (0-2). */
+const cy3 = (i: number) => ROW * i;
+const colW = (i: number) => (i === 2 ? COL3 : COL);
+const rowH = (i: number) => (i === 2 ? ROW3 : ROW);
+
+export type IconKind =
+  | "cal"
+  | "meet"
+  | "news"
+  | "file"
+  | "car"
+  | "soon"
+  | "gear"
+  | "book"
+  | "people"
+  | "task"
+  | "help";
 
 export type RichMenuArea = {
   bounds: { x: number; y: number; width: number; height: number };
   action: { type: "message"; label: string; text: string };
 };
 
-export const RICH_MENU_AREAS: RichMenuArea[] = [
-  {
-    bounds: { x: 0, y: 0, width: COL, height: ROW },
-    action: { type: "message", label: "ตารางจอง", text: "ตาราง·จอง" },
-  },
-  {
-    bounds: { x: COL, y: 0, width: COL, height: ROW },
-    action: { type: "message", label: "สรุปประชุม", text: "สรุปประชุม" },
-  },
-  {
-    bounds: { x: COL * 2, y: 0, width: COL3, height: ROW },
-    action: { type: "message", label: "สรุปข่าว", text: "ข่าววันนี้" },
-  },
-  {
-    bounds: { x: 0, y: ROW, width: COL, height: ROW2 },
-    action: { type: "message", label: "ไฟล์", text: "ไฟล์" },
-  },
-  // 「เร็วๆนี้」= visual only (no tap area) while travel is under development
-  {
-    bounds: { x: COL * 2, y: ROW, width: COL3, height: ROW2 },
-    action: { type: "message", label: "ตั้งค่า", text: "ตั้งค่า" },
-  },
+/**
+ * Nine tiles, read left-to-right: the four things people do daily, then the
+ * three they ask for by name, then the manual and the settings page. Every
+ * text here must be something the assistant already answers — a tile that
+ * lands on "ไม่เข้าใจครับ" is worse than no tile.
+ */
+export const RICH_MENU_TILES: {
+  col: number;
+  row: number;
+  label: string;
+  text: string;
+  bg: string;
+  panel: string;
+  icon: IconKind;
+  title: string;
+  sub: string;
+}[] = [
+  { col: 0, row: 0, label: "ตารางจอง", text: "ตาราง·จอง", bg: "#ffffff", panel: "#e0f2f1", icon: "cal", title: "ตาราง·จอง", sub: "ติดตามนัด" },
+  { col: 1, row: 0, label: "นัดประชุม", text: "นัดประชุม", bg: "#ffffff", panel: "#e0f2f1", icon: "book", title: "นัดประชุม", sub: "หาเวลาว่างตรงกัน" },
+  { col: 2, row: 0, label: "ตารางคนอื่น", text: "👥 ตารางคนอื่น", bg: "#ffffff", panel: "#e0f2f1", icon: "people", title: "ตารางคนอื่น", sub: "ดูว่าใครว่าง" },
+  { col: 0, row: 1, label: "สรุปประชุม", text: "สรุปประชุม", bg: "#f8fafc", panel: "#e2e8f0", icon: "meet", title: "สรุปประชุม", sub: "มอบหมายงาน" },
+  { col: 1, row: 1, label: "งานที่ต้องตาม", text: "ดูงานที่ต้องติดตาม", bg: "#f8fafc", panel: "#e2e8f0", icon: "task", title: "งานที่ต้องตาม", sub: "เตือนให้เอง" },
+  { col: 2, row: 1, label: "สรุปข่าว", text: "ข่าววันนี้", bg: "#f8fafc", panel: "#e2e8f0", icon: "news", title: "สรุปข่าว", sub: "ที่ติดตาม" },
+  { col: 0, row: 2, label: "ไฟล์", text: "ไฟล์", bg: "#fff7ed", panel: "#ffedd5", icon: "file", title: "ไฟล์", sub: "ค้น·ผูก·แนบ" },
+  { col: 1, row: 2, label: "คู่มือคำสั่ง", text: "/ช่วยเหลือ", bg: "#eef2ff", panel: "#e0e7ff", icon: "help", title: "คู่มือคำสั่ง", sub: "สั่งอะไรได้บ้าง" },
+  { col: 2, row: 2, label: "ตั้งค่า", text: "ตั้งค่า", bg: "#ecfdf5", panel: "#ccfbf1", icon: "gear", title: "ตั้งค่า", sub: "เปิดหน้าเว็บ" },
 ];
+
+export const RICH_MENU_AREAS: RichMenuArea[] = RICH_MENU_TILES.map((t) => ({
+  bounds: { x: cx3(t.col), y: cy3(t.row), width: colW(t.col), height: rowH(t.row) },
+  action: { type: "message", label: t.label, text: t.text },
+}));
 
 export function richMenuObject() {
   return {
@@ -70,7 +98,7 @@ function cellSvg(
   h: number,
   bg: string,
   iconBg: string,
-  iconKind: "cal" | "meet" | "news" | "file" | "car" | "soon" | "gear",
+  iconKind: IconKind,
   title: string,
   sub: string
 ): string {
@@ -132,6 +160,44 @@ function cellSvg(
       <path d="M${cx - iw * 0.32} ${iy + iw * 0.28} l${iw * 0.14} ${-iw * 0.2} h${iw * 0.36} l${iw * 0.14} ${iw * 0.2}" fill="#3b82f6"/>
       <circle cx="${cx - iw * 0.28}" cy="${iy + iw * 0.72}" r="${iw * 0.12}" fill="#1e3a8a"/>
       <circle cx="${cx + iw * 0.28}" cy="${iy + iw * 0.72}" r="${iw * 0.12}" fill="#1e3a8a"/>`;
+  } else if (iconKind === "book") {
+    // calendar page with a pen — booking, not just looking
+    const iw = Math.round(glyph * 0.86);
+    const ih = Math.round(glyph * 0.8);
+    const lx = cx - iw / 2;
+    icon = `<rect x="${lx}" y="${iy}" width="${iw}" height="${ih}" rx="18" fill="#0f766e"/>
+      <rect x="${lx}" y="${iy}" width="${iw}" height="${Math.round(ih * 0.24)}" fill="#115e59"/>
+      <rect x="${lx + iw * 0.14}" y="${iy + ih * 0.42}" width="${iw * 0.34}" height="${ih * 0.14}" fill="#ecfdf5"/>
+      <rect x="${lx + iw * 0.14}" y="${iy + ih * 0.66}" width="${iw * 0.5}" height="${ih * 0.14}" fill="#a7f3d0"/>
+      <path d="M${lx + iw * 0.62} ${iy + ih * 0.86} l${iw * 0.3} ${-iw * 0.3} l${iw * 0.12} ${iw * 0.12} l${-iw * 0.3} ${iw * 0.3} z" fill="#f59e0b"/>`;
+  } else if (iconKind === "people") {
+    // two heads and shoulders — someone else's calendar
+    const r = Math.round(glyph * 0.16);
+    const base = iy + Math.round(glyph * 0.2);
+    icon = `<circle cx="${cx - r * 1.6}" cy="${base}" r="${r}" fill="#0f766e"/>
+      <circle cx="${cx + r * 1.6}" cy="${base}" r="${r * 0.9}" fill="#14b8a6"/>
+      <path d="M${cx - r * 3.4} ${base + r * 3.1} a${r * 1.8} ${r * 1.8} 0 0 1 ${r * 3.6} 0 z" fill="#0f766e"/>
+      <path d="M${cx + r * 0.1} ${base + r * 3.1} a${r * 1.6} ${r * 1.6} 0 0 1 ${r * 3.2} 0 z" fill="#14b8a6"/>`;
+  } else if (iconKind === "task") {
+    // checklist — the follow-ups it nags you about
+    const iw = Math.round(glyph * 0.88);
+    const lx = cx - iw / 2;
+    const line = (n: number) => iy + Math.round(iw * (0.06 + n * 0.3));
+    icon = [0, 1, 2]
+      .map(
+        (n) => `<rect x="${lx}" y="${line(n)}" width="${iw * 0.22}" height="${iw * 0.22}" rx="6" fill="${n === 2 ? "#94a3b8" : "#0f766e"}"/>
+      <path d="M${lx + iw * 0.05} ${line(n) + iw * 0.12} l${iw * 0.06} ${iw * 0.06} l${iw * 0.1} ${-iw * 0.11}" stroke="#ecfdf5" stroke-width="${Math.max(3, iw * 0.03)}" fill="none" stroke-linecap="round"/>
+      <rect x="${lx + iw * 0.32}" y="${line(n) + iw * 0.07}" width="${iw * (n === 2 ? 0.4 : 0.62)}" height="${iw * 0.09}" rx="4" fill="${n === 2 ? "#cbd5e1" : "#5eead4"}"/>`
+      )
+      .join("");
+  } else if (iconKind === "help") {
+    // an open manual with a question mark — "what can I type?"
+    const iw = Math.round(glyph * 0.98);
+    const ih = Math.round(glyph * 0.74);
+    const lx = cx - iw / 2;
+    icon = `<path d="M${lx} ${iy + ih * 0.12} q${iw * 0.25} ${-ih * 0.16} ${iw * 0.5} 0 v${ih * 0.82} q${-iw * 0.25} ${-ih * 0.14} ${-iw * 0.5} 0 z" fill="#4f46e5"/>
+      <path d="M${lx + iw * 0.5} ${iy + ih * 0.12} q${iw * 0.25} ${-ih * 0.16} ${iw * 0.5} 0 v${ih * 0.82} q${-iw * 0.25} ${-ih * 0.14} ${-iw * 0.5} 0 z" fill="#6366f1"/>
+      <text x="${cx}" y="${iy + ih * 0.72}" text-anchor="middle" font-size="${Math.round(ih * 0.62)}" font-weight="700" fill="#eef2ff" font-family="DejaVu Sans, Arial, sans-serif">?</text>`;
   } else if (iconKind === "soon") {
     // Muted ellipsis — “coming soon”, no car
     const r = Math.round(glyph * 0.11);
@@ -210,12 +276,9 @@ export async function buildRichMenuPng(opts?: { force?: boolean }): Promise<Buff
     </style>
   </defs>
   <rect width="${W}" height="${H}" fill="#f7f8f9"/>
-  ${cellSvg(0, 0, COL, ROW, "#ffffff", "#e0f2f1", "cal", "ตาราง·จอง", "ติดตามนัด")}
-  ${cellSvg(COL, 0, COL, ROW, "#ffffff", "#e0f2f1", "meet", "สรุปประชุม", "มอบหมายงาน")}
-  ${cellSvg(COL * 2, 0, COL3, ROW, "#ffffff", "#e0f2f1", "news", "สรุปข่าว", "ที่ติดตาม")}
-  ${cellSvg(0, ROW, COL, ROW2, "#fff7ed", "#ffedd5", "file", "ไฟล์", "ค้น·ผูก·แนบ")}
-  ${cellSvg(COL, ROW, COL, ROW2, "#f1f5f9", "#e2e8f0", "soon", "เร็วๆนี้", "กำลังพัฒนา")}
-  ${cellSvg(COL * 2, ROW, COL3, ROW2, "#ecfdf5", "#ccfbf1", "gear", "ตั้งค่า", "เปิดหน้าเว็บ")}
+  ${RICH_MENU_TILES.map((t) =>
+    cellSvg(cx3(t.col), cy3(t.row), colW(t.col), rowH(t.row), t.bg, t.panel, t.icon, t.title, t.sub)
+  ).join("\n  ")}
 </svg>`;
   const png = await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer();
   try {
