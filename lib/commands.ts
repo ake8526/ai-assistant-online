@@ -46,6 +46,7 @@ import { chat, llmUserErrorMessage } from "@/lib/llm";
 import { gpsCapturePageUrl } from "@/lib/gpsCapture";
 import { listRecentOnline } from "@/lib/meetings";
 import { HELP_TOPICS, findHelpTopic, helpMenuFlex, helpMenuText, helpTopicFlex, helpTopicText, visibleTopics } from "@/lib/help";
+import { notYetAnswer } from "@/lib/notYet";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { busyRanges, findCommonSlots, formatBusy, formatFree, freeRanges, wantsLunchIncluded } from "@/lib/scheduling";
@@ -770,6 +771,15 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   if (t === "__preview_summary_link__" || /^\/?test\s*(ประชุม|สรุป|summary|mt)$/i.test(t)) {
     return { intent: "preview_summary_link", params: {} };
   }
+  // The same question inside a longer sentence — "ทำอะไรได้บ้างมีคู่มือมั้ย",
+  // "มีคู่มือไหมครับ อยากดูคำสั่ง". Anchoring it meant the manual answered only
+  // people who typed the phrase and nothing else.
+  if (
+    /(?:ทำ|สั่ง|สั่งงาน|ใช้)อะไรได้(?:บ้าง)?|มี(?:อะไรให้ใช้|คำสั่งอะไร)(?:บ้าง)?|มีคู่มือ|ขอคู่มือ|ดูคู่มือ|รายการคำสั่ง/.test(t)
+  ) {
+    return { intent: "help_menu", params: {} };
+  }
+
   // "ทำอะไรได้บ้าง" — the question every new user asks first, and until now the
   // only answer was whatever the model improvised. Fixed rules, no API call.
   if (
@@ -6315,6 +6325,14 @@ async function handleParsed(
         { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
       ],
     };
+  }
+
+  // Before "ยังไม่เข้าใจ": most of these are not typos, they are things the
+  // system cannot do yet. Say so, name the thing, and point at what does work.
+  const notYet = notYetAnswer(text);
+  if (notYet) {
+    trace("compose", `ยังไม่มีฟีเจอร์: ${notYet.topic}`);
+    return { intent: "not_yet", reply: notYet.reply, suggestions: notYet.suggestions };
   }
 
   return {
