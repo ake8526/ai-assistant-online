@@ -1811,12 +1811,12 @@ async function parseIntent(
 function sanitizeParsedParams(params: Record<string, unknown>): Record<string, unknown> {
   const person = typeof params.person === "string" ? params.person.trim() : "";
   if (!person) return params;
-  const hasDayOrTime =
-    /(?:วันนี้|พรุ่งนี้|มะรืน|สัปดาห์|อาทิตย์นี้|จันทร์|อังคาร|พุธ|พฤหัส|ศุกร์|เสาร์|อาทิตย์|เช้า|บ่าย|เย็น|ค่ำ|โมง|ทุ่ม|เที่ยง|ครึ่ง|ทั้งวัน|\d{1,2}[:.]\d{2}|\d+\s*(?:นาที|ชม|ชั่วโมง))/i.test(
+  const isNonPersonQuery =
+    /(?:วันนี้|พรุ่งนี้|มะรืน|สัปดาห์|อาทิตย์นี้|จันทร์|อังคาร|พุธ|พฤหัส|ศุกร์|เสาร์|อาทิตย์|เช้า|บ่าย|เย็น|ค่ำ|โมง|ทุ่ม|เที่ยง|ครึ่ง|ทั้งวัน|\d{1,2}[:.]\d{2}|\d+\s*(?:นาที|ชม|ชั่วโมง)|ออนไลน์|online|Teams|Zoom|อันไหน|ไร|อะไร|บ้าง|มั้ง)/i.test(
       person
     );
   const tooLong = person.replace(/\s+/g, " ").split(" ").length > 4 || person.length > 40;
-  if (hasDayOrTime || tooLong) {
+  if (isNonPersonQuery || tooLong) {
     const { person: _dropped, ...rest } = params;
     void _dropped;
     return rest;
