@@ -15,11 +15,12 @@ import { getSetting, setSetting } from "@/lib/store";
 const OWNER = "_ops";
 const KEY = "roles";
 
-export type Perm = "monitor.view" | "log.view" | "jobs.stop" | "admin";
+export type Perm = "monitor.view" | "log.view" | "chat.logs" | "jobs.stop" | "admin";
 
 export const PERMS: { key: Perm; label: string; hint: string }[] = [
   { key: "monitor.view", label: "ดูห้องทำงาน", hint: "เปิดหน้า /monitor และดูงานที่กำลังทำสด ๆ" },
   { key: "log.view", label: "ดู log", hint: "เปิดหน้า /monitor/log และดูประวัติการทำงาน" },
+  { key: "chat.logs", label: "ดูประวัติแชท", hint: "ดูและดาวน์โหลดประวัติบทสนทนา (Chat Logs / Dataset)" },
   { key: "jobs.stop", label: "หยุดงานค้าง", hint: "กดปุ่มหยุด/พักงานที่ระบบตั้งเวลาไว้" },
   { key: "admin", label: "จัดการสิทธิ์", hint: "เพิ่ม/ลบสิทธิ์ของคนอื่น" },
 ];

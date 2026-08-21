@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // GET /api/admin/chat-logs?limit=100&offset=0&search=...
 // Fetch persistent chat history entries for viewing on the admin dashboard
 export async function GET(req: Request) {
-  const gate = await guard(req, "log.view");
+  const gate = await guard(req, "chat.logs");
   if (!gate.ok) return gate.response;
 
   try {

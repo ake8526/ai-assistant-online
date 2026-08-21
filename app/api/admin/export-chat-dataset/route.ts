@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { AuthError, requireUser } from "@/lib/auth";
+import { guard } from "@/lib/guard";
 import { exportChatLogsJsonl } from "@/lib/store";
 import { assertConfigured } from "@/lib/supabaseServer";
 
@@ -8,9 +8,11 @@ export const maxDuration = 60;
 // GET /api/admin/export-chat-dataset?limit=1000
 // Export chat history in OpenAI JSONL format for LLM Fine-tuning
 export async function GET(req: Request) {
+  const gate = await guard(req, "chat.logs");
+  if (!gate.ok) return gate.response;
+
   try {
     assertConfigured();
-    const upn = await requireUser(req);
     
     // Check if limit query parameter is passed
     const { searchParams } = new URL(req.url);

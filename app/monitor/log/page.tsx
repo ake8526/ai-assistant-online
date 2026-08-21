@@ -947,16 +947,20 @@ function LogView({
         >
           ⚙️ System Traces
         </button>
-        <button
-          className={tab === "chat" ? "on" : ""}
-          onClick={() => setTab("chat")}
-          style={{ fontSize: "14px", padding: "3px 10px", margin: "0 2px" }}
-        >
-          💬 Chat History Logs
-        </button>
-        <a className="link" href="/api/admin/export-chat-dataset" title="ดาวน์โหลดไฟล์ .jsonl สำหรับเทรน LLM" style={{ color: "var(--amber)", borderColor: "var(--amber)" }}>
-          📥 Export Dataset (.jsonl)
-        </a>
+        {can("chat.logs") && (
+          <>
+            <button
+              className={tab === "chat" ? "on" : ""}
+              onClick={() => setTab("chat")}
+              style={{ fontSize: "14px", padding: "3px 10px", margin: "0 2px" }}
+            >
+              💬 Chat History Logs
+            </button>
+            <a className="link" href="/api/admin/export-chat-dataset" title="ดาวน์โหลดไฟล์ .jsonl สำหรับเทรน LLM" style={{ color: "var(--amber)", borderColor: "var(--amber)" }}>
+              📥 Export Dataset (.jsonl)
+            </a>
+          </>
+        )}
         {can("admin") && (
           <a className="link" href="/monitor/admin">
             จัดการสิทธิ์
