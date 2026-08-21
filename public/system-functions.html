@@ -194,6 +194,98 @@
   #can .vis h3 { font-size: 18px; }
   #can .vis p { font-size: 15px; }
 
+  /* ALL FUNCTIONS — the whole feature list on one screen.
+     Not masonry: the cards run 250–350px against an ~830px panel, so only two
+     or three fit a column and the leftover quantum (200px+) always showed as a
+     dead band. A fixed 4x2 grid of equal cards fills the panel exactly; the
+     cards were merged down to eight so each one has room to breathe. */
+  #all {
+    justify-content: flex-start; gap: 0;
+    /* cap the height so the grid sizes to the screen instead of running past it */
+    height: 100dvh; max-height: 100dvh;
+    padding: 74px 0 20px;
+  }
+  #all .sec-h { margin-bottom: 12px; gap: 3px; }
+  #all .sec-h h2 { font-size: clamp(26px, 3.2vw, 36px); }
+  #all .sec-h p { max-width: 60ch; font-size: clamp(15px, 1.5vw, 17px); }
+  .func-scroll {
+    position: relative;
+    flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    padding: 2px 4px 6px;
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent;
+  }
+  .func-scroll::-webkit-scrollbar { width: 8px; }
+  .func-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,.16); border-radius: 99px;
+  }
+  /* Default (and every small or short screen): cards keep their natural height
+     and the PANEL scrolls — one scrollbar for the section. */
+  .func-grid {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    align-items: start;
+  }
+  .fg {
+    display: flex; flex-direction: column; min-height: 0;
+    background: rgba(255,255,255,.035); border: 1px solid var(--line);
+    border-radius: 16px; padding: 15px 17px 14px;
+  }
+  .fg h3 {
+    font-size: 17px; font-weight: 750; margin-bottom: 3px; line-height: 1.3;
+    display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  }
+  .fg h3 i { font-style: normal; font-size: 18px; flex-shrink: 0; }
+  .fg .tagline {
+    color: var(--brand2); font-size: 12px; font-weight: 700; flex-shrink: 0;
+    margin-bottom: 9px; padding-bottom: 9px; border-bottom: 1px solid var(--line);
+  }
+  /* Lists do not scroll by default — only inside the fixed-cell layouts below,
+     where a card that outgrows its cell must not spill over its neighbour. */
+  .fg ul { list-style: none; padding: 0; margin: 0; min-height: 0; }
+  .fg ul::-webkit-scrollbar { width: 6px; }
+  .fg ul::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 99px; }
+  .fg li {
+    color: var(--mute); font-size: 13.8px; line-height: 1.48;
+    padding-left: 14px; margin-bottom: 6px; position: relative;
+  }
+  .fg li:last-child { margin-bottom: 0; }
+  .fg li::before {
+    content: ""; position: absolute; left: 0; top: 8px;
+    width: 5px; height: 5px; border-radius: 50%; background: var(--brand); opacity: .7;
+  }
+  .fg li b { color: var(--ink); font-weight: 650; }
+  .fg li code {
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px;
+    background: rgba(255,255,255,.06); border-radius: 5px; padding: 1px 4px; color: var(--ink);
+  }
+  /* Big screen with real height — the case this section is designed for: two
+     rows of four equal cards filling the panel exactly, nothing to scroll.
+     Gated on HEIGHT as well as width: at 1366x768 the same grid gave rows of
+     180px and every one of the eight cards needed its own scrollbar. */
+  @media (min-width: 1500px) and (min-height: 930px) {
+    .func-grid {
+      height: 100%; align-items: stretch;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+    }
+    .fg ul { overflow-y: auto; }
+  }
+  /* Mid-size but tall (e.g. 1280x1024): three columns, three rows, and the last
+     card takes the spare cell so no hole is left. */
+  @media (min-width: 1180px) and (max-width: 1499px) and (min-height: 1000px) {
+    .func-grid {
+      height: 100%; align-items: stretch;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+    }
+    .func-grid .fg:last-child { grid-column: span 2; }
+    .fg ul { overflow-y: auto; }
+  }
+  @media (max-width: 700px) {
+    .func-grid { grid-template-columns: 1fr; }
+    .fg li { font-size: 14px; }
+  }
+
   #office { gap: 10px; justify-content: flex-start; }
   #office .sec-h { margin-bottom: 10px; }
   #office .sec-h h2 { font-size: clamp(26px, 3.2vw, 36px); }
@@ -830,6 +922,7 @@
     <nav id="top-nav">
       <a href="#see">เห็นภาพ</a>
       <a href="#can">ทำอะไรได้</a>
+      <a href="#all">ฟังก์ชันทั้งหมด</a>
       <a href="#office">AI ทำงานยังไง</a>
       <a href="#scan">สแกนเริ่มใช้</a>
       <a href="https://ktis-ai-assistant.vercel.app/monitor" target="_blank" rel="noopener">ห้อง LIVE</a>
@@ -839,6 +932,7 @@
   <nav class="sec-dots" id="sec-dots" aria-label="ไปยังหัวข้อ">
     <a href="#see" title="เห็นภาพ"></a>
     <a href="#can" title="ทำอะไรได้"></a>
+    <a href="#all" title="ฟังก์ชันทั้งหมด"></a>
     <a href="#office" title="AI ทำงานยังไง"></a>
     <a href="#scan" title="สแกนเริ่มใช้"></a>
   </nav>
@@ -859,6 +953,7 @@
           <span class="pill">ถามก่อนแก้ปฏิทิน</span>
           <span class="pill">ตอบภาษาไทย</span>
         </div>
+        <p class="lede" style="margin-top:14px;font-size:15px">จำคำสั่งไม่ได้ก็ไม่เป็นไร — พิมพ์ <b>“ทำอะไรได้บ้าง”</b> หรือ <b>“/คำสั่ง”</b> ในแชท ระบบส่งการ์ดคู่มือมาให้ แตะแทนหนี่หนูก็สั่งงานได้เลย ไม่ต้องเข้าลิงก์</p>
       </div>
 
       <div class="stage">
@@ -917,7 +1012,7 @@
           </div>
           <div class="body">
             <h3>สรุปประชุม · มอบหมายงาน</h3>
-            <p>ดึง transcript จาก Teams แล้วสรุปสั้น พร้อมส่งงานถึงผู้รับผิดชอบใน LINE</p>
+            <p>ดึง transcript จาก Teams หลังประชุมจบ → สรุปเป็นลิงก์อ่านบนมือถือ พร้อมส่งงานถึงผู้รับผิดชอบใน LINE</p>
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
@@ -930,7 +1025,7 @@
           </div>
           <div class="body">
             <h3>สรุปข่าวที่ติดตาม</h3>
-            <p>พิมพ์ “ข่าววันนี้” — สรุปประเด็นแล้วส่งเข้า LINE อัตโนมัติ (ใช้เวลาประมาณ 1–2 นาที) หรือตั้งส่งเช้าทุกวันทำงาน</p>
+            <p>เลือกหัวข้อที่สนใจ + เพิ่มแหล่งเอง (RSS / เพจ / YouTube) — พิมพ์ “ข่าววันนี้” หรือตั้งเวลาส่งเช้าเอง แล้วอ่านเป็นหน้าเว็บจาก LINE</p>
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
@@ -949,7 +1044,7 @@
           </div>
           <div class="body">
             <h3>ค้นไฟล์ OneDrive · อยู่ที่ไหน · วางแผนเดินทาง</h3>
-            <p>ค้น · ดูโฟลเดอร์ · กรองนามสกุล · ผูกนัด · คำนวณเวลาออกจากบ้านจากนัดแรกของวัน</p>
+            <p>ค้น · ดูโฟลเดอร์ · กรองนามสกุล · อ่าน&amp;สรุปไฟล์ · ผูกกับนัด · วางแผนเดินทางจากนัดแรกของวัน</p>
             <span class="tap">ดูตัวอย่าง →</span>
           </div>
         </button>
@@ -1017,6 +1112,124 @@
         </div>
       </div>
     </div>
+
+    <!-- ALL FUNCTIONS: inventory of the live system -->
+    <section class="block" id="all">
+      <div class="sec-h">
+        <h2>ฟังก์ชันทั้งหมด ณ ตอนนี้</h2>
+        <p>ทุกอย่างที่ระบบทำได้จริงวันนี้ · อัปเดต 19 ส.ค. 2026</p>
+      </div>
+
+      <div class="func-scroll" data-free-scroll>
+        <div class="func-grid">
+
+          <article class="fg">
+            <h3><i>💬</i>แชท &amp; ช่องทาง</h3>
+            <div class="tagline">พิมพ์ภาษาไทยธรรมดา ที่ไหนก็ได้</div>
+            <ul>
+              <li><b>LINE OA</b> (@777nxuvm) และ <b>หน้าเว็บหน้าแรก</b> — ใช้สมองตัวเดียวกัน</li>
+              <li><b>ริชเมนู 5 ปุ่ม</b>: ตาราง·จอง / สรุปประชุม / สรุปข่าว / ไฟล์ / ตั้งค่า</li>
+              <li><b>คำสั่ง /</b> — <code>/ตารางวันนี้</code> <code>/นัดพรุ่งนี้</code> <code>/ตั้งค่าข่าว</code> <code>/ล้างความจำ</code> <code>/ยกเลิก</code> <code>/ช่วยเหลือ</code></li>
+              <li>จำบริบทต่อเนื่อง <b>~30 นาที</b> — ถามต่อว่า “แล้วบ่ายล่ะ” ได้เลย</li>
+              <li>แยกเจตนาด้วย LLM · ตอบไทย/อังกฤษ (ไทยหลัก)</li>
+              <li>เจอชื่อคล้ายกันจะ<b>ให้เลือกก่อน</b> · หาชื่อเล่นซ้ำในองค์กรได้</li>
+            </ul>
+          </article>
+
+          <article class="fg">
+            <h3><i>📅</i>ปฏิทิน &amp; นัดประชุม</h3>
+            <div class="tagline">ต่อกับ Outlook / M365 ของบริษัท</div>
+            <ul>
+              <li>ดูนัด: วันนี้ / พรุ่งนี้ / สัปดาห์ / เดือน / ระบุวันที่ / ชื่อวัน / เจาะจงเวลา (“10 โมงติดอะไร”)</li>
+              <li>ดู<b>เวลาว่าง</b>ของตัวเอง หรือของเพื่อนร่วมงาน</li>
+              <li><b>หาเวลาว่างตรงกันหลายคน</b> — รวมคนนอกด้วยอีเมล · แนบไฟล์ไปกับคำเชิญได้</li>
+              <li>จองแล้ว<b>ต้องกดยืนยันก่อน</b>ลง Outlook เสมอ</li>
+              <li><b>กันเวลาปฏิทินตัวเอง</b> — ทั้งวันหรือระบุช่วง (ลาพักร้อน / ออกรายการ / ติดธุระ)</li>
+              <li><b>ยกเลิกนัด</b> — เลือกจากรายการ หรือระบุชื่อคนในนัด</li>
+              <li><b>เตรียมตัวนัด</b> — อ่านหัวข้อ/รายละเอียด/ไฟล์แนบ/ลิงก์ แล้วสรุปให้ก่อนเข้าประชุม</li>
+            </ul>
+          </article>
+
+          <article class="fg">
+            <h3><i>📬</i>ตอบรับนัดใน LINE &amp; ตามให้</h3>
+            <div class="tagline">ไม่ต้องรอเปิดอีเมล</div>
+            <ul>
+              <li>มีนัดใหม่โผล่ในปฏิทิน → <b>แจ้งเข้า LINE</b> (ตรวจทุก 5 นาที)</li>
+              <li>คนที่ถูกเชิญ <b>กดรับ / ปฏิเสธ / เสนอเวลาใหม่</b> ได้ในแชท</li>
+              <li>ยังไม่ตอบ → ระบบ<b>ตามให้ทุก ~1 ชม.</b></li>
+              <li>ครบ 1 วัน หรือใกล้เวลานัด → <b>แจ้งเจ้าของนัด</b>ให้ตัดสินใจ</li>
+              <li>เจ้าของนัดเลือกเวลาใหม่ → สร้างนัดใน Outlook + แจ้งอีกฝั่งให้เอง</li>
+              <li>log บอกชัดว่า<b>ค้างของใคร เรื่องอะไร ค้างมานานเท่าไหร่</b></li>
+            </ul>
+          </article>
+
+          <article class="fg">
+            <h3><i>📝</i>ประชุม → สรุป → งานที่ต้องตาม</h3>
+            <div class="tagline">อัตโนมัติหลังประชุมจบ</div>
+            <ul>
+              <li>ดึง <b>transcript</b> จาก Teams — ตรวจให้ทุก 10 นาที</li>
+              <li>สรุปส่งเป็น<b>ลิงก์อ่านบนมือถือ</b> — ไม่ถูกตัดกลางข้อความ</li>
+              <li>ดึง<b>งานที่ต้องทำ</b> + จับคู่ผู้รับผิดชอบ <b>เฉพาะคนที่อยู่ในห้องประชุม</b> แล้วส่งถึงเจ้าตัวใน LINE</li>
+              <li>ปิด/เปิดการส่งสรุปอัตโนมัติได้เอง</li>
+              <li>เพิ่มงานเองได้ (ผู้รับผิดชอบ + กำหนดส่ง) · ดูงานค้าง · <b>ปิดงาน</b>ด้วยเลขงานหรือชื่องาน</li>
+              <li>เตือนงานที่ถึงกำหนด <b>ต้นชั่วโมง จ–ศ 08:00–19:45</b></li>
+            </ul>
+          </article>
+
+          <article class="fg">
+            <h3><i>📂</i>ไฟล์ OneDrive</h3>
+            <div class="tagline">ค้น อ่าน แล้วผูกกับนัด</div>
+            <ul>
+              <li>ค้นไฟล์ · ดูในโฟลเดอร์ · กรองนามสกุล</li>
+              <li><b>อ่าน &amp; สรุปไฟล์</b>ที่ค้นเจอ (“สรุปอัน 1”)</li>
+              <li><b>ผูกไฟล์หรือลิงก์กับนัด</b> · ดูเอกสารของนัด · เลิกผูก</li>
+              <li>แนบไฟล์ไปพร้อมคำเชิญนัดได้ตอนจอง</li>
+              <li>เปิดไฟล์จาก LINE ผ่านลิงก์ที่<b>เซ็นและหมดอายุ</b></li>
+            </ul>
+          </article>
+
+          <article class="fg">
+            <h3><i>📰</i>ข่าว &amp; บรีฟเช้า</h3>
+            <div class="tagline">ตั้งได้ครบจากในแชท LINE</div>
+            <ul>
+              <li>เลือก<b>หัวข้อที่สนใจ 9 หมวด</b> — เทคโนโลยี · AI · เศรษฐกิจ · พลังงาน · ยานยนต์ · สุขภาพ · กีฬา · การเมือง · บันเทิง</li>
+              <li>ตั้ง<b>จำนวนข่าว/วัน</b> + <b>เวลาส่ง</b> + <b>วันที่ส่ง</b> (ข่าวกับตารางแยกกันได้)</li>
+              <li>เพิ่มแหล่งเอง: <b>RSS · เพจ Facebook · YouTube</b> (เพิ่ม/ลบ/แก้ชื่อ/ดูรายการ)</li>
+              <li>สรุปเป็นหัวข้อย่อย <b>พร้อมลิงก์ต้นทาง</b> — อ่านเป็นหน้าเว็บจาก LINE</li>
+              <li>ขอสดได้ทุกเมื่อ — พิมพ์ “ข่าววันนี้”</li>
+              <li><b>เตรียมล่วงหน้า</b> ถึงเวลาจึงเหลือแค่ส่ง (ข่าวก่อน · ตารางตามหลัง 1 นาที) — 08:30 ตรวจย้อนหลัง ช้าเกิน 5 นาที <b>แจ้งผู้ดูแล</b></li>
+            </ul>
+          </article>
+
+          <article class="fg">
+            <h3><i>🚗</i>สถานที่ &amp; เดินทาง</h3>
+            <div class="tagline">ตั้งครั้งเดียว ใช้ได้ทุกวัน</div>
+            <ul>
+              <li>ตั้ง / ดู / ลบ <b>ที่ทำงาน</b> และ <b>บ้าน</b> — พิมพ์ที่อยู่ หรือ<b>ปักพิกัด GPS</b> จากมือถือ</li>
+              <li>ตั้ง<b>เวลาเข้า–เลิกงาน</b> ที่หน้าตั้งค่า</li>
+              <li>เปิดแผนที่ไปที่ทำงาน / กลับบ้าน</li>
+              <li><b>วางแผนเดินทาง</b> — บอกว่าควรไปถึงก่อนกี่โมง (จากเวลาเข้างาน/นัดแรกของวัน) + ปุ่มเปิดเส้นทาง Google Maps</li>
+              <li>ล็อกอิน <b>M365 (Entra)</b> · ต้อง<b>อนุญาตปฏิทิน</b>ก่อนระบบจึงดึงตาราง</li>
+              <li><b>ผูก LINE ↔ M365</b> ผ่าน LIFF · <code>/consents</code> เลือกอนุญาตรายแหล่ง · <code>/account</code> ดูสถานะ</li>
+            </ul>
+          </article>
+
+          <article class="fg">
+            <h3><i>🖥️</i>ห้องทำงาน · ตัวตั้งเวลา · สิทธิ์</h3>
+            <div class="tagline">ดูได้ว่าระบบทำอะไรอยู่</div>
+            <ul>
+              <li><code>/monitor</code> เห็นงานที่ทำสด · <code>/monitor/log</code> ประวัติรายวัน + สถานะ <b>“ไม่จบงาน”</b> + ปุ่มหยุดงานค้าง</li>
+              <li><code>/monitor/admin</code> — <b>4 สิทธิ์</b>: ดูห้องทำงาน · ดู log · หยุดงานค้าง · จัดการสิทธิ์</li>
+              <li><b>ตัวตั้งเวลาหลัก = Cloudflare Worker</b> — เคาะทุกนาที 05:30–08:20 · ทุก 5 นาที ถึง 20:55 (Vercel Cron / GitHub Actions เป็นตัวสำรอง)</li>
+              <li>งานไหน<b>ไม่จบเกิน 30 นาที</b> ระบบ<b>หยุดยิงซ้ำเอง</b> พร้อมบอกเหตุผลใน log และกดเปิดกลับได้</li>
+              <li>ข่าวตามหัวข้อ = <b>NewsData.io</b> · LLM แยกสองชั้น (แยกเจตนา + สรุป) · ข้อมูลอยู่บน <b>Supabase</b></li>
+              <li>ลิงก์ <code>/n/…</code> และ <code>/s/…</code> ใช้โทเคนเซ็น+หมดอายุ เปิดจาก LINE ได้ไม่ต้องล็อกอิน</li>
+            </ul>
+          </article>
+
+        </div>
+      </div>
+    </section>
 
     <!-- OFFICE: real /monitor embed -->
     <section class="block" id="office">
@@ -1972,7 +2185,7 @@
 </script>
 <script>
 (function () {
-  const ids = ["see", "can", "office", "scan"];
+  const ids = ["see", "can", "all", "office", "scan"];
   const sections = ids.map((id) => document.getElementById(id)).filter(Boolean);
   const topLinks = [...document.querySelectorAll("#top-nav a[href^='#']")];
   const dots = [...document.querySelectorAll("#sec-dots a[href^='#']")];
