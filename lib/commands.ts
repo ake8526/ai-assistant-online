@@ -99,6 +99,7 @@ import {
   resolveWeekday,
   startOfDay,
   endOfDay,
+  utcIsoToWall,
   wallIso,
 } from "@/lib/time";
 
@@ -1741,6 +1742,12 @@ async function parseIntent(
         source: "quick",
       };
     }
+  }
+
+  // "ปิดงานทั้งหมด" / "ปิดทั้งหมด" / "เคลียร์งานหมด" — everything pending at
+  // once. The handler still asks for confirmation before closing anything.
+  if (/^(?:ปิด|เสร็จ|ทำเสร็จ|เคลียร์)(?:งาน)?\s*(?:ทั้งหมด|ทุกงาน|ทุกอัน|หมด)(?:เลย)?\s*(?:แล้ว|เลย|ครับ|ค่ะ|นะ)?$/i.test(textClean)) {
+    return { intent: "complete_task", params: { all: true }, source: "quick" };
   }
 
   // Quick task closure: "ปิดงาน 1 2 3", "ปิดงาน 1,2,3", "ปิดงาน 1 2"
@@ -5791,6 +5798,13 @@ async function handleParsed(
   }
 
   if (intent === "list_tasks") {
+    // The stored UTC read as "2026-08-22T10:00:00+00:00" in the chat, and LINE
+    // underlined it as a link. Show Bangkok wall time, written the way the rest
+    // of the assistant writes dates.
+    const dueLabel = (iso: string): string => {
+      const wall = utcIsoToWall(iso);
+      return wall ? `${fmtDate(wall)} ${fmtTime(wall)}` : iso;
+    };
     const tasks = await listTasks(userUpn);
     const pending = tasks.filter((t) => t.status === "pending" || t.status === "overdue");
     if (!pending.length) {
@@ -5798,7 +5812,7 @@ async function handleParsed(
     }
     const lines = [`📌 งานที่ต้องติดตามค้างอยู่ (${pending.length} รายการ):`, ""];
     pending.forEach((t, i) => {
-      const dueStr = t.due ? ` (กำหนดส่ง: ${t.due})` : "";
+      const dueStr = t.due ? ` (กำหนดส่ง: ${dueLabel(t.due)})` : "";
       const resp = t.responsible ? ` [ผู้รับผิดชอบ: ${t.responsible}]` : "";
       const stTag = t.status === "overdue" ? " ⚠️ เกินกำหนด" : "";
       const srcTag = t.source === "meeting_auto" ? " 🤖 (จากสรุปการประชุม)" : t.source === "manual" ? " 👤 (เพิ่มเอง)" : "";
@@ -5875,8 +5889,22 @@ async function handleParsed(
   if (intent === "complete_task") {
     const rawIds = Array.isArray(params.task_ids) ? (params.task_ids as number[]) : [];
     const singleTid = Number(params.task_id);
-    const targetNumbers = rawIds.length ? rawIds : singleTid ? [singleTid] : [];
     const isConfirmed = !!params.confirmed;
+    // "ทั้งหมด" means whatever is pending right now, so the ids are read here
+    // instead of carried over from a listing that may be stale.
+    const allIds = params.all
+      ? (await listTasks(userUpn))
+          .filter((t) => t.status === "pending" || t.status === "overdue")
+          .map((t) => t.id)
+      : [];
+    if (params.all && !allIds.length) return { intent, reply: "ไม่มีงานค้างอยู่ครับ 👍" };
+    const targetNumbers = allIds.length
+      ? allIds
+      : rawIds.length
+        ? rawIds
+        : singleTid
+          ? [singleTid]
+          : [];
 
     if (targetNumbers.length > 0) {
       const pending = (await listTasks(userUpn)).filter(
