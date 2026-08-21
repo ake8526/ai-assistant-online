@@ -5817,25 +5817,32 @@ async function handleParsed(
     ];
 
     const addedList: string[] = [];
+    const timestampStr = new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
     for (let i = 0; i < count; i++) {
       const s = samples[i % samples.length];
-      let respUpn: string | null = null;
+      const titleWithTime = count > 1 ? `${s.title} (${i + 1})` : s.title;
       try {
-        respUpn = await resolveResponsible(s.responsible);
-      } catch {
-        respUpn = null;
+        const tid = await addTask({
+          owner_upn: userUpn,
+          title: titleWithTime,
+          responsible: s.responsible,
+          responsible_upn: null,
+          due: s.due,
+          source: "manual",
+        });
+        if (tid) {
+          addedList.push(`• ${titleWithTime} [ผู้รับผิดชอบ: ${s.responsible}]`);
+        }
+      } catch (err) {
+        console.error("[add_sample_tasks] error adding task:", err);
       }
-      const tid = await addTask({
-        owner_upn: userUpn,
-        title: s.title,
-        responsible: s.responsible,
-        responsible_upn: respUpn,
-        due: s.due,
-        source: "manual",
-      });
-      if (tid) {
-        addedList.push(`• ${s.title} [ผู้รับผิดชอบ: ${s.responsible}]`);
-      }
+    }
+
+    if (!addedList.length) {
+      return {
+        intent: "add_task",
+        reply: "⚠️ เกิดข้อผิดพลาดในการบันทึกงานลงฐานข้อมูล กรุณาลองใหม่อีกครั้งครับ",
+      };
     }
 
     return {
