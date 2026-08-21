@@ -463,3 +463,87 @@ export async function markMeetingSummarized(eventId: string, ownerUpn = "", subj
   await setSetting(OPS_BUCKET, seenRow(eventId), String(Date.now()));
   await setSetting(OPS_BUCKET, SEEN_MEETINGS_READY, "1");
 }
+
+// ---------------------------------------------------------------------------
+// Chat Logging for LLM Fine-tuning Dataset
+// ---------------------------------------------------------------------------
+
+export type ChatLogEntry = {
+  id?: string;
+  session_id: string;
+  user_upn?: string | null;
+  channel: "line" | "web" | "system" | string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+};
+
+/** Log a single turn (user question or assistant reply) to chat_logs table for LLM training */
+export async function logChatTurn(entry: ChatLogEntry): Promise<void> {
+  if (!entry.content || !entry.content.trim()) return;
+  try {
+    const { error } = await admin.from("chat_logs").insert({
+      session_id: entry.session_id,
+      user_upn: entry.user_upn || null,
+      channel: entry.channel || "line",
+      role: entry.role,
+      content: entry.content.trim(),
+      metadata: entry.metadata || {},
+    });
+    if (error) {
+      console.error("[chat_logs] logChatTurn error:", error.message);
+    }
+  } catch (err) {
+    console.error("[chat_logs] failed to save turn:", String(err).slice(0, 150));
+  }
+}
+
+/** Export chat logs grouped by session in OpenAI JSONL fine-tuning format */
+export async function exportChatLogsJsonl(options?: {
+  limitSessions?: number;
+  startDate?: string;
+}): Promise<string> {
+  let query = admin
+    .from("chat_logs")
+    .select("session_id, role, content, created_at, user_upn")
+    .order("created_at", { ascending: true });
+
+  if (options?.startDate) {
+    query = query.gte("created_at", options.startDate);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`exportChatLogsJsonl: ${error.message}`);
+  if (!data || data.length === 0) return "";
+
+  // Group messages by session_id
+  const sessions = new Map<string, Array<{ role: string; content: string }>>();
+  for (const row of data) {
+    if (!sessions.has(row.session_id)) {
+      sessions.set(row.session_id, []);
+    }
+    const role = row.role === "assistant" ? "assistant" : row.role === "system" ? "system" : "user";
+    sessions.get(row.session_id)!.push({ role, content: row.content });
+  }
+
+  const systemMsg = {
+    role: "system",
+    content: "คุณคือ AI Assistant ผู้ช่วยงานอัจฉริยะที่คอยตอบคำถามและจัดการนัดหมายอย่างสุภาพและถูกต้อง",
+  };
+
+  const jsonlLines: string[] = [];
+  let count = 0;
+  for (const [, messages] of sessions.entries()) {
+    if (options?.limitSessions && count >= options.limitSessions) break;
+    // Only export sessions with at least one user-assistant pair
+    if (messages.some((m) => m.role === "user") && messages.some((m) => m.role === "assistant")) {
+      const fullMessages = [systemMsg, ...messages];
+      jsonlLines.push(JSON.stringify({ messages: fullMessages }));
+      count++;
+    }
+  }
+
+  return jsonlLines.join("\n");
+}
+

@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { checkCronSecret } from "@/lib/auth";
-import { resolveLinkedUpn, sendLine } from "@/lib/line";
-import { claimSend, clearInflight, isDueNow, markSent } from "@/lib/notify";
-import { runWithTrace } from "@/lib/trace";
+import { resolveLinkedUpn } from "@/lib/line";
+import { kickLineDigest } from "@/lib/digestKick";
+import { isDueNow } from "@/lib/notify";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
-import { buildDigest, formatStoriesText, rememberDeliveredStories } from "@/lib/digest";
+import { after } from "next/server";
+import { waitUntil } from "@vercel/functions";
 
-export const maxDuration = 300;
+export const maxDuration = 60;
 
-// GET/POST ?key=CRON_SECRET — build the following-digest and push it into LINE,
-// but only for users whose news schedule is due right now (?force=1 = everyone).
+// Cron entry: quickly enqueue per-user line-now jobs (maxDuration=300 each).
+// Building digests inline here used to 504 when several users were due.
 
 async function run(req: Request) {
   try {
@@ -31,44 +32,47 @@ async function run(req: Request) {
     }
 
     const results: Record<string, string> = {};
+    const jobs: Promise<void>[] = [];
+
     for (const upn of users) {
       try {
-        await runWithTrace({ upn, channel: "cron" }, async () => {
-          if (!force && !(await isDueNow(upn, "news"))) {
-            results[upn] = "skip (not due)";
-            return;
-          }
-          const { stories, note } = await buildDigest(upn);
-          if (!stories?.length) {
-            if (force || (await claimSend(upn, "news"))) {
-              await markSent(upn, "news");
-              results[upn] = note || "no stories";
-            } else {
-              results[upn] = "skip (inflight or sent)";
-            }
-            return;
-          }
-          if (new URL(req.url).searchParams.get("seed_seen") === "1") {
-            await rememberDeliveredStories(upn, stories);
-            if (force || (await claimSend(upn, "news"))) await markSent(upn, "news");
-            results[upn] = `seeded ${stories.length} seen (no push)`;
-            return;
-          }
-          if (!force && !(await claimSend(upn, "news"))) {
-            results[upn] = "skip (inflight or sent)";
-            return;
-          }
-          await sendLine(upn, "", formatStoriesText(stories));
-          await rememberDeliveredStories(upn, stories);
-          await markSent(upn, "news");
-          results[upn] = `delivered ${stories.length} stories`;
-        });
+        if (!force && !(await isDueNow(upn, "news"))) {
+          results[upn] = "skip (not due)";
+          continue;
+        }
+        // Fire line-now (own 300s isolate). kickLineDigest registers waitUntil.
+        const p = kickLineDigest(upn)
+          .then(() => {
+            results[upn] = "kicked line-now";
+          })
+          .catch((e) => {
+            results[upn] = `ERROR: ${String(e).slice(0, 120)}`;
+          });
+        jobs.push(p);
+        results[upn] = "kicking…";
       } catch (e) {
-        await clearInflight(upn, "news").catch(() => {});
         results[upn] = `ERROR: ${String(e).slice(0, 150)}`;
       }
     }
-    return NextResponse.json({ ok: true, results });
+
+    const all = Promise.allSettled(jobs);
+    try {
+      waitUntil(all);
+    } catch {
+      /* non-Vercel */
+    }
+    after(async () => {
+      try {
+        await all;
+      } catch {
+        /* ignore */
+      }
+    });
+
+    // Brief wait so setSetting + fetch start before freeze
+    await Promise.race([all, new Promise((r) => setTimeout(r, 8_000))]);
+
+    return NextResponse.json({ ok: true, mode: "enqueue", results });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

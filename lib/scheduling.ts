@@ -2,7 +2,7 @@
 // availabilityView: one char per interval: '0'=free, '1'=tentative, '2'=busy,
 // '3'=out-of-office, '4'=working-elsewhere. A slot is bookable only if everyone is '0'.
 import { getSchedule } from "@/lib/graph";
-import { addDays, addMinutes, fmtDate, fmtDateTime, fmtTime, nowWall, startOfDay, endOfDay, wallIso } from "@/lib/time";
+import { addDays, addMinutes, fmtDate, fmtDateTime, fmtDayHeader, fmtSlotRange, fmtTime, nowWall, startOfDay, endOfDay, wallIso } from "@/lib/time";
 
 const INTERVAL = 30; // minutes per availability slot
 
@@ -108,6 +108,11 @@ export async function findCommonSlots(
     workEndHour?: number;
     /** When false (default), skip 12:00–13:00. */
     includeLunch?: boolean;
+    /**
+     * Allow Sat/Sun. Default: true when an explicit day window is set (e.g. พรุ่งนี้ = เสาร์),
+     * false for open week scans (weekdays only).
+     */
+    includeWeekend?: boolean;
   }
 ): Promise<{ slots: Slot[]; busy: BusyMap; ranges: Slot[] }> {
   const atMin = opts?.atMin ?? null;
@@ -176,7 +181,11 @@ export async function findCommonSlots(
   const allStarts = opts?.allStarts ?? false;
   const includeLunch = opts?.includeLunch ?? false;
   const workEnd = opts?.workEndHour ?? WORK_END_HOUR;
+  // Explicit day (วันนี้/พรุ่งนี้/วันที่…) → include that day even if Sat/Sun
+  const includeWeekend = opts?.includeWeekend ?? !!window;
   const cap = allStarts ? Math.max(maxSlots, 48) : maxSlots;
+
+  const dayAllowed = (dow: number) => (dow >= 1 && dow <= 5) || (includeWeekend && (dow === 0 || dow === 6));
 
   const slots: Slot[] = [];
 
@@ -195,12 +204,12 @@ export async function findCommonSlots(
       const endMin = startMin + durationMin;
       const lunchOk = includeLunch || !overlapsLunch(startMin, endMin);
       const dow = slotStart.getUTCDay();
-      const inHours = dow >= 1 && dow <= 5 && endMin <= workEnd * 60 + 30;
+      const inHours = dayAllowed(dow) && endMin <= workEnd * 60 + 30;
       if (allFree && lunchOk && inHours) {
         slots.push({
           start: wallIso(slotStart),
           end: wallIso(slotEnd),
-          label: `${fmtDateTime(slotStart)}-${fmtTime(slotEnd)}`,
+          label: `${fmtSlotRange(slotStart, slotEnd)}`,
         });
       }
     } else if (slotEnd > now && slotStart < end) {
@@ -211,12 +220,12 @@ export async function findCommonSlots(
         const endMin = startMin + durationMin;
         const lunchOk = includeLunch || !overlapsLunch(startMin, endMin);
         const dow = slotStart.getUTCDay();
-        const inHours = dow >= 1 && dow <= 5 && endMin <= workEnd * 60 + 30;
+        const inHours = dayAllowed(dow) && endMin <= workEnd * 60 + 30;
         if (allFree && lunchOk && inHours) {
           slots.push({
             start: wallIso(slotStart),
             end: wallIso(slotEnd),
-            label: `${fmtDateTime(slotStart)}-${fmtTime(slotEnd)}`,
+            label: `${fmtSlotRange(slotStart, slotEnd)}`,
           });
         }
       }
@@ -236,21 +245,21 @@ export async function findCommonSlots(
     const startMin = slotStart.getUTCHours() * 60 + slotStart.getUTCMinutes();
     const endMin = startMin + durationMin;
     const inHours =
-      dow >= 1 &&
-      dow <= 5 &&
+      dayAllowed(dow) &&
       slotStart.getUTCHours() >= WORK_START_HOUR &&
       endMin <= workEnd * 60;
     const inBand =
       (afterMin === null || startMin >= afterMin) &&
       (beforeMin === null || startMin < beforeMin);
-    const lunchOk = includeLunch || !overlapsLunch(startMin, endMin);
+    // Lunch skip is for weekdays; weekends have no office lunch rule
+    const lunchOk = includeLunch || dow === 0 || dow === 6 || !overlapsLunch(startMin, endMin);
     const allFree = views.every((v) => v.length >= i + need && v.slice(i, i + need) === "0".repeat(need));
     if (inHours && inBand && lunchOk && allFree) {
       const slotEnd = addMinutes(slotStart, durationMin);
       slots.push({
         start: wallIso(slotStart),
         end: wallIso(slotEnd),
-        label: `${fmtDateTime(slotStart)}-${fmtTime(slotEnd)}`,
+        label: fmtSlotRange(slotStart, slotEnd),
       });
       i += allStarts ? 1 : need;
     } else {
@@ -266,7 +275,7 @@ export async function findCommonSlots(
       prev.end = s.end;
       const ps = parseWallLabel(prev.start);
       const pe = parseWallLabel(prev.end);
-      if (ps && pe) prev.label = `${fmtDateTime(ps)}-${fmtTime(pe)}`;
+      if (ps && pe) prev.label = fmtSlotRange(ps, pe);
     } else {
       ranges.push({ ...s });
     }
@@ -375,7 +384,7 @@ export function formatFree(ranges: Range[], label: string, who = "คุณ"): s
   const lines = [`🗓️ เวลาว่างของ${who} (${label}):`, ""];
   let lastDay: string | null = null;
   for (const r of ranges) {
-    const day = fmtDate(r.start);
+    const day = fmtDayHeader(r.start);
     if (day !== lastDay) {
       lines.push(`— ${day} —`);
       lastDay = day;

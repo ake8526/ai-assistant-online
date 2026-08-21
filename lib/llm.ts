@@ -45,6 +45,13 @@ function providerChain(fast = false): Provider[] {
   return healthy.length ? [...healthy, ...limited] : chain;
 }
 
+/** Groq model chain — first that answers wins. Update when Groq retires a model.
+ *  Both replacements Groq recommended when it retired llama-3.3-70b-versatile. */
+const GROQ_MODELS = ["openai/gpt-oss-120b", "qwen/qwen3.6-27b", "openai/gpt-oss-20b"];
+
+/** Latency-sensitive calls (intent parsing) — smaller model, same JSON quality. */
+const GROQ_FAST_MODEL = "qwen/qwen3.6-27b";
+
 function settings(provider: Provider): { baseUrl: string; key: string; model: string } | null {
   if (provider === "qwen") {
     const key = process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || "";
@@ -72,7 +79,9 @@ function settings(provider: Provider): { baseUrl: string; key: string; model: st
   return {
     baseUrl: "https://api.groq.com/openai/v1",
     key,
-    model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+    // llama-3.3-70b-versatile was decommissioned on 2026-08-16 (Groq notice).
+    // Replacement per that notice; override with GROQ_MODEL when Groq renames again.
+    model: process.env.GROQ_MODEL || GROQ_MODELS[0],
   };
 }
 
@@ -109,7 +118,20 @@ async function callProvider(
             ].filter(Boolean)
           )
         )
-      : [cfg.model];
+      : provider === "groq"
+        ? Array.from(
+            new Set(
+              [
+                // Intent parsing runs on every LINE message, so the fast path takes a
+                // smaller model (~0.6s vs ~1.0s for the 120B) — quality work keeps cfg.model.
+                opts?.fast ? process.env.GROQ_MODEL_FAST || GROQ_FAST_MODEL : "",
+                cfg.model,
+                process.env.GROQ_MODEL_FALLBACK || "",
+                ...GROQ_MODELS,
+              ].filter(Boolean)
+            )
+          )
+        : [cfg.model];
 
   let lastErr: ProviderHttpError | null = null;
   for (const model of models) {
@@ -146,9 +168,13 @@ async function callProvider(
       const text = (await res.text()).slice(0, 240);
       if (res.status === 429) markRateLimited(provider);
       lastErr = new ProviderHttpError(provider, res.status, text);
-      // Model gone / not found → try next Gemini alias before failing the provider.
-      if (provider === "gemini" && (res.status === 404 || /not found|no longer available/i.test(text))) {
-        console.warn(`[llm] gemini model ${model} → ${res.status}; trying next alias`);
+      // Model gone / renamed / decommissioned → try the next alias before failing
+      // the whole provider (Groq retired llama-3.3-70b-versatile on 2026-08-16).
+      const modelGone =
+        res.status === 404 ||
+        /not found|no longer available|decommission|deprecat|does not exist|model_not_found/i.test(text);
+      if ((provider === "gemini" || provider === "groq") && modelGone) {
+        console.warn(`[llm] ${provider} model ${model} → ${res.status}; trying next alias`);
         continue;
       }
       throw lastErr;

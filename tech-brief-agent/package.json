@@ -1,0 +1,26 @@
+{
+  "name": "tech-brief-agent",
+  "version": "1.1.0",
+  "description": "Daily Tech/AI news brief — Claude agentic web-search → dark-brutalist infographic. Pluggable: use as a library, an HTTP endpoint, or a standalone LINE sender.",
+  "type": "module",
+  "main": "src/api.js",
+  "exports": {
+    ".": "./src/api.js",
+    "./run": "./src/run.js"
+  },
+  "scripts": {
+    "start": "node src/run.js",
+    "dry-run": "DRY_RUN=1 node src/run.js",
+    "serve": "node integration/server.mjs",
+    "example": "node integration/use-as-module.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@line/bot-sdk": "^11.2.0",
+    "@supabase/supabase-js": "^2.111.0",
+    "dotenv": "^17.4.2",
+    "puppeteer": "^25.4.0"
+  }
+}

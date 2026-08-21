@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { AuthError, requireUser } from "@/lib/auth";
 import { handleCommand } from "@/lib/commands";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace } from "@/lib/trace";
+import { logChatTurn } from "@/lib/store";
 
 export const maxDuration = 60;
 
@@ -28,6 +29,27 @@ export async function POST(req: Request) {
       trace("reply", `ตอบกลับ (${out.result.intent})`);
       return out;
     });
+
+    after(async () => {
+      await logChatTurn({
+        session_id: upn,
+        user_upn: upn,
+        channel: "web",
+        role: "user",
+        content: text,
+      });
+      if (result.reply?.trim()) {
+        await logChatTurn({
+          session_id: upn,
+          user_upn: upn,
+          channel: "web",
+          role: "assistant",
+          content: result.reply,
+          metadata: { intent: result.intent },
+        });
+      }
+    });
+
     return NextResponse.json({ ...result, calendarAsUser: asUser });
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });

@@ -1,0 +1,43 @@
+name: Daily Tech Brief
+
+on:
+  schedule:
+    # 00:00 UTC = 07:00 Asia/Bangkok. GitHub cron can drift a few minutes.
+    - cron: "0 0 * * *"
+  workflow_dispatch: {} # lets you run it manually from the Actions tab
+
+concurrency:
+  group: daily-brief
+  cancel-in-progress: false
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for Puppeteer
+        run: npx puppeteer browsers install chrome
+
+      - name: Run the brief
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}          # optional override
+          MAX_SEARCHES: ${{ vars.MAX_SEARCHES }}          # optional override
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_TARGET_ID: ${{ secrets.LINE_TARGET_ID }}
+          LINE_OWNER_ID: ${{ secrets.LINE_OWNER_ID }}      # optional
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_BUCKET: ${{ vars.SUPABASE_BUCKET }}      # optional
+          TZ: "Asia/Bangkok"
+        run: npm start

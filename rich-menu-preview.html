@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>พรีวิว LINE Rich Menu — กดลองได้</title>
+  <style>
+    :root {
+      --bg: #1a1f24;
+      --panel: #f7f8f9;
+      --line: #e5e7eb;
+      --ink: #111827;
+      --muted: #6b7280;
+      --accent-2: #134e4a;
+      --chat: #0b0f12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 50% -10%, #243038, var(--bg));
+      color: #e5e7eb;
+      min-height: 100vh;
+      padding: 28px 16px 64px;
+    }
+    h1 { font-size: 1.35rem; font-weight: 700; margin: 0 0 6px; color: #fff; }
+    .sub { color: #9ca3af; margin: 0 0 22px; max-width: 720px; line-height: 1.5; }
+    .wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 24px; }
+    .phone {
+      width: min(390px, 100%);
+      margin: 0 auto;
+      background: var(--chat);
+      border-radius: 28px;
+      border: 1px solid #334155;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0,0,0,.45);
+    }
+    .status {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 18px 6px; font-size: 12px; color: #cbd5e1;
+    }
+    .header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px 12px; border-bottom: 1px solid #1f2937;
+      background: #111827;
+    }
+    .avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(145deg, #0f766e, #115e59);
+      display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff;
+      flex-shrink: 0;
+    }
+    .header strong { display: block; font-size: 14px; color: #f9fafb; }
+    .header span { font-size: 11px; color: #94a3b8; }
+    .chat {
+      height: 280px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+      background: #0b0f12; overflow-y: auto; scroll-behavior: smooth;
+    }
+    .bubble {
+      max-width: 88%;
+      padding: 10px 12px; border-radius: 14px;
+      font-size: 13px; line-height: 1.45; white-space: pre-wrap;
+      animation: pop .18s ease-out;
+    }
+    .bubble.bot {
+      align-self: flex-start;
+      background: #1f2937; color: #e5e7eb;
+      border-radius: 14px 14px 14px 4px;
+    }
+    .bubble.user {
+      align-self: flex-end;
+      background: #06c755; color: #052e16;
+      border-radius: 14px 14px 4px 14px;
+      font-weight: 600;
+    }
+    .bubble.typing {
+      align-self: flex-start;
+      background: #1f2937; color: #94a3b8;
+      font-size: 12px;
+    }
+    .chips {
+      align-self: flex-start;
+      display: flex; flex-wrap: wrap; gap: 6px;
+      max-width: 95%;
+      animation: pop .18s ease-out;
+    }
+    .chip {
+      border: 1px solid #06c755;
+      background: #0b0f12;
+      color: #86efac;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .chip:hover { background: #052e16; }
+    @keyframes pop {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: none; }
+    }
+    .rich { background: var(--panel); border-top: 1px solid #d1d5db; position: relative; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(2, 118px);
+    }
+    .cell {
+      border: 0;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px; padding: 6px; text-align: center;
+      color: var(--ink);
+      background: #fff;
+      cursor: pointer;
+      transition: background .12s, transform .08s;
+    }
+    .cell:nth-child(3n) { border-right: none; }
+    .cell:nth-child(n+4) { border-bottom: none; }
+    .cell:hover { filter: brightness(0.97); }
+    .cell:active { transform: scale(0.98); }
+    .cell.active { outline: 2px solid #0f766e; outline-offset: -2px; z-index: 1; }
+    .cell.merge { background: #fff7ed; }
+    .cell.travel { background: #eff6ff; }
+    .cell.settings { background: #ecfdf5; }
+    .cell > .ico, .cell > .lab, .cell > .hint { position: relative; z-index: 1; }
+    .cell::before {
+      content: "";
+      position: absolute;
+      inset: 5px;
+      border-radius: 12px;
+      background: #e0f2f1;
+      z-index: 0;
+    }
+    .cell { position: relative; }
+    .cell.merge::before { background: #ffedd5; }
+    .cell.travel::before { background: #dbeafe; }
+    .cell.settings::before { background: #ccfbf1; }
+    .cell:nth-child(-n+3)::before { background: #e0f2f1; }
+    .ico {
+      width: 44px; height: 44px; border-radius: 12px;
+      display: grid; place-items: center; font-size: 22px;
+      background: transparent; color: var(--accent-2);
+    }
+    .cell.merge .ico { background: transparent; }
+    .cell.travel .ico { background: transparent; }
+    .cell.settings .ico { background: transparent; }
+    .lab { font-size: 13px; font-weight: 700; line-height: 1.15; }
+    .hint { font-size: 10px; color: var(--muted); line-height: 1.15; }
+    .composer {
+      display: flex; gap: 8px; align-items: center;
+      padding: 8px 10px 12px; background: #fff; border-top: 1px solid var(--line);
+    }
+    .composer .box {
+      flex: 1; height: 34px; border-radius: 18px; background: #f3f4f6;
+      border: 1px solid #e5e7eb; color: #9ca3af; font-size: 12px;
+      display: flex; align-items: center; padding: 0 12px;
+    }
+    .btn-clear {
+      border: 0; background: #e5e7eb; color: #374151;
+      border-radius: 999px; padding: 7px 10px; font-size: 11px; cursor: pointer;
+    }
+    .panels { display: grid; gap: 16px; }
+    @media (min-width: 860px) {
+      .panels { grid-template-columns: 400px 1fr; align-items: start; }
+    }
+    .card {
+      background: rgba(15,23,42,.72);
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 18px;
+    }
+    .card h2 { margin: 0 0 8px; font-size: 1rem; color: #f8fafc; }
+    .log {
+      font-size: 13px; color: #cbd5e1; line-height: 1.55;
+      min-height: 80px; white-space: pre-wrap;
+    }
+    .log b { color: #a7f3d0; }
+    .note { font-size: 12px; color: #94a3b8; margin-top: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <h1>พรีวิว Rich Menu — กดปุ่มลองได้</h1>
+      <p class="sub">คลิกปุ่มด้านล่างโทรศัพท์ แล้วดูข้อความที่ส่ง + คำตอบจำลองในแชท (ยังไม่ต่อระบบจริง)</p>
+    </div>
+
+    <div class="panels">
+      <div class="phone">
+        <div class="status"><span id="clock">9:41</span><span>KTIS · ทดลองกด</span></div>
+        <div class="header">
+          <div class="avatar">KTIS</div>
+          <div>
+            <strong>KTIS X AI Assistant</strong>
+            <span>Rich Menu · interactive</span>
+          </div>
+        </div>
+        <div class="chat" id="chat">
+          <div class="bubble bot">กดปุ่ม Rich Menu ด้านล่างได้เลยครับ — จะจำลองว่ากดแล้วเกิดอะไร</div>
+        </div>
+        <div class="rich">
+          <div class="grid" id="menu">
+            <button type="button" class="cell" data-key="calendar">
+              <div class="ico">📅</div>
+              <div class="lab">ตาราง·จอง</div>
+              <div class="hint">ติดตามนัด</div>
+            </button>
+            <button type="button" class="cell" data-key="meeting">
+              <div class="ico">📝</div>
+              <div class="lab">สรุปประชุม</div>
+              <div class="hint">มอบหมายงาน</div>
+            </button>
+            <button type="button" class="cell" data-key="news">
+              <div class="ico">📰</div>
+              <div class="lab">สรุปข่าว</div>
+              <div class="hint">ที่ติดตาม</div>
+            </button>
+            <button type="button" class="cell merge" data-key="files">
+              <div class="ico">📁</div>
+              <div class="lab">ไฟล์·นัด</div>
+              <div class="hint">ค้น·ผูก·แนบ</div>
+            </button>
+            <button type="button" class="cell travel" data-key="travel">
+              <div class="ico">🚗</div>
+              <div class="lab">วางแผนเดินทาง</div>
+              <div class="hint">ออกจากบ้านเมื่อไหร่</div>
+            </button>
+            <button type="button" class="cell settings" data-key="settings">
+              <div class="ico">⚙️</div>
+              <div class="lab">ตั้งค่า</div>
+              <div class="hint">เปิดหน้าเว็บ</div>
+            </button>
+          </div>
+          <div class="composer">
+            <div class="box">Aa</div>
+            <button type="button" class="btn-clear" id="clearBtn">ล้างแชท</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>ล่าสุดที่กด</h2>
+        <div class="log" id="sideLog">ยังไม่ได้กดปุ่ม — ลองคลิกเมนูทางซ้าย</div>
+        <div class="note">
+          ปุ่มที่มีเมนูย่อย (ตาราง·จอง / ไฟล์·นัด / ตั้งค่า) จะโชว์ชิปให้กดต่อในแชท
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const chat = document.getElementById("chat");
+    const sideLog = document.getElementById("sideLog");
+    const clearBtn = document.getElementById("clearBtn");
+    const cells = [...document.querySelectorAll(".cell")];
+
+    const flows = {
+      calendar: {
+        send: "ตาราง·จอง",
+        reply: "เลือกได้เลยครับ",
+        chips: [
+          { label: "สรุปตารางเช้า", reply: "🌅 สรุปตารางเช้า\n\n1) 09:30 ประชุมทีม\n2) 14:00 นัดลูกค้า\n\nพิมพ์เลขเพื่อเตรียมตัวนัดนั้น" },
+          { label: "จองนัดใหม่", reply: "บอกวันเวลา + ผู้ร่วมประชุมได้เลยครับ เช่น\n«จองนัด พรุ่งนี้ 10:00 กับคุณเอ 30 นาที»\n(จะถามยืนยันก่อนลง Outlook)" },
+          { label: "ติดตามนัดค้างตอบ", reply: "กำลังเช็คนัดที่คู่สนทนายังไม่ตอบครับ — ถ้าค้างจะเตือนซ้ำทุกชั่วโมง" },
+        ],
+      },
+      meeting: {
+        send: "สรุปประชุม",
+        reply: "ดึงสรุปจาก Teams ล่าสุดให้ครับ\n\n• ประเด็นหลัก: แผน Q3\n• มอบหมาย: คุณบี → ส่งสไลด์ภายในศุกร์\n\nจะส่งงานให้ผู้รับผิดชอบทาง LINE ไหม?",
+        chips: [
+          { label: "ส่งมอบหมายงาน", reply: "ส่งรายการมอบหมายให้ผู้เกี่ยวข้องทาง LINE แล้วครับ" },
+          { label: "ดูนัดอื่น", reply: "พิมพ์ «สรุปประชุมนัด 2» หรือเลือกจากตารางเช้าได้ครับ" },
+        ],
+      },
+      news: {
+        send: "ข่าววันนี้",
+        reply: "กำลังรวบรวมและสรุปข่าวครับ — จะส่งเข้า LINE เมื่อเสร็จ (ประมาณ 1–2 นาที)\n\nหรือพิมพ์ «ดูแหล่งข่าว» / «ตั้งค่าข่าว» ได้ครับ",
+      },
+      files: {
+        send: "ไฟล์·นัด",
+        reply: "ไฟล์กับนัด — เลือกได้เลยครับ",
+        chips: [
+          { label: "ค้นไฟล์ OneDrive", reply: "บอกชื่อไฟล์หรือนามสกุลได้เลย เช่น «หาไฟล์ สรุปงาน.pptx»" },
+          { label: "อยู่ที่ไหน", reply: "ส่งลิงก์ไฟล์หรือชื่อไฟล์มาได้ครับ จะชี้ path ใน OneDrive ให้" },
+          { label: "ผูกไฟล์กับนัด", reply: "ส่งไฟล์/ลิงก์มา แล้วบอกชื่อนัด หรือพิมพ์ «ผูกไฟล์กับนัด 1»" },
+          { label: "แนบตอนจอง", reply: "ตอนจองนัด ส่งรูป/ไฟล์มาในแชทได้เลย — จะถามก่อนแนบเข้า Outlook" },
+          { label: "เตรียมตัวนัด", reply: "พิมพ์ «เตรียมตัวนัด 1» — จะอ่านไฟล์ที่ผูกไว้แล้วสรุปให้" },
+        ],
+      },
+      travel: {
+        send: "วางแผนเดินทาง",
+        reply: "🚗 วางแผนเดินทางวันนี้\n\nนัดแรก: 09:30 ประชุมทีม (ออฟฟิศ)\nแนะนำออกจากบ้านประมาณ 08:35\n(เผื่อจราจร + ถึงก่อน 10–15 นาที)\n\nพิมพ์ «ตั้งบ้าน» หรือ «ตั้งที่ทำงาน» ถ้ายังไม่เคยบันทึกที่อยู่",
+      },
+      settings: {
+        send: "ตั้งค่า",
+        reply: "ตั้งค่า — เลือกได้เลยครับ",
+        chips: [
+          { label: "เปิดหน้าตั้งค่าเว็บ", href: "https://ktis-ai-assistant.vercel.app/settings", reply: "เปิดหน้าตั้งค่าบนเว็บแล้วครับ\nhttps://ktis-ai-assistant.vercel.app/settings\n\n(เวลาทำงาน · สถานที่ · บัญชี · ติดตามข่าว)" },
+          { label: "/ตารางวันนี้", reply: "แสดงนัดวันนี้ทั้งหมดครับ (จำลอง)" },
+          { label: "/นัดพรุ่งนี้", reply: "แสดงนัดพรุ่งนี้ครับ (จำลอง)" },
+          { label: "/ตั้งค่าข่าว", reply: "เปิดตั้งค่าติดตามข่าว: หัวข้อ · แหล่ง · เวลาส่ง · จำนวนเรื่อง" },
+          { label: "/ล้างความจำ", reply: "ล้างประวัติแชทและงานค้างแล้วครับ" },
+          { label: "/ยกเลิก", reply: "ยกเลิกงานที่ค้างไว้แล้วครับ" },
+          { label: "/ช่วยเหลือ", reply: "พิมพ์คำสั่งหรือกด Rich Menu ได้ครับ — เช่น จองนัด, ข่าววันนี้, ค้นไฟล์" },
+          { label: "สิทธิ์ปฏิทิน", reply: "ปฏิทิน: ใช้หลังอนุญาตแล้ว · จองนัดจะถามก่อนทำเสมอ" },
+        ],
+      },
+    };
+
+    function scrollChat() {
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function addBubble(text, who) {
+      const el = document.createElement("div");
+      el.className = "bubble " + who;
+      el.textContent = text;
+      chat.appendChild(el);
+      scrollChat();
+      return el;
+    }
+
+    function addChips(items) {
+      const wrap = document.createElement("div");
+      wrap.className = "chips";
+      items.forEach((item) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "chip";
+        b.textContent = item.label;
+        b.addEventListener("click", () => {
+          addBubble(item.label, "user");
+          sideLog.innerHTML = "กดเมนูย่อย: <b>" + item.label + "</b>";
+          if (item.href) {
+            window.open(item.href, "_blank", "noopener,noreferrer");
+            sideLog.innerHTML += "<br>เปิด: <b>" + item.href + "</b>";
+          }
+          const typing = addBubble("…", "typing");
+          setTimeout(() => {
+            typing.remove();
+            addBubble(item.reply, "bot");
+            if (item.href) {
+              const linkWrap = document.createElement("div");
+              linkWrap.className = "chips";
+              const a = document.createElement("a");
+              a.className = "chip";
+              a.href = item.href;
+              a.target = "_blank";
+              a.rel = "noopener noreferrer";
+              a.textContent = "เปิด settings อีกครั้ง";
+              linkWrap.appendChild(a);
+              chat.appendChild(linkWrap);
+              scrollChat();
+            }
+          }, 350);
+        });
+        wrap.appendChild(b);
+      });
+      chat.appendChild(wrap);
+      scrollChat();
+    }
+
+    function activate(key) {
+      cells.forEach((c) => c.classList.toggle("active", c.dataset.key === key));
+      const flow = flows[key];
+      if (!flow) return;
+      addBubble(flow.send, "user");
+      sideLog.innerHTML =
+        "ปุ่ม: <b>" + flow.send + "</b>\nส่งข้อความนี้เข้าแชท → บอทตอบตามด้านล่าง";
+      const typing = addBubble("กำลังพิมพ์…", "typing");
+      setTimeout(() => {
+        typing.remove();
+        addBubble(flow.reply, "bot");
+        if (flow.chips?.length) addChips(flow.chips);
+      }, 420);
+    }
+
+    cells.forEach((c) => c.addEventListener("click", () => activate(c.dataset.key)));
+
+    clearBtn.addEventListener("click", () => {
+      chat.innerHTML = "";
+      addBubble("กดปุ่ม Rich Menu ด้านล่างได้เลยครับ — จะจำลองว่ากดแล้วเกิดอะไร", "bot");
+      cells.forEach((c) => c.classList.remove("active"));
+      sideLog.textContent = "ล้างแชทแล้ว — ลองกดปุ่มใหม่ได้";
+    });
+
+    // live clock
+    function tick() {
+      const d = new Date();
+      document.getElementById("clock").textContent =
+        String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    }
+    tick();
+    setInterval(tick, 30_000);
+  </script>
+</body>
+</html>

@@ -11,7 +11,7 @@ import {
   startNewsOnboarding,
 } from "@/lib/newsOnboarding";
 import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
-import { getSetting, setSetting, deleteSetting, savePendingLineLocation } from "@/lib/store";
+import { getSetting, setSetting, deleteSetting, savePendingLineLocation, logChatTurn } from "@/lib/store";
 import { createEvent, pushMaterialToOutlookEvent, attachBytesToOutlookEvent, resolveUser, resolveUserInfo } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold, findLinkedLineAttendees } from "@/lib/meetingInvite";
@@ -440,6 +440,30 @@ async function saveCtx(upn: string, prev: CommandContext | undefined, res: Comma
     summary: pruned.summary,
     ttl_ms: CHAT_MEMORY_TTL_MS,
   };
+
+  // Log user turn and assistant reply to chat_logs for LLM fine-tuning
+  if (userText?.trim()) {
+    after(async () => {
+      await logChatTurn({
+        session_id: upn,
+        user_upn: upn,
+        channel: "line",
+        role: "user",
+        content: userText,
+      });
+      if (res.reply?.trim()) {
+        await logChatTurn({
+          session_id: upn,
+          user_upn: upn,
+          channel: "line",
+          role: "assistant",
+          content: res.reply,
+          metadata: { intent: res.intent },
+        });
+      }
+    });
+  }
+
   if (typeof res.nick_dup_offset === "number") {
     next.nick_dup_offset = res.nick_dup_offset;
   } else if (typeof prev?.nick_dup_offset === "number" && res.intent === "find_duplicate_nicknames") {

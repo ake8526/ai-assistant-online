@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TECH BRIEF · Agent Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0a0a0a;--panel:#121212;--panel2:#171717;--ink:#f5f5f5;--dim:#7c7c7c;--red:#ee1b24;--green:#39d353;--amber:#f0b429;--hair:#262626;}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{background:var(--bg);color:var(--ink);font-family:'VT323',monospace}
+  body{padding:18px;min-height:100vh;position:relative;overflow-x:hidden}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:60;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.14) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
+  .pix{font-family:'Press Start 2P',monospace}
+  .wrap{max-width:1160px;margin:0 auto}
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border:2px solid var(--hair);background:var(--panel);padding:14px 16px;margin-bottom:12px}
+  header .mark{width:34px;height:34px;flex:none}
+  header h1{font-size:15px;line-height:1.4}header h1 em{color:var(--red);font-style:normal}
+  header .tag{font-size:20px;color:var(--dim);margin-top:2px}
+  header .spacer{flex:1}
+  .badge{font-size:16px;color:var(--dim);border:1px solid var(--hair);padding:3px 8px}.badge b{color:var(--green)}
+  .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .seg{display:flex;border:2px solid var(--hair)}
+  .seg button{font-family:'Press Start 2P';font-size:9px;background:var(--panel);color:var(--dim);border:none;padding:10px 12px;cursor:pointer}
+  .seg button.on{background:var(--red);color:#fff}
+  .btn{font-family:'Press Start 2P';font-size:10px;background:var(--ink);color:#000;border:2px solid var(--ink);padding:10px 16px;cursor:pointer}
+  .btn:disabled{opacity:.4;cursor:not-allowed}.btn.run{background:var(--red);border-color:var(--red);color:#fff}
+  .live-only{display:none;align-items:center;gap:8px}
+  .live-only input{font-family:'VT323';font-size:18px;background:#000;color:var(--ink);border:2px solid var(--hair);padding:6px 8px;width:200px}
+  .hint{font-size:17px;color:var(--dim)}
+  .panel{border:2px solid var(--hair);background:var(--panel);margin-bottom:12px}
+  .panel .ph{font-family:'Press Start 2P';font-size:9px;color:var(--dim);padding:9px 11px;border-bottom:2px solid var(--hair);background:var(--panel2);display:flex;justify-content:space-between}
+  .panel .ph .live{color:var(--red)}
+  .room-stage{position:relative;background:#1a120a;padding:10px;display:flex;justify-content:center}
+  #room{width:100%;max-width:760px;display:block;image-rendering:pixelated;border:2px solid #3a2a1a;background:#2e2116}
+  .bdg{position:absolute;transform:translate(-50%,-100%);text-align:center;pointer-events:none;background:rgba(10,7,4,.92);border:2px solid var(--hair);padding:2px 4px 1px;white-space:nowrap;line-height:1;transition:left .05s linear,top .05s linear}
+  .bdg .nm{font-family:'Press Start 2P';font-size:6px;color:var(--ink);display:block;margin-bottom:2px}
+  .bdg .stt{font-family:'Press Start 2P';font-size:6px}
+  .bdg .dot{display:inline-block;width:4px;height:4px;margin-right:3px;vertical-align:middle;background:var(--dim)}
+  .bdg.idle .stt{color:var(--dim)}.bdg.idle .dot{background:var(--dim)}
+  .bdg.work{border-color:var(--amber)}.bdg.work .stt{color:var(--amber)}.bdg.work .dot{background:var(--amber);animation:pulse .55s steps(1) infinite}
+  .bdg.done{border-color:var(--green)}.bdg.done .stt{color:var(--green)}.bdg.done .dot{background:var(--green)}
+  @keyframes pulse{50%{opacity:.2}}
+  .caption{font-size:19px;color:var(--dim);text-align:center;padding:9px}.caption b{color:var(--red)}
+  .cols{display:grid;grid-template-columns:1fr 340px;gap:12px}
+  @media(max-width:900px){.cols{grid-template-columns:1fr}}
+  #log{height:190px;overflow:hidden;font-size:18px;line-height:1.15;padding:10px}
+  #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #log .t{color:var(--dim)}#log .g{color:var(--green)}#log .r{color:var(--red)}#log .a{color:var(--amber)}
+  #result{padding:12px;min-height:190px}#result .empty{font-size:19px;color:var(--dim);text-align:center;padding:22px 6px}
+  .card{border:2px solid var(--hair);background:#0d0d0d;padding:9px 10px;margin-bottom:9px}
+  .card .chip{font-family:'Press Start 2P';font-size:7px;color:var(--red);border:1px solid var(--red);padding:3px 6px;display:inline-block;margin-bottom:6px}
+  .card .hd{font-size:20px;line-height:1.05}.card .sr{font-size:15px;color:var(--dim);margin-top:5px}.card .sr::before{content:"▎";color:var(--red)}
+  #thumb{margin-top:10px;border:2px solid var(--hair);width:100%;display:none}
+  .foot{font-family:'Press Start 2P';font-size:8px;color:#3a3a3a;text-align:center;margin-top:12px;padding:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg class="mark" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+      <g stroke="#ee1b24" stroke-width="17"><line x1="24" y1="20" x2="82" y2="86"/><line x1="22" y1="86" x2="74" y2="28"/></g>
+      <polygon points="89,11 63.6,18.7 84.4,37.3" fill="#ee1b24"/>
+    </svg>
+    <div><h1 class="pix">TECH BRIEF · <em>AGENT ROOM</em></h1>
+      <div class="tag">ทีมเอเจนต์ทำงานในออฟฟิศ — courier เดินเอางานไปส่ง LINE จริง ๆ</div></div>
+    <div class="spacer"></div>
+    <div class="badge">STATUS <b id="hud">IDLE</b></div>
+  </header>
+  <div class="controls">
+    <div class="seg" id="mode"><button data-m="demo" class="on">DEMO</button><button data-m="live">LIVE</button></div>
+    <button class="btn run" id="run">▶ RUN</button>
+    <div class="live-only" id="liveBox">
+      <input id="url" value="http://localhost:8787" spellcheck="false" />
+      <input id="tok" placeholder="token" spellcheck="false" style="width:110px" />
+      <span class="hint">← `npm run serve` ก่อน</span></div>
+    <span class="hint" id="modeHint">DEMO: จำลองด้วยข้อมูลตัวอย่าง เปิดดูได้เลย</span>
+  </div>
+  <div class="panel">
+    <div class="ph"><span>THE OFFICE</span><span class="live" id="roomTag"></span></div>
+    <div class="room-stage" id="stage"><canvas id="room" width="320" height="240"></canvas></div>
+    <div class="caption" id="cap">กด <b>RUN</b> เพื่อเริ่ม</div>
+  </div>
+  <div class="cols">
+    <div class="panel"><div class="ph"><span>CONSOLE</span></div><div id="log"></div></div>
+    <div class="panel"><div class="ph"><span>OUTPUT</span></div><div id="result"><div class="empty">— ยังไม่มีผลลัพธ์ —</div><img id="thumb" alt=""></div></div>
+  </div>
+  <div class="foot pix">KTIS X · AGENTIC WEB-SEARCH BRIEF</div>
+</div>
+
+<script>
+// ============ config ============
+const AGENTS = [
+  { id:"search",    name:"SCOUT",  role:"SEARCH",    cap:"ไล่เว็บเปิดหาข่าว 24 ชม.", shirt:"#3a86ff", hair:"#6b4a2e" },
+  { id:"filter",    name:"GATE",   role:"FILTER",    cap:"กรองเหลือเฉพาะ whitelist", shirt:"#2f9e44", hair:"#2a2a2a" },
+  { id:"summarize", name:"SCRIBE", role:"SUMMARIZE", cap:"สรุปเป็นไทย คงศัพท์ EN",   shirt:"#f0b429", hair:"#caa15a" },
+  { id:"render",    name:"PIXEL",  role:"RENDER",    cap:"วาด infographic เป็น PNG",  shirt:"#7048e8", hair:"#7a4a2a" },
+  { id:"courier",   name:"DASH",   role:"SEND",      cap:"เดินเอางานไปส่ง LINE",     shirt:"#ee1b24", hair:"#141414" },
+];
+const DESK = [[70,92],[250,92],[70,168],[250,168]];   // 4 worker desks
+const SEAT = [[70,116],[250,116],[70,192],[250,192]]; // seat = below desk (back view)
+const MAILBOX = [160,214];
+const DUR = [1600,1400,1900,1700];
+const DOMAINS=["techcrunch","theverge","arstechnica","reuters","wired","openai","deepmind","blognone","beartai","techsauce"];
+const MOCK=[
+  {category:"AI",headline_th:"โมเดล reasoning โอเพนซอร์สรุ่นใหม่ทำคะแนน benchmark ทะลุรุ่นก่อน",source_name:"Blognone"},
+  {category:"Funding",headline_th:"สตาร์ทอัพ AI infrastructure ปิดรอบ Series B หลายร้อยล้านดอลลาร์",source_name:"TechCrunch"},
+  {category:"Policy",headline_th:"ร่างกฎกำกับ AI ใหม่ เน้น transparency ของ training data",source_name:"Reuters"},
+  {category:"Gadget",headline_th:"ชิป on-device inference รุ่นใหม่ ชูประหยัดพลังงาน edge AI",source_name:"The Verge"},
+  {category:"Startup",headline_th:"แพลตฟอร์ม dev tools สาย AI agent ขยายสู่ตลาด SEA",source_name:"Techsauce"},
+];
+const state={ status:AGENTS.map(()=>"idle"), running:false, mode:"demo" };
+const dash={ x:160,y:150, tx:null,ty:null, face:"down", moving:false, phase:0, carry:false, onArrive:null };
+let mailFlash=0;
+
+// ============ dom ============
+const $=(s)=>document.querySelector(s);
+const stage=$("#stage"),cap=$("#cap"),hud=$("#hud"),runBtn=$("#run"),logEl=$("#log"),resultEl=$("#result"),thumb=$("#thumb"),roomTag=$("#roomTag");
+const badges=AGENTS.map((a,i)=>{const b=document.createElement("div");b.className="bdg idle";b.id="bdg-"+i;
+  b.innerHTML=`<span class="nm">${a.name}</span><span class="stt"><span class="dot"></span><span class="w">IDLE</span></span>`;
+  stage.appendChild(b); if(i<4){const p=SEAT[i];b.style.left=(p[0]/320*100)+"%";b.style.top=((DESK[i][1]-26)/240*100)+"%";} return b;});
+function setAgent(i,st){state.status[i]=st;const b=badges[i];if(!b)return;b.className="bdg "+st;b.querySelector(".w").textContent=st==="work"?"WORKING":st==="done"?"DONE":"IDLE";}
+function log(m,c="t"){const d=document.createElement("div");d.className=c;d.innerHTML=m;logEl.appendChild(d);while(logEl.children.length>34)logEl.removeChild(logEl.firstChild);logEl.scrollTop=logEl.scrollHeight;}
+function setHud(t,c){hud.textContent=t;hud.style.color=c||"var(--green)";}
+
+// ============ canvas ============
+const cv=$("#room"),X=cv.getContext("2d");X.imageSmoothingEnabled=false;
+const W=cv.width,H=cv.height;
+const R=(x,y,w,h,c)=>{X.fillStyle=c;X.fillRect(Math.round(x),Math.round(y),Math.max(1,w|0),Math.max(1,h|0));};
+const rnd=(s)=>{const x=Math.sin(s*99.7)*9999;return x-Math.floor(x);};
+const SPINES=["#c0392b","#e67e22","#f1c40f","#27ae60","#2980b9","#8e44ad","#d35400","#16a085","#c0392b","#2c3e50"];
+
+function drawFloor(){
+  // wood planks
+  for(let y=52;y<H;y+=8){for(let x=0;x<W;x+=1){}}
+  R(0,52,W,H-52,"#7a5636");
+  for(let y=52;y<H;y+=10)R(0,y,W,1,"#6b4a2e");
+  for(let x=0;x<W;x+=40)R(x,52,1,H-52,"#6e4d30");
+  // central path (lighter)
+  R(140,52,40,H-52,"#946f49");
+  for(let y=52;y<H;y+=10)R(140,y,40,1,"#845f3d");
+  R(139,52,1,H-52,"#5f4527");R(180,52,1,H-52,"#5f4527");
+}
+function drawWalls(now){
+  R(0,0,W,52,"#2e2116"); R(0,50,W,2,"#1c140c");
+  // two bookshelves
+  [[8,140],[172,140]].forEach(([bx,bw])=>{
+    R(bx,8,bw,40,"#4a3420"); X.strokeStyle="#5c4228";X.strokeRect(bx+.5,8.5,bw-1,39);
+    for(let r=0;r<3;r++){const ry=12+r*13; R(bx+2,ry+9,bw-4,2,"#3a281a");
+      for(let s=0;s<Math.floor((bw-6)/4);s++){R(bx+3+s*4,ry,3,9,SPINES[(s+r*3)%SPINES.length]);}}
+  });
+  // boxes stack (top-left)
+  R(20,54,18,14,"#a5763f");R(20,54,18,2,"#c08a4c");R(28,54,1,14,"#7a5630");
+  R(24,44,14,12,"#8a5a2a");R(24,44,14,2,"#a5763f");
+  // small red sign center
+  R(150,10,20,10,"#ee1b24");R(150,10,20,2,"#b3121a");R(153,13,14,2,"#0a0a0a");R(153,16,10,1,"#0a0a0a");
+}
+function drawPlant(x,y){R(x-3,y-2,7,5,"#8a5a2a");R(x-4,y+3,9,3,"#6b4420");
+  R(x-2,y-8,3,6,"#2f7d32");R(x-5,y-6,3,4,"#2f7d32");R(x+2,y-6,3,4,"#39d353");R(x-1,y-11,2,3,"#39d353");R(x-6,y-3,2,3,"#2f7d32");R(x+4,y-3,2,3,"#39d353");}
+
+function drawDesk(i,now){
+  const [dx,dy]=DESK[i]; const st=state.status[i];
+  // desk top (wood)
+  R(dx-24,dy-10,48,24,"#6b4a2e"); R(dx-24,dy-10,48,2,"#835a36"); R(dx-24,dy+12,48,2,"#4e3420");
+  R(dx-24,dy-10,2,24,"#5a3f26"); R(dx+22,dy-10,2,24,"#5a3f26");
+  // monitor (top of desk, screen toward viewer)
+  R(dx-9,dy-9,18,12,"#141414"); const scr= st==="idle"?"#0a1626": st==="done"?"#0c2a14":"#0a2018";
+  R(dx-7,dy-7,14,8,scr); R(dx-2,dy+3,4,2,"#0e0e0e");
+  drawScreen(dx-7,dy-7,14,8,AGENTS[i].id,st,now);
+  // keyboard + mug near seat side
+  R(dx-8,dy+7,16,3,"#4a3a2a"); R(dx+11,dy+6,3,4, st==="work"?"#ee1b24":"#8a5a2a");
+  // seated worker (back view) just below desk
+  drawWorker(i,now);
+}
+function drawScreen(mx,my,mw,mh,id,st,now){
+  if(st==="idle"){R(mx+mw-3,my+mh-2,1,1,Math.floor(now/500)%2?"#173":"#000");return;}
+  if(st==="done"){X.strokeStyle="#39d353";X.lineWidth=1;X.beginPath();X.moveTo(mx+4,my+4);X.lineTo(mx+6,my+6);X.lineTo(mx+10,my+2);X.stroke();return;}
+  const t=(now/700)%1;
+  if(id==="search"){const sx=mx+1+t*(mw-2);R(sx,my+1,1,mh-2,"#39d353");R(mx+3,my+2,1,1,"#39d353");R(mx+8,my+4,1,1,"#39d353");}
+  else if(id==="filter"){const ok=Math.floor(now/450)%2===0;if(ok){X.strokeStyle="#39d353";X.beginPath();X.moveTo(mx+4,my+4);X.lineTo(mx+6,my+6);X.lineTo(mx+10,my+2);X.stroke();}else{X.strokeStyle="#ee1b24";X.beginPath();X.moveTo(mx+5,my+2);X.lineTo(mx+9,my+6);X.moveTo(mx+9,my+2);X.lineTo(mx+5,my+6);X.stroke();}}
+  else if(id==="summarize"){for(let r=0;r<3;r++)R(mx+2,my+2+r*2,Math.floor((mw-4)*Math.min(Math.max(t*3-r,0),1)),1,r===0?"#ee1b24":"#8a9");}
+  else if(id==="render"){R(mx+2,my+1,mw-4,1,"#ee1b24");const rows=Math.floor(t*3)+1;for(let r=0;r<rows&&r<3;r++)R(mx+2,my+3+r*2,mw-4,1,"#cfcfcf");}
+}
+
+// back-view seated character (hair + shoulders + arms on desk)
+function drawWorker(i,now){
+  const [sx,sy]=SEAT[i]; const a=AGENTS[i], st=state.status[i]; const on=st!=="idle",work=st==="work";
+  const bob= work?Math.round(Math.sin(now/160)*1):0;
+  const y=sy+bob;
+  const shirt=on?a.shirt:"#4a4a4a", hair=on?a.hair:"#3a3a3a";
+  // chair back
+  R(sx-8,y-2,16,6,"#5a3f26");R(sx-8,y-2,16,2,"#6e4d30");
+  // body/shoulders
+  R(sx-7,y-8,14,8,shirt); R(sx-7,y-8,14,2,hair==="#3a3a3a"?"#3a3a3a":shirt);
+  // arms reaching up onto desk (typing)
+  const tw= work? (Math.floor(now/140)%2):0;
+  R(sx-9,y-10+tw,3,7,shirt); R(sx+6,y-10+(1-tw),3,7,shirt);
+  R(sx-9,y-11+tw,3,2,"#f0c090"); R(sx+6,y-11+(1-tw),3,2,"#f0c090"); // hands
+  // head (back = mostly hair)
+  R(sx-6,y-18,12,11,hair); R(sx-6,y-18,12,2,"#00000022");
+  R(sx-6,y-8,12,1,"#00000030");
+  // status glow above
+  if(work){const p=Math.floor(now/200)%2;R(sx-1,y-24,2,2,p?"#f0b429":"#5a4410");}
+  if(st==="done"){X.strokeStyle="#39d353";X.lineWidth=2;X.beginPath();X.moveTo(sx-3,y-23);X.lineTo(sx-1,y-21);X.lineTo(sx+3,y-26);X.stroke();X.lineWidth=1;}
+}
+
+// courier sprite (4-dir, walks)
+function drawDash(now){
+  const a=AGENTS[4], st=state.status[4]; const on=st!=="idle";
+  const moving=dash.moving; const f=Math.floor(dash.phase)%2;
+  const bob= moving? (f?0:-1) : Math.round(Math.sin(now/500)*0.5);
+  const x=Math.round(dash.x), y=Math.round(dash.y)+bob;
+  const shirt="#ee1b24", hair="#141414", skin="#f0c090";
+  // shadow
+  X.fillStyle="rgba(0,0,0,0.28)";X.fillRect(x-6,y+1,12,2);
+  // legs (walk cycle)
+  const l1= moving? (f?2:0):0, l2= moving? (f?0:2):0;
+  R(x-4,y-4+l1,3,4,"#2b2b3a"); R(x+1,y-4+l2,3,4,"#2b2b3a");
+  // body
+  R(x-5,y-12,10,8,shirt); R(x-5,y-12,10,2,"#b3121a");
+  // arms
+  R(x-7,y-11,2,6,shirt); R(x+5,y-11,2,6,shirt);
+  // carried parcel (infographic)
+  if(dash.carry){ R(x-4,y-20,8,7,"#e8e8e0");R(x-4,y-20,8,2,"#ee1b24");R(x-3,y-16,6,1,"#888");R(x-3,y-14,4,1,"#888"); R(x-6,y-13,2,3,"#f0c090");R(x+4,y-13,2,3,"#f0c090"); }
+  // head + hair per facing
+  const hy=y-19;
+  R(x-5,hy,10,9,skin);                       // head base
+  if(dash.face==="up"){ R(x-5,hy-1,10,9,hair); } // back of head = all hair
+  else{
+    R(x-5,hy-1,10,4,hair); R(x-5,hy,1,5,hair); R(x+4,hy,1,5,hair); // hair top+sides
+    if(dash.face==="down"){R(x-3,hy+4,2,2,"#141414");R(x+1,hy+4,2,2,"#141414");R(x-2,hy+7,4,1,"#d0a070");}
+    else if(dash.face==="left"){R(x-3,hy+4,2,2,"#141414");R(x-4,hy+2,1,5,hair);}
+    else{R(x+1,hy+4,2,2,"#141414");R(x+4,hy+2,1,5,hair);}
+  }
+  // work sparkle
+  if(st==="work"&&!dash.carry){const p=Math.floor(now/180)%2;R(x+6,y-22,1,1,p?"#fff":"#000");R(x-7,y-19,1,1,p?"#ffd":"#000");}
+  // dash badge follows
+  const b=badges[4]; b.style.left=(dash.x/320*100)+"%"; b.style.top=((dash.y-30)/240*100)+"%";
+}
+function drawMailbox(now){
+  const [mx,my]=MAILBOX;
+  R(mx-3,my,3,10,"#5a3f26");                 // post
+  R(mx-9,my-10,18,11,"#b3121a"); R(mx-9,my-10,18,2,"#ee1b24"); // box (red = LINE)
+  R(mx-7,my-7,14,6,"#7a0d10"); R(mx-2,my-6,4,4,"#39d353");     // slot + green chat dot
+  // flag
+  R(mx+8,my-12, mailFlash>0?1:1, 6,"#5a3f26"); R(mx+9,my-12,4,3, mailFlash>0?"#39d353":"#8a5a2a");
+  if(mailFlash>0){ const k=Math.floor(now/120)%2; R(mx-4,my-22,10,8, "#0d0d0d"); X.strokeStyle="#39d353";X.strokeRect(mx-4.5,my-22.5,11,9);
+    X.beginPath();X.moveTo(mx-1,my-18);X.lineTo(mx+1,my-16);X.lineTo(mx+4,my-20);X.stroke(); if(k)R(mx-2,my-24,2,2,"#39d353"); mailFlash--; }
+}
+
+function updateDash(){
+  if(dash.tx===null) { dash.moving=false; return; }
+  const dx=dash.tx-dash.x, dy=dash.ty-dash.y, d=Math.hypot(dx,dy), sp=0.85;
+  if(d<1.1){ dash.x=dash.tx;dash.y=dash.ty;dash.tx=null;dash.moving=false;
+    const cb=dash.onArrive;dash.onArrive=null; if(cb)cb(); return; }
+  dash.x+=dx/d*sp; dash.y+=dy/d*sp; dash.phase+=0.18; dash.moving=true;
+  dash.face= Math.abs(dx)>Math.abs(dy)? (dx>0?"right":"left") : (dy>0?"down":"up");
+}
+
+function loop(now){
+  requestAnimationFrame(loop);
+  updateDash();
+  drawFloor(); drawWalls(now);
+  drawPlant(14,H-14); drawPlant(W-14,H-14);
+  drawMailbox(now);
+  for(let i=0;i<4;i++) drawDesk(i,now);
+  drawDash(now);
+}
+
+// ============ walking helpers ============
+const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+function walkTo(tx,ty){return new Promise(res=>{dash.tx=tx;dash.ty=ty;dash.onArrive=res;});}
+async function walkPath(pts){for(const[px,py] of pts) await walkTo(px,py);}
+
+// ============ runners ============
+function reset(){AGENTS.forEach((_,i)=>setAgent(i,"idle"));thumb.style.display="none";
+  resultEl.innerHTML='<div class="empty">— กำลังทำงาน… —</div>';resultEl.appendChild(thumb);logEl.innerHTML="";
+  dash.x=160;dash.y=150;dash.tx=null;dash.carry=false;dash.face="down";}
+function renderCards(list,note){resultEl.innerHTML="";
+  if(!list||!list.length)resultEl.innerHTML='<div class="empty">— วันนี้ข่าวเงียบ —</div>';
+  list?.forEach(s=>{const el=document.createElement("div");el.className="card";
+    el.innerHTML=`<span class="chip">${s.category||"AI"}</span><div class="hd">${s.headline_th||""}</div><div class="sr">${s.source_name||""}</div>`;resultEl.appendChild(el);});
+  resultEl.appendChild(thumb);
+  if(note){const n=document.createElement("div");n.className="hint";n.style.marginTop="8px";n.textContent=note;resultEl.appendChild(n);}}
+
+async function deliver(){ dash.carry=false; mailFlash=60; log("  หย่อนงานลงตู้ LINE ✓","g"); await sleep(700); }
+
+async function courierRun(){ // DASH walks: to PIXEL desk → pick up → to mailbox → deliver
+  setAgent(4,"work"); cap.innerHTML="<b>DASH</b> (SEND) — เดินไปรับงานจาก PIXEL แล้วเอาไปส่ง LINE";
+  log("[DASH] ออกเดินไปรับงาน…","a");
+  await walkPath([[250,150],[250,178]]);          // walk right, up to PIXEL desk
+  dash.carry=true; log("  รับ infographic จาก PIXEL","t"); await sleep(350);
+  await walkPath([[250,206],[160,206],[160,198]]);// down, across to mailbox
+  await deliver();
+  await walkPath([[160,150]]);                     // stroll back
+  setAgent(4,"done");
+}
+
+async function runDemo(){
+  reset();state.running=true;roomTag.textContent="";setHud("RUNNING","var(--amber)");
+  log("&gt; boot agent-office","a");log("&gt; mode = DEMO","t");
+  for(let i=0;i<4;i++){
+    setAgent(i,"work");cap.innerHTML=`<b>${AGENTS[i].name}</b> (${AGENTS[i].role}) — ${AGENTS[i].cap}`;
+    log(`[${AGENTS[i].name}] ${AGENTS[i].role} start`,"a");
+    if(i===0)for(const d of DOMAINS){await sleep(110);log("  scan "+d+".com …","t");}
+    if(i===1)["techcrunch ✓","medium ✗","reuters ✓","random-blog ✗","blognone ✓"].forEach((m,k)=>setTimeout(()=>log("  "+m,m.includes("✓")?"g":"r"),k*200));
+    if(i===2)MOCK.forEach((s,k)=>setTimeout(()=>log("  wrote: "+s.headline_th.slice(0,22)+"…","t"),250+k*280));
+    if(i===3)log("  drawing infographic 1080px …","t");
+    await sleep(DUR[i]);setAgent(i,"done");log(`[${AGENTS[i].name}] done`,"g");
+  }
+  await courierRun();
+  state.running=false;setHud("DELIVERED","var(--green)");cap.innerHTML="<b>เสร็จ</b> — DASH ส่ง 5 ข่าวเข้า LINE แล้ว (mock)";
+  log("&gt; 5 stories delivered ✓","g");renderCards(MOCK,"DEMO · ข้อมูลตัวอย่าง");
+}
+
+async function runLive(){
+  reset();state.running=true;roomTag.textContent="● LIVE";setHud("CONNECTING","var(--amber)");
+  const base=$("#url").value.replace(/\/+$/,""),tok=$("#tok").value.trim();
+  const url=base+"/brief"+(tok?("?token="+encodeURIComponent(tok)):"");
+  log("&gt; mode = LIVE","a");log("&gt; GET "+url,"t");cap.innerHTML="<b>LIVE</b> — เรียก agent จริง…";
+  [0,1,2].forEach(i=>setAgent(i,"work"));
+  try{
+    const res=await fetch(url,{cache:"no-store"});
+    if(!res.ok)throw new Error("HTTP "+res.status+" "+(await res.text()).slice(0,100));
+    const data=await res.json();log("&gt; response ok","g");[0,1,2].forEach(i=>setAgent(i,"done"));
+    setAgent(3,"work");cap.innerHTML="<b>PIXEL</b> — วาด infographic";await sleep(DUR[3]);setAgent(3,"done");
+    if(data.quietDay){state.running=false;setHud("QUIET DAY","var(--dim)");cap.innerHTML="<b>วันนี้เงียบ</b>";log("&gt; quiet day","a");renderCards([],"LIVE · quiet day");return;}
+    await courierRun();
+    state.running=false;setHud("DELIVERED","var(--green)");cap.innerHTML=`<b>เสร็จ</b> — ${data.stories.length} ข่าว (LIVE)`;
+    log(`&gt; ${data.stories.length} stories ✓`,"g");renderCards(data.stories,"LIVE · ข้อมูลจริง");
+    if(data.imageUrl){thumb.src=data.imageUrl;thumb.style.display="block";}
+  }catch(err){state.running=false;AGENTS.forEach((_,i)=>setAgent(i,"idle"));setHud("ERROR","var(--red)");cap.innerHTML="<b>เชื่อมต่อไม่ได้</b>";
+    log("&gt; ERROR: "+(err.message||err),"r");log("  เช็ค `npm run serve` + URL + CORS","r");}
+}
+
+// ============ wire ============
+document.querySelectorAll("#mode button").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll("#mode button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
+  state.mode=b.dataset.m;const live=state.mode==="live";
+  $("#liveBox").style.display=live?"flex":"none";
+  $("#modeHint").textContent=live?"LIVE: เรียก agent จริงผ่าน server (npm run serve)":"DEMO: จำลองด้วยข้อมูลตัวอย่าง เปิดดูได้เลย";}));
+runBtn.addEventListener("click",()=>{if(state.running)return;runBtn.disabled=true;(state.mode==="live"?runLive():runDemo()).finally(()=>runBtn.disabled=false);});
+requestAnimationFrame(loop);
+window.addEventListener("load",()=>setTimeout(()=>{runBtn.disabled=true;runDemo().finally(()=>runBtn.disabled=false);},500));
+</script>
+</body>
+</html>

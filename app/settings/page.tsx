@@ -32,6 +32,20 @@ const MENU = [
     desc: "เลือกอนุญาตแหล่งข่าว และดูสรุปข่าวที่ติดตาม",
     accent: "from-sky-500 to-indigo-400",
   },
+  {
+    href: "/monitor/log",
+    icon: MessageCircle,
+    title: "Monitor / System Logs",
+    desc: "ดูประวัติระบบและการทำงานล่าสุด (Monitor Log)",
+    accent: "from-purple-500 to-pink-500",
+  },
+  {
+    href: "/api/admin/export-chat-dataset",
+    icon: MessageCircle,
+    title: "ดาวน์โหลดประวัติแชท (Dataset JSONL)",
+    desc: "ส่งออกข้อมูลประวัติการแชททั้งหมดสำหรับนำไป Fine-tune / Train LLM",
+    accent: "from-amber-500 to-orange-400",
+  },
 ];
 
 function SettingsContent() {

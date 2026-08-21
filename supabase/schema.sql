@@ -72,3 +72,16 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (owner_upn, provider)
 );
+
+-- Persistent chat logs for LLM Fine-Tuning dataset
+CREATE TABLE IF NOT EXISTS chat_logs (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    user_upn TEXT,
+    channel TEXT NOT NULL DEFAULT 'line',
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+

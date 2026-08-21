@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ทดสอบ — ตั้งค่าข่าว</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #020617;
+      color: #f1f5f9;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 1.25rem 1rem;
+      border-bottom: 1px solid #1e293b;
+      background: rgba(15, 23, 42, 0.95);
+    }
+    .badge { color: #fbbf24; font-size: 11px; font-weight: 700; margin-bottom: 0.35rem; }
+    h1 { font-size: 1.125rem; font-weight: 700; }
+    .sub { font-size: 12px; color: #94a3b8; margin-top: 0.35rem; line-height: 1.5; }
+    main { flex: 1; padding: 1rem; padding-bottom: 7rem; overflow-y: auto; }
+    .card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid #1e293b;
+      border-radius: 1rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .card h2 { font-size: 12px; color: #cbd5e1; margin-bottom: 0.75rem; }
+    .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .chip {
+      padding: 0.65rem 0.85rem;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #cbd5e1;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .chip.on { background: #0ea5e9; color: #020617; border-color: #38bdf8; }
+    .row { display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: center; flex-wrap: wrap; }
+    input[type=text] {
+      flex: 1;
+      min-width: 8rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: 0.75rem;
+      border: 1px solid #334155;
+      background: #020617;
+      color: #f1f5f9;
+      font-size: 14px;
+    }
+    select {
+      padding: 0.5rem 0.65rem;
+      border-radius: 0.5rem;
+      border: 1px solid #334155;
+      background: #020617;
+      color: #f1f5f9;
+      font-size: 14px;
+    }
+    .btn-sm {
+      padding: 0.65rem 1rem;
+      border-radius: 0.75rem;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .status { font-size: 11px; color: #64748b; line-height: 1.5; margin-top: 0.35rem; }
+    .day-grid { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+    .day {
+      width: 2.25rem; height: 2.25rem; border-radius: 0.5rem; font-size: 11px; font-weight: 700;
+      border: 1px solid #334155; background: rgba(2,6,23,0.4); color: #94a3b8; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .day.on { background: #0ea5e9; color: #020617; border-color: #38bdf8; }
+    .muted { font-size: 11px; color: #64748b; margin-top: 0.5rem; }
+    footer {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      padding: 1rem;
+      background: rgba(2, 6, 23, 0.96);
+      border-top: 1px solid #1e293b;
+    }
+    .actions { display: flex; gap: 0.5rem; max-width: 32rem; margin: 0 auto; }
+    .btn {
+      flex: 1; padding: 0.9rem; border-radius: 0.75rem;
+      font-size: 14px; font-weight: 700; border: none; cursor: pointer;
+    }
+    .btn-cancel { background: #1e293b; color: #e2e8f0; border: 1px solid #475569; }
+    .btn-save { background: #059669; color: #fff; }
+    .foot-note { text-align: center; font-size: 10px; color: #64748b; margin-top: 0.5rem; }
+    label.lbl { font-size: 12px; color: #cbd5e1; }
+    #done {
+      display: none; position: fixed; inset: 0; z-index: 99999;
+      background: #020617; align-items: center; justify-content: center;
+      text-align: center; padding: 24px;
+    }
+    #done.show { display: flex; }
+    #done .icon { font-size: 3rem; margin-bottom: 12px; }
+    #done h2 { font-size: 1.125rem; margin-bottom: 8px; }
+    #done p { font-size: 0.875rem; color: #94a3b8; line-height: 1.6; }
+    #done b { color: #fff; font-size: 1.25rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="badge">🧪 หน้าทดสอบ — ตั้งค่าบนเว็บ</div>
+    <h1>ตั้งค่าข่าว &amp; เวลาแจ้ง</h1>
+    <p class="sub">เลือกหัวข้อ · จำนวนข่าว · เวลาส่ง — จบในหน้าเดียว</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>① หัวข้อแนะนำ</h2>
+      <div class="chips" id="chips">
+        <button type="button" class="chip" data-topic="เทคโนโลยี/IT">เทคโนโลยี/IT</button>
+        <button type="button" class="chip" data-topic="AI / นวัตกรรม">AI / นวัตกรรม</button>
+        <button type="button" class="chip" data-topic="เศรษฐกิจ/ธุรกิจ">เศรษฐกิจ/ธุรกิจ</button>
+        <button type="button" class="chip" data-topic="พลังงาน">พลังงาน</button>
+        <button type="button" class="chip" data-topic="ยานยนต์">ยานยนต์</button>
+        <button type="button" class="chip" data-topic="สุขภาพ">สุขภาพ</button>
+        <button type="button" class="chip" data-topic="กีฬา">กีฬา</button>
+        <button type="button" class="chip" data-topic="การเมือง">การเมือง</button>
+        <button type="button" class="chip" data-topic="บันเทิง">บันเทิง</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>หัวข้ออื่น</h2>
+      <div class="row">
+        <input type="text" id="custom" placeholder="เช่น เซมิคอนดักเตอร์" />
+        <button type="button" class="btn-sm" id="addCustom">เพิ่ม</button>
+      </div>
+      <p class="status" id="topicStatus">ยังไม่ได้เลือกหัวข้อ</p>
+    </section>
+
+    <section class="card">
+      <h2>② สรุปข่าวเข้า LINE</h2>
+      <div class="row">
+        <label class="lbl">เวลาส่ง</label>
+        <select id="hour">
+          <option>07</option><option>08</option><option>09</option><option>10</option>
+          <option>11</option><option>12</option><option>13</option><option>14</option>
+          <option>15</option><option>16</option><option>17</option><option>18</option>
+        </select>
+        <span>:</span>
+        <select id="minute">
+          <option>00</option><option>15</option><option>30</option><option>45</option>
+        </select>
+        <span class="lbl">น.</span>
+      </div>
+      <div class="row" style="margin-top:0.75rem">
+        <label class="lbl">จำนวนข่าว/วัน</label>
+        <select id="count">
+          <option value="0">ทั้งหมดที่อัปเดตวันนี้</option>
+          <option value="1">1 ข่าว</option>
+          <option value="2">2 ข่าว</option>
+          <option value="3" selected>3 ข่าว</option>
+          <option value="5">5 ข่าว</option>
+          <option value="10">10 ข่าว</option>
+        </select>
+      </div>
+      <p class="lbl" style="margin-top:0.75rem">วันที่ส่ง</p>
+      <div class="day-grid" id="days">
+        <button type="button" class="day on" data-d="1">จ</button>
+        <button type="button" class="day on" data-d="2">อ</button>
+        <button type="button" class="day on" data-d="3">พ</button>
+        <button type="button" class="day on" data-d="4">พฤ</button>
+        <button type="button" class="day on" data-d="5">ศ</button>
+        <button type="button" class="day" data-d="6">ส</button>
+        <button type="button" class="day" data-d="0">อา</button>
+      </div>
+      <p class="muted" id="scheduleSummary">ส่ง 3 ข่าว/วัน เวลา 07:00 น. (5 วัน/สัปดาห์)</p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="actions">
+      <button type="button" class="btn btn-cancel" onclick="finishSetup()">ยกเลิก</button>
+      <button type="button" class="btn btn-save" onclick="finishSetup()">บันทึก</button>
+    </div>
+    <p class="foot-note">กดบันทึกหรือยกเลิก → กลับแชท (กด ✕ มุมบนขวา)</p>
+  </footer>
+
+  <div id="done">
+    <div>
+      <div class="icon">✅</div>
+      <h2>เสร็จแล้ว</h2>
+      <p>กด <b>✕</b> มุมบนขวา<br>เพื่อกลับแชท LINE</p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var LIFF_ID = "2010856732-BFseuR2p";
+
+      function updateTopicStatus() {
+        var on = document.querySelectorAll(".chip.on");
+        var el = document.getElementById("topicStatus");
+        if (!on.length) {
+          el.textContent = "ยังไม่ได้เลือกหัวข้อ";
+          return;
+        }
+        var names = [];
+        for (var i = 0; i < on.length; i++) names.push(on[i].getAttribute("data-topic") || on[i].textContent.replace(/^✓\s*/, ""));
+        el.textContent = "เลือกแล้ว " + on.length + " หัวข้อ: " + names.join(", ");
+      }
+
+      function updateSummary() {
+        var h = document.getElementById("hour").value;
+        var m = document.getElementById("minute").value;
+        var cnt = document.getElementById("count");
+        var cntLabel = cnt.value === "0" ? "ทั้งหมดที่อัปเดตวันนี้" : cnt.options[cnt.selectedIndex].text;
+        var days = document.querySelectorAll(".day.on").length;
+        document.getElementById("scheduleSummary").textContent =
+          "ส่ง " + cntLabel + " เวลา " + h + ":" + m + " น. (" + days + " วัน/สัปดาห์)";
+      }
+
+      document.getElementById("chips").onclick = function (e) {
+        var btn = e.target.closest(".chip");
+        if (!btn) return;
+        btn.classList.toggle("on");
+        if (btn.classList.contains("on")) {
+          btn.textContent = "✓ " + (btn.getAttribute("data-topic") || btn.textContent.replace(/^✓\s*/, ""));
+        } else {
+          btn.textContent = btn.getAttribute("data-topic") || btn.textContent.replace(/^✓\s*/, "");
+        }
+        updateTopicStatus();
+      };
+
+      document.getElementById("days").onclick = function (e) {
+        var btn = e.target.closest(".day");
+        if (!btn) return;
+        btn.classList.toggle("on");
+        updateSummary();
+      };
+
+      document.getElementById("addCustom").onclick = function () {
+        var t = document.getElementById("custom").value.trim().slice(0, 60);
+        if (!t) return;
+        var chips = document.getElementById("chips");
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "chip on";
+        b.setAttribute("data-topic", t);
+        b.textContent = "✓ " + t;
+        chips.appendChild(b);
+        document.getElementById("custom").value = "";
+        updateTopicStatus();
+      };
+
+      document.getElementById("hour").onchange = updateSummary;
+      document.getElementById("minute").onchange = updateSummary;
+      document.getElementById("count").onchange = updateSummary;
+
+      window.finishSetup = function () {
+        document.getElementById("done").className = "show";
+        function tryClose() {
+          try { if (window.liff && liff.closeWindow) liff.closeWindow(); } catch (x) {}
+          try { if (history.length > 1) history.back(); } catch (x) {}
+        }
+        tryClose();
+        if (window.liff) {
+          try { liff.init({ liffId: LIFF_ID }).then(tryClose).catch(function () {}); } catch (x) {}
+        }
+        setTimeout(tryClose, 300);
+      };
+
+      if (window.liff) {
+        try { liff.init({ liffId: LIFF_ID }).catch(function () {}); } catch (x) {}
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -681,6 +681,7 @@ function LogView({
   getToken: () => Promise<string | null>;
   reauth: () => Promise<void>;
 }) {
+  const [tab, setTab] = useState<"system" | "chat">("system");
   const [date, setDate] = useState(bkkToday());
   const [user, setUser] = useState("");
   const [channel, setChannel] = useState("");
@@ -939,6 +940,23 @@ function LogView({
           AI ASSISTANT · <em>LOG ย้อนหลัง</em>
         </h1>
         <div className="spacer" />
+        <button
+          className={tab === "system" ? "on" : ""}
+          onClick={() => setTab("system")}
+          style={{ fontSize: "14px", padding: "3px 10px", margin: "0 2px" }}
+        >
+          ⚙️ System Traces
+        </button>
+        <button
+          className={tab === "chat" ? "on" : ""}
+          onClick={() => setTab("chat")}
+          style={{ fontSize: "14px", padding: "3px 10px", margin: "0 2px" }}
+        >
+          💬 Chat History Logs
+        </button>
+        <a className="link" href="/api/admin/export-chat-dataset" title="ดาวน์โหลดไฟล์ .jsonl สำหรับเทรน LLM" style={{ color: "var(--amber)", borderColor: "var(--amber)" }}>
+          📥 Export Dataset (.jsonl)
+        </a>
         {can("admin") && (
           <a className="link" href="/monitor/admin">
             จัดการสิทธิ์
@@ -948,6 +966,11 @@ function LogView({
           ← กลับห้องทำงาน (สด)
         </a>
       </header>
+
+      {tab === "chat" ? (
+        <ChatLogView getToken={getToken} />
+      ) : (
+        <>
 
       <div className="bar">
         <button onClick={() => setDate(shiftDate(date, -1))}>◀ วันก่อน</button>
@@ -1411,6 +1434,132 @@ function LogView({
           nameLong={nameLong}
         />
       ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+type ChatLogItem = {
+  id: string;
+  session_id: string;
+  user_upn: string | null;
+  channel: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+};
+
+function ChatLogView({ getToken }: { getToken: () => Promise<string | null> }) {
+  const [logs, setLogs] = useState<ChatLogItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [channel, setChannel] = useState("");
+  const [role, setRole] = useState("");
+  const [note, setNote] = useState("");
+
+  const loadLogs = useCallback(async () => {
+    setLoading(true);
+    setNote("");
+    try {
+      const token = await getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const p = new URLSearchParams();
+      if (search) p.set("search", search);
+      if (channel) p.set("channel", channel);
+      if (role) p.set("role", role);
+      p.set("limit", "100");
+
+      const res = await fetch(`/api/admin/chat-logs?${p}`, { headers });
+      const d = await res.json();
+      if (d.note) setNote(d.note);
+      if (d.logs) {
+        setLogs(d.logs);
+        setTotal(d.total || 0);
+      }
+    } catch (e) {
+      setNote(`เกิดข้อผิดพลาด: ${String(e).slice(0, 100)}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [getToken, search, channel, role]);
+
+  useEffect(() => {
+    const t = setTimeout(() => void loadLogs(), 300);
+    return () => clearTimeout(t);
+  }, [loadLogs]);
+
+  return (
+    <div style={{ marginTop: "12px" }}>
+      <div className="bar">
+        <input
+          placeholder="ค้นหาข้อความ หรือ อีเมลผู้ใช้..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ minWidth: "260px" }}
+        />
+        <select value={channel} onChange={(e) => setChannel(e.target.value)}>
+          <option value="">ทุกช่องทาง</option>
+          <option value="line">LINE</option>
+          <option value="web">เว็บ</option>
+        </select>
+        <select value={role} onChange={(e) => setRole(e.target.value)}>
+          <option value="">ทุกบทบาท (User/AI)</option>
+          <option value="user">ผู้ใช้ (User)</option>
+          <option value="assistant">ผู้ช่วย AI (Assistant)</option>
+        </select>
+        <button onClick={() => void loadLogs()}>{loading ? "กำลังโหลด…" : "ค้นหา / รีเฟรช"}</button>
+        <div className="spacer" />
+        <span className="stat">รวมทั้งหมด: <b>{total}</b> ข้อความ</span>
+      </div>
+
+      {note && <div className="note" style={{ borderColor: "var(--amber)", color: "var(--amber)" }}>⚠️ {note}</div>}
+
+      {logs.length === 0 && !loading && (
+        <div className="empty">
+          ยังไม่มีประวัติการแชทถูกบันทึกในตาราง chat_logs
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}>
+        {logs.map((item) => {
+          const isUser = item.role === "user";
+          return (
+            <div
+              key={item.id}
+              style={{
+                border: "1px solid var(--hair)",
+                background: "var(--panel)",
+                borderRadius: "6px",
+                padding: "8px 12px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+                borderLeft: isUser ? "4px solid #60a5fa" : "4px solid #39d353",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "14px", color: "var(--dim)" }}>
+                <div>
+                  <span className={`tag ${isUser ? "quiet" : "ok"}`}>
+                    {isUser ? "👤 USER" : "🤖 ASSISTANT"}
+                  </span>
+                  <span style={{ color: "var(--ink)", fontWeight: "bold", marginLeft: "4px" }}>
+                    {item.user_upn || item.session_id}
+                  </span>
+                  <span style={{ marginLeft: "8px", fontSize: "12px" }}>[{item.channel}]</span>
+                </div>
+                <div>{new Date(item.created_at).toLocaleString("th-TH")}</div>
+              </div>
+              <div style={{ fontSize: "16px", color: "var(--ink)", whiteSpace: "pre-wrap", marginTop: "4px", lineHeight: "1.5" }}>
+                {item.content}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
