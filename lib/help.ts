@@ -46,6 +46,12 @@ export type HelpTopic = {
   hint: string;
   commands: HelpCommand[];
   note?: string;
+  /**
+   * Kept out of the menu, the /help page and the chips, but still answered if
+   * someone types one of its commands. For a feature not ready to be
+   * advertised yet — flip it back by deleting the flag.
+   */
+  hidden?: boolean;
 };
 
 /** Label defaults to the command when it already fits a button. */
@@ -151,6 +157,7 @@ export const HELP_TOPICS: HelpTopic[] = [
   },
   {
     key: "commute",
+    hidden: true, // ยังไม่พร้อมโชว์ — ปิดชั่วคราว
     emoji: "🚗",
     chip: "🚗 เดินทาง",
     title: "สถานที่ & เดินทาง",
@@ -179,6 +186,9 @@ export const HELP_TOPICS: HelpTopic[] = [
     note: "“/ล้างความจำ” = เริ่มเรื่องใหม่และยกเลิกงานที่ค้าง · “/ยกเลิก” = ทิ้งการจองที่พิมพ์ค้างไว้",
   },
 ];
+
+/** What the menu, the page and the chips list — hidden categories excluded. */
+export const visibleTopics = (): HelpTopic[] => HELP_TOPICS.filter((t) => !t.hidden);
 
 export const HELP_TIPS = [
   "ไม่ต้องพิมพ์เต็มประโยค — ถามต่อว่า “แล้วบ่ายล่ะ” หรือ “วันศุกร์ล่ะ” ได้เลย",
@@ -281,7 +291,7 @@ function card(title: string, subtitle: string, rows: object[]): object {
 
 /** The category card: nine rows, all visible, one tap each. */
 export function helpMenuFlex(): { altText: string; contents: object } {
-  const rows = HELP_TOPICS.map((t) => tapRow(`${t.emoji} ${t.title}`, t.chip, t.hint));
+  const rows = visibleTopics().map((t) => tapRow(`${t.emoji} ${t.title}`, t.chip, t.hint));
   return {
     altText: "คู่มือคำสั่ง — แตะหมวดที่ต้องการ",
     contents: card("📖 สั่งงานอะไรได้บ้าง", "แตะหมวดเพื่อดูคำสั่ง แล้วแตะคำสั่งเพื่อสั่งงานได้เลย", rows),

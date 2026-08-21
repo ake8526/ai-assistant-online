@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { HELP_TIPS, HELP_TOPICS, LINE_OA_ID, helpUrl, sendToLineUrl } from "@/lib/help";
+import { HELP_TIPS, LINE_OA_ID, helpUrl, sendToLineUrl, visibleTopics } from "@/lib/help";
 
 // The manual, as a page a colleague can be sent a link to.
 //
@@ -77,7 +77,7 @@ export default function HelpPage() {
             พิมพ์ภาษาไทยธรรมดา ไม่ต้องจำรูปแบบ · <b>แตะคำสั่งเพื่อส่งเข้าแชทได้เลย</b>
           </p>
           <div className="jump">
-            {HELP_TOPICS.map((t) => (
+            {visibleTopics().map((t) => (
               <a key={t.key} href={`#${t.key}`}>
                 {t.emoji} {t.title}
               </a>
@@ -85,7 +85,7 @@ export default function HelpPage() {
           </div>
         </div>
 
-        {HELP_TOPICS.map((t) => (
+        {visibleTopics().map((t) => (
           <div className="cat" key={t.key}>
             <h2 id={t.key}>
               <span>{t.emoji}</span>

@@ -45,7 +45,7 @@ import { getUserGraphToken } from "@/lib/graphAuth";
 import { chat, llmUserErrorMessage } from "@/lib/llm";
 import { gpsCapturePageUrl } from "@/lib/gpsCapture";
 import { listRecentOnline } from "@/lib/meetings";
-import { HELP_TOPICS, findHelpTopic, helpMenuFlex, helpMenuText, helpTopicFlex, helpTopicText } from "@/lib/help";
+import { HELP_TOPICS, findHelpTopic, helpMenuFlex, helpMenuText, helpTopicFlex, helpTopicText, visibleTopics } from "@/lib/help";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { busyRanges, findCommonSlots, formatBusy, formatFree, freeRanges, wantsLunchIncluded } from "@/lib/scheduling";
@@ -4263,7 +4263,7 @@ async function handleParsed(
       flex: helpMenuFlex(),
       // One chip per topic; the label is already trimmed to LINE's 20 characters
       // in lib/help.ts, and LINE shows 13 at most — eight topics fit with room.
-      suggestions: HELP_TOPICS.map((x) => ({ label: x.chip, text: x.chip })),
+      suggestions: visibleTopics().map((x) => ({ label: x.chip, text: x.chip })),
     };
   }
 
