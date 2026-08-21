@@ -233,11 +233,12 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
 
 {
-  "intent": "<หนึ่งใน: get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | book_self_calendar | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
+  "intent": "<หนึ่งใน: who_are_you | get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | book_self_calendar | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
   "params": { ... }
 }
 
 ความหมายของแต่ละ intent:
+- who_are_you = ถามตัวตนของผู้ช่วย หรือถามว่าช่วยอะไรได้บ้าง — เช่น "คุณคือใคร", "คุณเป็นใคร", "มึงเป็นใคร", "ทำอะไรได้บ้าง", "แนะนำตัวหน่อย"
 - get_brief = ดูรายการตาราง/นัดวันนี้ (แสดงทั้งหมดแล้วถามว่าอยากให้แนะนำเตรียมตัวนัดไหน) — เช่น "สรุปตารางเช้า", "ตารางวันนี้", "มีนัดอะไรบ้างเช้านี้"
 - prep_meeting = แนะนำเตรียมตัวนัดที่เลือก (อ่านหัวข้อ/รายละเอียดอีเมล/ไฟล์แนบ/ลิงก์) — เช่น "เตรียมนัด 1", "แนะนำประชุม 2", "ช่วยเตรียมตัวนัด Weekly Sync"
 - get_news = สรุปเนื้อหาข่าว/โพสต์จากแหล่งที่ติดตามแล้ว — เช่น "มีข่าวอะไรบ้าง", "สรุปข่าววันนี้", "ข่าววันนี้", "มีคลิปใหม่อะไรบ้าง" (ห้ามใช้เมื่อผู้ใช้ถามแค่ว่าติดตามแหล่งไหน)
@@ -1715,6 +1716,15 @@ async function parseIntent(
     return {
       intent: "link_meeting_file",
       params: { meeting_index: mi, file_query: textClean },
+      source: "quick",
+    };
+  }
+
+  // Identity / Who are you questions: "คุณคือใคร", "คุณเป็นใคร", "มึงเป็นใคร", "ทำอะไรได้บ้าง", "แนะนำตัวหน่อย"
+  if (/^(?:คุณ|เธอ|นาย|มึง|แก|ตัว)?\s*(?:คือ|เป็น|ทำ)?\s*(?:ใคร|อะไรงะ|อะไร|อะหลิ่ม|ตัวอะไร|งานอะไร)(?:ครับ|ค่ะ|วะ|ว่ะ|จ๊ะ|นะ)?$/i.test(textClean) || /^(?:แนะนำตัว|ช่วยอะไรได้บ้าง|ทำอะไรได้บ้าง)$/i.test(textClean)) {
+    return {
+      intent: "who_are_you",
+      params: {},
       source: "quick",
     };
   }
@@ -6186,6 +6196,34 @@ async function handleParsed(
       atMin,
       { showMore: !!params.show_more, attachFile, attachLinePhoto: wantsLinePhoto }
     );
+  }
+
+  if (intent === "who_are_you") {
+    // Style 1 (Pro & Comprehensive):
+    // "ผมคือ **KTIS X AI Assistant** 🤖 ผู้ช่วย AI ประจำตัวที่ฉลาดและทำงานไวที่สุดใน KTIS ครับ! ⚡\n\nเรื่องงานยาก ๆ ให้ผมช่วยดูแลได้สบายมาก:\n📅 **จัดการตาราง & จัดคิวประชุม** — เช็กเวลาว่าง นัดคน นัดห้อง ได้ในพริบตา\n📝 **สรุปประชุมอัจฉริยะ** — อ่าน Transcript จาก Teams แล้วสรุปประเด็น + Action Items ให้ทันที\n📌 **ติดตามงานไม่ให้ตกหล่น** — คอยจำและเตือนงานที่ต้องทำ\n📰 **คัดกรองข่าวสาร & อัปเดตเช้า** — เสิร์ฟสรุปข่าวและตารางงานถึงมือทุกเช้า\n\nอยากให้ผมช่วยจัดการเรื่องไหน สั่งมาได้เลยครับ! 🚀"
+
+    // Style 2 (Friendly & Confident - SELECTED):
+    const style2 =
+      "ผมคือ **KTIS X AI Assistant** เลขาส่วนตัวสุดอัจฉริยะที่คุณขาดไม่ได้ครับ! 😎✨\n\n" +
+      "ทำงาน 24 ชม. ไม่มีง่วง ไม่มีบ่น:\n" +
+      "• อยากนัดใคร? เดี๋ยวหาเวลาว่างตรงกันให้\n" +
+      "• ประชุมยาวขี้เกียจฟัง? เดี๋ยวสรุปเนื้อหาและงานติดตามให้\n" +
+      "• งานเยอะจนลืม? ผมช่วยจำและตามงานให้ครบ\n\n" +
+      "สั่งงานผมได้เลย จะดูตาราง สรุปประชุม หรือตามงาน บอกมาได้เลยครับ! 👇";
+
+    // Style 3 (Concise & Powerful):
+    // "ผมคือ **KTIS AI Assistant** 🤖 ผู้ช่วยส่วนตัวระดับ Advance ของชาว KTIS Group ครับ!\n\nออกแบบมาเพื่อช่วยให้ชีวิตการทำงานของคุณง่ายและเร็วขึ้น 10 เท่า ทั้ง **ดูตารางนัดหมาย, สรุปการประชุมอัตโนมัติ, แจ้งเตือนงานติดตาม, และคัดกรองข่าวสำคัญประจำวัน**\n\nพิมพ์สั่งงานหรือกดเมนูด้านล่าง แล้วสัมผัสความสะดวกได้เลยครับ 👇"
+
+    return {
+      intent: "who_are_you",
+      reply: style2,
+      suggestions: [
+        { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+        { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+        { label: "ข่าววันนี้", text: "ข่าววันนี้" },
+        { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
+      ],
+    };
   }
 
   return {
