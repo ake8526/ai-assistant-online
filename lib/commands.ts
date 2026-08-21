@@ -4752,15 +4752,16 @@ async function handleParsed(
       (bodyHtml.match(/https:\/\/[^\s"'<>]+/i)?.[0] ?? undefined);
 
     const subj = event.subject || "ประชุม";
+    const loc = event.location?.displayName ? `\n📍 สถานที่/ห้องประชุม: ${event.location.displayName}` : "";
     if (teamsLink) {
       return {
         intent: "get_meeting_link",
-        reply: `🔗 ลิงก์เข้าประชุม "${subj}":\n${teamsLink}`,
+        reply: `🔗 ลิงก์เข้าประชุม "${subj}":${loc}\n${teamsLink}`,
       };
     } else {
       return {
         intent: "get_meeting_link",
-        reply: `📌 นัด "${subj}" ไม่พบลิงก์ MS Teams หรือลิงก์ประชุมออนไลน์แนบอยู่ในระบบครับ`,
+        reply: `📌 นัด "${subj}":${loc}\n(ไม่พบลิงก์ MS Teams หรือประชุมออนไลน์แนบอยู่ในระบบครับ)`,
       };
     }
   }
