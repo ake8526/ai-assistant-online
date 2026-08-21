@@ -5771,7 +5771,8 @@ async function handleParsed(
       const dueStr = t.due ? ` (กำหนดส่ง: ${t.due})` : "";
       const resp = t.responsible ? ` [ผู้รับผิดชอบ: ${t.responsible}]` : "";
       const stTag = t.status === "overdue" ? " ⚠️ เกินกำหนด" : "";
-      lines.push(`${i + 1}) ${t.title}${dueStr}${resp}${stTag}`);
+      const srcTag = t.source === "meeting_auto" ? " 🤖 (จากสรุปการประชุม)" : t.source === "manual" ? " 👤 (เพิ่มเอง)" : "";
+      lines.push(`${i + 1}) ${t.title}${dueStr}${resp}${srcTag}${stTag}`);
     });
     lines.push("\nพิมพ์ เช่น “ปิดงาน 1” เพื่อทำเครื่องหมายสำเร็จ");
     return { intent, reply: lines.join("\n"), data: pending };
