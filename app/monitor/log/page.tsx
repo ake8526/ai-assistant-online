@@ -1508,8 +1508,17 @@ function ChatLogView({ getToken }: { getToken: () => Promise<string | null> }) {
   }, [getToken, search, channel, role]);
 
   useEffect(() => {
-    const t = setTimeout(() => void loadLogs(), 300);
-    return () => clearTimeout(t);
+    let alive = true;
+    const poll = async () => {
+      if (!alive) return;
+      await loadLogs();
+    };
+    void poll();
+    const id = setInterval(poll, 4000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
   }, [loadLogs]);
 
   return (
