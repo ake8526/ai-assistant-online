@@ -1319,8 +1319,8 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     // Classic LINE 3-dot bubble (same as clip) — await so it starts before work.
     await showLineLoading(userId, 60);
 
-    // Log incoming user message immediately
-    after(async () => {
+    // Log incoming user message synchronously so timestamp/id strictly precedes AI response
+    try {
       await logChatTurn({
         session_id: upn,
         user_upn: upn,
@@ -1328,7 +1328,9 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         role: "user",
         content: text,
       });
-    });
+    } catch {
+      /* ignore log write error */
+    }
 
     // Meeting RSVP / reschedule by text — before news onboarding
     {
