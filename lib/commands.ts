@@ -1,7 +1,7 @@
 // Natural-language command handling — ported from morning_brief/commands.py.
 // The web / LINE sends free text; the LLM classifies it into an intent + params
 // and we execute. Booking asks for confirmation first (choose_slot) per requirement.
-import { buildForEvents, buildMorningAgenda, buildMeetingPrep, resolveAgendaEntry, resolveAgendaEventId, saveAgendaIds } from "@/lib/brief";
+import { buildForEvents, buildMorningAgenda, buildMeetingPrep, extractUrls, resolveAgendaEntry, resolveAgendaEventId, saveAgendaIds, stripHtml } from "@/lib/brief";
 import {
   handleLinkMeetingFile,
   handleLinkMeetingUrl,
@@ -763,7 +763,9 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   }
   // "ทำอะไรได้บ้าง" — the question every new user asks first, and until now the
   // only answer was whatever the model improvised. Fixed rules, no API call.
-  if (/^(?:\/?ช่วยเหลือ|ช่วยเรื่องอื่น|ทำอะไรได้(?:บ้าง)?|สั่งอะไรได้(?:บ้าง)?|มีคำสั่งอะไร(?:บ้าง)?|คู่มือ(?:การใช้งาน|คำสั่ง)?|help|เมนู)[!?.\s]*$/i.test(t)) {
+  if (
+    /^(?:\/?(?:ช่วยเหลือ|ช่วยด้วย|ช่วยหน่อย|คำสั่ง|คู่มือ|help|menu|เมนู|start|เริ่ม)|ช่วยเรื่องอื่น|ขอ(?:ดู)?(?:คำสั่ง|รายการคำสั่ง|เมนู|คู่มือ)|ดู(?:คำสั่ง|เมนู|คู่มือ)|(?:มี|ทำ|สั่ง|สั่งงาน|ใช้)(?:อะไร|คำสั่งอะไร)(?:ได้)?(?:บ้าง|ไหม)?|ทำอะไรได้(?:บ้าง)?|สั่งอะไรได้(?:บ้าง)?|สั่งงานอะไรได้(?:บ้าง)?|มีคำสั่งอะไร(?:บ้าง)?|มีอะไรให้ใช้(?:บ้าง)?|ใช้(?:งาน)?(?:ยัง)?ไง|ใช้อะไรได้(?:บ้าง)?|คู่มือ(?:การใช้งาน|คำสั่ง)?)[!?.\s]*$/i.test(t)
+  ) {
     return { intent: "help_menu", params: {} };
   }
   {
@@ -4234,12 +4236,16 @@ async function handleParsed(
     const topic = key ? HELP_TOPICS.find((x) => x.key === key) : null;
     if (topic) {
       trace("compose", `คู่มือ · ${topic.title}`);
+      // Every command in the topic is a button, not just the first three: the
+      // page's tap-to-send links do nothing inside LINE's in-app browser, so the
+      // chat has to be the place where a command can actually be run. LINE takes
+      // 13 buttons; the largest topic has seven.
       return {
         intent: "help_menu",
         reply: helpTopicText(topic),
         suggestions: [
-          ...topic.commands.slice(0, 3).map((c) => ({ label: c.slice(0, 20), text: c })),
-          { label: "◀ กลับเมนูคู่มือ", text: "/ช่วยเหลือ" },
+          ...topic.commands.slice(0, 11).map((c) => ({ label: c.label, text: c.text })),
+          { label: "◀ หมวดอื่น", text: "/ช่วยเหลือ" },
         ],
       };
     }
@@ -4385,24 +4391,6 @@ async function handleParsed(
     return {
       intent: "ack",
       reply: "รับทราบครับ ✅",
-    };
-  }
-
-  if (intent === "help_menu") {
-    return {
-      intent: "help_menu",
-      reply:
-        "ได้เลยครับ พิมพ์ / เพื่อเลือกคำสั่ง หรือพิมพ์เอง เช่น\n\n" +
-        "• /ตารางวันนี้ · /นัดพรุ่งนี้\n" +
-        "• /ตั้งค่าข่าว · /ล้างความจำ\n" +
-        "• ขอตารางว่าง / ดูตารางพี่…",
-      suggestions: [
-        { label: "/ตารางวันนี้", text: "/ตารางวันนี้" },
-        { label: "/นัดพรุ่งนี้", text: "/นัดพรุ่งนี้" },
-        { label: "/ตั้งค่าข่าว", text: "/ตั้งค่าข่าว" },
-        { label: "/ล้างความจำ", text: "/ล้างความจำ" },
-        { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
-      ],
     };
   }
 

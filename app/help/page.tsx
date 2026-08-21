@@ -94,9 +94,9 @@ export default function HelpPage() {
             <div className="hint">{t.hint}</div>
             <div className="cmds">
               {t.commands.map((c) => (
-                <a key={c} href={sendToLineUrl(c)}>
+                <a key={c.text} href={sendToLineUrl(c.text)}>
                   <i>▶</i>
-                  {c}
+                  {c.text}
                 </a>
               ))}
             </div>

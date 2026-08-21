@@ -10,6 +10,13 @@ export type SlashCommand = {
   message: string;
   /** Short hint in the menu body */
   hint: string;
+  /**
+   * Other names for the same command. People reach for the word they think of
+   * first — /คำสั่ง, /คู่มือ, /help — and answering "ไม่รู้จักคำสั่ง" to any of them
+   * teaches the wrong lesson. Aliases stay out of the menu so it reads as one
+   * command, not four.
+   */
+  aliases?: string[];
 };
 
 export const SLASH_COMMANDS: SlashCommand[] = [
@@ -18,7 +25,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { cmd: "ตารางวันนี้", label: "/ตารางวันนี้", message: "/ตารางวันนี้", hint: "ดูนัดวันนี้" },
   { cmd: "นัดพรุ่งนี้", label: "/นัดพรุ่งนี้", message: "/นัดพรุ่งนี้", hint: "ดูนัดพรุ่งนี้" },
   { cmd: "ตั้งค่าข่าว", label: "/ตั้งค่าข่าว", message: "/ตั้งค่าข่าว", hint: "จัดการติดตามข่าว" },
-  { cmd: "ช่วยเหลือ", label: "/ช่วยเหลือ", message: "/ช่วยเหลือ", hint: "เมนูความช่วยเหลือ" },
+  {
+    cmd: "ช่วยเหลือ",
+    label: "/ช่วยเหลือ",
+    message: "/ช่วยเหลือ",
+    hint: "คู่มือคำสั่ง — สั่งงานอะไรได้บ้าง",
+    aliases: ["คำสั่ง", "คู่มือ", "ช่วยด้วย", "ช่วยหน่อย", "เมนู", "help", "menu", "start"],
+  },
   // Replies cost nothing, so previewing a push-shaped message this way never
   // spends quota — which is the whole point while the monthly cap is gone.
   { cmd: "test", label: "/test", message: "/test", hint: "ดูตัวอย่างข้อความเช้า (ไม่กินโควตา)" },
@@ -45,14 +58,13 @@ export function parseSlashCommand(text: string): string | null {
 
 export function matchSlashCommand(body: string): SlashCommand | null {
   const q = body.trim().replace(/^\//, "").toLowerCase();
-  const exact = SLASH_COMMANDS.find(
-    (c) => c.cmd.toLowerCase() === q || c.message.toLowerCase() === `/${q}`
-  );
+  const named = (c: SlashCommand) => [c.cmd, ...(c.aliases || [])].map((s) => s.toLowerCase());
+  const exact = SLASH_COMMANDS.find((c) => named(c).includes(q) || c.message.toLowerCase() === `/${q}`);
   if (exact) return exact;
   // A command may take an argument ("/test ประชุม"). Matching only whole
   // strings answered "ไม่รู้จักคำสั่ง" to a command the menu had just offered.
   const head = q.split(/\s+/)[0] || "";
-  return SLASH_COMMANDS.find((c) => c.cmd.toLowerCase() === head) || null;
+  return SLASH_COMMANDS.find((c) => named(c).includes(head)) || null;
 }
 
 function quickReplyItems(cmds: SlashCommand[]) {
