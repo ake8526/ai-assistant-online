@@ -1734,6 +1734,17 @@ async function parseIntent(
     }
   }
 
+  // Quick add sample tasks shortcut: "เพิ่มงานติดตามให้ 2 งานที", "สร้างงานทดสอบ 2 งาน", "เพิ่มงานทดสอบ"
+  if (/(?:เพิ่ม|สร้าง|ใส่)?\s*งาน(?:ติดตาม|ทดสอบ)?\s*(?:ให้)?\s*(\d{1,2})?\s*งาน/i.test(textClean)) {
+    const countMatch = textClean.match(/(\d{1,2})\s*งาน/);
+    const count = countMatch ? Math.min(Number(countMatch[1]), 5) : 2;
+    return {
+      intent: "add_sample_tasks",
+      params: { count },
+      source: "quick",
+    };
+  }
+
   // “มีอีกไหม” after nickname duplicate list — next page / confirm complete (no re-dump)
   const moreNick =
     /^(มีอีก|มีเพิ่ม|ดูต่อ|ต่อไป|หน้าต่อไป|หน้าถัดไป)(ไหม|มั้ย)?$|^มีอีกไหม$|^อีกไหม$|^อีกมั้ย$|^ครบยัง$|^มีหมดแล้วไหม$/i.test(
@@ -5776,6 +5787,39 @@ async function handleParsed(
     });
     lines.push("\nพิมพ์ เช่น “ปิดงาน 1” เพื่อทำเครื่องหมายสำเร็จ");
     return { intent, reply: lines.join("\n"), data: pending };
+  }
+
+  if (intent === "add_sample_tasks") {
+    const count = Number(params.count || 2);
+    const samples = [
+      { title: "จัดทำสรุปรายงานผลการดำเนินงานโครงการประจำเดือน", responsible: "เบส", due: "พรุ่งนี้ 17:00" },
+      { title: "ตรวจสอบและปรับปรุงเอกสารคู่มือฟังก์ชันการใช้งานระบบ", responsible: "คุณป้อง", due: "วันจันทร์ 12:00" },
+      { title: "ติดตามความคืบหน้าการเชื่อมต่อระบบปฏิทิน Outlook", responsible: "เอก", due: "วันศุกร์นี้" },
+    ];
+
+    const addedList: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const s = samples[i % samples.length];
+      const tid = await addTask({
+        owner_upn: userUpn,
+        title: s.title,
+        responsible: s.responsible,
+        responsible_upn: await resolveResponsible(s.responsible),
+        due: s.due,
+        source: "manual",
+      });
+      if (tid) {
+        addedList.push(`• ${s.title} [ผู้รับผิดชอบ: ${s.responsible}]`);
+      }
+    }
+
+    return {
+      intent: "add_task",
+      reply:
+        `✅ **เพิ่มงานติดตามทดสอบเรียบร้อย ${addedList.length} รายการครับ:**\n\n` +
+        `${addedList.join("\n")}\n\n` +
+        `พิมพ์ **“ดูงานที่ต้องติดตาม”** เพื่อตรวจสอบรายการทั้งหมด`,
+    };
   }
 
   if (intent === "add_task") {
