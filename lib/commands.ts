@@ -1688,7 +1688,12 @@ async function parseIntent(
   const textLower = textClean.toLowerCase();
 
   // Fast deterministic shortcuts — skip LLM so LINE replies before the reply-token expires.
-  if (/(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม|ทดสอบ)?(?:\s*ให้)?\s*(\d{1,2})?\s*งาน/i.test(textClean) || /เพิ่มงาน/i.test(textClean) || /สร้างงาน/i.test(textClean)) {
+  if (
+    /(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม|ทดสอบ)?/i.test(textClean) ||
+    /งานติดตาม.*(\d{1,2})?\s*งาน/i.test(textClean) ||
+    /เพิ่มงาน/i.test(textClean) ||
+    /สร้างงาน/i.test(textClean)
+  ) {
     const countMatch = textClean.match(/(\d{1,2})\s*งาน/);
     const count = countMatch ? Math.min(Number(countMatch[1]), 5) : 2;
     return {
