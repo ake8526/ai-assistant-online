@@ -4470,6 +4470,48 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     };
   }
 
+  // Off-work / End-of-work status query check (เลิกงานยัง / กี่โมงเลิกงาน / เลิกงานกี่โมง / ถึงเวลาเลิกงานยัง / กลับบ้านยัง)
+  if (/(?:เลิกงานยัง|เลิกงานกี่โมง|กี่โมงเลิกงาน|กี่โมงกลับบ้าน|กลับบ้านยัง|กลับบ้านได้ยัง|ถึงเวลาเลิกงาน)/i.test(text)) {
+    const nowBkk = nowWall();
+    const hours = nowBkk.getHours();
+    const minutes = nowBkk.getMinutes();
+    const timeStr = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+
+    const pendingTasks = (await listTasks(userUpn)).filter(
+      (t) => t.status === "pending" || t.status === "overdue"
+    );
+    const taskNote = pendingTasks.length > 0
+      ? `📋 งานติดตามค้างอยู่: **เหลืออีก ${pendingTasks.length} รายการ**`
+      : `📋 งานติดตามค้างอยู่: **ไม่มีงานค้างอยู่ครับ เคลียร์เรียบร้อย! 👍**`;
+
+    if (hours >= 17) {
+      return {
+        intent: "off_work_status",
+        reply: `🌆 **ถึงเวลาเลิกงานแล้วครับ!** 🎉 (เวลาปัจจุบัน ${timeStr} น.)\n\n${taskNote}\n\nพักผ่อนกายใจให้สบาย พักสายตา และเดินทางกลับบ้านโดยสวัสดิภาพนะครับ! 🚗🏠✨`,
+        suggestions: [
+          { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+          { label: "ดวงพรุ่งนี้", text: "ดวงพรุ่งนี้" },
+          { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+        ],
+      };
+    } else {
+      const minsLeft = (17 - hours) * 60 - minutes;
+      const hLeft = Math.floor(minsLeft / 60);
+      const mLeft = minsLeft % 60;
+      const timeLeftStr = hLeft > 0 ? `${hLeft} ชั่วโมง ${mLeft} นาที` : `${mLeft} นาที`;
+
+      return {
+        intent: "off_work_status",
+        reply: `⏰ **ยังไม่ถึงเวลาเลิกงานครับ** (เวลาปัจจุบัน ${timeStr} น.)\n\nอีกประมาณ **${timeLeftStr}** จะถึงเวลาเลิกงาน (17:00 น.) ครับ ⏳\n\n${taskNote}\n\nสู้ๆ ครับ เคลียร์งานอีกนิดเดียวก็จะได้พักผ่อนแล้วครับ! ☕🌟`,
+        suggestions: [
+          { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+          { label: "ดวงวันนี้", text: "ดวงวันนี้" },
+          { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+        ],
+      };
+    }
+  }
+
   // Immediate user identity query check (ผมชื่ออะไร / ฉันชื่ออะไร / ฉันชื่อ / ชื่อฉัน / ผมชื่อ / ชื่อผม)
   if (/^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม|ชื่ออะไร|ผมชื่ออะไร|ฉันชื่ออะไร|ผมเป็นใคร|ฉันเป็นใคร|ผู้ใช้ชื่ออะไร|ชื่อผู้ใช้|ชื่อไร|ผมชื่อไร|ฉันชื่อไร)$|^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม)\b/i.test(text)) {
     let nameShow = userUpn;
