@@ -71,16 +71,16 @@ export function planFor(bkk) {
     jobs.push({ label: "punctuality check", path: "/api/morning/punctuality", background: true });
   }
 
+  if (minOfDay >= MORNING_FROM_MIN && minOfDay <= DAY_TO_MIN) {
+    // Check task reminders every minute to ensure notifications arrive exactly on time
+    jobs.push({ label: "task reminders", path: "/api/reminders/run", timeoutMs: 30_000, background: true });
+  }
+
   if (minOfDay >= DAY_FROM_MIN && minOfDay <= DAY_TO_MIN && minute % 5 === 0) {
     jobs.push({ label: "deliver (late)", path: "/api/brief/run?only=both" });
     if (weekday) {
-      // ทุก 10 นาที ไม่ใช่ 5: งานนี้ใช้ได้ถึง 300 วินาที (maxDuration ของ route)
-      // ระยะ 10 นาทีจึงรับประกันว่ารอบก่อนจบแล้วแน่ ๆ ไม่ทับกัน (route ไม่มี lock)
       if (minute % 10 === 0) {
         jobs.push({ label: "meeting summaries", path: "/api/summaries/run", timeoutMs: 280_000, background: true });
-      }
-      if (minute === 0) {
-        jobs.push({ label: "task reminders", path: "/api/reminders/run", timeoutMs: 60_000, background: true });
       }
     }
     jobs.push({ label: "calendar notify", path: "/api/calendar/notify", timeoutMs: 110_000, background: true });

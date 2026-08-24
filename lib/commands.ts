@@ -4438,6 +4438,43 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     };
   }
 
+  // Time-specific reminder setup check (พรุ่งนี้เตือนว่าต้องไปทำงาน 07.30 / เตือน 07:30 ไปทำงาน / ตั้งเตือน 08.00 น.)
+  if (/(?:เตือน|ตั้งเตือน|สะกิด|ปลุก)(?:ว่า|ให้)?/i.test(text) || (/(?:พรุ่งนี้|วันนี้|\d{1,2}[:.]\d{2})/i.test(text) && /เตือน/i.test(text))) {
+    const dueIso = normalizeDue(text);
+    if (dueIso) {
+      let taskTitle = text
+        .replace(/(?:พรุ่งนี้|วันนี้|มะรืนนี้|เมื่อวาน|เตือน|ตั้งเตือน|สะกิด|ปลุก|ช่วย|ว่า|ให้|ตอน|เวลา|น\.?)+/gi, " ")
+        .replace(/\b\d{1,2}[:.]\d{2}\s*(?:น\.?)?\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      if (!taskTitle || taskTitle.length < 2) {
+        taskTitle = "แจ้งเตือนตามกำหนดเวลา";
+      }
+
+      const dueWall = utcIsoToWall(dueIso);
+      const formattedDue = dueWall ? fmtDateTime(dueWall) : "ตามเวลาที่กำหนด";
+
+      const tid = await addTask({
+        owner_upn: userUpn,
+        title: taskTitle,
+        due: dueIso,
+        source: "reminder",
+      });
+
+      if (tid) {
+        return {
+          intent: "set_time_reminder",
+          reply: `⏰ **ตั้งเตือนตรงเวลาเรียบร้อยแล้วครับ!** 🔔✨\n\n• **รายการ:** ${taskTitle}\n• **กำหนดเวลาเตือน:** ${formattedDue} น. (ตรงเวลาเป๊ะ)\n\nระบบจะส่งข้อความแจ้งเตือนทาง LINE ให้คุณทันทีเมื่อถึงเวลาที่กำหนดครับ! 🎯📱`,
+          suggestions: [
+            { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+            { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+          ],
+        };
+      }
+    }
+  }
+
   // Daily & Tomorrow Horoscope / Work Fortune check (ดวงวันนี้ / ดวงพรุ่งนี้ / ดูดวง / เช็กดวง / ดวงการงาน)
   if (/(?:ดวงวันนี้|ดวงพรุ่งนี้|ดวงวันพรุ่งนี้|ดูดวง|เช็กดวง|เช็คดวง|ดวงงานวันนี้|ดวงการงาน|ดวงชะตา)/i.test(text)) {
     const resH = await checkHoroscope(userUpn, text);
