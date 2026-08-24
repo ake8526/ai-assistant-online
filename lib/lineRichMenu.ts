@@ -30,51 +30,19 @@ const cy3 = (i: number) => ROW * i;
 const colW = (i: number) => (i === 2 ? COL3 : COL);
 const rowH = (i: number) => (i === 2 ? ROW3 : ROW);
 
-export type IconKind =
-  | "cal"
-  | "meet"
-  | "news"
-  | "file"
-  | "car"
-  | "soon"
-  | "gear"
-  | "book"
-  | "people"
-  | "task"
-  | "help";
+export type { IconKind } from "./lineMenuTiles";
 
 export type RichMenuArea = {
   bounds: { x: number; y: number; width: number; height: number };
   action: { type: "message"; label: string; text: string };
 };
 
-/**
- * Nine tiles, read left-to-right: the four things people do daily, then the
- * three they ask for by name, then the manual and the settings page. Every
- * text here must be something the assistant already answers — a tile that
- * lands on "ไม่เข้าใจครับ" is worse than no tile.
- */
-export const RICH_MENU_TILES: {
-  col: number;
-  row: number;
-  label: string;
-  text: string;
-  bg: string;
-  panel: string;
-  icon: IconKind;
-  title: string;
-  sub: string;
-}[] = [
-  { col: 0, row: 0, label: "ตารางจอง", text: "ตาราง·จอง", bg: "#ffffff", panel: "#e0f2f1", icon: "cal", title: "ตาราง·จอง", sub: "ติดตามนัด" },
-  { col: 1, row: 0, label: "นัดประชุม", text: "นัดประชุม", bg: "#ffffff", panel: "#e0f2f1", icon: "book", title: "นัดประชุม", sub: "หาเวลาว่างตรงกัน" },
-  { col: 2, row: 0, label: "ตารางคนอื่น", text: "👥 ตารางคนอื่น", bg: "#ffffff", panel: "#e0f2f1", icon: "people", title: "ตารางคนอื่น", sub: "ดูว่าใครว่าง" },
-  { col: 0, row: 1, label: "สรุปประชุม", text: "สรุปประชุม", bg: "#f8fafc", panel: "#e2e8f0", icon: "meet", title: "สรุปประชุม", sub: "มอบหมายงาน" },
-  { col: 1, row: 1, label: "งานที่ต้องตาม", text: "ดูงานที่ต้องติดตาม", bg: "#f8fafc", panel: "#e2e8f0", icon: "task", title: "งานที่ต้องตาม", sub: "เตือนให้เอง" },
-  { col: 2, row: 1, label: "สรุปข่าว", text: "ข่าววันนี้", bg: "#f8fafc", panel: "#e2e8f0", icon: "news", title: "สรุปข่าว", sub: "ที่ติดตาม" },
-  { col: 0, row: 2, label: "ไฟล์", text: "ไฟล์", bg: "#fff7ed", panel: "#ffedd5", icon: "file", title: "ไฟล์", sub: "ค้น·ผูก·แนบ" },
-  { col: 1, row: 2, label: "คู่มือคำสั่ง", text: "/ช่วยเหลือ", bg: "#eef2ff", panel: "#e0e7ff", icon: "help", title: "คู่มือคำสั่ง", sub: "สั่งอะไรได้บ้าง" },
-  { col: 2, row: 2, label: "ตั้งค่า", text: "ตั้งค่า", bg: "#ecfdf5", panel: "#ccfbf1", icon: "gear", title: "ตั้งค่า", sub: "เปิดหน้าเว็บ" },
-];
+// The tile list itself lives in lib/lineMenuTiles.ts so browser code can read
+// it without pulling sharp into the bundle. Re-exported here for callers that
+// already import it from this module.
+export { RICH_MENU_TILES } from "./lineMenuTiles";
+import { RICH_MENU_TILES } from "./lineMenuTiles";
+import type { IconKind } from "./lineMenuTiles";
 
 export const RICH_MENU_AREAS: RichMenuArea[] = RICH_MENU_TILES.map((t) => ({
   bounds: { x: cx3(t.col), y: cy3(t.row), width: colW(t.col), height: rowH(t.row) },
