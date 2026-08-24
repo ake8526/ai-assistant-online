@@ -190,8 +190,11 @@
   .dept[aria-current="true"] .dot { display: block; }
   @keyframes pulse { 50% { opacity: 0.35; } }
 
-  /* scroll area */
-  .body { overflow-y: auto; min-width: 0; padding: 12px 13px 4px; display: flex; flex-direction: column; gap: 12px; }
+  /* scroll area. flex children default to shrinking, which squashed the result
+     card to 64px instead of letting the column overflow and scroll — hence
+     "nothing but the title shows". flex: none keeps every panel its own height. */
+  .body { overflow-y: auto; min-width: 0; padding: 12px 13px 10px; display: flex; flex-direction: column; gap: 12px; }
+  .body > * { flex: none; }
 
   .panel {
     background: var(--panel); border: 1px solid var(--hair);
@@ -676,9 +679,8 @@
     stage = 1;
     echo = { text: text.trim(), at: new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) };
     render();
-    bodyEl.scrollTop = bodyEl.scrollHeight;
 
-    const tick = (n, delay) => setTimeout(() => { stage = n; render(); bodyEl.scrollTop = bodyEl.scrollHeight; }, delay);
+    const tick = (n, delay) => setTimeout(() => { stage = n; render(); }, delay);
     tick(2, 450);
     tick(3, 950);
     setTimeout(() => {
@@ -686,7 +688,17 @@
       busy = false;
       result = DEPTS[active].out;
       render();
-      bodyEl.scrollTop = bodyEl.scrollHeight;
+      // Put the answer at the top of the view. Measured and set synchronously:
+      // getBoundingClientRect forces the layout we need, and unlike
+      // requestAnimationFrame it still runs when the tab is throttled.
+      const card = bodyEl.querySelector(".result");
+      if (card) {
+        const delta = card.getBoundingClientRect().top - bodyEl.getBoundingClientRect().top;
+        // Plain assignment, not scrollTo({behavior:"smooth"}): smooth scrolling
+        // is driven by animation frames, which a background tab does not run —
+        // the jump silently never happened there.
+        bodyEl.scrollTop = bodyEl.scrollTop + delta - 8;
+      }
     }, 1600);
   }
 

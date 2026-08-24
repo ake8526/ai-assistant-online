@@ -4189,8 +4189,8 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   }
 
   // Immediate email request check (ขอเมลพี่แบงค์ / ขออีเมล... / หาอีเมล...)
-  if (/(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:เมล|อีเมล|email| mail)\s*(?:ของ)?\s*(.+)/i.test(text)) {
-    const rawTarget = text.replace(/^(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:เมล|อีเมล|email| mail)\s*(?:ของ)?\s*/i, "").trim();
+  if (/(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:อีเมล|เมล|email| mail)\s*(?:ของ)?\s*(.+)/i.test(text)) {
+    const rawTarget = text.replace(/^(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:อีเมล|เมล|email| mail)\s*(?:ของ)?\s*/i, "").trim();
     if (rawTarget) {
       try {
         const candidates = await searchUsers(rawTarget);
@@ -4223,10 +4223,10 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   }
 
   // Immediate contact & job title query check (ขอตำแหน่งพี่แบงค์ / ขอเบอร์เบส / ขอข้อมูลติดต่อ...)
-  if (/(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:ตำแหน่ง|ตำแหน่งงาน|แผนก|ฝ่าย|เบอร์|เบอร์โทร|เบอร์โทรศัพท์|ข้อมูล|คอนแทค)\s*(?:ของ)?\s*(.+)/i.test(text)) {
+  if (/(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:เบอร์โทรศัพท์|เบอร์โทร|ตำแหน่งงาน|ตำแหน่ง|แผนก|ฝ่าย|เบอร์|ข้อมูล|คอนแทค)\s*(?:ของ)?\s*(.+)/i.test(text)) {
     const isPositionQuery = /(?:ตำแหน่ง|ตำแหน่งงาน|แผนก|ฝ่าย)/i.test(text);
     const isPhoneQuery = /(?:เบอร์|เบอร์โทร|เบอร์โทรศัพท์)/i.test(text);
-    const rawTarget = text.replace(/^(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:ตำแหน่ง|ตำแหน่งงาน|แผนก|ฝ่าย|เบอร์|เบอร์โทร|เบอร์โทรศัพท์|ข้อมูล|คอนแทค)\s*(?:ของ)?\s*/i, "").trim();
+    const rawTarget = text.replace(/^(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:เบอร์โทรศัพท์|เบอร์โทร|ตำแหน่งงาน|ตำแหน่ง|แผนก|ฝ่าย|เบอร์|ข้อมูล|คอนแทค)\s*(?:ของ)?\s*/i, "").trim();
 
     if (rawTarget) {
       try {
