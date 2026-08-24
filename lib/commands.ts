@@ -4554,6 +4554,55 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     }
   }
 
+  // What to do today query check (วันนี้ทำอะไรดี / ทำอะไรดี / วันนี้มีอะไรทำบ้าง / วันนี้ต้องทำอะไรบ้าง / มีงานอะไรบ้างวันนี้)
+  if (/(?:วันนี้ทำอะไรดี|ทำอะไรดี|วันนี้มีอะไรทำบ้าง|วันนี้ต้องทำอะไรบ้าง|มีงานอะไรบ้างวันนี้|วันนี้มีงานอะไรบ้าง|แพลนวันนี้ทำอะไรดี)/i.test(text)) {
+    const nowBkk = nowWall();
+    const hours = nowBkk.getHours();
+    const minutes = nowBkk.getMinutes();
+    const timeStr = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+
+    const pendingTasks = (await listTasks(userUpn)).filter(
+      (t) => t.status === "pending" || t.status === "overdue"
+    );
+
+    let taskSection = "";
+    if (pendingTasks.length > 0) {
+      taskSection = `📋 **งานที่ต้องติดตาม (${pendingTasks.length} รายการ):**\n` +
+        pendingTasks.slice(0, 5).map((t, idx) => {
+          const dueWall = t.due ? utcIsoToWall(t.due) : null;
+          const dueStr = dueWall ? ` (กำหนด: ${fmtDate(dueWall)} ${fmtTime(dueWall)} น.)` : "";
+          return `${idx + 1}) ${t.title}${dueStr}`;
+        }).join("\n");
+      if (pendingTasks.length > 5) {
+        taskSection += `\n... และอีก ${pendingTasks.length - 5} รายการ (พิมพ์ “/รายการ” เพื่อดูทั้งหมด)`;
+      }
+    } else {
+      taskSection = `📋 **งานที่ต้องติดตาม:** ไม่มีงานค้างอยู่ครับ เคลียร์ครบเรียบร้อย! 👍`;
+    }
+
+    if (hours >= 17) {
+      return {
+        intent: "what_to_do_today",
+        reply: `🌆 **ภาพรวมช่วงเย็น/ค่ำนี้ครับ** (เวลา ${timeStr} น.) ✨\n\n🎉 **ถึงเวลาเลิกงานแล้วครับ!** แนะนำให้พักผ่อนกายใจ ทานอาหารอร่อยๆ หรือทำกิจกรรมผ่อนคลายที่ชอบได้เลยครับ 🍽️🛋️\n\n${taskSection}\n\n💡 **เตรียมพร้อมสำหรับวันพรุ่งนี้:** สามารถพิมพ์ **“ดวงพรุ่งนี้”** หรือ **“สรุปตารางเช้า”** เพื่อเช็กแพลนล่วงหน้าได้เลยครับ! 🌟`,
+        suggestions: [
+          { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+          { label: "ดวงพรุ่งนี้", text: "ดวงพรุ่งนี้" },
+          { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+        ],
+      };
+    } else {
+      return {
+        intent: "what_to_do_today",
+        reply: `☀️ **แผนสิ่งที่ควรทำสำหรับวันนี้ครับ** (เวลา ${timeStr} น.) 🎯\n\n${taskSection}\n\n💡 **คำแนะนำ:** เคลียร์งานสำคัญตามลำดับความเร่งด่วน จิบน้ำบ่อยๆ และพักสายตาเป็นระยะ ช่วยให้ทำงานได้เต็มประสิทธิภาพตลอดวันครับ! ☕💪\n\nพิมพ์ **“สรุปตารางเช้า”** เพื่อเช็กนัดหมายในปฏิทิน หรือ **“ดวงวันนี้”** เพื่อดูสีเสื้อมงคลเสริมพลังครับ 🌟`,
+        suggestions: [
+          { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+          { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+          { label: "ดวงวันนี้", text: "ดวงวันนี้" },
+        ],
+      };
+    }
+  }
+
   // Immediate user identity query check (ผมชื่ออะไร / ฉันชื่ออะไร / ฉันชื่อ / ชื่อฉัน / ผมชื่อ / ชื่อผม)
   if (/^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม|ชื่ออะไร|ผมชื่ออะไร|ฉันชื่ออะไร|ผมเป็นใคร|ฉันเป็นใคร|ผู้ใช้ชื่ออะไร|ชื่อผู้ใช้|ชื่อไร|ผมชื่อไร|ฉันชื่อไร)$|^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม)\b/i.test(text)) {
     let nameShow = userUpn;
