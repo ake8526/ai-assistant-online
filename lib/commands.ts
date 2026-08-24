@@ -39,6 +39,7 @@ import {
   withDriveItemPath,
   type DriveFileHit,
   searchUsers,
+  getUserManager,
   stripHonorificPublic,
 } from "@/lib/graph";
 import { getUserGraphToken } from "@/lib/graphAuth";
@@ -4122,6 +4123,30 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
           let header = `👤 **ข้อมูลผู้ติดต่อ (${u.displayName})**`;
           let body = `${job}\n${dept}\n${email}${phoneLine}`;
 
+          if (queryKind === "manager") {
+            const manager = await getUserManager(u.mail);
+            if (manager) {
+              const mJob = manager.jobTitle ? `\n💼 **ตำแหน่ง:** ${manager.jobTitle}` : "";
+              const mDept = manager.department ? `\n🏢 **ฝ่าย/แผนก:** ${manager.department}` : "";
+              const mEmail = `\n📧 **อีเมล:** \`${manager.mail}\``;
+              const mPhone = manager.phone ? `\n📞 **เบอร์โทร:** \`${manager.phone}\`` : "";
+
+              return {
+                intent: "get_manager",
+                reply: `👔 **หัวหน้างานของ ${u.displayName}** คือ:\n\n👤 **${manager.displayName}**${mJob}${mDept}${mEmail}${mPhone}\n\nต้องการให้ผมช่วยติดต่อ หรือเช็กเวลาว่างกับ ${manager.displayName} ไหมครับ? 🤖✨`,
+                suggestions: [
+                  { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+                  { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+                ],
+              };
+            } else {
+              return {
+                intent: "get_manager",
+                reply: `ไม่พบข้อมูลผู้บังคับบัญชา (Manager) ของ **${u.displayName}** ในระบบ Microsoft 365 องค์กรครับ 🔍`,
+              };
+            }
+          }
+
           if (queryKind === "position") {
             header = `💼 **ข้อมูลตำแหน่งงาน (${u.displayName})**`;
             body = `${job}\n${dept}\n${email}${phoneLine}`;
@@ -4292,6 +4317,68 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         }
       } catch (e) {
         console.warn("get_contact_info error:", e);
+      }
+    }
+  }
+
+  // Immediate Manager query check (หัวหน้าเบสคือใคร / หัวหน้าของ... / ใครเป็นหัวหน้า...)
+  if (/(?:หัวหน้า|ผู้บังคับบัญชา|manager)\s*(?:ของ)?\s*(.+?)\s*(?:คือใคร|เป็นใคร|คือใครครับ|คือใครค่ะ)?$|^(?:ใครเป็นหัวหน้า|ใครคือหัวหน้า)\s*(?:ของ)?\s*(.+)/i.test(text)) {
+    let rawTarget = text
+      .replace(/^(?:ใครเป็นหัวหน้า|ใครคือหัวหน้า)\s*(?:ของ)?\s*/i, "")
+      .replace(/(?:หัวหน้า|ผู้บังคับบัญชา|manager)\s*(?:ของ)?\s*/i, "")
+      .replace(/(?:คือใคร|เป็นใคร|คือใครครับ|คือใครค่ะ|\?)$/i, "")
+      .trim();
+
+    if (rawTarget) {
+      try {
+        const candidates = await searchUsers(rawTarget);
+        if (candidates.length === 1) {
+          const u = candidates[0];
+          const manager = await getUserManager(u.mail);
+          if (manager) {
+            const job = manager.jobTitle ? `\n💼 **ตำแหน่ง:** ${manager.jobTitle}` : "";
+            const dept = manager.department ? `\n🏢 **ฝ่าย/แผนก:** ${manager.department}` : "";
+            const email = `\n📧 **อีเมล:** \`${manager.mail}\``;
+            const phone = manager.phone ? `\n📞 **เบอร์โทร:** \`${manager.phone}\`` : "";
+
+            return {
+              intent: "get_manager",
+              reply: `👔 **หัวหน้างานของ ${u.displayName}** คือ:\n\n👤 **${manager.displayName}**${job}${dept}${email}${phone}\n\nต้องการให้ผมช่วยติดต่อ หรือเช็กเวลาว่างกับ ${manager.displayName} ไหมครับ? 🤖✨`,
+              suggestions: [
+                { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+                { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+              ],
+            };
+          } else {
+            return {
+              intent: "get_manager",
+              reply: `ไม่พบข้อมูลผู้บังคับบัญชา (Manager) ของ **${u.displayName}** ในระบบ Microsoft 365 องค์กรครับ 🔍`,
+            };
+          }
+        } else if (candidates.length > 1) {
+          const topCandidates = candidates.slice(0, 5);
+          await setSetting(userUpn.toLowerCase(), "_pending_candidate_picks", JSON.stringify({ candidates: topCandidates, queryKind: "manager", time: Date.now() }));
+
+          const choicesList = topCandidates.map((c, i) => {
+            const jobStr = c.jobTitle ? `💼 ${c.jobTitle}` : "";
+            const deptStr = c.department ? `🏢 ${c.department}` : "";
+            const infoParts = [jobStr, deptStr].filter(Boolean).join(" · ");
+            const detailLine = infoParts ? `   ${infoParts}\n` : "";
+            return `${i + 1}) **${c.displayName}**\n${detailLine}   📧 \`${c.mail}\``;
+          }).join("\n\n");
+
+          return {
+            intent: "get_manager",
+            reply: `พบรายชื่อ ${candidates.length} ท่านที่ตรงกับ “${rawTarget}” ในระบบครับ 👇\n(พิมพ์ **1**, **2** หรือ **3** เพื่อเลือกดูหัวหน้างานได้เลยครับ)\n\n${choicesList}`,
+          };
+        } else {
+          return {
+            intent: "get_manager",
+            reply: `ไม่พบรายชื่อของ “${rawTarget}” ในสมุดโทรศัพท์/ระบบองค์กร Microsoft 365 ครับ 🔍`,
+          };
+        }
+      } catch (e) {
+        console.warn("get_manager error:", e);
       }
     }
   }

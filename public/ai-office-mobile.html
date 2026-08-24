@@ -597,6 +597,23 @@
       text: "⚙️ ตั้งค่าข่าว & บรีฟเช้า\n\nเปิดหน้าตั้งค่าบนมือถือได้จากลิงก์ที่ส่งให้ในแชท — เลือกหัวข้อ เวลาส่ง และแหล่งข่าวได้เอง",
       next: ["ดูแหล่งข่าว"]
     },
+    {
+      /* The real fast path in lib/commands.ts:4226 only fires after
+         ขอ / หา / ขอเช็ก / ค้นหา — so “ขอเบอร์เบส” works… */
+      m: /^(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:เบอร์โทรศัพท์|เบอร์โทร|เบอร์)/,
+      intent: "get_contact_info", real: true,
+      text: "พบรายชื่อ 3 ท่านที่ตรงกับ “เบส” ในระบบครับ 👇\n(พิมพ์ 1, 2 หรือ 3 เพื่อเลือกดูเบอร์โทรได้เลยครับ)\n\n1) Buratsakon Siangyai\n   📞 เบอร์โทร: 08x-xxx-1234\n   📧 buratsakon.si@ktisgroup.com\n\n2) Chananchida Buanamjued\n   📞 เบอร์โทร: ไม่พบเบอร์ในระบบ\n   📧 chananchida.b@ktisgroup.com\n\n3) Tawanrut Kinkhuntod\n   📞 เบอร์โทร: 08x-xxx-5678\n   📧 Tawanrut.k@ktisgroup.com",
+      next: ["ดูตารางเบสพรุ่งนี้", "/ช่วยเหลือ"]
+    },
+    {
+      /* …but “ดูเบอร์เบส” misses it, because ดู is not in that list, and the
+         LLM parser has no contact intent either. Kept on purpose: the
+         prototype should show the gap rather than paper over it. */
+      m: /^ดู\s*(?:เบอร์โทรศัพท์|เบอร์โทร|เบอร์|ตำแหน่ง|แผนก)/,
+      intent: "unknown", real: false,
+      raw: "ขออภัยครับ ยังไม่เข้าใจคำสั่งนี้ ต้องการให้ช่วยเรื่องไหนเป็นพิเศษไหมครับ? 🤔\n\nลองพิมพ์ “/ช่วยเหลือ” เพื่อดูคำสั่งทั้งหมด\n\n— หมายเหตุของแบบหน้าจอ: ประโยคเดียวกันนี้ถ้าขึ้นต้นด้วย “ขอ” หรือ “หา” จะได้เบอร์จริง —",
+      next: ["ขอเบอร์เบส", "/ช่วยเหลือ"]
+    },
     /* ---- things v2 offers but the assistant cannot do yet ---- */
     {
       m: /สลิป|โอนเงิน|ocr/i,
@@ -628,6 +645,7 @@
     const hit = ANSWERS.find((a) => a.m.test(text));
     if (hit) {
       if (hit.real) return hit;
+      if (hit.raw) return { intent: hit.intent, real: false, next: hit.next, text: hit.raw };
       return {
         intent: "not_yet", real: false, next: hit.next,
         text: "เรื่อง" + hit.topic + " ยังทำไม่ได้ครับ 🚧\n\nอยู่ในแผนพัฒนา — รออีกไม่นานครับ\n\nตอนนี้ที่ช่วยได้ใกล้เคียงที่สุด: " + hit.instead + "\n\nอยากได้เรื่องนี้เร็วขึ้น บอกไว้ในแชทได้ครับ ทีมงานเห็นย้อนหลังได้"

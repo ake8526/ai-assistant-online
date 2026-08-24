@@ -908,6 +908,30 @@ export async function resolveUser(nameOrEmail: string): Promise<string | null> {
   return info?.mail || null;
 }
 
+/** Fetch user's direct manager from Azure AD / Microsoft Graph */
+export async function getUserManager(mailOrUpn: string): Promise<UserInfo | null> {
+  if (!mailOrUpn) return null;
+  try {
+    const esc = encodeURIComponent(mailOrUpn.trim());
+    const data = await runAsAppOnly(() =>
+      graphGet(`/users/${esc}/manager`, { $select: "mail,userPrincipalName,displayName,jobTitle,department,mobilePhone,businessPhones" })
+    );
+    if (data && (data.mail || data.userPrincipalName || data.displayName)) {
+      const mail = data.mail || data.userPrincipalName || "";
+      return {
+        mail,
+        displayName: normalizeDisplayName(data.displayName || "", mail),
+        jobTitle: data.jobTitle || undefined,
+        department: data.department || undefined,
+        phone: data.mobilePhone || (data.businessPhones && data.businessPhones[0]) || undefined,
+      };
+    }
+  } catch (e) {
+    console.warn("getUserManager error:", e);
+  }
+  return null;
+}
+
 
 /** Candidate users with a mailbox matching a name/nickname/email (for disambiguation). */
 export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserInfo[]> {
