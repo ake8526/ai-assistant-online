@@ -326,6 +326,19 @@
   .sheetitem b { display: block; font-size: 12.5px; font-weight: 700; }
   .sheetitem small { display: block; font-size: 10px; color: var(--ink-faint); line-height: 1.45; }
 
+
+  .replytext {
+    margin: 9px 0 0; padding: 11px 12px;
+    background: rgba(2, 6, 23, 0.75); border: 1px solid var(--hair-soft);
+    border-radius: 14px;
+    font-family: var(--sans); font-size: 13.5px; line-height: 1.8;
+    color: #dbe3ef; white-space: pre-wrap; word-break: break-word;
+  }
+  .notice2 {
+    display: flex; gap: 7px; align-items: flex-start;
+    margin: 9px 0 0; font-size: 10.5px; line-height: 1.6; color: #fbbf24;
+  }
+
   /* page notes */
   .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }
   .note { border-left: 2px solid #38bdf8; padding: 0.1rem 0 0.1rem 0.85rem; }
@@ -396,7 +409,7 @@
         </div>
       </div>
     </div>
-    <p class="cap">แตะการ์ดฝ่าย · แตะ “ทุกฝ่าย” เปิดชีต · แตะคำสั่งด่วนหรือพิมพ์เองแล้วกด ↑</p>
+    <p class="cap">แตะการ์ดฝ่าย · ปุ่ม ⋮⋮ เปิดรายการทุกฝ่าย · คำตอบใช้รูปแบบเดียวกับที่ผู้ช่วยตอบใน LINE</p>
   </section>
 
   <section>
@@ -437,101 +450,201 @@
 </div>
 
 <script>
+  /* ------------------------------------------------------------------------
+     Departments: the five from /ai-office-v2, with their own presets.
+
+     Answers, though, come from what the assistant ACTUALLY replies in LINE —
+     one block of Thai text, formatted the way lib/commands.ts formats it — not
+     a per-department blurb chopped into icon rows. Two consequences worth
+     seeing before this ships:
+
+     · The same command gives the same answer whichever department is selected,
+       because the real backend has no notion of departments.
+     · Several v2 presets (สลิปโอนเงิน OCR, คัดกรอง Resume, System Health,
+       สิทธิลา) have no intent behind them, so the real answer is the
+       “ยังทำไม่ได้ครับ 🚧” reply from lib/notYet.ts, shown here as-is.
+     ------------------------------------------------------------------------ */
   const DEPTS = [
     {
       id: "executive", short: "บริหาร & เลขา", name: "ฝ่ายบริหาร & เลขา AI", code: "Executive AI", icon: "💼",
       grad: "linear-gradient(90deg,#34d399,#2dd4bf,#22d3ee)",
       tint: "rgba(16,185,129,0.12)", ring: "rgba(16,185,129,0.45)", accent: "#34d399",
       role: "จัดการปฏิทิน Outlook, สรุปนัดประชุม & ติดตามวาระงานบริหาร",
-      presets: ["สรุปนัดประชุมวันนี้", "เตรียมนัดประชุมถัดไป", "ติดตามงานค้างทีม"],
-      out: {
-        title: "📋 สรุปวาระการประชุม & เวลาว่างวันนี้ (Executive Agent)",
-        rows: [
-          ["📅", "10:00 - 11:30 น. | ประชุมติดตามความคืบหน้าโปรเจกต์ AI (ห้องประชุม 2)", ""],
-          ["📅", "14:00 - 15:00 น. | หารือทีมการตลาด M365 Integration", ""],
-          ["💡", "ช่วงเวลาว่างแนะนำสำหรับนัดหมายใหม่: 11:30 - 13:30 น. หรือ 15:30 น. เป็นต้นไป", "hi"],
-          ["⚠️", "งานค้างที่ต้องติดตาม: สรุปรายงาน Q3 จากฝ่ายบัญชี (เกินกำหนด 1 วัน)", "warn"]
-        ],
-        actions: ["จองเวลาใน Outlook", "ส่งสรุปเข้า LINE", "สร้างรายการงานค้าง"]
-      }
+      presets: ["ตารางวันนี้", "นัดพรุ่งนี้", "ดูงานที่ต้องติดตาม"]
     },
     {
       id: "hr", short: "HR & เอกสาร", name: "ฝ่าย HR & เอกสารสัญญา", code: "HR & Legal AI", icon: "👥",
       grad: "linear-gradient(90deg,#c084fc,#f472b6,#fb7185)",
       tint: "rgba(168,85,247,0.12)", ring: "rgba(168,85,247,0.45)", accent: "#c084fc",
       role: "คัดกรอง Resume, ตรวจสัญญา PDF/Word & นโยบายสวัสดิการ",
-      presets: ["ตรวจสอบวันหยุด & สิทธิลา", "คัดกรองไฟล์ Resume", "สกัดข้อสัญญาบริการ"],
-      out: {
-        title: "📄 ผลการวิเคราะห์สัญญาบริการ & ข้อควรระวัง (HR/Legal Agent)",
-        rows: [
-          ["📌", "คู่สัญญาหลัก: บริษัท KTIS จำกัด (ผู้ว่าจ้าง) กับ บริษัท เทคโนโลยี จำกัด (ผู้รับจ้าง)", ""],
-          ["⏳", "ระยะเวลาสัญญา: 1 กันยายน 2026 - 31 สิงหาคม 2027 (รวม 1 ปี)", ""],
-          ["⚠️", "ข้อควรระวัง: มีเงื่อนไขค่าปรับล่าช้า 0.1% ต่อวัน หากส่งมอบงานเกินกำหนด", "warn"],
-          ["✅", "คะแนนความสมบูรณ์ของเอกสาร: 95% (ขาดเอกสารแนบท้าย 2)", "hi"]
-        ],
-        actions: ["ส่งต่อทีมกฎหมาย", "ส่งสรุปเข้า LINE HR", "ดาวน์โหลด PDF สรุป"]
-      }
+      presets: ["หาไฟล์ สัญญาบริการ", "สรุปอัน 1", "ขอสรุปสิทธิวันลาพักร้อน"]
     },
     {
       id: "news", short: "ข่าวสาร & PR", name: "ฝ่ายข่าวสาร & PR Digest", code: "News & PR AI", icon: "📰",
       grad: "linear-gradient(90deg,#38bdf8,#3b82f6,#6366f1)",
       tint: "rgba(56,189,248,0.12)", ring: "rgba(56,189,248,0.45)", accent: "#38bdf8",
       role: "รวบรวมข่าว RSS, สรุปเพจ Facebook & วิเคราะห์เทรนด์ประจำวัน",
-      presets: ["รวบรวมข่าวประจำวัน", "ติดตามเทรนด์ AI & IT", "สรุปข่าวคู่แข่ง"],
-      out: {
-        title: "📰 สรุปข่าวเด่นประจำวัน & บทวิเคราะห์เทรนด์ (News Agent)",
-        rows: [
-          ["🔥", "ข่าวเด่น 1: การนำ Enterprise AI Workflows มาใช้ในองค์กรไทยปี 2026", ""],
-          ["💡", "ข่าวเด่น 2: มาตรการใหม่ด้านความปลอดภัยข้อมูลบนระบบคลาวด์", ""],
-          ["📈", "ภาพรวม: ความต้องการระบบ AI ช่วยงานเอกสารเพิ่มขึ้นต่อเนื่องในไตรมาสนี้", "hi"],
-          ["📲", "พร้อมกดส่งสรุปฉบับย่อไปยัง LINE Official Account ทันที", ""]
-        ],
-        actions: ["บรอดแคสต์ลง LINE", "บันทึกร่างข่าว PR", "แชร์ลิงก์ข่าว"]
-      }
+      presets: ["ข่าววันนี้", "ดูแหล่งข่าว", "/ตั้งค่าข่าว"]
     },
     {
       id: "finance", short: "การเงิน & ข้อมูล", name: "ฝ่ายการเงิน & วิเคราะห์ข้อมูล", code: "Finance & Data", icon: "🧮",
       grad: "linear-gradient(90deg,#fbbf24,#fb923c,#facc15)",
       tint: "rgba(251,191,36,0.12)", ring: "rgba(251,191,36,0.45)", accent: "#fbbf24",
       role: "ตรวจสลิปโอนเงิน OCR, วิเคราะห์ไฟล์ Excel/CSV & สรุปงบ",
-      presets: ["ตรวจสอบสลิปโอนเงิน", "วิเคราะห์ไฟล์ยอดขาย (Excel)", "สรุปงบประมาณคงเหลือ"],
-      out: {
-        title: "📊 ผลการวิเคราะห์ไฟล์ยอดขาย & สลิปโอนเงิน (Finance Agent)",
-        rows: [
-          ["✅", "ผลตรวจสลิป: โอนเงินสำเร็จ 1,500.00 บาท (ผ่าน K-Bank เวลา 08:45 น.)", "hi"],
-          ["📦", "ยอดขายรวมตามไฟล์ Excel: 485,000 บาท (เติบโต 12% จากเดือนที่แล้ว)", ""],
-          ["⭐", "สินค้าขายดีอันดับ 1: แพ็กเกจ AI Assistant Enterprise (42% ของยอดรวม)", ""],
-          ["⚠️", "หมายเหตุ: พบรายการเบิกจ่ายรอนุมัติ 3 รายการ", "warn"]
-        ],
-        actions: ["บันทึกลง Excel", "ส่งใบเสร็จให้ลูกค้า", "แจ้งเตือนฝ่ายบัญชี"]
-      }
+      presets: ["หาไฟล์ งบ Q3", "สรุปอัน 1", "ตรวจสอบสลิปโอนเงิน"]
     },
     {
       id: "it", short: "IT & Security", name: "ฝ่ายระบบ IT & Security", code: "IT & Security", icon: "🛡️",
       grad: "linear-gradient(90deg,#818cf8,#a855f7,#f472b6)",
       tint: "rgba(129,140,248,0.12)", ring: "rgba(129,140,248,0.45)", accent: "#818cf8",
       role: "ตรวจสถานะระบบ, Log การใช้งาน & ควบคุมสิทธิ์การเข้าถึง",
-      presets: ["ตรวจสอบ System Health", "เช็คสิทธิ์ผู้ใช้งาน", "สรุปเหตุการณ์ระบบวันนี้"],
-      out: {
-        title: "🛡️ รายงานสถานะความปลอดภัย & System Health (IT Agent)",
-        rows: [
-          ["🟢", "สถานะเซิร์ฟเวอร์: ทำงานปกติ (Uptime 99.98%)", "hi"],
-          ["🔐", "สิทธิ์เข้าถึงหน้าปฏิบัติการ: 4 บัญชี · เปลี่ยนแปลงล่าสุด 3 วันก่อน", ""],
-          ["📊", "คำสั่งที่ประมวลผลใน 24 ชม.: 128 รายการ · ล้มเหลว 2", ""],
-          ["⚠️", "พบการล็อกอินผิดพลาดซ้ำจาก 1 บัญชี — แนะนำให้ตรวจสอบ", "warn"]
-        ],
-        actions: ["เปิด Pixel Office", "ดู Log ย้อนหลัง", "แจ้งทีม IT"]
-      }
+      presets: ["/ช่วยเหลือ", "ตรวจสอบ System Health", "เช็คสิทธิ์ผู้ใช้งาน"]
     }
   ];
 
   const STEPS = [["1. รับคำสั่ง", "Receive"], ["2. จัดสรร AI", "Router"], ["3. วิเคราะห์", "Reasoning"], ["4. เสร็จสิ้น", "Done"]];
+
+  /* Answers in the assistant's own formats. `real: false` marks the ones where
+     the honest answer today is “not built yet”. */
+  const ANSWERS = [
+    {
+      m: /ตารางวันนี้|นัดวันนี้|สรุปนัดประชุมวันนี้|ประชุมวันนี้/,
+      intent: "list_meetings", real: true,
+      text: "🗓️ ประชุมวันนี้ (2 รายการ):\n\n— จันทร์ 24 ส.ค. —\n  09:30-10:30 · ทบทวนสเปกระบบผู้ช่วย 📍 ห้องประชุม 2\n  13:00-14:00 · คุยกับฝ่ายจัดซื้อ 💻 ประชุมออนไลน์ (มีลิงก์ Teams)",
+      next: ["ว่างกี่โมงพรุ่งนี้", "ดูงานที่ต้องติดตาม"]
+    },
+    {
+      m: /นัดพรุ่งนี้|ตารางพรุ่งนี้/,
+      intent: "list_meetings", real: true,
+      text: "🗓️ ประชุมพรุ่งนี้ (1 รายการ):\n\n— อังคาร 25 ส.ค. —\n  11:00-12:00 · รีวิวแผนไตรมาส 📍 ห้องประชุม 1",
+      next: ["ว่างกี่โมงพรุ่งนี้", "นัดประชุม"]
+    },
+    {
+      m: /ว่างกี่โมง|เวลาว่าง|ว่างไหม/,
+      intent: "my_availability", real: true,
+      text: "🕐 เวลาว่างของคุณ (อังคาร 25 ส.ค.)\n\n  09:00-11:00\n  12:00-17:00\n\nจะให้จองช่วงไหน พิมพ์ เช่น “จองตารางพรุ่งนี้ 13:00 1 ชม. ทำรายงาน”",
+      next: ["นัดประชุม", "ตารางวันนี้"]
+    },
+    {
+      m: /ดูตาราง\s*เบส|เบสพรุ่งนี้|ตารางเบส/,
+      intent: "choose_person", real: true,
+      text: "เจอหลายคนที่ตรงกับ “เบส” เลือกคนที่ต้องการดูตารางครับ 👇\n💡 พิมพ์ได้ เช่น 1, 1กับ2 หรือ ทั้งหมด (หาเวลาว่างตรงกัน)\n\n1) Buratsakon Siangyai (เบส บุรัสกร เสียงใหญ่) — buratsakon.si@ktisgroup.com\n2) Chananchida Buanamjued (เบสท์ ชนัญชิดา บัวน้ำจืด) — chananchida.b@ktisgroup.com\n3) Tawanrut Kinkhuntod (เบสท์ ธวัลรัตน์ กินขุนทด) — Tawanrut.k@ktisgroup.com",
+      next: ["1", "ทั้งหมด"]
+    },
+    {
+      m: /^1$|^เลือก 1$/,
+      intent: "availability", real: true,
+      text: "🗓️ เวลาว่างของ Buratsakon Siangyai (อังคาร 25 ส.ค.) 👇\nเลือกหมายเลขช่วงเพื่อจอง หรือกด “กำหนดเอง” เพื่อพิมพ์เวลาเองครับ\n\n1) อ. 25 ส.ค. 09:00-09:30\n2) อ. 25 ส.ค. 10:30-11:00\n3) อ. 25 ส.ค. 15:00-16:00",
+      next: ["1", "ขอดูเพิ่มเติม"]
+    },
+    {
+      m: /^ทั้งหมด$|เลือกทั้งหมด/,
+      intent: "find_meeting_time", real: true,
+      text: "เจอเวลาที่ทุกคนว่างตรงกัน (อังคาร 25 ส.ค.) ครับ\n👤 เบส บุรัสกร, เบสท์ ชนัญชิดา, เบสท์ ธวัลรัตน์\nเลือกเวลาเริ่มประชุม (30 นาที) จากรายการด้านล่างได้เลย 👇\n\n1) อ. 25 ส.ค. 09:00-09:30\n2) อ. 25 ส.ค. 15:00-15:30",
+      next: ["1"]
+    },
+    {
+      m: /นัดประชุม$|^นัดประชุม/,
+      intent: "find_meeting_time", real: true,
+      text: "จะนัดกับใครดีครับ? พิมพ์ชื่อได้เลย เช่น “นัดเบสพรุ่งนี้ 30 นาที เรื่อง sync”\n\nคนที่คุณนัดบ่อย:\n1) เบส ชนัญชิดา\n2) นนท์ ธนกฤต\n3) ส้ม พิมพ์ชนก",
+      next: ["1", "หาเวลาว่างตรงกัน"]
+    },
+    {
+      m: /งานที่ต้องติดตาม|งานค้าง|ติดตามงาน/,
+      intent: "list_tasks", real: true,
+      text: "✅ งานที่ต้องติดตาม (3 งาน)\n\n1) ทดสอบการ์ดเลือกคนกับชื่อไทยยาว 🤖\n   ครบกำหนด ศ. 28 ส.ค. 17:00\n2) ส่งรายงาน Q3 ให้ฝ่ายบัญชี\n   ⚠️ เลยกำหนด 1 วัน\n3) ทำสลิปการประชุม\n   ครบกำหนด อ. 25 ส.ค. 17:00\n\nปิดงานพิมพ์ “ปิดงาน 1” หรือ “ปิดงาน 1 2 3”",
+      next: ["ปิดงาน 1", "เพิ่มงานทดสอบ 3 งาน"]
+    },
+    {
+      m: /ปิดงาน\s*1/,
+      intent: "complete_task", real: true,
+      text: "ปิดงานแล้วครับ ✅\n\n1) ทดสอบการ์ดเลือกคนกับชื่อไทยยาว\n\nเหลืออีก 2 งาน",
+      next: ["ดูงานที่ต้องติดตาม"]
+    },
+    {
+      m: /หาไฟล์|ค้นหาไฟล์/,
+      intent: "file_results", real: true,
+      text: "เจอ 5 ไฟล์ที่ตรงกับคำค้นครับ 👇\n\n1) งบประมาณ Q3 2569.xlsx\n   📂 Documents/Finance · แก้ล่าสุด 22 ส.ค.\n2) สรุปงบ Q3 ฉบับนำเสนอ.pptx\n   📂 Documents/Finance · 19 ส.ค.\n3) เปรียบเทียบ Q2-Q3.xlsx\n   📂 Documents/Finance · 15 ส.ค.\n\nจะผูกกับนัดวันนี้ พิมพ์ เช่น “ผูกไฟล์นัด 1”\nสรุปเนื้อหา พิมพ์ “สรุปอัน 1”",
+      next: ["สรุปอัน 1", "ผูกไฟล์นัด 1"]
+    },
+    {
+      m: /สรุปอัน\s*1|สรุปไฟล์/,
+      intent: "summarize_file", real: true,
+      text: "📄 งบประมาณ Q3 2569.xlsx\n\n• ตั้งงบรวมไว้ 12 ล้านบาท ใช้ไปแล้ว 68%\n• หมวดที่ใช้เกินแผน: ค่าซ่อมบำรุง\n• คงเหลือเบิกได้ 3.8 ล้านบาท\n\n(ตัวเลขในตัวอย่างนี้สมมติขึ้นเพื่อดูรูปแบบ)",
+      next: ["ผูกไฟล์นัด 1", "หาไฟล์ งบ Q3"]
+    },
+    {
+      m: /ข่าววันนี้|สรุปข่าว|รวบรวมข่าว/,
+      intent: "get_news", real: true,
+      text: "📰 ข่าวเช้าวันนี้ 3 เรื่อง\n\n1) อุตสาหกรรมน้ำตาล — ราคาส่งออกไตรมาสนี้\n2) ไอที — แนวทางความปลอดภัยข้อมูลบนคลาวด์ฉบับใหม่\n3) ในประเทศ — สรุปมาตรการที่มีผลสัปดาห์นี้\n\nอ่านฉบับเต็มพร้อมลิงก์ต้นทาง: (ลิงก์อ่านบนมือถือ)",
+      next: ["ดูแหล่งข่าว", "/ตั้งค่าข่าว"]
+    },
+    {
+      m: /ดูแหล่งข่าว|รายการฟีด/,
+      intent: "list_feeds", real: true,
+      text: "📡 แหล่งข่าวที่ติดตาม (4 แหล่ง)\n\n1) Blognone — RSS\n2) The Standard Wealth — RSS\n3) KTIS Group — Facebook\n4) ThaiPBS — RSS\n\nเพิ่มพิมพ์ “เพิ่มแหล่งข่าว https://…” · ลบพิมพ์ “ลบฟีด 1”",
+      next: ["ข่าววันนี้", "/ตั้งค่าข่าว"]
+    },
+    {
+      m: /\/ช่วยเหลือ|ช่วยเหลือ|ทำอะไรได้บ้าง/,
+      intent: "help_menu", real: true,
+      text: "📖 สั่งงานอะไรได้บ้าง\n\nพิมพ์ภาษาไทยธรรมดาได้เลยครับ เช่น\n • ตารางวันนี้\n • ดูตารางเบสพรุ่งนี้\n • นัดประชุม\n • ข่าววันนี้\n\nแตะหมวดที่ต้องการในการ์ดด้านล่าง\nแล้วแตะคำสั่งได้เลย ไม่ต้องพิมพ์เอง",
+      next: ["ตารางวันนี้", "ข่าววันนี้"]
+    },
+    {
+      m: /\/ตั้งค่าข่าว/,
+      intent: "news_settings", real: true,
+      text: "⚙️ ตั้งค่าข่าว & บรีฟเช้า\n\nเปิดหน้าตั้งค่าบนมือถือได้จากลิงก์ที่ส่งให้ในแชท — เลือกหัวข้อ เวลาส่ง และแหล่งข่าวได้เอง",
+      next: ["ดูแหล่งข่าว"]
+    },
+    /* ---- things v2 offers but the assistant cannot do yet ---- */
+    {
+      m: /สลิป|โอนเงิน|ocr/i,
+      intent: "not_yet", real: false, topic: "อ่านสลิปโอนเงิน",
+      instead: "ค้นไฟล์ใน OneDrive แล้วให้สรุปเนื้อหาได้ เช่น “หาไฟล์ สลิป” แล้ว “สรุปอัน 1”",
+      next: ["หาไฟล์ สลิป", "/ช่วยเหลือ"]
+    },
+    {
+      m: /resume|เรซูเม่|คัดกรอง|สมัครงาน/i,
+      intent: "not_yet", real: false, topic: "คัดกรองใบสมัคร",
+      instead: "ค้นไฟล์ใบสมัครใน OneDrive แล้วสั่งสรุปทีละไฟล์ได้",
+      next: ["หาไฟล์ resume", "/ช่วยเหลือ"]
+    },
+    {
+      m: /system health|สถานะระบบ|uptime|เช็คสิทธิ์|log/i,
+      intent: "not_yet", real: false, topic: "สถานะระบบ / สิทธิ์ผู้ใช้",
+      instead: "ดูห้องทำงาน AI ตามเวลาจริงได้ที่หน้า /monitor (ต้องมีสิทธิ์ ดูห้องทำงาน)",
+      next: ["/ช่วยเหลือ"]
+    },
+    {
+      m: /วันลา|ลาพักร้อน|ลากิจ|ลาป่วย|สวัสดิการ|สิทธิลา/,
+      intent: "not_yet", real: false, topic: "การลา / ใบลา",
+      instead: "กันเวลาในปฏิทินตัวเองได้ เช่น “จองตารางให้เราวันศุกร์นี้ทั้งวัน ลาพักร้อน”",
+      next: ["ตารางวันนี้", "/ช่วยเหลือ"]
+    }
+  ];
+
+  function answerFor(text) {
+    const hit = ANSWERS.find((a) => a.m.test(text));
+    if (hit) {
+      if (hit.real) return hit;
+      return {
+        intent: "not_yet", real: false, next: hit.next,
+        text: "เรื่อง" + hit.topic + " ยังทำไม่ได้ครับ 🚧\n\nอยู่ในแผนพัฒนา — รออีกไม่นานครับ\n\nตอนนี้ที่ช่วยได้ใกล้เคียงที่สุด: " + hit.instead + "\n\nอยากได้เรื่องนี้เร็วขึ้น บอกไว้ในแชทได้ครับ ทีมงานเห็นย้อนหลังได้"
+      };
+    }
+    return {
+      intent: "unknown", real: false, next: ["/ช่วยเหลือ", "ตารางวันนี้"],
+      text: "ขออภัยครับ ยังไม่เข้าใจคำสั่งนี้ ต้องการให้ช่วยเรื่องไหนเป็นพิเศษไหมครับ? 🤔\n\nลองพิมพ์ “/ช่วยเหลือ” เพื่อดูคำสั่งทั้งหมด"
+    };
+  }
 
   const $ = (id) => document.getElementById(id);
   const deptsEl = $("depts"), bodyEl = $("body"), fieldEl = $("field"), sendEl = $("send");
   const dimEl = $("dim"), sheetListEl = $("sheetList");
 
   let active = 0, busy = false, stage = 0, result = null, echo = null;
+  let dragging = false, dragX = 0, dragLeft = 0, dragMoved = false;
 
   const el = (tag, cls, text) => {
     const n = document.createElement(tag);
@@ -542,12 +655,9 @@
 
   function renderDepts() {
     deptsEl.replaceChildren();
-    // Every department lives in the strip — the fade and the ⋮⋮ button say so,
-    // and the wheel/drag handlers below make it reachable without a touchscreen.
     DEPTS.forEach((d, i) => {
       const b = el("button", "dept");
       b.type = "button";
-      b.dataset.i = String(i);
       if (i === active) {
         b.setAttribute("aria-current", "true");
         b.style.borderColor = d.ring;
@@ -560,35 +670,25 @@
       tile.style.borderColor = d.ring;
       const lines = el("div", "lines");
       lines.append(el("b", null, d.short), el("small", null, d.code));
-      const dot = el("span", "dot");
-      b.append(bar, tile, lines, dot);
+      b.append(bar, tile, lines, el("span", "dot"));
       b.onclick = () => { if (dragMoved) return; pick(i); };
       deptsEl.append(b);
     });
-    // Only chase the active card when it is off-screen. render() runs on every
-    // step of a job; without this the strip would yank back mid-scroll.
     const card = deptsEl.children[active];
     if (card) {
       const c = card.getBoundingClientRect(), box = deptsEl.getBoundingClientRect();
       if (c.left < box.left + 4 || c.right > box.right - 4) {
-        card.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+        card.scrollIntoView({ inline: "center", block: "nearest" });
       }
     }
   }
 
-  function pick(i) {
-    active = i;
-    result = null;
-    echo = null;
-    stage = 0;
-    render();
-  }
+  function pick(i) { active = i; result = null; echo = null; stage = 0; render(); }
 
   function renderBody() {
     const d = DEPTS[active];
     bodyEl.replaceChildren();
 
-    // department panel + presets
     const panel = el("div", "panel");
     const head = el("div", "panelhead");
     const tile = el("div", "tile", d.icon);
@@ -597,16 +697,12 @@
     const info = el("div");
     info.style.minWidth = "0";
     info.style.flex = "1";
-    const h2 = el("h2", null, d.name);
-    info.append(h2, el("p", null, d.role));
+    info.append(el("h2", null, d.name), el("p", null, d.role));
     const online = el("span", "online", "● Online Active");
     online.style.color = d.accent;
     online.style.borderColor = d.ring;
     head.append(tile, info, online);
-    panel.append(head);
-
-    const lab = el("div", "label", "⚡ คำสั่งด่วนประจำฝ่าย");
-    panel.append(lab);
+    panel.append(head, el("div", "label", "⚡ คำสั่งด่วนประจำฝ่าย"));
     d.presets.forEach((p) => {
       const b = el("button", "preset");
       b.type = "button";
@@ -616,14 +712,13 @@
     });
     bodyEl.append(panel);
 
-    // execution steps
     const sp = el("div", "panel");
     sp.append(el("div", "label", "🤖 ขั้นตอนประมวลผล (Execution Steps)"));
     const grid = el("div", "steps");
     STEPS.forEach(([th, en], i) => {
-      const s = el("div", "step" + (stage > i ? " on" : "") + (stage === i + 1 && busy ? " now" : ""));
-      s.append(el("b", null, th), el("small", null, en));
-      grid.append(s);
+      const st = el("div", "step" + (stage > i ? " on" : "") + (stage === i + 1 && busy ? " now" : ""));
+      st.append(el("b", null, th), el("small", null, en));
+      grid.append(st);
     });
     sp.append(grid);
     bodyEl.append(sp);
@@ -636,27 +731,35 @@
 
     if (busy) {
       const th = el("div", "thinking");
-      th.append(el("span", "spinner"), el("span", null, "กำลังประมวลผลด้วย " + d.code + "…"));
+      th.append(el("span", "spinner"), el("span", null, "กำลังประมวลผล…"));
       bodyEl.append(th);
     }
 
     if (result) {
       const card = el("div", "panel result");
       const top = el("div", "topbar");
-      top.style.background = d.grad;
+      top.style.background = result.real ? d.grad : "linear-gradient(90deg,#f59e0b,#fbbf24)";
       card.append(top);
-      const tag = el("span", "tag", "ตัวอย่างผลลัพธ์");
-      tag.style.color = d.accent;
-      card.append(tag, el("h4", null, result.title));
-      result.rows.forEach(([icon, text, kind]) => {
-        const row = el("div", "detail" + (kind ? " " + kind : ""));
-        row.append(el("span", null, icon), el("span", null, text));
-        card.append(row);
-      });
+
+      const tag = el("span", "tag", result.intent);
+      tag.style.color = result.real ? d.accent : "#fbbf24";
+      const stamp = el("span", "tag", "ตัวอย่าง");
+      stamp.style.marginLeft = "6px";
+      card.append(tag, stamp);
+
+      // The assistant answers with one block of text — same string LINE shows.
+      card.append(el("pre", "replytext", result.text));
+
+      if (!result.real) {
+        const n = el("div", "notice2");
+        n.append(el("span", null, "⚠"), el("span", null, "คำสั่งนี้ยังไม่มีความสามารถรองรับในระบบจริง — นี่คือคำตอบที่ผู้ช่วยจะตอบใน LINE"));
+        card.append(n);
+      }
+
       const qa = el("div", "qa");
-      qa.append(el("p", null, "การดำเนินการต่อ (Quick Actions):"));
+      qa.append(el("p", null, "ถามต่อได้ (Quick Replies):"));
       const box = el("div");
-      result.actions.forEach((a) => {
+      (result.next || []).forEach((a) => {
         const b = el("button", null, a);
         b.type = "button";
         b.onclick = () => run(a);
@@ -667,7 +770,7 @@
       bodyEl.append(card);
     }
 
-    fieldEl.placeholder = "สั่งงาน" + d.name.replace("ฝ่าย", "ฝ่าย") + "…";
+    fieldEl.placeholder = "สั่งงาน " + d.short + "…";
   }
 
   function render() { renderDepts(); renderBody(); }
@@ -686,17 +789,11 @@
     setTimeout(() => {
       stage = 4;
       busy = false;
-      result = DEPTS[active].out;
+      result = answerFor(text.trim());
       render();
-      // Put the answer at the top of the view. Measured and set synchronously:
-      // getBoundingClientRect forces the layout we need, and unlike
-      // requestAnimationFrame it still runs when the tab is throttled.
       const card = bodyEl.querySelector(".result");
       if (card) {
         const delta = card.getBoundingClientRect().top - bodyEl.getBoundingClientRect().top;
-        // Plain assignment, not scrollTo({behavior:"smooth"}): smooth scrolling
-        // is driven by animation frames, which a background tab does not run —
-        // the jump silently never happened there.
         bodyEl.scrollTop = bodyEl.scrollTop + delta - 8;
       }
     }, 1600);
@@ -722,7 +819,6 @@
     dimEl.hidden = false;
   }
 
-  // A mouse wheel only scrolls vertically; forward it to the strip.
   deptsEl.addEventListener("wheel", (e) => {
     const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (!d) return;
@@ -730,10 +826,8 @@
     deptsEl.scrollBy({ left: d, behavior: "auto" });
   }, { passive: false });
 
-  // Click-drag to pan, so it works with a plain mouse too.
-  let dragging = false, dragX = 0, dragLeft = 0, dragMoved = false;
   deptsEl.addEventListener("pointerdown", (e) => {
-    if (e.pointerType === "touch") return;   // touch scrolls natively
+    if (e.pointerType === "touch") return;
     dragging = true; dragMoved = false;
     dragX = e.clientX; dragLeft = deptsEl.scrollLeft;
     deptsEl.classList.add("dragging");
@@ -752,7 +846,6 @@
   });
 
   $("allbtn").onclick = openSheet;
-
   dimEl.onclick = (e) => { if (e.target === dimEl) dimEl.hidden = true; };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") dimEl.hidden = true; });
 
@@ -761,7 +854,6 @@
     fieldEl.style.height = "auto";
     fieldEl.style.height = Math.min(fieldEl.scrollHeight, 110) + "px";
   });
-
   fieldEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
   });

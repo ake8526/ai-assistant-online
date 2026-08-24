@@ -4296,6 +4296,61 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     }
   }
 
+  // Immediate target identity/person lookup check (บุรัสกรเป็นใคร / ใครคือพี่แบงค์ / รู้จักบุรัสกรไหม)
+  if (/(.+?)\s*(?:เป็นใคร|คือใคร|คือใครครับ|คือใครค่ะ)$|^(?:ใครคือ|รู้จัก|ขอข้อมูล|ค้นหา)\s*(.+)/i.test(text)) {
+    let rawTarget = text
+      .replace(/(?:เป็นใคร|คือใคร|คือใครครับ|คือใครค่ะ)$/i, "")
+      .replace(/^(?:ใครคือ|รู้จัก|ขอข้อมูล|ค้นหา)\s*/i, "")
+      .replace(/(?:ไหม|ครับ|ค่ะ|\?)$/i, "")
+      .trim();
+
+    if (rawTarget && !/^(?:ผม|ฉัน|เรา|ผู้ใช้)$/i.test(rawTarget)) {
+      try {
+        const candidates = await searchUsers(rawTarget);
+        if (candidates.length === 1) {
+          const u = candidates[0];
+          const job = `💼 **ตำแหน่ง:** ${u.jobTitle || "ไม่ระบุในระบบ"}`;
+          const dept = `🏢 **ฝ่าย/แผนก:** ${u.department || "ไม่ระบุในระบบ"}`;
+          const email = `📧 **อีเมล:** \`${u.mail}\``;
+          const phone = u.phone ? `\n📞 **เบอร์โทร:** \`${u.phone}\`` : "";
+
+          return {
+            intent: "get_contact_info",
+            reply: `👤 **ข้อมูลของ ${u.displayName}**\n\n${job}\n${dept}\n${email}${phone}\n\nต้องการให้ผมช่วยส่งนัดประชุมหรือเช็กเวลาว่างกับ ${u.displayName} ไหมครับ? 🤖✨`,
+            suggestions: [
+              { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+              { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+            ],
+          };
+        } else if (candidates.length > 1) {
+          const topCandidates = candidates.slice(0, 5);
+          await setSetting(userUpn.toLowerCase(), "_pending_candidate_picks", JSON.stringify({ candidates: topCandidates, queryKind: "contact", time: Date.now() }));
+
+          const choicesList = topCandidates.map((c, i) => {
+            const jobStr = c.jobTitle ? `💼 ${c.jobTitle}` : "";
+            const deptStr = c.department ? `🏢 ${c.department}` : "";
+            const phoneStr = c.phone ? `📞 ${c.phone}` : "";
+            const infoParts = [jobStr, deptStr, phoneStr].filter(Boolean).join(" · ");
+            const detailLine = infoParts ? `   ${infoParts}\n` : "";
+            return `${i + 1}) **${c.displayName}**\n${detailLine}   📧 \`${c.mail}\``;
+          }).join("\n\n");
+
+          return {
+            intent: "get_contact_info",
+            reply: `พบรายชื่อ ${candidates.length} ท่านที่ตรงกับ “${rawTarget}” ในระบบครับ 👇\n(พิมพ์ **1**, **2** หรือ **3** เพื่อเลือกดูข้อมูลได้เลยครับ)\n\n${choicesList}`,
+          };
+        } else {
+          return {
+            intent: "get_contact_info",
+            reply: `ไม่พบข้อมูลรายชื่อของ “${rawTarget}” ในระบบองค์กร Microsoft 365 ครับ 🔍`,
+          };
+        }
+      } catch (e) {
+        console.warn("who_is query error:", e);
+      }
+    }
+  }
+
   // Deterministic quick intent shortcuts at the very top of handle:
   const quickTop = await parseIntent(text, context);
   if (quickTop.source === "quick") {
