@@ -4570,7 +4570,9 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       taskSection = `📋 **งานที่ต้องติดตาม (${pendingTasks.length} รายการ):**\n` +
         pendingTasks.slice(0, 5).map((t, idx) => {
           const dueWall = t.due ? utcIsoToWall(t.due) : null;
-          const dueStr = dueWall ? ` (กำหนด: ${fmtDate(dueWall)} ${fmtTime(dueWall)} น.)` : "";
+          let timePart = dueWall ? fmtTime(dueWall) : "";
+          if (timePart === "00:00") timePart = "06:00";
+          const dueStr = dueWall ? ` (กำหนด: ${fmtDate(dueWall)} ${timePart} น.)` : "";
           return `${idx + 1}) ${t.title}${dueStr}`;
         }).join("\n");
       if (pendingTasks.length > 5) {
@@ -6705,7 +6707,10 @@ async function handleParsed(
     // of the assistant writes dates.
     const dueLabel = (iso: string): string => {
       const wall = utcIsoToWall(iso);
-      return wall ? `${fmtDate(wall)} ${fmtTime(wall)}` : iso;
+      if (!wall) return iso;
+      let t = fmtTime(wall);
+      if (t === "00:00") t = "06:00";
+      return `${fmtDate(wall)} ${t}`;
     };
     const tasks = await listTasks(userUpn);
     const pending = tasks.filter((t) => t.status === "pending" || t.status === "overdue");
