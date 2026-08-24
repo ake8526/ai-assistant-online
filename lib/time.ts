@@ -595,7 +595,7 @@ function thaiDueToIso(s: string): string | null {
     .trim();
   const day = relativeDay(dayText) || resolveDay(dayText) || resolveThaiDateInText(dayText) || resolveWeekday(dayText);
   if (!day) return null;
-  const hhmm = clock || "17:00";
+  const hhmm = clock || "07:00";
   const [h, mi] = hhmm.split(":").map(Number);
   const wall = startOfDay(day.start);
   wall.setUTCHours(h, mi, 0, 0);
@@ -624,7 +624,7 @@ export function normalizeDue(dueRaw: unknown): string | null {
     mo = Number(m[5]);
     y = m[6] ? Number(m[6]) : nowWall().getUTCFullYear();
   }
-  const h = m[7] ? Number(m[7]) : 0;
+  const h = m[7] ? Number(m[7]) : 7;
   const mi = m[8] ? Number(m[8]) : 0;
   const wall = new Date(Date.UTC(y, mo - 1, day, h, mi));
   if (isNaN(wall.getTime())) return null;

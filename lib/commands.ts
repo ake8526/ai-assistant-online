@@ -1804,6 +1804,11 @@ async function parseIntent(
 
 
 
+  // "ดูงานที่ต้องติดตาม" / "/รายการ" / "รายการ" / "งานค้าง" / "ดูงาน" / "/งาน"
+  if (/^(?:\/รายการ|รายการ|\/งาน|ดูงาน|ดูงานที่ต้องติดตาม|งานค้าง|ดูงานค้าง|รายการเตือน|ดูรายการเตือน|งานที่ต้องติดตาม)$/i.test(textClean)) {
+    return { intent: "list_tasks", params: {}, source: "quick" };
+  }
+
   // "ปิดงานทั้งหมด" / "ปิดทั้งหมด" / "เคลียร์งานหมด" — everything pending at
   // once. The handler still asks for confirmation before closing anything.
   if (/^(?:ปิด|เสร็จ|ทำเสร็จ|เคลียร์)(?:งาน)?\s*(?:ทั้งหมด|ทุกงาน|ทุกอัน|หมด)(?:เลย)?\s*(?:แล้ว|เลย|ครับ|ค่ะ|นะ)?$/i.test(textClean)) {
