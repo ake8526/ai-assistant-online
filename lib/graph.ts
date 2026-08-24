@@ -932,6 +932,32 @@ export async function getUserManager(mailOrUpn: string): Promise<UserInfo | null
   return null;
 }
 
+/** Fetch user's direct reports (subordinates/team) from Azure AD / Microsoft Graph */
+export async function getDirectReports(mailOrUpn: string): Promise<UserInfo[]> {
+  if (!mailOrUpn) return [];
+  try {
+    const esc = encodeURIComponent(mailOrUpn.trim());
+    const data = await runAsAppOnly(() =>
+      graphGet(`/users/${esc}/directReports`, { $select: "mail,userPrincipalName,displayName,jobTitle,department,mobilePhone,businessPhones" })
+    );
+    if (data && Array.isArray(data.value)) {
+      return data.value.map((d: any) => {
+        const mail = d.mail || d.userPrincipalName || "";
+        return {
+          mail,
+          displayName: normalizeDisplayName(d.displayName || "", mail),
+          jobTitle: d.jobTitle || undefined,
+          department: d.department || undefined,
+          phone: d.mobilePhone || (d.businessPhones && d.businessPhones[0]) || undefined,
+        };
+      });
+    }
+  } catch (e) {
+    console.warn("getDirectReports error:", e);
+  }
+  return [];
+}
+
 
 /** Candidate users with a mailbox matching a name/nickname/email (for disambiguation). */
 export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserInfo[]> {

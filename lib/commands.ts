@@ -40,6 +40,7 @@ import {
   type DriveFileHit,
   searchUsers,
   getUserManager,
+  getDirectReports,
   stripHonorificPublic,
 } from "@/lib/graph";
 import { getUserGraphToken } from "@/lib/graphAuth";
@@ -4123,6 +4124,34 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
           let header = `👤 **ข้อมูลผู้ติดต่อ (${u.displayName})**`;
           let body = `${job}\n${dept}\n${email}${phoneLine}`;
 
+          if (queryKind === "reports") {
+            const reports = await getDirectReports(u.mail);
+            if (reports.length > 0) {
+              const list = reports.map((r, i) => {
+                const jobStr = r.jobTitle ? `💼 ${r.jobTitle}` : "";
+                const deptStr = r.department ? `🏢 ${r.department}` : "";
+                const phoneStr = r.phone ? `📞 ${r.phone}` : "";
+                const extraParts = [jobStr, deptStr, phoneStr].filter(Boolean);
+                const extra = extraParts.length > 0 ? ` (${extraParts.join(" · ")})` : "";
+                return `${i + 1}) **${r.displayName}**${extra}\n   📧 \`${r.mail}\``;
+              }).join("\n\n");
+
+              return {
+                intent: "get_reports",
+                reply: `👥 **ทีมงาน/ลูกน้องของ ${u.displayName}** (มีทั้งหมด ${reports.length} ท่าน) 👇\n\n${list}`,
+                suggestions: [
+                  { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+                  { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+                ],
+              };
+            } else {
+              return {
+                intent: "get_reports",
+                reply: `ไม่พบข้อมูลทีมงาน/ลูกน้องใต้บังคับบัญชาของ **${u.displayName}** ในระบบ Microsoft 365 องค์กรครับ 🔍`,
+              };
+            }
+          }
+
           if (queryKind === "manager") {
             const manager = await getUserManager(u.mail);
             if (manager) {
@@ -4317,6 +4346,72 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         }
       } catch (e) {
         console.warn("get_contact_info error:", e);
+      }
+    }
+  }
+
+  // Immediate Direct Reports / Subordinates query check (เอ็มมีลูกน้องเป็นใครบ้าง / ลูกน้องของ... / ทีมของ...)
+  if (/(?:ลูกน้อง|ทีม|ทีมงาน|ผู้ใต้บังคับบัญชา|direct\s*reports?)\s*(?:ของ)?\s*(.+?)\s*(?:มีใครบ้าง|เป็นใครบ้าง|คือใครบ้าง)?$|(.+?)\s*(?:มีลูกน้อง|มีทีมงาน|มีผู้ใต้บังคับบัญชา)\s*(?:เป็นใครบ้าง|คือใครบ้าง|มีใครบ้าง)?$/i.test(text)) {
+    let rawTarget = text
+      .replace(/(?:มีลูกน้อง|มีทีมงาน|มีผู้ใต้บังคับบัญชา)\s*(?:เป็นใครบ้าง|คือใครบ้าง|มีใครบ้าง|\?)*$/i, "")
+      .replace(/(?:ลูกน้อง|ทีม|ทีมงาน|ผู้ใต้บังคับบัญชา|direct\s*reports?)\s*(?:ของ)?\s*/i, "")
+      .replace(/(?:มีใครบ้าง|เป็นใครบ้าง|คือใครบ้าง|\?)$/i, "")
+      .trim();
+
+    if (rawTarget) {
+      try {
+        const candidates = await searchUsers(rawTarget);
+        if (candidates.length === 1) {
+          const u = candidates[0];
+          const reports = await getDirectReports(u.mail);
+          if (reports.length > 0) {
+            const list = reports.map((r, i) => {
+              const jobStr = r.jobTitle ? `💼 ${r.jobTitle}` : "";
+              const deptStr = r.department ? `🏢 ${r.department}` : "";
+              const phoneStr = r.phone ? `📞 ${r.phone}` : "";
+              const extraParts = [jobStr, deptStr, phoneStr].filter(Boolean);
+              const extra = extraParts.length > 0 ? ` (${extraParts.join(" · ")})` : "";
+              return `${i + 1}) **${r.displayName}**${extra}\n   📧 \`${r.mail}\``;
+            }).join("\n\n");
+
+            return {
+              intent: "get_reports",
+              reply: `👥 **ทีมงาน/ลูกน้องใต้บังคับบัญชาของ ${u.displayName}** (มีทั้งหมด ${reports.length} ท่าน) 👇\n\n${list}`,
+              suggestions: [
+                { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+                { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+              ],
+            };
+          } else {
+            return {
+              intent: "get_reports",
+              reply: `ไม่พบข้อมูลทีมงาน/ลูกน้องใต้บังคับบัญชาของ **${u.displayName}** ในระบบ Microsoft 365 องค์กรครับ 🔍`,
+            };
+          }
+        } else if (candidates.length > 1) {
+          const topCandidates = candidates.slice(0, 5);
+          await setSetting(userUpn.toLowerCase(), "_pending_candidate_picks", JSON.stringify({ candidates: topCandidates, queryKind: "reports", time: Date.now() }));
+
+          const choicesList = topCandidates.map((c, i) => {
+            const jobStr = c.jobTitle ? `💼 ${c.jobTitle}` : "";
+            const deptStr = c.department ? `🏢 ${c.department}` : "";
+            const infoParts = [jobStr, deptStr].filter(Boolean).join(" · ");
+            const detailLine = infoParts ? `   ${infoParts}\n` : "";
+            return `${i + 1}) **${c.displayName}**\n${detailLine}   📧 \`${c.mail}\``;
+          }).join("\n\n");
+
+          return {
+            intent: "get_reports",
+            reply: `พบรายชื่อ ${candidates.length} ท่านที่ตรงกับ “${rawTarget}” ในระบบครับ 👇\n(พิมพ์ **1**, **2** หรือ **3** เพื่อเลือกดูลูกน้อง/ทีมงานได้เลยครับ)\n\n${choicesList}`,
+          };
+        } else {
+          return {
+            intent: "get_reports",
+            reply: `ไม่พบรายชื่อของ “${rawTarget}” ในสมุดโทรศัพท์/ระบบองค์กร Microsoft 365 ครับ 🔍`,
+          };
+        }
+      } catch (e) {
+        console.warn("get_reports error:", e);
       }
     }
   }
