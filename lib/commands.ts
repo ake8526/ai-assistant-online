@@ -4209,18 +4209,28 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
 
   // Immediate contact & job title query check (ขอตำแหน่งพี่แบงค์ / ขอเบอร์เบส / ขอข้อมูลติดต่อ...)
   if (/(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:ตำแหน่ง|ตำแหน่งงาน|แผนก|ฝ่าย|เบอร์|เบอร์โทร|เบอร์โทรศัพท์|ข้อมูล|คอนแทค)\s*(?:ของ)?\s*(.+)/i.test(text)) {
+    const isPositionQuery = /(?:ตำแหน่ง|ตำแหน่งงาน|แผนก|ฝ่าย)/i.test(text);
+    const isPhoneQuery = /(?:เบอร์|เบอร์โทร|เบอร์โทรศัพท์)/i.test(text);
     const rawTarget = text.replace(/^(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:ตำแหน่ง|ตำแหน่งงาน|แผนก|ฝ่าย|เบอร์|เบอร์โทร|เบอร์โทรศัพท์|ข้อมูล|คอนแทค)\s*(?:ของ)?\s*/i, "").trim();
+
     if (rawTarget) {
       try {
         const candidates = await searchUsers(rawTarget);
         if (candidates.length === 1) {
           const u = candidates[0];
-          const job = u.jobTitle ? `\n💼 **ตำแหน่ง:** ${u.jobTitle}` : "";
-          const dept = u.department ? `\n🏢 **ฝ่าย/แผนก:** ${u.department}` : "";
-          const phone = u.phone ? `\n📞 **เบอร์โทร:** \`${u.phone}\`` : "\n📞 **เบอร์โทร:** ไม่พบในระบบองค์กร";
+          const job = `💼 **ตำแหน่ง:** ${u.jobTitle || "ไม่ระบุในระบบ"}`;
+          const dept = `🏢 **ฝ่าย/แผนก:** ${u.department || "ไม่ระบุในระบบ"}`;
+          const email = `📧 **อีเมล:** \`${u.mail}\``;
+          const phone = u.phone ? `\n📞 **เบอร์โทร:** \`${u.phone}\`` : "";
+
+          let mainReply = `👤 **ข้อมูลตำแหน่งงาน (${u.displayName})**\n\n${job}\n${dept}\n${email}${phone}`;
+          if (isPhoneQuery) {
+            mainReply = `👤 **ข้อมูลเบอร์โทรศัพท์ (${u.displayName})**\n\n${u.phone ? `📞 **เบอร์โทร:** \`${u.phone}\`` : "📞 **เบอร์โทร:** ไม่พบเบอร์โทรในระบบองค์กร"}\n${job}\n${dept}\n${email}`;
+          }
+
           return {
             intent: "get_contact_info",
-            reply: `👤 **ข้อมูลผู้ติดต่อ (${u.displayName})**\n\n📧 **อีเมล:** \`${u.mail}\`${job}${dept}${phone}\n\nต้องการให้ผมช่วยส่งนัดประชุมหรือเช็กเวลาว่างกับ ${u.displayName} ไหมครับ? 🤖✨`,
+            reply: `${mainReply}\n\nต้องการให้ผมช่วยส่งนัดประชุมหรือเช็กเวลาว่างกับ ${u.displayName} ไหมครับ? 🤖✨`,
             suggestions: [
               { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
               { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
@@ -4229,14 +4239,26 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         } else if (candidates.length > 1) {
           const topCandidates = candidates.slice(0, 5);
           await setSetting(userUpn.toLowerCase(), "_pending_candidate_picks", JSON.stringify({ candidates: topCandidates, time: Date.now() }));
+
           const choicesList = topCandidates.map((c, i) => {
-            const extraParts = [c.jobTitle, c.department, c.phone ? `📞 ${c.phone}` : ""].filter(Boolean);
-            const extra = extraParts.length > 0 ? ` (${extraParts.join(" · ")})` : "";
-            return `${i + 1}) **${c.displayName}**${extra}:\n   \`${c.mail}\``;
-          }).join("\n");
+            const jobStr = c.jobTitle ? `💼 ${c.jobTitle}` : "";
+            const deptStr = c.department ? `🏢 ${c.department}` : "";
+            const phoneStr = (isPhoneQuery || (!jobStr && !deptStr)) && c.phone ? `📞 ${c.phone}` : "";
+
+            const infoParts = [jobStr, deptStr, phoneStr].filter(Boolean).join(" · ");
+            const detailLine = infoParts ? `   ${infoParts}\n` : "";
+            return `${i + 1}) **${c.displayName}**\n${detailLine}   📧 \`${c.mail}\``;
+          }).join("\n\n");
+
+          const titleHeader = isPositionQuery
+            ? `พบรายชื่อ ${candidates.length} ท่านที่ตรงกับ “${rawTarget}” ในระบบครับ 👇\n(พิมพ์ **1**, **2** หรือ **3** เพื่อเลือกดูตำแหน่งได้เลยครับ)`
+            : isPhoneQuery
+            ? `พบรายชื่อ ${candidates.length} ท่านที่ตรงกับ “${rawTarget}” ในระบบครับ 👇\n(พิมพ์ **1**, **2** หรือ **3** เพื่อเลือกดูเบอร์โทรได้เลยครับ)`
+            : `พบรายชื่อ ${candidates.length} ท่านที่ตรงกับ “${rawTarget}” ในระบบครับ 👇\n(พิมพ์ **1**, **2** หรือ **3** เพื่อเลือกดูข้อมูลได้เลยครับ)`;
+
           return {
             intent: "get_contact_info",
-            reply: `พบรายชื่อ ${candidates.length} ท่านที่ตรงกับ “${rawTarget}” ในระบบครับ 👇 (พิมพ์ **1**, **2** หรือ **3** เพื่อเลือกได้เลยครับ)\n\n${choicesList}`,
+            reply: `${titleHeader}\n\n${choicesList}`,
           };
         } else {
           return {

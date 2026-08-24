@@ -128,12 +128,12 @@
   .depts {
     display: flex; gap: 8px; min-width: 0;
     overflow-x: auto; scrollbar-width: none;
-    scroll-snap-type: x proximity; scroll-behavior: smooth;
+    scroll-snap-type: x proximity;
     padding: 10px 0 10px 13px;
     cursor: grab;
   }
   .depts::-webkit-scrollbar { display: none; }
-  .depts.dragging { cursor: grabbing; scroll-behavior: auto; }
+  .depts.dragging { cursor: grabbing; scroll-snap-type: none; }
 
   .fade {
     position: absolute; top: 0; bottom: 0; right: 46px; width: 34px;
@@ -562,8 +562,15 @@
       b.onclick = () => { if (dragMoved) return; pick(i); };
       deptsEl.append(b);
     });
+    // Only chase the active card when it is off-screen. render() runs on every
+    // step of a job; without this the strip would yank back mid-scroll.
     const card = deptsEl.children[active];
-    if (card) card.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+    if (card) {
+      const c = card.getBoundingClientRect(), box = deptsEl.getBoundingClientRect();
+      if (c.left < box.left + 4 || c.right > box.right - 4) {
+        card.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+      }
+    }
   }
 
   function pick(i) {
@@ -708,7 +715,7 @@
     const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (!d) return;
     e.preventDefault();
-    deptsEl.scrollLeft += d;
+    deptsEl.scrollBy({ left: d, behavior: "auto" });
   }, { passive: false });
 
   // Click-drag to pan, so it works with a plain mouse too.
