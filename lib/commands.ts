@@ -3134,6 +3134,95 @@ export function decodeMtAttendees(data: URLSearchParams): {
   };
 }
 
+// Daily & Tomorrow Horoscope / Work Fortune check (ดวงวันนี้ / ดวงพรุ่งนี้ / ดูดวง / เช็กดวง / ดวงการงาน)
+async function checkHoroscope(userUpn: string, text: string): Promise<CommandResult | null> {
+  if (/(?:ดวงวันนี้|ดวงพรุ่งนี้|ดวงวันพรุ่งนี้|ดูดวง|เช็กดวง|เช็คดวง|ดวงงานวันนี้|ดวงการงาน|ดวงชะตา)/i.test(text)) {
+    const nowBkk = nowWall();
+    let targetDate = nowBkk;
+    let isTomorrow = false;
+    if (/พรุ่งนี้/i.test(text)) {
+      targetDate = addMinutes(nowBkk, 24 * 60);
+      isTomorrow = true;
+    }
+
+    const dayOfWeek = targetDate.getDay(); // 0 = Sun, 1 = Mon, ...
+    const dateFormatted = fmtDate(targetDate);
+
+    const userBirthDay = await getSetting(userUpn.toLowerCase(), "user_birth_day");
+
+    if (!userBirthDay) {
+      return {
+        intent: "ask_birth_day",
+        reply: `🔮 **คุณเกิดวันไหนครับ?**\n\nโปรดเลือกวันเกิดของคุณด้านล่าง เพื่อให้ระบบคำนวณดวงชะตาและจัดชุดสีเสื้อมงคลเสริมดวงการงานเฉพาะตัวได้อย่างแม่นยำครับ 👇`,
+        suggestions: [
+          { label: "เกิดวันจันทร์", text: "เกิดวันจันทร์" },
+          { label: "เกิดวันอังคาร", text: "เกิดวันอังคาร" },
+          { label: "เกิดวันพุธ", text: "เกิดวันพุธ" },
+          { label: "เกิดวันพฤหัสบดี", text: "เกิดวันพฤหัสบดี" },
+          { label: "เกิดวันศุกร์", text: "เกิดวันศุกร์" },
+          { label: "เกิดวันเสาร์", text: "เกิดวันเสาร์" },
+          { label: "เกิดวันอาทิตย์", text: "เกิดวันอาทิตย์" },
+        ],
+      };
+    }
+
+    const dayNames = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+    const luckyColorsToday = [
+      "❤️ สีแดง, ชมพู (โชคลาภ/งานราบรื่น) · 💚 สีเขียว (เสริมเสน่ห์การเจรจา)", // Sun
+      "💛 สีเหลือง, ขาว, ครีม (งานราบรื่น) · 🧡 สีส้ม, ทอง (ผู้ใหญ่เมตตา)", // Mon
+      "🩷 สีชมพู (พลังงานเต็มเปี่ยม) · 🖤 สีเทา, ดำ (โชคลาภ/การเงิน)", // Tue
+      "💚 สีเขียว (งานราบรื่น/สื่อสารดี) · 💛 สีเหลือง, ทอง (การเงินปัง)", // Wed
+      "🧡 สีส้ม, แสด, ทอง (ไอเดียพุ่ง/ก้าวหน้า) · ❤️ สีแดง (บารมีผู้บริหาร)", // Thu
+      "💙 สีฟ้า, น้ำเงิน (ราบรื่น/เพื่อนร่วมงานดี) · 🩷 สีชมพู (เสน่ห์โดดเด่น)", // Fri
+      "💜 สีม่วง, เทาดำ (โชคลาภ/บารมี) · 💚 สีเขียว (การงานสำเร็จ)", // Sat
+    ];
+
+    // Personal birth day specific lucky & avoid colors
+    const birthColors: Record<string, { lucky: string; avoid: string }> = {
+      "อาทิตย์": { lucky: "❤️ สีแดง, ชมพู (การงาน/เสน่ห์) · 💚 สีเขียว (โชคลาภ)", avoid: "💙 สีน้ำเงิน, ฟ้า" },
+      "จันทร์": { lucky: "💛 สีเหลือง, ครีม (การงาน) · 🟢 สีเขียว (ผู้ใหญ่เมตตา)", avoid: "❤️ สีแดง" },
+      "อังคาร": { lucky: "🩷 สีชมพู, ม่วง (งานสำเร็จ) · 🖤 สีเทา, ดำ (โชคลาภการเงิน)", avoid: "💛 สีเหลือง, ขาว" },
+      "พุธ": { lucky: "💚 สีเขียว, ส้ม, ทอง (สื่อสารการงานเด่น/เจรจาปัง)", avoid: "🩷 สีชมพู" },
+      "พฤหัสบดี": { lucky: "🧡 สีส้ม, แสด, ทอง (ไอเดียพุ่ง/ผลงานโดดเด่น)", avoid: "💜 สีม่วง" },
+      "ศุกร์": { lucky: "💙 สีฟ้า, น้ำเงิน (งานราบรื่น/เสน่ห์ผู้ใหญ่)", avoid: "🖤 สีดำ, เทา" },
+      "เสาร์": { lucky: "💜 สีม่วง, ดำ, เทา (โชคลาภ/อำนาจบารมี)", avoid: "🟢 สีเขียว" },
+    };
+
+    const fortunes = [
+      "✨ **ดวงการงาน:** วันนี้มีเกณฑ์เจรจาสื่อสารราบรื่น ไอเดียใหม่ๆ ได้รับการตอบรับดีเยี่ยม!",
+      "🚀 **ดวงการงาน:** จังหวะการทำงานสดใส เหมาะแก่การตัดสินใจเรื่องสำคัญ ลุยงานโปรเจกต์ใหม่ได้เลยครับ",
+      "💡 **ดวงการงาน:** สมองแล่น เคลียร์งานค้างได้รวดเร็ว มีเกณฑ์ได้รับข่าวดีหรือการสนับสนุนจากเพื่อนร่วมงาน",
+      "🏆 **ดวงการงาน:** ผลงานโดดเด่น ผู้ใหญ่ให้ความไว้วางใจ การวางแผนงานในระยะยาวจะประสบความสำเร็จสูงครับ",
+    ];
+
+    const fortuneIdx = (targetDate.getDate() + targetDate.getMonth() + (userBirthDay ? userBirthDay.length : 0)) % fortunes.length;
+    const todayFortune = fortunes[fortuneIdx];
+    const todayName = dayNames[dayOfWeek];
+
+    const dayLabel = isTomorrow ? `ประจำวัน${todayName} (พรุ่งนี้)` : `ประจำวัน${todayName}`;
+    let headerTitle = `🔮 **ดวงการงาน${dayLabel}** (${dateFormatted})`;
+    let colorSection = isTomorrow ? `🎨 **สีเสื้อมงคลเตรียมใส่พรุ่งนี้:** ${luckyColorsToday[dayOfWeek]}` : `🎨 **สีเสื้อมงคลวันนี้:** ${luckyColorsToday[dayOfWeek]}`;
+
+    if (userBirthDay && birthColors[userBirthDay]) {
+      const bInfo = birthColors[userBirthDay];
+      headerTitle = `🔮 **ดวงการงาน${dayLabel} (สำหรับคนเกิดวัน${userBirthDay})** (${dateFormatted})`;
+      const colorTitle = isTomorrow ? `🎨 **สีเสื้อมงคลเตรียมใส่พรุ่งนี้ สำหรับคนเกิดวัน${userBirthDay}:**` : `🎨 **สีเสื้อมงคลประจำตัวคนเกิดวัน${userBirthDay}:**`;
+      colorSection = `${colorTitle}\n• **สีเสริมโชคลาภ/การงาน:** ${bInfo.lucky}\n• **สีที่ควรหลีกเลี่ยง:** ${bInfo.avoid}`;
+    }
+
+    return {
+      intent: "get_horoscope",
+      reply: `${headerTitle}\n\n${todayFortune}\n\n${colorSection}\n☕ **ทริกเพิ่มพลัง:** จิบน้ำหรือกาแฟช่วงบ่าย และพักสายตา 5 นาที ช่วยให้โฟกัสงานดีเยี่ยมตลอดวันครับ! 🌟✨`,
+      suggestions: [
+        { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+        { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+        { label: "เปลี่ยนวันเกิด", text: "เกิดวันจันทร์" },
+      ],
+    };
+  }
+  return null;
+}
+
 const SELF_BOOK_DURATION_SUGGESTIONS = [
   { label: "30 นาที", text: "30 นาที" },
   { label: "1 ชม.", text: "1 ชม." },
@@ -4267,83 +4356,10 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     };
   }
 
-  // Daily Horoscope / Work Fortune check (ดวงวันนี้ / ดูดวง / เช็กดวง / ดวงการงาน)
-  if (/(?:ดวงวันนี้|ดูดวง|เช็กดวง|เช็คดวง|ดวงงานวันนี้|ดวงการงาน|ดวงชะตา)/i.test(text)) {
-    const nowBkk = nowWall();
-    const dayOfWeek = nowBkk.getDay(); // 0 = Sun, 1 = Mon, ...
-    const dateFormatted = fmtDate(nowBkk);
-
-    const userBirthDay = await getSetting(userUpn.toLowerCase(), "user_birth_day");
-
-    if (!userBirthDay) {
-      return {
-        intent: "ask_birth_day",
-        reply: `🔮 **คุณเกิดวันไหนครับ?**\n\nโปรดเลือกวันเกิดของคุณด้านล่าง เพื่อให้ระบบคำนวณดวงชะตาและจัดชุดสีเสื้อมงคลเสริมดวงการงานเฉพาะตัวได้อย่างแม่นยำครับ 👇`,
-        suggestions: [
-          { label: "เกิดวันจันทร์", text: "เกิดวันจันทร์" },
-          { label: "เกิดวันอังคาร", text: "เกิดวันอังคาร" },
-          { label: "เกิดวันพุธ", text: "เกิดวันพุธ" },
-          { label: "เกิดวันพฤหัสบดี", text: "เกิดวันพฤหัสบดี" },
-          { label: "เกิดวันศุกร์", text: "เกิดวันศุกร์" },
-          { label: "เกิดวันเสาร์", text: "เกิดวันเสาร์" },
-          { label: "เกิดวันอาทิตย์", text: "เกิดวันอาทิตย์" },
-        ],
-      };
-    }
-
-    const dayNames = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
-    const luckyColorsToday = [
-      "❤️ สีแดง, ชมพู (โชคลาภ/งานราบรื่น) · 💚 สีเขียว (เสริมเสน่ห์การเจรจา)", // Sun
-      "💛 สีเหลือง, ขาว, ครีม (งานราบรื่น) · 🧡 สีส้ม, ทอง (ผู้ใหญ่เมตตา)", // Mon
-      "🩷 สีชมพู (พลังงานเต็มเปี่ยม) · 🖤 สีเทา, ดำ (โชคลาภ/การเงิน)", // Tue
-      "💚 สีเขียว (งานราบรื่น/สื่อสารดี) · 💛 สีเหลือง, ทอง (การเงินปัง)", // Wed
-      "🧡 สีส้ม, แสด, ทอง (ไอเดียพุ่ง/ก้าวหน้า) · ❤️ สีแดง (บารมีผู้บริหาร)", // Thu
-      "💙 สีฟ้า, น้ำเงิน (ราบรื่น/เพื่อนร่วมงานดี) · 🩷 สีชมพู (เสน่ห์โดดเด่น)", // Fri
-      "💜 สีม่วง, เทาดำ (โชคลาภ/บารมี) · 💚 สีเขียว (การงานสำเร็จ)", // Sat
-    ];
-
-    // Personal birth day specific lucky & avoid colors
-    const birthColors: Record<string, { lucky: string; avoid: string }> = {
-      "อาทิตย์": { lucky: "❤️ สีแดง, ชมพู (การงาน/เสน่ห์) · 💚 สีเขียว (โชคลาภ)", avoid: "💙 สีน้ำเงิน, ฟ้า" },
-      "จันทร์": { lucky: "💛 สีเหลือง, ครีม (การงาน) · 🟢 สีเขียว (ผู้ใหญ่เมตตา)", avoid: "❤️ สีแดง" },
-      "อังคาร": { lucky: "🩷 สีชมพู, ม่วง (งานสำเร็จ) · 🖤 สีเทา, ดำ (โชคลาภการเงิน)", avoid: "💛 สีเหลือง, ขาว" },
-      "พุธ": { lucky: "💚 สีเขียว, ส้ม, ทอง (สื่อสารการงานเด่น/เจรจาปัง)", avoid: "🩷 สีชมพู" },
-      "พฤหัสบดี": { lucky: "🧡 สีส้ม, แสด, ทอง (ไอเดียพุ่ง/ผลงานโดดเด่น)", avoid: "💜 สีม่วง" },
-      "ศุกร์": { lucky: "💙 สีฟ้า, น้ำเงิน (งานราบรื่น/เสน่ห์ผู้ใหญ่)", avoid: "🖤 สีดำ, เทา" },
-      "เสาร์": { lucky: "💜 สีม่วง, ดำ, เทา (โชคลาภ/อำนาจบารมี)", avoid: "🟢 สีเขียว" },
-    };
-
-    const fortunes = [
-      "✨ **ดวงการงาน:** วันนี้มีเกณฑ์เจรจาสื่อสารราบรื่น ไอเดียใหม่ๆ ได้รับการตอบรับดีเยี่ยม!",
-      "🚀 **ดวงการงาน:** จังหวะการทำงานสดใส เหมาะแก่การตัดสินใจเรื่องสำคัญ ลุยงานโปรเจกต์ใหม่ได้เลยครับ",
-      "💡 **ดวงการงาน:** สมองแล่น เคลียร์งานค้างได้รวดเร็ว มีเกณฑ์ได้รับข่าวดีหรือการสนับสนุนจากเพื่อนร่วมงาน",
-      "🏆 **ดวงการงาน:** ผลงานโดดเด่น ผู้ใหญ่ให้ความไว้วางใจ การวางแผนงานในระยะยาวจะประสบความสำเร็จสูงครับ",
-    ];
-
-    const fortuneIdx = (nowBkk.getDate() + nowBkk.getMonth() + (userBirthDay ? userBirthDay.length : 0)) % fortunes.length;
-    const todayFortune = fortunes[fortuneIdx];
-    const todayName = dayNames[dayOfWeek];
-
-    let headerTitle = `🔮 **ดวงการงานประจำวัน${todayName}** (${dateFormatted})`;
-    let colorSection = `🎨 **สีเสื้อมงคลวันนี้:** ${luckyColorsToday[dayOfWeek]}`;
-    let personalizedNote = `\n\n💡 *ทริก: คุณสามารถพิมพ์บอกวันเกิดได้เลยครับ เช่น "ฉันเกิดวันอังคาร" เพื่อตั้งค่าสีมงคลเฉพาะตัว!*`;
-
-    if (userBirthDay && birthColors[userBirthDay]) {
-      const bInfo = birthColors[userBirthDay];
-      headerTitle = `🔮 **ดวงการงานประจำวัน${todayName} (สำหรับคนเกิดวัน${userBirthDay})** (${dateFormatted})`;
-      colorSection = `🎨 **สีเสื้อมงคลประจำตัวคนเกิดวัน${userBirthDay}:**\n• **สีเสริมโชคลาภ/การงาน:** ${bInfo.lucky}\n• **สีที่ควรหลีกเลี่ยง:** ${bInfo.avoid}`;
-      personalizedNote = ``;
-    }
-
-    return {
-      intent: "get_horoscope",
-      reply: `${headerTitle}\n\n${todayFortune}\n\n${colorSection}\n☕ **ทริกเพิ่มพลัง:** จิบน้ำหรือกาแฟช่วงบ่าย และพักสายตา 5 นาที ช่วยให้โฟกัสงานดีเยี่ยมตลอดวันครับ! 🌟✨${personalizedNote}`,
-      suggestions: [
-        { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
-        { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
-        { label: "ข่าววันนี้", text: "ข่าววันนี้" },
-      ],
-    };
+  // Daily & Tomorrow Horoscope / Work Fortune check (ดวงวันนี้ / ดวงพรุ่งนี้ / ดูดวง / เช็กดวง / ดวงการงาน)
+  if (/(?:ดวงวันนี้|ดวงพรุ่งนี้|ดวงวันพรุ่งนี้|ดูดวง|เช็กดวง|เช็คดวง|ดวงงานวันนี้|ดวงการงาน|ดวงชะตา)/i.test(text)) {
+    const resH = await checkHoroscope(userUpn, text);
+    if (resH) return resH;
   }
 
   // Immediate date query check at the top of handle (Asia/Bangkok Wall Time)
