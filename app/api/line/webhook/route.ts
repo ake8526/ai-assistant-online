@@ -18,6 +18,7 @@ import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleCh
 import { addMeetingMaterial } from "@/lib/meetingMaterials";
 import { attachLineImageToMeeting, clearMeetingPhotoContext, clearPendingLinePhoto, loadPendingLinePhoto, saveLastBookedEvent, savePendingLinePhoto } from "@/lib/meetingLink";
 import { buildShortFileOpenUrl } from "@/lib/fileOpenLink";
+import { personPickData, pickerFlexFor, slotPickData, type Choice, type Slot } from "@/lib/linePickers";
 import { parseWall, wallIso, fmtDate, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
@@ -62,25 +63,6 @@ type LineEvent = {
   postback?: { data?: string };
 };
 
-type Choice = {
-  mail?: string;
-  displayName?: string;
-  period?: string;
-  date?: string;
-  event_id?: string;
-  feed_id?: string;
-  index?: number;
-  label?: string;
-  short_label?: string;
-  data?: string;
-  lunch?: boolean;
-  mode?: string;
-  task_id?: number;
-  after?: string;
-  before?: string;
-  at?: string;
-};
-type Slot = { start: string; end: string; label?: string };
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
@@ -89,7 +71,9 @@ function truncate(s: string, n: number): string {
 // Turn a CommandResult that needs a choice (people / time slots / meetings to
 // cancel) into LINE quick-reply buttons. Each tap sends a postback that
 // handleSelection() completes. Returns null when nothing to pick.
-function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | null {
+// `cardHandled` = a Flex picker card is going out with this reply, so the
+// numbered buttons and follow-up chips it already shows are left off the strip.
+function quickReplyFor(res: CommandResult, upn?: string, cardHandled = false): { items: object[] } | null {
   const items: object[] = [];
   // Button label is just the number (matches the numbered list in the message
   // body) so the full name/time is always readable above; the postback carries
@@ -101,27 +85,14 @@ function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | 
     items.push({ type: "action", action: { type: "postback", label: `${num}`, data, displayText: truncate(displayText, 60) } });
   };
 
-  if (res.intent === "choose_person" && Array.isArray(res.choices)) {
+  if (cardHandled) {
+    // The Flex card carries every choice and follow-up chip for this reply.
+  } else if (res.intent === "choose_person" && Array.isArray(res.choices)) {
     let n = 0;
     for (const c of res.choices as Choice[]) {
       if (!c.mail) continue;
       n++;
-      const p =
-        c.mode === "busy"
-          ? new URLSearchParams({
-              a: "personbusy",
-              m: c.mail,
-              n: c.displayName || c.mail,
-              p: c.period || "upcoming",
-            })
-          : new URLSearchParams({ a: "avail", m: c.mail, n: c.displayName || c.mail });
-      if (c.date) p.set("d", c.date);
-      else if (c.mode !== "busy") p.set("p", c.period || "week");
-      if (c.lunch) p.set("ln", "1");
-      if (c.after) p.set("af", c.after);
-      if (c.before) p.set("bf", c.before);
-      if (c.at) p.set("tm", c.at);
-      add(n, p.toString(), `เลือก ${n}) ${c.displayName || c.mail}`);
+      add(n, personPickData(c), `เลือก ${n}) ${c.displayName || c.mail}`);
     }
   } else if (res.intent === "choose_mt_person" && Array.isArray(res.choices)) {
     let n = 0;
@@ -136,8 +107,7 @@ function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | 
     const subject = meeting.subject || "ประชุม";
     const duration = meeting.duration || 30;
     (res.slots as Slot[]).forEach((s, i) => {
-      const p = new URLSearchParams({ a: "book", s: s.start, e: s.end, subj: subject, at: attendees.join(",") });
-      add(i + 1, p.toString(), `จอง ${i + 1}) ${s.label || ""}`);
+      add(i + 1, slotPickData(s, subject, attendees), `จอง ${i + 1}) ${s.label || ""}`);
     });
     // "ขอดูเพิ่มเติม" sits after the numbered slots (before custom)
     if (items.length < 13 && Array.isArray(res.suggestions)) {
@@ -277,7 +247,7 @@ function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | 
   }
 
   // Follow-up suggestions (message taps) when no selection buttons above
-  if (!items.length && Array.isArray(res.suggestions) && res.suggestions.length) {
+  if (!cardHandled && !items.length && Array.isArray(res.suggestions) && res.suggestions.length) {
     for (const s of res.suggestions.slice(0, 12)) {
       if (!s?.label || !s?.text) continue;
       items.push({
@@ -302,9 +272,13 @@ function quickReplyFor(res: CommandResult, upn?: string): { items: object[] } | 
 
 // LINE quick-reply labels are capped at 20 chars, so button text gets cut off.
 // List the full options in the message body so nothing is hidden.
-function detailText(res: CommandResult, upn?: string): string {
+// `cardHandled` = a Flex picker card lists them instead, so the body only keeps
+// what the card does not show (and the push fallback, which has no card, keeps
+// the full list by leaving the flag off).
+function detailText(res: CommandResult, upn?: string, cardHandled = false): string {
   let lines: string[] = [];
   if ((res.intent === "choose_person" || res.intent === "choose_mt_person") && Array.isArray(res.choices)) {
+    if (cardHandled) return "";
     lines = (res.choices as Choice[]).filter((c) => c.mail).map((c, i) => `${i + 1}) ${c.displayName || c.mail} — ${c.mail}`);
   } else if (Array.isArray(res.slots) && res.slots.length && (res.intent === "availability" || res.intent === "choose_slot")) {
     const ranges = Array.isArray(res.ranges) ? (res.ranges as Slot[]) : [];
@@ -323,6 +297,8 @@ function detailText(res: CommandResult, upn?: string): string {
       ranges.forEach((s, i) => parts.push(`${i + 1}) ${s.label || `${s.start}-${s.end}`}`));
       parts.push("");
     }
+    // The card holds the start times; only the free-range overview stays here.
+    if (cardHandled) return rangesUnique ? "\n\n" + parts.join("\n").trimEnd() : "";
     parts.push(res.intent === "choose_slot" ? "เลือกเวลาเริ่มได้เลย:" : "เลือกเวลาเริ่ม:");
     slots.forEach((s, i) => parts.push(`${i + 1}) ${s.label || `${s.start}-${s.end}`}`));
     const hasMore = Array.isArray(res.suggestions) &&
@@ -563,16 +539,20 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
     return;
   }
 
-  let reply = res.reply || "รับทราบครับ";
-  if (res.map_url) reply += `\n🗺️ ${res.map_url}`;
-  reply += detailText(res, upn);
-  reply = plainForLine(reply);
-
-  const qr = quickReplyFor(res, upn);
   // A Flex card when the reply is really a list of things to tap: the rows show
   // the full text (quick-reply labels stop at 20 characters) and nothing is
-  // hidden off the side of the screen.
-  if (res.flex) {
+  // hidden off the side of the screen. Help topics bring their own card; the
+  // person and time pickers get one built here from their choices.
+  const flex = res.flex || pickerFlexFor(res);
+  const cardHandled = !res.flex && !!flex;
+
+  let reply = res.reply || "รับทราบครับ";
+  if (res.map_url) reply += `\n🗺️ ${res.map_url}`;
+  reply += detailText(res, upn, cardHandled);
+  reply = plainForLine(reply);
+
+  const qr = quickReplyFor(res, upn, cardHandled);
+  if (flex) {
     const messages: Record<string, unknown>[] = [];
     if (res.reply && res.reply.trim()) {
       messages.push({
@@ -582,8 +562,8 @@ async function sendResult(replyToken: string, res: CommandResult, upn?: string):
     }
     messages.push({
       type: "flex",
-      altText: res.flex.altText.slice(0, 400),
-      contents: res.flex.contents,
+      altText: flex.altText.slice(0, 400),
+      contents: flex.contents,
       ...(qr ? { quickReply: qr } : {}),
     });
     await replyLineMessages(replyToken, messages as Parameters<typeof replyLineMessages>[1]);

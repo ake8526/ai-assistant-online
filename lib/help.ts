@@ -7,6 +7,8 @@
 // trusting the whole thing. Add a capability → add its line here, and the page,
 // the chat menu and the category replies all pick it up.
 
+import { card, messageRow, noteRow } from "@/lib/lineCards";
+
 /** The Official Account users are talking to. */
 export const LINE_OA_ID = process.env.LINE_OA_ID || "@777nxuvm";
 
@@ -259,41 +261,9 @@ export function findHelpTopic(text: string): HelpTopic | null {
 // box takes an action of its own: the row displays the full command, the tap
 // sends it as a message. Same effect as typing, no browser in the way.
 
-const ROW_ARROW = { type: "text", text: "›", size: "lg", color: "#9aa3b2", flex: 0, align: "end" };
-
-function tapRow(display: string, send: string, sub?: string) {
-  const label: object[] = [{ type: "text", text: display, size: "sm", color: "#111111", weight: "bold", wrap: true }];
-  if (sub) label.push({ type: "text", text: sub, size: "xxs", color: "#8b93a3", wrap: true, margin: "xs" });
-  return {
-    type: "box",
-    layout: "horizontal",
-    spacing: "sm",
-    paddingAll: "10px",
-    backgroundColor: "#f4f6f8",
-    cornerRadius: "8px",
-    margin: "sm",
-    action: { type: "message", label: display.slice(0, 20), text: send },
-    contents: [{ type: "box", layout: "vertical", flex: 1, contents: label }, ROW_ARROW],
-  };
-}
-
-function card(title: string, subtitle: string, rows: object[]): object {
-  return {
-    type: "bubble",
-    size: "mega",
-    header: {
-      type: "box",
-      layout: "vertical",
-      backgroundColor: "#06c755",
-      paddingAll: "14px",
-      contents: [
-        { type: "text", text: title, color: "#ffffff", weight: "bold", size: "md", wrap: true },
-        { type: "text", text: subtitle, color: "#e6fff0", size: "xs", wrap: true, margin: "xs" },
-      ],
-    },
-    body: { type: "box", layout: "vertical", paddingAll: "12px", contents: rows },
-  };
-}
+// The row/card shapes live in lib/lineCards.ts — the person picker and the time
+// picker use the same ones, so a change to the look lands everywhere at once.
+const tapRow = messageRow;
 
 /** The category card: nine rows, all visible, one tap each. */
 export function helpMenuFlex(): { altText: string; contents: object } {
@@ -307,16 +277,7 @@ export function helpMenuFlex(): { altText: string; contents: object } {
 /** One category: every command is a row, shown in full and sent on tap. */
 export function helpTopicFlex(topic: HelpTopic): { altText: string; contents: object } {
   const rows: object[] = topic.commands.map((c) => tapRow(c.text, c.text));
-  if (topic.note) {
-    rows.push({
-      type: "text",
-      text: `💡 ${topic.note}`,
-      size: "xxs",
-      color: "#69707d",
-      wrap: true,
-      margin: "lg",
-    });
-  }
+  if (topic.note) rows.push(noteRow(topic.note));
   rows.push(tapRow("◀ ดูหมวดอื่น", "/ช่วยเหลือ"));
   return {
     altText: `${topic.title} — แตะคำสั่งที่ต้องการ`,

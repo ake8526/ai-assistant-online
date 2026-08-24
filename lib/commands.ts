@@ -3835,6 +3835,27 @@ export function taskChoices(tasks: Task[]): { index: number; task_id: number; la
   }));
 }
 
+/**
+ * Display name for a tapped person. The button used to carry it in the postback
+ * (`n`), but a Thai name URL-encodes past LINE's 300-character limit and the
+ * button then never rendered, so lib/linePickers.ts drops `n` when it does not
+ * fit. Older cards still in someone's chat history send it — use it when it is
+ * there, look it up by mail when it is not.
+ */
+async function pickedPersonName(data: URLSearchParams, mail: string): Promise<string> {
+  const given = (data.get("n") || "").trim();
+  if (given) return given;
+  if (!mail) return mail;
+  try {
+    const info = await resolveUserInfo(mail);
+    const dn = (info?.displayName || "").trim();
+    if (dn && !dn.includes("@")) return dn;
+  } catch {
+    /* fall back to the address */
+  }
+  return mail;
+}
+
 export async function handleSelection(userUpn: string, data: URLSearchParams): Promise<CommandResult> {
   const a = data.get("a") || "";
   try {
@@ -3850,7 +3871,7 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
     }
     if (a === "avail") {
       const mail = data.get("m") || "";
-      const name = data.get("n") || mail;
+      const name = await pickedPersonName(data, mail);
       if (!mail) return { intent: "error", reply: "ข้อมูลไม่ครบ ลองใหม่อีกครั้งครับ" };
       const d = data.get("d");
       const range = d ? resolveDay(d) || periodRange("week") : periodRange(data.get("p") || "week");
@@ -3858,7 +3879,7 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
     }
     if (a === "personbusy") {
       const mail = data.get("m") || "";
-      const name = data.get("n") || mail;
+      const name = await pickedPersonName(data, mail);
       if (!mail) return { intent: "error", reply: "ข้อมูลไม่ครบ ลองใหม่อีกครั้งครับ" };
       const d = data.get("d");
       const day = d ? resolveDay(d) : null;
