@@ -3134,6 +3134,81 @@ export function decodeMtAttendees(data: URLSearchParams): {
   };
 }
 
+// Dynamic 7x7 Thai Lucky Shirt Color Matrix (Birth Day x Target Day of Week)
+function getLuckyColorMatrix(birthDay: string, targetDayIdx: number): { lucky: string; avoid: string } {
+  const matrix: Record<string, Array<{ lucky: string; avoid: string }>> = {
+    "อาทิตย์": [
+      { lucky: "❤️ สีแดง, 🩷 ชมพู (การงาน/เสน่ห์) · 💚 สีเขียว (โชคลาภ)", avoid: "💙 สีฟ้า, น้ำเงิน" }, // Sun
+      { lucky: "💛 สีเหลือง, ครีม (งานราบรื่น) · 🟢 สีเขียว (ผู้ใหญ่เมตตา)", avoid: "🔴 สีแดง" }, // Mon
+      { lucky: "🩷 สีชมพู, 💜 สีม่วง (ไอเดียพุ่ง)", avoid: "💛 สีเหลือง, ขาว" }, // Tue
+      { lucky: "💚 สีเขียว, 🧡 สีส้ม (สื่อสารดี)", avoid: "🩷 สีชมพู" }, // Wed
+      { lucky: "🧡 สีส้ม, 🔴 สีแดง (อำนาจบารมี)", avoid: "💜 สีม่วง" }, // Thu
+      { lucky: "💙 สีฟ้า, 🩷 สีชมพู (โชคลาภการเงิน)", avoid: "🖤 สีดำ, เทา" }, // Fri
+      { lucky: "💜 สีม่วง, 🖤 สีดำ (ผลงานโดดเด่น)", avoid: "🟢 สีเขียว" }, // Sat
+    ],
+    "จันทร์": [
+      { lucky: "❤️ สีแดง, 💚 สีเขียว (เสน่ห์การเจรจา)", avoid: "💙 สีฟ้า, น้ำเงิน" }, // Sun
+      { lucky: "💛 สีเหลือง, ครีม (การงาน) · 🟢 สีเขียว (ผู้ใหญ่เมตตา)", avoid: "🔴 สีแดง" }, // Mon
+      { lucky: "🩷 สีชมพู, 🖤 สีเทา (โชคลาภการเงิน)", avoid: "💛 สีเหลือง, ขาว" }, // Tue
+      { lucky: "💚 สีเขียว, 💛 สีเหลือง (สื่อสารปัง)", avoid: "🩷 สีชมพู" }, // Wed
+      { lucky: "🧡 สีส้ม, 💙 สีฟ้า (ไอเดียใหม่)", avoid: "💜 สีม่วง" }, // Thu
+      { lucky: "💙 สีฟ้า, 💛 สีเหลือง (ราบรื่น)", avoid: "🖤 สีดำ, เทา" }, // Fri
+      { lucky: "💜 สีม่วง, ❤️ สีแดง (บารมีผู้ใหญ่)", avoid: "🟢 สีเขียว" }, // Sat
+    ],
+    "อังคาร": [
+      { lucky: "❤️ สีแดง, 💜 สีม่วง (โชคลาภ/บารมี)", avoid: "💙 สีฟ้า, น้ำเงิน" }, // Sun
+      { lucky: "🧡 สีส้ม, 💛 สีเหลือง, 💜 สีม่วง (เสริมการงาน/เจรจาปัง)", avoid: "🔴 สีแดง" }, // Mon
+      { lucky: "🩷 สีชมพู, 💜 สีม่วง (งานสำเร็จ) · 🖤 สีเทา, ดำ (โชคลาภการเงิน)", avoid: "💛 สีเหลือง, ขาว" }, // Tue
+      { lucky: "💚 สีเขียว, 🖤 สีดำ (เคลียร์งานไว)", avoid: "🩷 สีชมพู" }, // Wed
+      { lucky: "🧡 สีส้ม, 🔴 สีแดง (ไอเดียพุ่ง)", avoid: "💜 สีม่วง" }, // Thu
+      { lucky: "💙 สีฟ้า, 🩷 สีชมพู (เสน่ห์การงาน)", avoid: "🖤 สีดำ, เทา" }, // Fri
+      { lucky: "💜 สีม่วง, 🖤 สีดำ (อำนาจบารมี)", avoid: "🟢 สีเขียว" }, // Sat
+    ],
+    "พุธ": [
+      { lucky: "❤️ สีแดง, 💚 สีเขียว (งานราบรื่น)", avoid: "💙 สีฟ้า, น้ำเงิน" }, // Sun
+      { lucky: "💛 สีเหลือง, 💙 สีฟ้า (ผู้ใหญ่เมตตา)", avoid: "🔴 สีแดง" }, // Mon
+      { lucky: "🩷 สีชมพู, 🧡 สีส้ม (งานสำเร็จ)", avoid: "💛 สีเหลือง, ขาว" }, // Tue
+      { lucky: "💚 สีเขียว, 🧡 สีส้ม, 💛 สีทอง (สื่อสารการงานเด่น/เจรจาปัง)", avoid: "🩷 สีชมพู" }, // Wed
+      { lucky: "🧡 สีส้ม, 💙 สีฟ้า (ไอเดียพุ่ง)", avoid: "💜 สีม่วง" }, // Thu
+      { lucky: "💙 สีฟ้า, 🟢 สีเขียว (เสน่ห์เพื่อนร่วมงาน)", avoid: "🖤 สีดำ, เทา" }, // Fri
+      { lucky: "💜 สีม่วง, ❤️ สีแดง (โชคลาภ)", avoid: "🟢 สีเขียว" }, // Sat
+    ],
+    "พฤหัสบดี": [
+      { lucky: "❤️ สีแดง, 🧡 สีส้ม (งานสำเร็จ)", avoid: "💙 สีฟ้า, น้ำเงิน" }, // Sun
+      { lucky: "💛 สีเหลือง, 💙 สีฟ้า (ราบรื่น)", avoid: "🔴 สีแดง" }, // Mon
+      { lucky: "🩷 สีชมพู, 🔴 สีแดง (โชคลาภ)", avoid: "💛 สีเหลือง, ขาว" }, // Tue
+      { lucky: "💚 สีเขียว, 💙 สีฟ้า (สื่อสารเด่น)", avoid: "🩷 สีชมพู" }, // Wed
+      { lucky: "🧡 สีส้ม, แสด, 💛 สีทอง (ไอเดียพุ่ง/ผลงานโดดเด่น)", avoid: "💜 สีม่วง" }, // Thu
+      { lucky: "💙 สีฟ้า, 🟢 สีเขียว (ราบรื่น)", avoid: "🖤 สีดำ, เทา" }, // Fri
+      { lucky: "💜 สีม่วง, 🖤 สีดำ (อำนาจบารมี)", avoid: "🟢 สีเขียว" }, // Sat
+    ],
+    "ศุกร์": [
+      { lucky: "❤️ สีแดง, 🩷 สีชมพู (เสน่ห์ผู้ใหญ่)", avoid: "💙 สีฟ้า, น้ำเงิน" }, // Sun
+      { lucky: "💛 สีเหลือง, 🩷 สีชมพู (งานราบรื่น)", avoid: "🔴 สีแดง" }, // Mon
+      { lucky: "🩷 สีชมพู, 💜 สีม่วง (สำเร็จ)", avoid: "💛 สีเหลือง, ขาว" }, // Tue
+      { lucky: "💚 สีเขียว, 💙 สีฟ้า (ไอเดียพุ่ง)", avoid: "🩷 สีชมพู" }, // Wed
+      { lucky: "🧡 สีส้ม, 🟢 สีเขียว (ผู้ใหญ่เมตตา)", avoid: "💜 สีม่วง" }, // Thu
+      { lucky: "💙 สีฟ้า, 💙 สีน้ำเงิน (งานราบรื่น/เสน่ห์ผู้ใหญ่)", avoid: "🖤 สีดำ, เทา" }, // Fri
+      { lucky: "💜 สีม่วง, 🖤 สีดำ (โชคลาภ)", avoid: "🟢 สีเขียว" }, // Sat
+    ],
+    "เสาร์": [
+      { lucky: "❤️ สีแดง, 💜 สีม่วง (อำนาจบารมี)", avoid: "💙 สีฟ้า, น้ำเงิน" }, // Sun
+      { lucky: "💛 สีเหลือง, 🖤 สีดำ (งานสำเร็จ)", avoid: "🔴 สีแดง" }, // Mon
+      { lucky: "🩷 สีชมพู, 💜 สีม่วง (ราบรื่น)", avoid: "💛 สีเหลือง, ขาว" }, // Tue
+      { lucky: "💚 สีเขียว, 🔴 สีแดง (ไอเดียใหม่)", avoid: "🩷 สีชมพู" }, // Wed
+      { lucky: "🧡 สีส้ม, 💙 สีฟ้า (ผู้ใหญ่สนับสนุน)", avoid: "💜 สีม่วง" }, // Thu
+      { lucky: "💙 สีฟ้า, 🩷 สีชมพู (เสน่ห์โดดเด่น)", avoid: "🖤 สีดำ, เทา" }, // Fri
+      { lucky: "💜 สีม่วง, 🖤 สีดำ, เทา (โชคลาภ/อำนาจบารมี)", avoid: "🟢 สีเขียว" }, // Sat
+    ],
+  };
+
+  const list = matrix[birthDay];
+  if (list && list[targetDayIdx]) {
+    return list[targetDayIdx];
+  }
+  return { lucky: "🌈 สีมงคลตามวัน", avoid: "หลีกเลี่ยงสีทึบ" };
+}
+
 // Daily & Tomorrow Horoscope / Work Fortune check (ดวงวันนี้ / ดวงพรุ่งนี้ / ดูดวง / เช็กดวง / ดวงการงาน)
 async function checkHoroscope(userUpn: string, text: string): Promise<CommandResult | null> {
   if (/(?:ดวงวันนี้|ดวงพรุ่งนี้|ดวงวันพรุ่งนี้|ดูดวง|เช็กดวง|เช็คดวง|ดวงงานวันนี้|ดวงการงาน|ดวงชะตา)/i.test(text)) {
@@ -3167,27 +3242,6 @@ async function checkHoroscope(userUpn: string, text: string): Promise<CommandRes
     }
 
     const dayNames = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
-    const luckyColorsToday = [
-      "❤️ สีแดง, ชมพู (โชคลาภ/งานราบรื่น) · 💚 สีเขียว (เสริมเสน่ห์การเจรจา)", // Sun
-      "💛 สีเหลือง, ขาว, ครีม (งานราบรื่น) · 🧡 สีส้ม, ทอง (ผู้ใหญ่เมตตา)", // Mon
-      "🩷 สีชมพู (พลังงานเต็มเปี่ยม) · 🖤 สีเทา, ดำ (โชคลาภ/การเงิน)", // Tue
-      "💚 สีเขียว (งานราบรื่น/สื่อสารดี) · 💛 สีเหลือง, ทอง (การเงินปัง)", // Wed
-      "🧡 สีส้ม, แสด, ทอง (ไอเดียพุ่ง/ก้าวหน้า) · ❤️ สีแดง (บารมีผู้บริหาร)", // Thu
-      "💙 สีฟ้า, น้ำเงิน (ราบรื่น/เพื่อนร่วมงานดี) · 🩷 สีชมพู (เสน่ห์โดดเด่น)", // Fri
-      "💜 สีม่วง, เทาดำ (โชคลาภ/บารมี) · 💚 สีเขียว (การงานสำเร็จ)", // Sat
-    ];
-
-    // Personal birth day specific lucky & avoid colors
-    const birthColors: Record<string, { lucky: string; avoid: string }> = {
-      "อาทิตย์": { lucky: "❤️ สีแดง, ชมพู (การงาน/เสน่ห์) · 💚 สีเขียว (โชคลาภ)", avoid: "💙 สีน้ำเงิน, ฟ้า" },
-      "จันทร์": { lucky: "💛 สีเหลือง, ครีม (การงาน) · 🟢 สีเขียว (ผู้ใหญ่เมตตา)", avoid: "❤️ สีแดง" },
-      "อังคาร": { lucky: "🩷 สีชมพู, ม่วง (งานสำเร็จ) · 🖤 สีเทา, ดำ (โชคลาภการเงิน)", avoid: "💛 สีเหลือง, ขาว" },
-      "พุธ": { lucky: "💚 สีเขียว, ส้ม, ทอง (สื่อสารการงานเด่น/เจรจาปัง)", avoid: "🩷 สีชมพู" },
-      "พฤหัสบดี": { lucky: "🧡 สีส้ม, แสด, ทอง (ไอเดียพุ่ง/ผลงานโดดเด่น)", avoid: "💜 สีม่วง" },
-      "ศุกร์": { lucky: "💙 สีฟ้า, น้ำเงิน (งานราบรื่น/เสน่ห์ผู้ใหญ่)", avoid: "🖤 สีดำ, เทา" },
-      "เสาร์": { lucky: "💜 สีม่วง, ดำ, เทา (โชคลาภ/อำนาจบารมี)", avoid: "🟢 สีเขียว" },
-    };
-
     const fortunes = [
       "✨ **ดวงการงาน:** วันนี้มีเกณฑ์เจรจาสื่อสารราบรื่น ไอเดียใหม่ๆ ได้รับการตอบรับดีเยี่ยม!",
       "🚀 **ดวงการงาน:** จังหวะการทำงานสดใส เหมาะแก่การตัดสินใจเรื่องสำคัญ ลุยงานโปรเจกต์ใหม่ได้เลยครับ",
@@ -3195,24 +3249,20 @@ async function checkHoroscope(userUpn: string, text: string): Promise<CommandRes
       "🏆 **ดวงการงาน:** ผลงานโดดเด่น ผู้ใหญ่ให้ความไว้วางใจ การวางแผนงานในระยะยาวจะประสบความสำเร็จสูงครับ",
     ];
 
-    const fortuneIdx = (targetDate.getDate() + targetDate.getMonth() + (userBirthDay ? userBirthDay.length : 0)) % fortunes.length;
+    const fortuneIdx = (targetDate.getDate() + targetDate.getMonth() + dayOfWeek + (userBirthDay ? userBirthDay.length : 0)) % fortunes.length;
     const todayFortune = fortunes[fortuneIdx];
     const todayName = dayNames[dayOfWeek];
 
-    const dayLabel = isTomorrow ? `ประจำวัน${todayName} (พรุ่งนี้)` : `ประจำวัน${todayName}`;
-    let headerTitle = `🔮 **ดวงการงาน${dayLabel}** (${dateFormatted})`;
-    let colorSection = isTomorrow ? `🎨 **สีเสื้อมงคลเตรียมใส่พรุ่งนี้:** ${luckyColorsToday[dayOfWeek]}` : `🎨 **สีเสื้อมงคลวันนี้:** ${luckyColorsToday[dayOfWeek]}`;
+    const bInfo = getLuckyColorMatrix(userBirthDay, dayOfWeek);
 
-    if (userBirthDay && birthColors[userBirthDay]) {
-      const bInfo = birthColors[userBirthDay];
-      headerTitle = `🔮 **ดวงการงาน${dayLabel} (สำหรับคนเกิดวัน${userBirthDay})** (${dateFormatted})`;
-      const colorTitle = isTomorrow ? `🎨 **สีเสื้อมงคลเตรียมใส่พรุ่งนี้ สำหรับคนเกิดวัน${userBirthDay}:**` : `🎨 **สีเสื้อมงคลประจำตัวคนเกิดวัน${userBirthDay}:**`;
-      colorSection = `${colorTitle}\n• **สีเสริมโชคลาภ/การงาน:** ${bInfo.lucky}\n• **สีที่ควรหลีกเลี่ยง:** ${bInfo.avoid}`;
-    }
+    const dayLabel = isTomorrow ? `ประจำวัน${todayName} (พรุ่งนี้)` : `ประจำวัน${todayName}`;
+    const headerTitle = `🔮 **ดวงการงาน${dayLabel} (สำหรับคนเกิดวัน${userBirthDay})** (${dateFormatted})`;
+    const colorTitle = isTomorrow ? `🎨 **สีเสื้อมงคลเตรียมใส่พรุ่งนี้ (ใส่เปลี่ยนวัน${todayName} สำหรับคนเกิดวัน${userBirthDay}):**` : `🎨 **สีเสื้อมงคลใส่ประจำวัน${todayName} (สำหรับคนเกิดวัน${userBirthDay}):**`;
+    const colorSection = `${colorTitle}\n• **สีเสริมโชคลาภ/การงาน:** ${bInfo.lucky}\n• **สีที่ควรหลีกเลี่ยง:** ${bInfo.avoid}`;
 
     return {
       intent: "get_horoscope",
-      reply: `${headerTitle}\n\n${todayFortune}\n\n${colorSection}\n☕ **ทริกเพิ่มพลัง:** จิบน้ำหรือกาแฟช่วงบ่าย และพักสายตา 5 นาที ช่วยให้โฟกัสงานดีเยี่ยมตลอดวันครับ! 🌟✨`,
+      reply: `${headerTitle}\n\n${todayFortune}\n\n${colorSection}\n\n☕ **ทริกเพิ่มพลัง:** จิบน้ำหรือกาแฟช่วงบ่าย และพักสายตา 5 นาที ช่วยให้โฟกัสงานดีเยี่ยมตลอดวันครับ! 🌟✨`,
       suggestions: [
         { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
         { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
