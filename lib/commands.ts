@@ -4143,6 +4143,40 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     };
   }
 
+  // Immediate email request check (ขอเมลพี่แบงค์ / ขออีเมล... / หาอีเมล...)
+  if (/(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:เมล|อีเมล|email| mail)\s*(?:ของ)?\s*(.+)/i.test(text)) {
+    const rawTarget = text.replace(/^(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:เมล|อีเมล|email| mail)\s*(?:ของ)?\s*/i, "").trim();
+    if (rawTarget) {
+      try {
+        const candidates = await searchUsers(rawTarget);
+        if (candidates.length === 1) {
+          const u = candidates[0];
+          return {
+            intent: "get_email",
+            reply: `📧 **อีเมลของ ${u.displayName}**: \`${u.mail}\` ✉️✨`,
+            suggestions: [
+              { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+              { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+            ],
+          };
+        } else if (candidates.length > 1) {
+          const choicesList = candidates.slice(0, 5).map((c, i) => `${i + 1}) **${c.displayName}**: \`${c.mail}\``).join("\n");
+          return {
+            intent: "get_email",
+            reply: `พบรายชื่อ ${candidates.length} ท่านที่ตรงกับ “${rawTarget}” ในระบบครับ 👇\n\n${choicesList}`,
+          };
+        } else {
+          return {
+            intent: "get_email",
+            reply: `ไม่พบอีเมลของ “${rawTarget}” ในสมุดโทรศัพท์/ระบบองค์กร Microsoft 365 ครับ 🔍`,
+          };
+        }
+      } catch (e) {
+        console.warn("get_email error:", e);
+      }
+    }
+  }
+
   // Deterministic quick intent shortcuts at the very top of handle:
   const quickTop = await parseIntent(text, context);
   if (quickTop.source === "quick") {
