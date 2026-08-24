@@ -4100,23 +4100,24 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     .replace(/\s+/g, " ")
     .trim();
 
-  // Immediate date query check at the top of handle
+  // Immediate date query check at the top of handle (Asia/Bangkok Wall Time)
   if (/วันนี้วันอะไร|วันนี้วันที่เท่าไหร่|วันนี้วันที่เท่าไร|วันนี้วันไร|เช็กวัน|เช็กวันที่|วันนี้วันที่/i.test(text)) {
-    const now = new Date();
+    const nowBkk = nowWall();
     const thaiDays = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
     const thaiMonths = [
       "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
       "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
     ];
-    const dayName = thaiDays[now.getDay()];
-    const dateNum = now.getDate();
-    const monthName = thaiMonths[now.getMonth()];
-    const yearBE = now.getFullYear() + 543;
-    const timeStr = now.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+    const dayName = thaiDays[nowBkk.getDay()];
+    const dateNum = nowBkk.getDate();
+    const monthName = thaiMonths[nowBkk.getMonth()];
+    const yearBE = nowBkk.getFullYear() + 543;
+    const hours = String(nowBkk.getHours()).padStart(2, "0");
+    const minutes = String(nowBkk.getMinutes()).padStart(2, "0");
 
     return {
       intent: "what_date_today",
-      reply: `📅 **วันนี้คือ วัน${dayName}ที่ ${dateNum} ${monthName} พ.ศ. ${yearBE}** (เวลา ${timeStr} น.) ครับ! 🗓️✨\n\nต้องการให้ผมสรุปตารางวาระงานหรือเช็กนัดหมายของวันนี้เพิ่มเติมไหมครับ?`,
+      reply: `📅 **วันนี้คือ วัน${dayName}ที่ ${dateNum} ${monthName} พ.ศ. ${yearBE}** (เวลา ${hours}:${minutes} น.) ครับ! 🗓️✨\n\nต้องการให้ผมสรุปตารางวาระงานหรือเช็กนัดหมายของวันนี้เพิ่มเติมไหมครับ?`,
       suggestions: [
         { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
         { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
