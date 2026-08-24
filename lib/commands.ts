@@ -1802,20 +1802,7 @@ async function parseIntent(
     };
   }
 
-  // Quick task closure confirmation handling: "ยืนยันปิดงาน", "ยืนยัน"
-  if (
-    context?.last_intent === "confirm_complete_task" &&
-    /^(?:ยืนยันปิดงาน|ยืนยัน|ตกลง|ปิดเลย|ใช่|ปิด|confirm|ok|yes)$/i.test(textClean)
-  ) {
-    const pendingTargetIds = (context?.pending_task_ids as number[]) || [];
-    if (pendingTargetIds.length) {
-      return {
-        intent: "complete_task",
-        params: { task_ids: pendingTargetIds, confirmed: true },
-        source: "quick",
-      };
-    }
-  }
+
 
   // "ปิดงานทั้งหมด" / "ปิดทั้งหมด" / "เคลียร์งานหมด" — everything pending at
   // once. The handler still asks for confirmation before closing anything.
@@ -4102,6 +4089,41 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
+  // Quick task closure confirmation handling: "ยืนยันปิดงาน", "ยืนยัน", "ปิดเลย"
+  if (/^(?:ยืนยันปิดงาน|ยืนยัน|ตกลง|ปิดเลย|ใช่|ปิด|confirm|ok|yes)$/i.test(text)) {
+    try {
+      const rawStored = await getSetting(userUpn.toLowerCase(), "_pending_close_task_ids");
+      if (rawStored) {
+        const taskIds = JSON.parse(rawStored);
+        if (Array.isArray(taskIds) && taskIds.length > 0) {
+          await deleteSetting(userUpn.toLowerCase(), "_pending_close_task_ids");
+          const pending = (await listTasks(userUpn)).filter(
+            (t) => t.status === "pending" || t.status === "overdue" || t.status === "done"
+          );
+          const closedTitles: string[] = [];
+          for (const tid of taskIds) {
+            const t = pending.find((p) => p.id === tid);
+            if (await updateTaskStatus(tid, "done")) {
+              closedTitles.push(`• ${t?.title || `งาน #${tid}`}`);
+            }
+          }
+          if (closedTitles.length > 0) {
+            return {
+              intent: "complete_task",
+              reply: `✅ ปิดงาน ${closedTitles.length} รายการเรียบร้อยแล้วครับ:\n${closedTitles.join("\n")}`,
+              suggestions: [
+                { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+                { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+              ],
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("confirm close tasks error:", e);
+    }
+  }
 
   // Number selection for candidate list (1, 2, 3, ข้อ 1, คน 1)
   const numberMatch = text.match(/^(?:ข้อ|คน(?:ที่)?|อัน(?:ที่)?)?\s*([1-5])\s*$/i);
@@ -6580,6 +6602,7 @@ async function handleParsed(
       // If not confirmed yet, ask user for confirmation first!
       if (!isConfirmed) {
         const confirmList = matchedTasks.map((t) => `• ${t.title}`).join("\n");
+        await setSetting(userUpn.toLowerCase(), "_pending_close_task_ids", JSON.stringify(matchedTasks.map((t) => t.id)));
         return {
           intent: "confirm_complete_task",
           pending_task_ids: matchedTasks.map((t) => t.id),
@@ -6595,6 +6618,7 @@ async function handleParsed(
       }
 
       // Confirmed: Execute the status updates
+      await deleteSetting(userUpn.toLowerCase(), "_pending_close_task_ids");
       const closedTitles: string[] = [];
       for (const t of matchedTasks) {
         if (await updateTaskStatus(t.id, "done")) {
