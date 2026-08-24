@@ -815,7 +815,7 @@ export function stripHonorificPublic(name: string): string {
   return stripHonorific(name);
 }
 
-export type UserInfo = { mail: string; displayName?: string };
+export type UserInfo = { mail: string; displayName?: string; jobTitle?: string; department?: string };
 
 const resolveCache = new Map<string, UserInfo | null>();
 
@@ -900,6 +900,7 @@ export async function resolveUser(nameOrEmail: string): Promise<string | null> {
   return info?.mail || null;
 }
 
+
 /** Candidate users with a mailbox matching a name/nickname/email (for disambiguation). */
 export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserInfo[]> {
   let q = nameOrEmail.trim();
@@ -929,7 +930,7 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
 
   const merge = (
     results: UserInfo[],
-    items: { mail?: string; userPrincipalName?: string; displayName?: string; scoredEmailAddresses?: { address?: string }[] }[]
+    items: { mail?: string; userPrincipalName?: string; displayName?: string; jobTitle?: string; department?: string; scoredEmailAddresses?: { address?: string }[] }[]
   ) => {
     const seen = new Set(results.map((r) => r.mail.toLowerCase()));
     for (const it of items) {
@@ -940,7 +941,12 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
         "";
       if (!mail || seen.has(mail.toLowerCase())) continue;
       seen.add(mail.toLowerCase());
-      results.push({ mail, displayName: normalizeDisplayName(it.displayName || "", mail) });
+      results.push({
+        mail,
+        displayName: normalizeDisplayName(it.displayName || "", mail),
+        jobTitle: it.jobTitle || undefined,
+        department: it.department || undefined
+      });
     }
     return results;
   };
@@ -952,6 +958,8 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
         mail?: string;
         userPrincipalName?: string;
         displayName?: string;
+        jobTitle?: string;
+        department?: string;
       }[];
     } catch {
       return [];
@@ -959,7 +967,7 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   };
 
   let results: UserInfo[] = [];
-  const sel = "mail,userPrincipalName,displayName";
+  const sel = "mail,userPrincipalName,displayName,jobTitle,department";
 
   // 1) Email-prefix directory hits first (pan → pan.s@, panom.p@) — most reliable for nicknames.
   if (shortQuery) {
