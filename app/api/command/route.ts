@@ -52,6 +52,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ...result, calendarAsUser: asUser });
   } catch (e) {
+    console.error("Command route error:", e);
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

@@ -1,0 +1,676 @@
+<title>AI Office บนมือถือ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --page: #efece8;
+    --ink: #1c1917;
+    --ink-soft: #57534e;
+    --ink-faint: #8a827c;
+    --screen: #ffffff;
+    --screen-sunk: #f7f5f3;
+    --line: #dcd7d2;
+    --line-soft: #e8e4e0;
+    --green: #059669;
+    --green-ink: #065f46;
+    --green-wash: rgba(5, 150, 105, 0.09);
+    --amber: #b45309;
+    --amber-wash: rgba(245, 158, 11, 0.12);
+    --bezel: #d6d1cb;
+    --bezel-edge: #b9b3ac;
+    --sans: "IBM Plex Sans Thai", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: #17150f;
+      --ink: #ece9e4;
+      --ink-soft: #a8a29e;
+      --ink-faint: #78716c;
+      --screen: #0e0d0b;
+      --screen-sunk: #1a1815;
+      --line: #2b2825;
+      --line-soft: #232120;
+      --green: #34d399;
+      --green-ink: #a7f3d0;
+      --green-wash: rgba(52, 211, 153, 0.12);
+      --amber: #fbbf24;
+      --amber-wash: rgba(251, 191, 36, 0.12);
+      --bezel: #2a2724;
+      --bezel-edge: #423d38;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --page: #17150f;
+    --ink: #ece9e4;
+    --ink-soft: #a8a29e;
+    --ink-faint: #78716c;
+    --screen: #0e0d0b;
+    --screen-sunk: #1a1815;
+    --line: #2b2825;
+    --line-soft: #232120;
+    --green: #34d399;
+    --green-ink: #a7f3d0;
+    --green-wash: rgba(52, 211, 153, 0.12);
+    --amber: #fbbf24;
+    --amber-wash: rgba(251, 191, 36, 0.12);
+    --bezel: #2a2724;
+    --bezel-edge: #423d38;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.7;
+  }
+
+  .wrap {
+    max-width: 74rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
+  }
+
+  .kicker {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 0.4rem;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(1.7rem, 4vw, 2.2rem);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  .dek { margin: 0.6rem 0 0; max-width: 40rem; color: var(--ink-soft); font-size: 0.95rem; }
+
+  h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* ---------------- phone frames ---------------- */
+  .frames {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem 1.5rem;
+    justify-items: center;
+  }
+
+  .slot { display: flex; flex-direction: column; gap: 0.7rem; align-items: center; }
+
+  .cap {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    text-align: center;
+    max-width: 22rem;
+  }
+  .cap b { color: var(--ink); font-weight: 500; display: block; margin-bottom: 0.15rem; }
+
+  .phone {
+    width: 375px;
+    max-width: 100%;
+    height: 760px;
+    border-radius: 34px;
+    padding: 9px;
+    background: var(--bezel);
+    border: 1px solid var(--bezel-edge);
+    flex: none;
+  }
+
+  .screen {
+    height: 100%;
+    border-radius: 26px;
+    overflow: hidden;
+    background: var(--screen);
+    display: grid;
+    /* status · appbar · topics · thread · composer — five rows, and only the
+       thread may grow. Declaring four put the 1fr on the topic strip, which
+       pushed a hole through the middle of every screen. */
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    font-size: 15px;
+    position: relative;
+  }
+
+  /* status bar */
+  .status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 18px 2px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+
+  /* app header */
+  .appbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 10px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .mark {
+    width: 26px; height: 26px; flex: none;
+    border-radius: 7px;
+    background: var(--green);
+    color: #fff;
+    display: grid; place-items: center;
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+  }
+
+  .appbar .name { font-size: 15px; font-weight: 600; }
+
+  .appbar .who {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-faint);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 8px;
+  }
+
+  /* topic strip */
+  .topics {
+    display: flex;
+    gap: 6px;
+    overflow: hidden;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line-soft);
+    background: var(--screen-sunk);
+    align-items: center;
+  }
+
+  .topic {
+    flex: none;
+    font-size: 12.5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    background: var(--screen);
+    white-space: nowrap;
+  }
+
+  .topic.on {
+    border-color: var(--green);
+    background: var(--green-wash);
+    color: var(--green-ink);
+    font-weight: 500;
+  }
+
+  .topic.more {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 8px;
+    margin-left: auto;
+  }
+
+  /* transcript */
+  .thread {
+    overflow: hidden;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: baseline;
+  }
+  .meta .cmd { color: var(--ink); font-weight: 500; }
+  .meta .caret { color: var(--green); }
+
+  .reply {
+    border-left: 2px solid color-mix(in srgb, var(--green) 45%, transparent);
+    padding-left: 11px;
+    margin-top: 6px;
+    font-size: 14.5px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+  }
+
+  .reply.warn { border-left-color: var(--amber); }
+  .reply .amber { color: var(--amber); }
+
+  .row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+
+  .chip {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+
+  .chip.mono { font-family: var(--mono); font-size: 11px; }
+
+  /* Nothing sent yet: sit the copy in the middle of the free space, so the
+     blank screen reads as deliberate rather than half-loaded. */
+  .thread.empty { justify-content: center; }
+
+  .empty .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0;
+  }
+  .empty p { margin: 8px 0 0; font-size: 14px; color: var(--ink-soft); }
+  .empty .tip { margin-top: 18px; font-size: 12.5px; color: var(--ink-faint); }
+
+  .notice {
+    display: flex;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--amber);
+    background: var(--amber-wash);
+    border-left: 2px solid var(--amber);
+    padding: 8px 10px;
+  }
+
+  /* composer */
+  .composer {
+    border-top: 1px solid var(--line);
+    background: var(--screen-sunk);
+    padding: 8px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .quick {
+    display: flex;
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  .quick .chip { background: var(--screen); }
+
+  .inputrow { display: flex; align-items: flex-end; gap: 8px; }
+
+  .field {
+    flex: 1;
+    min-height: 42px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--screen);
+    padding: 10px 12px;
+    font-size: 15px;
+    color: var(--ink-faint);
+    display: flex;
+    align-items: center;
+  }
+
+  .field.typed { color: var(--ink); }
+  .field.focus { border-color: var(--green); }
+
+  .send {
+    width: 42px; height: 42px; flex: none;
+    border-radius: 10px;
+    background: var(--green);
+    color: #fff;
+    display: grid; place-items: center;
+    font-size: 17px;
+  }
+
+  .send.off { background: color-mix(in srgb, var(--green) 35%, transparent); }
+
+  .homebar {
+    height: 4px; width: 110px;
+    border-radius: 99px;
+    background: var(--line);
+    margin: 2px auto 0;
+  }
+
+  /* bottom sheet */
+  .sheet-dim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: flex-end;
+    border-radius: 26px;
+  }
+
+  .sheet {
+    width: 100%;
+    background: var(--screen);
+    border-radius: 18px 18px 26px 26px;
+    padding: 10px 0 16px;
+    max-height: 78%;
+    overflow: hidden;
+  }
+
+  .grab { width: 36px; height: 4px; border-radius: 99px; background: var(--line); margin: 0 auto 10px; }
+
+  .sheet h3 {
+    margin: 0;
+    padding: 0 16px 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 400;
+  }
+
+  .sheet-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .sheet-item:last-child { border-bottom: 0; }
+  .sheet-item.on { background: var(--green-wash); }
+  .sheet-item .t { font-size: 14px; font-weight: 500; }
+  .sheet-item .h { font-size: 11.5px; color: var(--ink-faint); line-height: 1.5; }
+  .sheet-item .n { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+
+  /* ---------------- notes ---------------- */
+  .notes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 1rem;
+  }
+
+  .note {
+    border-left: 2px solid var(--green);
+    padding: 0.15rem 0 0.15rem 0.85rem;
+  }
+
+  .note h3 { margin: 0 0 0.2rem; font-size: 0.95rem; font-weight: 600; }
+  .note p { margin: 0; font-size: 0.88rem; color: var(--ink-soft); }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 1.1rem;
+    font-size: 0.82rem;
+    color: var(--ink-faint);
+  }
+  footer code { font-family: var(--mono); font-size: 0.78rem; }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="kicker">แบบหน้าจอ · ยังไม่ได้ต่อ API</p>
+    <h1>AI Office บนมือถือ</h1>
+    <p class="dek">
+      หน้าเดียวกับ <code>/ai-office-console</code> แต่คิดใหม่สำหรับจอ 375px — คุยมือเดียว
+      นิ้วโป้งถึงทุกปุ่มที่ต้องกดบ่อย ข้อความในภาพเป็นตัวอย่างเพื่อดูรูปแบบ ไม่ใช่ข้อมูลจริงจากปฏิทินของคุณ
+    </p>
+  </header>
+
+  <section>
+    <div class="frames">
+
+      <!-- ---------------- 1. empty ---------------- -->
+      <div class="slot">
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>08:57</span><span>▮▮▮ 94%</span></div>
+
+            <div class="appbar">
+              <span class="mark">›</span>
+              <span class="name">AI Office</span>
+              <span class="who">weerasak.pi</span>
+            </div>
+
+            <div class="topics">
+              <span class="topic on">🗓 ตารางฉัน</span>
+              <span class="topic">👥 คนอื่น</span>
+              <span class="topic">📅 นัดประชุม</span>
+              <span class="topic more">ทั้งหมด ⌄</span>
+            </div>
+
+            <div class="thread empty">
+              <div>
+                <p class="eyebrow">🗓 ตาราง &amp; นัดของฉัน</p>
+                <p>ดูนัดตัวเอง วันนี้ พรุ่งนี้ ทั้งเดือน หรือเจาะจงเวลา</p>
+                <p class="tip">ถามต่อสั้น ๆ ได้ ไม่ต้องพิมพ์ใหม่ทั้งประโยค เช่น “แล้วบ่ายล่ะ” · “วันศุกร์ล่ะ”</p>
+              </div>
+            </div>
+
+            <div class="composer">
+              <div class="quick">
+                <span class="chip">ตารางวันนี้</span>
+                <span class="chip">นัดพรุ่งนี้</span>
+                <span class="chip">ตารางเดือนนี้</span>
+              </div>
+              <div class="inputrow">
+                <span class="field">พิมพ์คำสั่ง เช่น ตารางวันนี้</span>
+                <span class="send off">↑</span>
+              </div>
+              <div class="homebar"></div>
+            </div>
+          </div>
+        </div>
+        <p class="cap"><b>เปิดมาครั้งแรก</b>ไม่มีการ์ดตัวอย่างปลอม มีแค่หมวดที่เลือกอยู่กับคำสั่งที่กดได้</p>
+      </div>
+
+      <!-- ---------------- 2. answered ---------------- -->
+      <div class="slot">
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>09:02</span><span>▮▮▮ 93%</span></div>
+
+            <div class="appbar">
+              <span class="mark">›</span>
+              <span class="name">AI Office</span>
+              <span class="who">weerasak.pi</span>
+            </div>
+
+            <div class="topics">
+              <span class="topic on">🗓 ตารางฉัน</span>
+              <span class="topic">👥 คนอื่น</span>
+              <span class="topic">📅 นัดประชุม</span>
+              <span class="topic more">ทั้งหมด ⌄</span>
+            </div>
+
+            <div class="thread">
+              <div>
+                <div class="meta">
+                  <span class="caret">›</span><span class="cmd">ตารางวันนี้</span>
+                  <span>09:01</span><span>list_meetings · 1.4s</span>
+                </div>
+                <div class="reply">🗓️ วันนี้ (จันทร์ 24 ส.ค.) มี 2 นัด
+
+09:30–10:30 · ทบทวนสเปกระบบผู้ช่วย
+   ห้องประชุม 2 · 4 คน
+13:00–14:00 · คุยกับฝ่ายจัดซื้อ
+   Teams · 3 คน
+
+ว่างยาว 10:30–13:00 และหลัง 14:00</div>
+                <div class="row">
+                  <span class="chip mono">คัดลอก</span>
+                  <span class="chip">ว่างกี่โมงพรุ่งนี้</span>
+                  <span class="chip">นัดพรุ่งนี้</span>
+                </div>
+              </div>
+
+              <div>
+                <div class="meta">
+                  <span class="caret">›</span><span class="cmd">ดูตารางเบสพรุ่งนี้</span>
+                  <span>09:02</span>
+                  <span>กำลังประมวลผล…</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="composer">
+              <div class="quick">
+                <span class="chip">ตารางวันนี้</span>
+                <span class="chip">นัดพรุ่งนี้</span>
+                <span class="chip">ตารางเดือนนี้</span>
+              </div>
+              <div class="inputrow">
+                <span class="field typed focus">ดูตารางเบสพรุ่งนี้</span>
+                <span class="send">↑</span>
+              </div>
+              <div class="homebar"></div>
+            </div>
+          </div>
+        </div>
+        <p class="cap"><b>ตอบแล้ว</b>คำสั่งที่พิมพ์เป็นฟอนต์ mono ขึ้นต้นด้วย › คำตอบเป็นข้อความไทยคงบรรทัดเดิม ไม่ใส่กรอบ</p>
+      </div>
+
+      <!-- ---------------- 3. topic sheet ---------------- -->
+      <div class="slot">
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>09:03</span><span>▮▮▮ 93%</span></div>
+
+            <div class="appbar">
+              <span class="mark">›</span>
+              <span class="name">AI Office</span>
+              <span class="who">weerasak.pi</span>
+            </div>
+
+            <div class="topics">
+              <span class="topic on">🗓 ตารางฉัน</span>
+              <span class="topic">👥 คนอื่น</span>
+              <span class="topic">📅 นัดประชุม</span>
+              <span class="topic more">ทั้งหมด ⌃</span>
+            </div>
+
+            <div class="thread">
+              <div class="notice">
+                <span>⚠</span>
+                <span>ยังไม่ได้เข้าสู่ระบบ — API จะปฏิเสธคำสั่ง หน้านี้ไม่มีข้อมูลตัวอย่างปลอมให้ดู</span>
+              </div>
+            </div>
+
+            <div class="composer">
+              <div class="inputrow">
+                <span class="field">พิมพ์คำสั่ง</span>
+                <span class="send off">↑</span>
+              </div>
+              <div class="homebar"></div>
+            </div>
+
+            <div class="sheet-dim">
+              <div class="sheet">
+                <div class="grab"></div>
+                <h3>สั่งอะไรได้</h3>
+                <div class="sheet-item on">
+                  <span>🗓</span>
+                  <span>
+                    <span class="t">ตาราง &amp; นัดของฉัน</span><br>
+                    <span class="h">ดูนัดตัวเอง วันนี้ พรุ่งนี้ ทั้งเดือน</span>
+                  </span>
+                  <span class="n">7</span>
+                </div>
+                <div class="sheet-item">
+                  <span>👥</span>
+                  <span>
+                    <span class="t">ตารางของคนอื่น</span><br>
+                    <span class="h">เห็นเท่าที่ Outlook ของเขาเปิดให้</span>
+                  </span>
+                  <span class="n">4</span>
+                </div>
+                <div class="sheet-item">
+                  <span>📅</span>
+                  <span>
+                    <span class="t">นัดประชุม · หาเวลาว่างตรงกัน</span><br>
+                    <span class="h">ยืนยันก่อนลง Outlook ทุกครั้ง</span>
+                  </span>
+                  <span class="n">5</span>
+                </div>
+                <div class="sheet-item">
+                  <span>📝</span>
+                  <span>
+                    <span class="t">สรุปประชุม</span><br>
+                    <span class="h">ต้องเปิดบันทึกและถอดเสียงใน Teams</span>
+                  </span>
+                  <span class="n">5</span>
+                </div>
+                <div class="sheet-item">
+                  <span>✅</span>
+                  <span>
+                    <span class="t">งานที่ต้องติดตาม</span><br>
+                    <span class="h">งานค้าง ปิดงาน เพิ่มงานใหม่</span>
+                  </span>
+                  <span class="n">5</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="cap"><b>เลือกหมวด</b>แตะ “ทั้งหมด” เปิดชีตขึ้นจากล่าง เห็นครบ 8 หมวดพร้อมคำอธิบาย โดยไม่ต้องเลื่อนแถบไปหา</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>ตัดสินใจอะไรไว้บ้างเฉพาะจอมือถือ</h2>
+    <div class="notes">
+      <div class="note">
+        <h3>ช่องพิมพ์ติดขอบล่าง</h3>
+        <p>อยู่เหนือคีย์บอร์ดพอดี นิ้วโป้งถึงทั้งช่องพิมพ์ ปุ่มส่ง และคำสั่งด่วน โดยไม่ต้องขยับมือ</p>
+      </div>
+      <div class="note">
+        <h3>คำสั่งด่วนแถวเดียว เลื่อนข้าง</h3>
+        <p>บนเดสก์ท็อปชิปตัดบรรทัดได้ บนมือถือมันจะกินความสูงไปสามแถว จึงบังคับให้เป็นแถวเดียวแล้วเลื่อนแทน</p>
+      </div>
+      <div class="note">
+        <h3>แถบหมวดเหลือ 3 + “ทั้งหมด”</h3>
+        <p>แปดหมวดเรียงยาวเกินจอ ทางลัดสามอันที่ใช้บ่อยอยู่หน้า ที่เหลือเปิดเป็นชีตซึ่งมีที่พออธิบายว่าหมวดนั้นทำอะไร</p>
+      </div>
+      <div class="note">
+        <h3>คำตอบไม่มีกรอบ</h3>
+        <p>กรอบการ์ดกินความกว้างข้างละ 12px บนจอ 375px จึงใช้เส้นซ้ายบางแทน — ยังแยกออกว่าเป็นคำตอบ แต่ได้ความกว้างคืน</p>
+      </div>
+      <div class="note">
+        <h3>บรรทัดสถานะรวมในบรรทัดเดียว</h3>
+        <p>เวลา ชื่อ intent และเวลาที่ใช้ อยู่บรรทัด mono เดียวกับคำสั่ง ไม่แยกเป็นป้ายหลายอัน</p>
+      </div>
+      <div class="note">
+        <h3>ไม่มีข้อมูลปลอมตอนยังไม่ล็อกอิน</h3>
+        <p>เหมือนรุ่นเดสก์ท็อป — บอกว่า API ปฏิเสธคำสั่ง แล้วให้ปุ่มล็อกอิน ไม่ใช่โชว์ตัวเลขที่แต่งขึ้น</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    ไฟล์นี้เป็นแบบหน้าจอเพื่อดูรูปแบบก่อนลงมือ — HTML/CSS ล้วน ไม่มีสคริปต์ ไม่ต่อ <code>/api/command</code>
+    ข้อความนัดในภาพเป็นตัวอย่างที่แต่งขึ้นเพื่อให้เห็นการจัดวาง ส่วนชื่อหมวดและคำสั่งเป็นของจริงจาก
+    <code>lib/help.ts</code>
+  </footer>
+
+</div>

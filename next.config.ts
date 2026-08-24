@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: [
+    "10.10.10.44",
+    "10.10.10.44:3000",
+    "10.10.10.44:3001",
+    "localhost",
+    "localhost:3000",
+  ],
   // Include Thai fonts used when generating the LINE rich-menu PNG.
   outputFileTracingIncludes: {
     "/api/line/rich-menu": ["./assets/fonts/**/*", "./assets/line-rich-menu.png"],

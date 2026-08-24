@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* `dark:` follows the operating system, and any subtree can pin itself with
+   data-theme="light" / "dark" (used by the AI Office console's theme switch).
+   No page used a `dark:` utility before this rule, so it re-styles nothing that
+   already existed — it only makes the variant available. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme="light"], [data-theme="light"] *)) {
+      @slot;
+    }
+  }
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

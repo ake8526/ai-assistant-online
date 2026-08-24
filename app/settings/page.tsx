@@ -19,6 +19,13 @@ import {
 
 const MENU = [
   {
+    href: "/ai-office",
+    icon: UserCircle2,
+    title: "AI Office Hub (ระบบแผนกองค์กร)",
+    desc: "ศูนย์บัญชาการ AI แยกตามแผนก (บริหาร, HR, ข่าวสาร, การเงิน)",
+    accent: "from-sky-500 via-indigo-500 to-purple-500",
+  },
+  {
     href: "/account",
     icon: UserCircle2,
     title: "บัญชีของฉัน",
