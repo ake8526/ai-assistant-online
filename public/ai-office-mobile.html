@@ -73,12 +73,12 @@
   }
 
   .wrap {
-    max-width: 74rem;
+    max-width: 62rem;
     margin: 0 auto;
-    padding: 2.5rem 1.25rem 4rem;
+    padding: 2rem 1.25rem 4rem;
     display: flex;
     flex-direction: column;
-    gap: 2.5rem;
+    gap: 2rem;
   }
 
   .kicker {
@@ -90,47 +90,25 @@
     margin: 0 0 0.4rem;
   }
 
-  h1 {
-    margin: 0;
-    font-size: clamp(1.7rem, 4vw, 2.2rem);
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    text-wrap: balance;
-  }
-
-  .dek { margin: 0.6rem 0 0; max-width: 40rem; color: var(--ink-soft); font-size: 0.95rem; }
+  h1 { margin: 0; font-size: clamp(1.6rem, 4vw, 2.1rem); font-weight: 600; letter-spacing: -0.01em; }
+  .dek { margin: 0.6rem 0 0; max-width: 38rem; color: var(--ink-soft); font-size: 0.95rem; }
 
   h2 {
     margin: 0 0 0.75rem;
-    font-size: 1.15rem;
+    font-size: 1.1rem;
     font-weight: 600;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--line);
   }
 
-  /* ---------------- phone frames ---------------- */
-  .frames {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 2rem 1.5rem;
-    justify-items: center;
-  }
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 0.8rem; }
 
-  .slot { display: flex; flex-direction: column; gap: 0.7rem; align-items: center; }
+  .cap { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-faint); text-align: center; }
 
-  .cap {
-    font-family: var(--mono);
-    font-size: 0.72rem;
-    color: var(--ink-faint);
-    text-align: center;
-    max-width: 22rem;
-  }
-  .cap b { color: var(--ink); font-weight: 500; display: block; margin-bottom: 0.15rem; }
-
+  /* ---------------- phone ---------------- */
   .phone {
     width: 375px;
-    max-width: 100%;
-    height: 760px;
+    height: 780px;
     border-radius: 34px;
     padding: 9px;
     background: var(--bezel);
@@ -144,111 +122,91 @@
     overflow: hidden;
     background: var(--screen);
     display: grid;
-    /* status · appbar · topics · thread · composer — five rows, and only the
-       thread may grow. Declaring four put the 1fr on the topic strip, which
-       pushed a hole through the middle of every screen. */
+    /* status · appbar · topics · thread · composer — only the thread grows */
     grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     font-size: 15px;
     position: relative;
   }
 
-  /* status bar */
   .status {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    display: flex; justify-content: space-between; align-items: center;
     padding: 8px 18px 2px;
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-faint);
+    font-family: var(--mono); font-size: 11px; color: var(--ink-faint);
   }
 
-  /* app header */
   .appbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    display: flex; align-items: center; gap: 8px;
     padding: 6px 14px 10px;
     border-bottom: 1px solid var(--line-soft);
   }
 
   .mark {
     width: 26px; height: 26px; flex: none;
-    border-radius: 7px;
-    background: var(--green);
-    color: #fff;
+    border-radius: 7px; background: var(--green); color: #fff;
     display: grid; place-items: center;
-    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    font-family: var(--mono); font-size: 13px;
   }
 
   .appbar .name { font-size: 15px; font-weight: 600; }
 
-  .appbar .who {
+  .reset {
     margin-left: auto;
-    font-family: var(--mono);
-    font-size: 10px;
+    font-family: var(--mono); font-size: 10px;
     color: var(--ink-faint);
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 2px 8px;
+    background: none; border: 1px solid var(--line);
+    border-radius: 999px; padding: 3px 9px; cursor: pointer;
   }
+  .reset:hover { color: var(--ink); }
 
-  /* topic strip */
   .topics {
-    display: flex;
-    gap: 6px;
-    overflow: hidden;
+    display: flex; gap: 6px; align-items: center;
+    overflow-x: auto; scrollbar-width: none;
     padding: 8px 14px;
     border-bottom: 1px solid var(--line-soft);
     background: var(--screen-sunk);
-    align-items: center;
   }
+  .topics::-webkit-scrollbar { display: none; }
 
   .topic {
     flex: none;
-    font-size: 12.5px;
+    font: inherit; font-size: 12.5px;
     padding: 4px 10px;
     border-radius: 999px;
     border: 1px solid var(--line);
     color: var(--ink-soft);
     background: var(--screen);
     white-space: nowrap;
+    cursor: pointer;
   }
 
-  .topic.on {
+  .topic[aria-current="true"] {
     border-color: var(--green);
     background: var(--green-wash);
     color: var(--green-ink);
     font-weight: 500;
   }
 
-  .topic.more {
-    font-family: var(--mono);
-    font-size: 11px;
-    padding: 4px 8px;
-    margin-left: auto;
-  }
+  .topic.more { font-family: var(--mono); font-size: 11px; margin-left: auto; }
 
-  /* transcript */
   .thread {
-    overflow: hidden;
+    overflow-y: auto;
     padding: 14px;
     display: flex;
     flex-direction: column;
     gap: 18px;
   }
+  .thread.is-empty { justify-content: center; }
 
   .meta {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-faint);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: baseline;
+    font-family: var(--mono); font-size: 11px; color: var(--ink-faint);
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline;
   }
   .meta .cmd { color: var(--ink); font-weight: 500; }
   .meta .caret { color: var(--green); }
+  .meta .tag {
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 0 6px; font-size: 10px;
+  }
 
   .reply {
     border-left: 2px solid color-mix(in srgb, var(--green) 45%, transparent);
@@ -259,382 +217,183 @@
     white-space: pre-wrap;
   }
 
-  .reply.warn { border-left-color: var(--amber); }
-  .reply .amber { color: var(--amber); }
-
   .row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 
   .chip {
-    font-size: 12px;
+    font: inherit; font-size: 12px;
     padding: 3px 10px;
     border-radius: 999px;
     border: 1px solid var(--line);
+    background: transparent;
     color: var(--ink-soft);
     white-space: nowrap;
+    cursor: pointer;
   }
-
+  .chip:hover { border-color: var(--green); color: var(--green-ink); }
   .chip.mono { font-family: var(--mono); font-size: 11px; }
 
-  /* Nothing sent yet: sit the copy in the middle of the free space, so the
-     blank screen reads as deliberate rather than half-loaded. */
-  .thread.empty { justify-content: center; }
-
   .empty .eyebrow {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-    margin: 0;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-faint); margin: 0;
   }
   .empty p { margin: 8px 0 0; font-size: 14px; color: var(--ink-soft); }
-  .empty .tip { margin-top: 18px; font-size: 12.5px; color: var(--ink-faint); }
+  .empty .tip { margin-top: 16px; font-size: 12.5px; color: var(--ink-faint); }
 
-  .notice {
-    display: flex;
-    gap: 8px;
-    font-size: 12px;
-    line-height: 1.6;
-    color: var(--amber);
-    background: var(--amber-wash);
-    border-left: 2px solid var(--amber);
-    padding: 8px 10px;
-  }
-
-  /* composer */
   .composer {
     border-top: 1px solid var(--line);
     background: var(--screen-sunk);
     padding: 8px 12px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    display: flex; flex-direction: column; gap: 8px;
   }
 
-  .quick {
-    display: flex;
-    gap: 6px;
-    overflow: hidden;
-  }
-
-  .quick .chip { background: var(--screen); }
+  .quick { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .quick::-webkit-scrollbar { display: none; }
+  .quick .chip { background: var(--screen); flex: none; }
 
   .inputrow { display: flex; align-items: flex-end; gap: 8px; }
 
   .field {
-    flex: 1;
-    min-height: 42px;
+    flex: 1; min-height: 42px; max-height: 120px;
     border: 1px solid var(--line);
     border-radius: 10px;
     background: var(--screen);
     padding: 10px 12px;
-    font-size: 15px;
-    color: var(--ink-faint);
-    display: flex;
-    align-items: center;
+    font-family: var(--sans); font-size: 15px; line-height: 1.5;
+    color: var(--ink);
+    resize: none;
   }
-
-  .field.typed { color: var(--ink); }
-  .field.focus { border-color: var(--green); }
+  .field:focus { outline: none; border-color: var(--green); }
+  .field::placeholder { color: var(--ink-faint); }
 
   .send {
     width: 42px; height: 42px; flex: none;
-    border-radius: 10px;
-    background: var(--green);
-    color: #fff;
-    display: grid; place-items: center;
-    font-size: 17px;
+    border: 0; border-radius: 10px;
+    background: var(--green); color: #fff;
+    font-size: 17px; cursor: pointer;
   }
+  .send:disabled { opacity: 0.4; cursor: default; }
 
-  .send.off { background: color-mix(in srgb, var(--green) 35%, transparent); }
+  .homebar { height: 4px; width: 110px; border-radius: 99px; background: var(--line); margin: 2px auto 0; }
 
-  .homebar {
-    height: 4px; width: 110px;
-    border-radius: 99px;
-    background: var(--line);
-    margin: 2px auto 0;
-  }
-
-  /* bottom sheet */
+  /* sheet */
   .sheet-dim {
-    position: absolute;
-    inset: 0;
+    position: absolute; inset: 0;
     background: rgba(0,0,0,0.45);
-    display: flex;
-    align-items: flex-end;
+    display: flex; align-items: flex-end;
     border-radius: 26px;
   }
+  .sheet-dim[hidden] { display: none; }
 
   .sheet {
     width: 100%;
-    background: var(--screen);
+    background: var(--screen-sunk);
     border-radius: 18px 18px 26px 26px;
-    padding: 10px 0 16px;
-    max-height: 78%;
-    overflow: hidden;
+    padding: 10px 0 14px;
+    max-height: 80%;
+    overflow-y: auto;
   }
 
   .grab { width: 36px; height: 4px; border-radius: 99px; background: var(--line); margin: 0 auto 10px; }
 
   .sheet h3 {
-    margin: 0;
-    padding: 0 16px 8px;
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-    font-weight: 400;
+    margin: 0; padding: 0 16px 8px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-faint); font-weight: 400;
   }
 
   .sheet-item {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
+    display: flex; gap: 10px; align-items: flex-start; width: 100%;
     padding: 9px 16px;
-    border-bottom: 1px solid var(--line-soft);
+    border: 0; border-bottom: 1px solid var(--line-soft);
+    background: none; color: inherit; text-align: left;
+    font: inherit; cursor: pointer;
   }
-
   .sheet-item:last-child { border-bottom: 0; }
-  .sheet-item.on { background: var(--green-wash); }
+  .sheet-item[aria-current="true"] { background: var(--green-wash); }
   .sheet-item .t { font-size: 14px; font-weight: 500; }
-  .sheet-item .h { font-size: 11.5px; color: var(--ink-faint); line-height: 1.5; }
+  .sheet-item .h { font-size: 11.5px; color: var(--ink-faint); line-height: 1.5; display: block; }
   .sheet-item .n { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
 
-  /* ---------------- notes ---------------- */
-  .notes {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-    gap: 1rem;
-  }
-
-  .note {
-    border-left: 2px solid var(--green);
-    padding: 0.15rem 0 0.15rem 0.85rem;
-  }
-
+  /* notes */
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }
+  .note { border-left: 2px solid var(--green); padding: 0.15rem 0 0.15rem 0.85rem; }
   .note h3 { margin: 0 0 0.2rem; font-size: 0.95rem; font-weight: 600; }
   .note p { margin: 0; font-size: 0.88rem; color: var(--ink-soft); }
 
   footer {
     border-top: 1px solid var(--line);
     padding-top: 1.1rem;
-    font-size: 0.82rem;
-    color: var(--ink-faint);
+    font-size: 0.82rem; color: var(--ink-faint);
   }
   footer code { font-family: var(--mono); font-size: 0.78rem; }
+
+  /* On a real phone, drop the bezel and let it fill the screen. */
+  @media (max-width: 480px) {
+    .wrap { padding: 1.25rem 0.9rem 3rem; }
+    .phone {
+      width: 100%;
+      height: 82svh;
+      padding: 0;
+      border-radius: 18px;
+      background: none;
+      border: 1px solid var(--line);
+    }
+    .screen { border-radius: 17px; }
+    .sheet-dim { border-radius: 17px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
 </style>
 
 <div class="wrap">
 
   <header>
-    <p class="kicker">แบบหน้าจอ · ยังไม่ได้ต่อ API</p>
+    <p class="kicker">แบบหน้าจอ · กดเล่นได้ · คำตอบเป็นตัวอย่าง</p>
     <h1>AI Office บนมือถือ</h1>
     <p class="dek">
-      หน้าเดียวกับ <code>/ai-office-console</code> แต่คิดใหม่สำหรับจอ 375px — คุยมือเดียว
-      นิ้วโป้งถึงทุกปุ่มที่ต้องกดบ่อย ข้อความในภาพเป็นตัวอย่างเพื่อดูรูปแบบ ไม่ใช่ข้อมูลจริงจากปฏิทินของคุณ
+      หน้าเดียวกับ <code>/ai-office-console</code> คิดใหม่สำหรับจอ 375px — แตะได้ทุกปุ่มในเครื่องนี้
+      เลือกหมวด เปิดชีต พิมพ์คำสั่ง กดส่ง คำตอบที่ขึ้นเป็นข้อความตัวอย่างที่เขียนไว้ในไฟล์นี้
+      ไม่ได้เรียก API และไม่ใช่ข้อมูลจากปฏิทินจริงของคุณ
     </p>
   </header>
 
-  <section>
-    <div class="frames">
+  <section class="stage">
+    <div class="phone">
+      <div class="screen">
+        <div class="status"><span id="clock">08:57</span><span>▮▮▮ 94%</span></div>
 
-      <!-- ---------------- 1. empty ---------------- -->
-      <div class="slot">
-        <div class="phone">
-          <div class="screen">
-            <div class="status"><span>08:57</span><span>▮▮▮ 94%</span></div>
+        <div class="appbar">
+          <span class="mark">›</span>
+          <span class="name">AI Office</span>
+          <button class="reset" id="reset" type="button">ล้างหน้าจอ</button>
+        </div>
 
-            <div class="appbar">
-              <span class="mark">›</span>
-              <span class="name">AI Office</span>
-              <span class="who">weerasak.pi</span>
-            </div>
+        <div class="topics" id="topics"></div>
 
-            <div class="topics">
-              <span class="topic on">🗓 ตารางฉัน</span>
-              <span class="topic">👥 คนอื่น</span>
-              <span class="topic">📅 นัดประชุม</span>
-              <span class="topic more">ทั้งหมด ⌄</span>
-            </div>
+        <div class="thread is-empty" id="thread"></div>
 
-            <div class="thread empty">
-              <div>
-                <p class="eyebrow">🗓 ตาราง &amp; นัดของฉัน</p>
-                <p>ดูนัดตัวเอง วันนี้ พรุ่งนี้ ทั้งเดือน หรือเจาะจงเวลา</p>
-                <p class="tip">ถามต่อสั้น ๆ ได้ ไม่ต้องพิมพ์ใหม่ทั้งประโยค เช่น “แล้วบ่ายล่ะ” · “วันศุกร์ล่ะ”</p>
-              </div>
-            </div>
+        <div class="composer">
+          <div class="quick" id="quick"></div>
+          <div class="inputrow">
+            <label class="sr-only" for="field" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">คำสั่ง</label>
+            <textarea class="field" id="field" rows="1" placeholder="พิมพ์คำสั่ง เช่น ตารางวันนี้"></textarea>
+            <button class="send" id="send" type="button" aria-label="ส่งคำสั่ง" disabled>↑</button>
+          </div>
+          <div class="homebar"></div>
+        </div>
 
-            <div class="composer">
-              <div class="quick">
-                <span class="chip">ตารางวันนี้</span>
-                <span class="chip">นัดพรุ่งนี้</span>
-                <span class="chip">ตารางเดือนนี้</span>
-              </div>
-              <div class="inputrow">
-                <span class="field">พิมพ์คำสั่ง เช่น ตารางวันนี้</span>
-                <span class="send off">↑</span>
-              </div>
-              <div class="homebar"></div>
-            </div>
+        <div class="sheet-dim" id="dim" hidden>
+          <div class="sheet" role="dialog" aria-modal="true" aria-label="เลือกหมวดคำสั่ง" id="sheet">
+            <div class="grab"></div>
+            <h3>สั่งอะไรได้</h3>
+            <div id="sheetList"></div>
           </div>
         </div>
-        <p class="cap"><b>เปิดมาครั้งแรก</b>ไม่มีการ์ดตัวอย่างปลอม มีแค่หมวดที่เลือกอยู่กับคำสั่งที่กดได้</p>
       </div>
-
-      <!-- ---------------- 2. answered ---------------- -->
-      <div class="slot">
-        <div class="phone">
-          <div class="screen">
-            <div class="status"><span>09:02</span><span>▮▮▮ 93%</span></div>
-
-            <div class="appbar">
-              <span class="mark">›</span>
-              <span class="name">AI Office</span>
-              <span class="who">weerasak.pi</span>
-            </div>
-
-            <div class="topics">
-              <span class="topic on">🗓 ตารางฉัน</span>
-              <span class="topic">👥 คนอื่น</span>
-              <span class="topic">📅 นัดประชุม</span>
-              <span class="topic more">ทั้งหมด ⌄</span>
-            </div>
-
-            <div class="thread">
-              <div>
-                <div class="meta">
-                  <span class="caret">›</span><span class="cmd">ตารางวันนี้</span>
-                  <span>09:01</span><span>list_meetings · 1.4s</span>
-                </div>
-                <div class="reply">🗓️ วันนี้ (จันทร์ 24 ส.ค.) มี 2 นัด
-
-09:30–10:30 · ทบทวนสเปกระบบผู้ช่วย
-   ห้องประชุม 2 · 4 คน
-13:00–14:00 · คุยกับฝ่ายจัดซื้อ
-   Teams · 3 คน
-
-ว่างยาว 10:30–13:00 และหลัง 14:00</div>
-                <div class="row">
-                  <span class="chip mono">คัดลอก</span>
-                  <span class="chip">ว่างกี่โมงพรุ่งนี้</span>
-                  <span class="chip">นัดพรุ่งนี้</span>
-                </div>
-              </div>
-
-              <div>
-                <div class="meta">
-                  <span class="caret">›</span><span class="cmd">ดูตารางเบสพรุ่งนี้</span>
-                  <span>09:02</span>
-                  <span>กำลังประมวลผล…</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="composer">
-              <div class="quick">
-                <span class="chip">ตารางวันนี้</span>
-                <span class="chip">นัดพรุ่งนี้</span>
-                <span class="chip">ตารางเดือนนี้</span>
-              </div>
-              <div class="inputrow">
-                <span class="field typed focus">ดูตารางเบสพรุ่งนี้</span>
-                <span class="send">↑</span>
-              </div>
-              <div class="homebar"></div>
-            </div>
-          </div>
-        </div>
-        <p class="cap"><b>ตอบแล้ว</b>คำสั่งที่พิมพ์เป็นฟอนต์ mono ขึ้นต้นด้วย › คำตอบเป็นข้อความไทยคงบรรทัดเดิม ไม่ใส่กรอบ</p>
-      </div>
-
-      <!-- ---------------- 3. topic sheet ---------------- -->
-      <div class="slot">
-        <div class="phone">
-          <div class="screen">
-            <div class="status"><span>09:03</span><span>▮▮▮ 93%</span></div>
-
-            <div class="appbar">
-              <span class="mark">›</span>
-              <span class="name">AI Office</span>
-              <span class="who">weerasak.pi</span>
-            </div>
-
-            <div class="topics">
-              <span class="topic on">🗓 ตารางฉัน</span>
-              <span class="topic">👥 คนอื่น</span>
-              <span class="topic">📅 นัดประชุม</span>
-              <span class="topic more">ทั้งหมด ⌃</span>
-            </div>
-
-            <div class="thread">
-              <div class="notice">
-                <span>⚠</span>
-                <span>ยังไม่ได้เข้าสู่ระบบ — API จะปฏิเสธคำสั่ง หน้านี้ไม่มีข้อมูลตัวอย่างปลอมให้ดู</span>
-              </div>
-            </div>
-
-            <div class="composer">
-              <div class="inputrow">
-                <span class="field">พิมพ์คำสั่ง</span>
-                <span class="send off">↑</span>
-              </div>
-              <div class="homebar"></div>
-            </div>
-
-            <div class="sheet-dim">
-              <div class="sheet">
-                <div class="grab"></div>
-                <h3>สั่งอะไรได้</h3>
-                <div class="sheet-item on">
-                  <span>🗓</span>
-                  <span>
-                    <span class="t">ตาราง &amp; นัดของฉัน</span><br>
-                    <span class="h">ดูนัดตัวเอง วันนี้ พรุ่งนี้ ทั้งเดือน</span>
-                  </span>
-                  <span class="n">7</span>
-                </div>
-                <div class="sheet-item">
-                  <span>👥</span>
-                  <span>
-                    <span class="t">ตารางของคนอื่น</span><br>
-                    <span class="h">เห็นเท่าที่ Outlook ของเขาเปิดให้</span>
-                  </span>
-                  <span class="n">4</span>
-                </div>
-                <div class="sheet-item">
-                  <span>📅</span>
-                  <span>
-                    <span class="t">นัดประชุม · หาเวลาว่างตรงกัน</span><br>
-                    <span class="h">ยืนยันก่อนลง Outlook ทุกครั้ง</span>
-                  </span>
-                  <span class="n">5</span>
-                </div>
-                <div class="sheet-item">
-                  <span>📝</span>
-                  <span>
-                    <span class="t">สรุปประชุม</span><br>
-                    <span class="h">ต้องเปิดบันทึกและถอดเสียงใน Teams</span>
-                  </span>
-                  <span class="n">5</span>
-                </div>
-                <div class="sheet-item">
-                  <span>✅</span>
-                  <span>
-                    <span class="t">งานที่ต้องติดตาม</span><br>
-                    <span class="h">งานค้าง ปิดงาน เพิ่มงานใหม่</span>
-                  </span>
-                  <span class="n">5</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <p class="cap"><b>เลือกหมวด</b>แตะ “ทั้งหมด” เปิดชีตขึ้นจากล่าง เห็นครบ 8 หมวดพร้อมคำอธิบาย โดยไม่ต้องเลื่อนแถบไปหา</p>
-      </div>
-
     </div>
+    <p class="cap">แตะหมวด · แตะ “ทั้งหมด” เปิดชีต · แตะคำสั่งด่วนหรือพิมพ์เองแล้วกด ↑</p>
   </section>
 
   <section>
@@ -650,27 +409,284 @@
       </div>
       <div class="note">
         <h3>แถบหมวดเหลือ 3 + “ทั้งหมด”</h3>
-        <p>แปดหมวดเรียงยาวเกินจอ ทางลัดสามอันที่ใช้บ่อยอยู่หน้า ที่เหลือเปิดเป็นชีตซึ่งมีที่พออธิบายว่าหมวดนั้นทำอะไร</p>
+        <p>เก้าหมวดเรียงยาวเกินจอ สามอันแรกกับหมวดที่ใช้อยู่โชว์ไว้ ที่เหลือเปิดเป็นชีตซึ่งมีที่พออธิบายว่าหมวดนั้นทำอะไร</p>
       </div>
       <div class="note">
         <h3>คำตอบไม่มีกรอบ</h3>
         <p>กรอบการ์ดกินความกว้างข้างละ 12px บนจอ 375px จึงใช้เส้นซ้ายบางแทน — ยังแยกออกว่าเป็นคำตอบ แต่ได้ความกว้างคืน</p>
       </div>
       <div class="note">
-        <h3>บรรทัดสถานะรวมในบรรทัดเดียว</h3>
-        <p>เวลา ชื่อ intent และเวลาที่ใช้ อยู่บรรทัด mono เดียวกับคำสั่ง ไม่แยกเป็นป้ายหลายอัน</p>
+        <h3>สถานะรวมบรรทัดเดียว</h3>
+        <p>เวลา ชื่อ intent และวินาทีที่ใช้ อยู่บรรทัด mono เดียวกับคำสั่งที่พิมพ์ ไม่แตกเป็นป้ายหลายอัน</p>
       </div>
       <div class="note">
-        <h3>ไม่มีข้อมูลปลอมตอนยังไม่ล็อกอิน</h3>
-        <p>เหมือนรุ่นเดสก์ท็อป — บอกว่า API ปฏิเสธคำสั่ง แล้วให้ปุ่มล็อกอิน ไม่ใช่โชว์ตัวเลขที่แต่งขึ้น</p>
+        <h3>ยังไม่มีคำสั่ง = จัดกลางจอ</h3>
+        <p>ไม่ปล่อยข้อความลอยชิดบนแล้วเหลือที่ว่างยาว ๆ ข้างล่าง ซึ่งอ่านว่าหน้าโหลดไม่เสร็จ</p>
       </div>
     </div>
   </section>
 
   <footer>
-    ไฟล์นี้เป็นแบบหน้าจอเพื่อดูรูปแบบก่อนลงมือ — HTML/CSS ล้วน ไม่มีสคริปต์ ไม่ต่อ <code>/api/command</code>
-    ข้อความนัดในภาพเป็นตัวอย่างที่แต่งขึ้นเพื่อให้เห็นการจัดวาง ส่วนชื่อหมวดและคำสั่งเป็นของจริงจาก
-    <code>lib/help.ts</code>
+    ไฟล์เดียวจบ ไม่มีการเรียกเครือข่าย — คำตอบทุกอันเขียนไว้ในไฟล์เพื่อให้กดดูรูปแบบได้
+    ส่วนชื่อหมวดกับคำสั่งด่วนเป็นของจริงจาก <code>lib/help.ts</code>
+    ของที่ต่อ API จริงอยู่ที่ <code>/ai-office-console</code>
   </footer>
 
 </div>
+
+<script>
+  const TOPICS = [
+    {
+      key: "mine", short: "ตารางฉัน", emoji: "🗓", title: "ตาราง & นัดของฉัน",
+      hint: "ดูนัดตัวเอง วันนี้ พรุ่งนี้ ทั้งเดือน หรือเจาะจงเวลา",
+      note: "ถามต่อสั้น ๆ ได้ ไม่ต้องพิมพ์ใหม่ทั้งประโยค เช่น “แล้วบ่ายล่ะ” · “วันศุกร์ล่ะ”",
+      cmds: [["ตารางวันนี้"], ["นัดพรุ่งนี้"], ["ตารางเดือนนี้"], ["ตารางเดือน ก.ค.", "ตารางเดือนกรกฎาคม"], ["10 โมงติดอะไร"], ["เสาร์นี้ว่างไหม"], ["ว่างกี่โมงพรุ่งนี้"]],
+      intent: "list_meetings",
+      reply: "🗓️ วันนี้ (จันทร์ 24 ส.ค.) มี 2 นัด\n\n09:30–10:30 · ทบทวนสเปกระบบผู้ช่วย\n   ห้องประชุม 2 · 4 คน\n13:00–14:00 · คุยกับฝ่ายจัดซื้อ\n   Teams · 3 คน\n\nว่างยาว 10:30–13:00 และหลัง 14:00",
+      next: ["ว่างกี่โมงพรุ่งนี้", "นัดพรุ่งนี้"]
+    },
+    {
+      key: "others", short: "คนอื่น", emoji: "👥", title: "ตารางของคนอื่น",
+      hint: "เห็นได้เท่าที่ Outlook ของเขาเปิดให้ — เหมือนที่คุณเปิดดูใน Outlook เอง",
+      note: "ชื่อเล่นซ้ำกันได้ (มี “เบส” 3 คน) ระบบจะให้เลือกเป็นตัวเลข",
+      cmds: [["ดูตารางเบสพรุ่งนี้"], ["ส้มมีนัดอะไรวันนี้", "ส้มมีนัดอะไรบ้างวันนี้"], ["ชื่อเล่น + ชื่อจริง", "ดูตาราง เบส ชนัญชิดา"], ["ค้นด้วยอีเมล", "ดูตาราง natthakrit.b@ktisgroup.com"]],
+      intent: "choose_person",
+      reply: "เจอหลายคนที่ตรงกับ “เบส” เลือกคนที่ต้องการดูตารางครับ 👇\n\n1) Buratsakon Siangyai (เบส บุรัสกร เสียงใหญ่)\n2) Chananchida Buanamjued (เบสท์ ชนัญชิดา บัวน้ำจืด)\n3) Tawanrut Kinkhuntod (เบสท์ ธวัลรัตน์ กินขุนทด)\n\nพิมพ์เลขได้ เช่น 1 หรือ 1กับ2 หรือ ทั้งหมด",
+      next: ["1", "ทั้งหมด"]
+    },
+    {
+      key: "book", short: "นัดประชุม", emoji: "📅", title: "นัดประชุม · หาเวลาว่างตรงกัน",
+      hint: "ยืนยันก่อนลง Outlook ทุกครั้ง — ระบบไม่แก้ปฏิทินเองเงียบ ๆ",
+      note: "พิมพ์ “นัดประชุม” เฉย ๆ ระบบจะเสนอรายชื่อคนที่คุณนัดบ่อยให้เลือก",
+      cmds: [["นัดประชุม"], ["นัดเบส 30 นาที", "นัดเบสพรุ่งนี้ 30 นาที เรื่อง sync"], ["หาเวลาว่างตรงกัน", "หาเวลาที่เบสกับนนท์ว่างตรงกันวันจันทร์"], ["ยกเลิกนัดพรุ่งนี้"], ["กันเวลาทั้งวัน", "จองตารางให้เราวันศุกร์นี้ทั้งวัน ลาพักร้อน"]],
+      intent: "choose_slot",
+      reply: "เจอเวลาที่ทุกคนว่างตรงกัน (อังคาร 25 ส.ค.) ครับ\n👤 เบส ชนัญชิดา\n📌 sync\n\n1) อ. 25 ส.ค. 09:00–09:30\n2) อ. 25 ส.ค. 10:30–11:00\n3) อ. 25 ส.ค. 15:00–15:30\n\nแตะเวลาแล้วยังมีหน้าตรวจสอบก่อนลง Outlook อีกครั้ง",
+      next: ["1", "ขอดูเพิ่มเติม"]
+    },
+    {
+      key: "summary", short: "สรุปประชุม", emoji: "📝", title: "สรุปประชุม",
+      hint: "ต้องเปิด “บันทึกและถอดเสียง” ใน Teams ตอนประชุม ระบบจึงมี transcript ไปสรุป",
+      note: "สรุปมาเป็นลิงก์อ่านบนมือถือ พร้อมงานที่ต้องตามและชื่อผู้รับผิดชอบ",
+      cmds: [["สรุปประชุม"], ["/test_meeting"], ["ดูตัวอย่างสรุป", "/test_meeting demo"], ["เตรียมนัด 1"], ["ประชุมไปกี่นาที"]],
+      intent: "summarize_meetings",
+      reply: "📝 สรุป “ทบทวนสเปกระบบผู้ช่วย” (จ. 24 ส.ค. 09:30–10:30)\n\nประเด็นหลัก\n• ตกลงใช้การ์ดเลือกคนแทนปุ่มตัวเลขใน LINE\n• ย้ายหน้า AI Office ไปใช้รายการคำสั่งจริง\n\nงานที่ต้องตาม\n• ทดสอบการ์ดกับชื่อไทยยาว — เบส (ศุกร์นี้)\n\nอ่านฉบับเต็ม: (ลิงก์ในของจริง)",
+      next: ["ดูงานที่ต้องติดตาม", "เตรียมนัด 1"]
+    },
+    {
+      key: "tasks", short: "งานติดตาม", emoji: "✅", title: "งานที่ต้องติดตาม",
+      hint: "งานที่ไม่ใช่ประชุม — ระบบเตือนให้ต้นชั่วโมง จันทร์–ศุกร์ 08:00–19:45",
+      note: "งานจากสรุปประชุมเข้ามาที่นี่เอง (ติด 🤖) · เกินกำหนดจะขึ้น ⚠️",
+      cmds: [["ดูงานที่ต้องติดตาม"], ["เพิ่มงานใหม่", "เพิ่มงาน ทำสลิปการประชุม พรุ่งนี้ 17:00"], ["ปิดงาน 1"], ["ปิดหลายงานพร้อมกัน", "ปิดงาน 1 2 3"], ["ขอข้อมูลตัวอย่าง", "เพิ่มงานทดสอบ 3 งาน"]],
+      intent: "list_tasks",
+      reply: "✅ งานที่ต้องติดตาม 3 งาน\n\n1) ทดสอบการ์ดเลือกคนกับชื่อไทยยาว 🤖\n   กำหนด ศ. 28 ส.ค. 17:00\n2) ส่งรายงาน Q3 ให้ฝ่ายบัญชี\n   ⚠️ เลยกำหนดมา 1 วัน\n3) ทำสลิปการประชุม\n   กำหนด อ. 25 ส.ค. 17:00\n\nปิดงานพิมพ์ “ปิดงาน 1” หรือ “ปิดงาน 1 2 3”",
+      next: ["ปิดงาน 1", "เพิ่มงานใหม่"]
+    },
+    {
+      key: "files", short: "ไฟล์", emoji: "📂", title: "ไฟล์ใน OneDrive",
+      hint: "ค้น อ่าน สรุป และผูกไฟล์เข้ากับนัดประชุม",
+      note: "ส่งรูปหรือไฟล์เข้าแชทตอนจองนัดได้ · “เตรียมนัด 1” จะอ่านไฟล์ที่ผูกไว้ให้ก่อนเข้าประชุม",
+      cmds: [["หาไฟล์ งบ Q3"], ["สรุปอัน 1"], ["ผูกไฟล์นัด 1"], ["เอกสารนัด 1"]],
+      intent: "file_results",
+      reply: "เจอ 5 ไฟล์ที่ตรงกับ “งบ Q3” ครับ 👇\n\n1) งบประมาณ Q3 2569.xlsx · แก้ล่าสุด 22 ส.ค.\n2) สรุปงบ Q3 ฉบับนำเสนอ.pptx · 19 ส.ค.\n3) เปรียบเทียบ Q2-Q3.xlsx · 15 ส.ค.\n\nสรุปไฟล์ไหน พิมพ์ “สรุปอัน 1”\nผูกกับนัด พิมพ์ “ผูกไฟล์นัด 1”",
+      next: ["สรุปอัน 1", "ผูกไฟล์นัด 1"]
+    },
+    {
+      key: "news", short: "ข่าว", emoji: "📰", title: "ข่าว & บรีฟเช้า",
+      hint: "เลือกหัวข้อ เวลาส่ง และแหล่งข่าวได้เองทั้งหมดในแชท",
+      note: "ตั้งเวลาส่งเช้าได้เอง · เลย 30 นาทีจากเวลาที่ตั้ง ระบบไม่ส่งย้อนหลัง",
+      cmds: [["ข่าววันนี้"], ["/ตั้งค่าข่าว"], ["ดูแหล่งข่าว"], ["ลบฟีด 1"]],
+      intent: "get_news",
+      reply: "📰 ข่าวเช้าวันนี้ 3 เรื่อง\n\n• อุตสาหกรรมน้ำตาล — ราคาส่งออกไตรมาสนี้\n• ไอที — แนวทางความปลอดภัยข้อมูลบนคลาวด์ฉบับใหม่\n• ในประเทศ — สรุปมาตรการที่มีผลสัปดาห์นี้\n\nอ่านเต็มพร้อมลิงก์ต้นทาง: (ลิงก์ในของจริง)",
+      next: ["ดูแหล่งข่าว", "/ตั้งค่าข่าว"]
+    },
+    {
+      key: "commute", short: "เดินทาง", emoji: "🚗", title: "สถานที่ & เดินทาง",
+      hint: "ตั้งครั้งเดียวใช้ได้ทุกวัน — พิมพ์ที่อยู่ หรือปักพิกัดจากมือถือ",
+      note: "",
+      cmds: [["ตั้งที่ทำงาน"], ["วางแผนเดินทาง", "วางแผนเดินทางไปทำงานพรุ่งนี้"], ["เปิดแผนที่"], ["ดูที่ทำงานที่ตั้งไว้"]],
+      intent: "plan_commute",
+      reply: "🚗 พรุ่งนี้เข้าออฟฟิศ\n\nนัดแรก 09:30 ที่ห้องประชุม 2\nรถติดช่วงเช้าโดยเฉลี่ย 35 นาที\nแนะนำออกจากบ้าน 08:40\n\nเปิดเส้นทางในแผนที่ได้จากปุ่มด้านล่าง",
+      next: ["เปิดแผนที่", "ดูที่ทำงานที่ตั้งไว้"]
+    },
+    {
+      key: "slash", short: "คำสั่ง /", emoji: "⌨️", title: "คำสั่ง / (พิมพ์ / แล้วเลือก)",
+      hint: "ใช้ได้ตลอด แม้ค้างอยู่กลางขั้นตอนจองนัด",
+      note: "“/ล้างความจำ” = เริ่มเรื่องใหม่และยกเลิกงานที่ค้าง · “/ยกเลิก” = ทิ้งการจองที่พิมพ์ค้างไว้",
+      cmds: [["/ตารางวันนี้"], ["/นัดพรุ่งนี้"], ["/ตั้งค่าข่าว"], ["/ล้างความจำ"], ["/ยกเลิก"], ["/ช่วยเหลือ"]],
+      intent: "help_menu",
+      reply: "📖 สั่งงานอะไรได้บ้าง\n\nพิมพ์ภาษาไทยธรรมดาได้เลยครับ เช่น\n • ตารางวันนี้\n • ดูตารางเบสพรุ่งนี้\n • นัดประชุม\n • ข่าววันนี้\n\nแตะหมวดด้านบนเพื่อดูคำสั่งของหมวดนั้น",
+      next: ["ตารางวันนี้", "ข่าววันนี้"]
+    }
+  ];
+
+  /** A few commands answer with something of their own; the rest use the topic. */
+  const BY_COMMAND = {
+    "ปิดงาน 1": { intent: "complete_task", reply: "ปิดงานแล้วครับ ✅\n\n1) ทดสอบการ์ดเลือกคนกับชื่อไทยยาว — ปิดเมื่อสักครู่\n\nเหลืออีก 2 งาน พิมพ์ “ดูงานที่ต้องติดตาม” เพื่อดูรายการ", next: ["ดูงานที่ต้องติดตาม"] },
+    "1": { intent: "availability", reply: "🗓️ ตารางของ Buratsakon Siangyai (พรุ่งนี้ อ. 25 ส.ค.)\n\n09:00–09:30 ว่าง\n11:00–12:00 ประชุมภายใน\n13:30–15:00 ว่าง\n\nจะนัดช่วงไหน พิมพ์ เช่น “นัดเบสพรุ่งนี้ 13:30 30 นาที”", next: ["นัดเบส 30 นาที"] },
+    "ทั้งหมด": { intent: "find_meeting_time", reply: "หาเวลาที่ทั้ง 3 คนว่างตรงกัน (พรุ่งนี้)\n\n1) 09:00–09:30\n2) 15:00–15:30\n\nเลือกข้อไหน พิมพ์เลขได้เลย", next: ["1"] },
+    "สรุปอัน 1": { intent: "summarize_file", reply: "📄 งบประมาณ Q3 2569.xlsx\n\n• ตั้งงบรวมไว้ 12 ล้านบาท ใช้ไป 68%\n• หมวดที่ใช้เกินแผน: ค่าซ่อมบำรุง\n• เหลือเบิกได้อีก 3.8 ล้านบาท\n\n(ตัวเลขในตัวอย่างนี้สมมติขึ้น)", next: ["ผูกไฟล์นัด 1"] }
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const topicsEl = $("topics"), threadEl = $("thread"), quickEl = $("quick");
+  const fieldEl = $("field"), sendEl = $("send"), dimEl = $("dim"), sheetListEl = $("sheetList");
+
+  let active = 0;
+  let busy = false;
+
+  const now = () => new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function renderTopics() {
+    topicsEl.replaceChildren();
+    TOPICS.forEach((t, i) => {
+      if (i >= 3 && i !== active) return;   // a phone fits about three
+      const b = el("button", "topic", t.emoji + " " + t.short);
+      b.type = "button";
+      if (i === active) b.setAttribute("aria-current", "true");
+      b.onclick = () => { active = i; render(); };
+      topicsEl.append(b);
+    });
+    const more = el("button", "topic more", "ทั้งหมด ⌄");
+    more.type = "button";
+    more.onclick = openSheet;
+    topicsEl.append(more);
+  }
+
+  function renderQuick() {
+    quickEl.replaceChildren();
+    TOPICS[active].cmds.forEach(([label, full]) => {
+      const b = el("button", "chip", label);
+      b.type = "button";
+      b.title = full || label;
+      b.onclick = () => run(full || label);
+      quickEl.append(b);
+    });
+  }
+
+  function renderEmpty() {
+    const t = TOPICS[active];
+    const box = el("div", "empty");
+    box.append(el("p", "eyebrow", t.emoji + " " + t.title));
+    box.append(el("p", null, t.hint));
+    if (t.note) box.append(el("p", "tip", "💡 " + t.note));
+    threadEl.replaceChildren(box);
+    threadEl.classList.add("is-empty");
+    fieldEl.placeholder = "พิมพ์คำสั่ง เช่น " + (t.cmds[0][1] || t.cmds[0][0]);
+  }
+
+  function render() {
+    renderTopics();
+    renderQuick();
+    if (threadEl.querySelector("article") == null) renderEmpty();
+    else fieldEl.placeholder = "พิมพ์คำสั่ง เช่น " + (TOPICS[active].cmds[0][1] || TOPICS[active].cmds[0][0]);
+  }
+
+  function run(text) {
+    if (busy || !text.trim()) return;
+    busy = true;
+    if (threadEl.classList.contains("is-empty")) {
+      threadEl.replaceChildren();
+      threadEl.classList.remove("is-empty");
+    }
+
+    const art = el("article");
+    const meta = el("div", "meta");
+    meta.append(el("span", "caret", "›"), el("span", "cmd", text), el("span", null, now()));
+    const status = el("span", null, "กำลังประมวลผล…");
+    meta.append(status);
+    art.append(meta);
+    threadEl.append(art);
+    threadEl.scrollTop = threadEl.scrollHeight;
+
+    const answer = BY_COMMAND[text.trim()] || TOPICS[active];
+    const wait = 700 + Math.round(Math.random() * 700);
+
+    setTimeout(() => {
+      status.remove();
+      meta.append(el("span", null, answer.intent + " · " + (wait / 1000).toFixed(1) + "s"));
+      meta.append(el("span", "tag", "ตัวอย่าง"));
+
+      art.append(el("div", "reply", answer.reply));
+
+      const row = el("div", "row");
+      const copy = el("button", "chip mono", "คัดลอก");
+      copy.type = "button";
+      copy.onclick = async () => {
+        try { await navigator.clipboard.writeText(answer.reply); copy.textContent = "คัดลอกแล้ว"; }
+        catch { copy.textContent = "คัดลอกไม่ได้"; }
+        setTimeout(() => { copy.textContent = "คัดลอก"; }, 1500);
+      };
+      row.append(copy);
+      (answer.next || []).forEach((n) => {
+        const b = el("button", "chip", n);
+        b.type = "button";
+        b.onclick = () => run(n);
+        row.append(b);
+      });
+      art.append(row);
+
+      threadEl.scrollTop = threadEl.scrollHeight;
+      busy = false;
+    }, wait);
+  }
+
+  function openSheet() {
+    sheetListEl.replaceChildren();
+    TOPICS.forEach((t, i) => {
+      const b = el("button", "sheet-item");
+      b.type = "button";
+      if (i === active) b.setAttribute("aria-current", "true");
+      const icon = el("span", null, t.emoji);
+      const mid = el("span");
+      mid.style.flex = "1";
+      mid.style.minWidth = "0";
+      mid.append(el("span", "t", t.title), el("span", "h", t.hint));
+      b.append(icon, mid, el("span", "n", String(t.cmds.length)));
+      b.onclick = () => { active = i; closeSheet(); render(); };
+      sheetListEl.append(b);
+    });
+    dimEl.hidden = false;
+  }
+
+  function closeSheet() { dimEl.hidden = true; }
+
+  dimEl.onclick = (e) => { if (e.target === dimEl) closeSheet(); };
+
+  fieldEl.addEventListener("input", () => {
+    sendEl.disabled = !fieldEl.value.trim();
+    fieldEl.style.height = "auto";
+    fieldEl.style.height = Math.min(fieldEl.scrollHeight, 120) + "px";
+  });
+
+  fieldEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
+  });
+
+  function submit() {
+    const v = fieldEl.value.trim();
+    if (!v) return;
+    fieldEl.value = "";
+    fieldEl.style.height = "auto";
+    sendEl.disabled = true;
+    run(v);
+  }
+
+  sendEl.onclick = submit;
+
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
+
+  $("reset").onclick = () => { renderEmpty(); };
+  $("clock").textContent = now();
+
+  render();
+</script>

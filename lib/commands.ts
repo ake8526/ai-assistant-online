@@ -4126,6 +4126,23 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     };
   }
 
+  // Immediate user identity query check (ผมชื่ออะไร / ฉันชื่ออะไร)
+  if (/ผมชื่ออะไร|ฉันชื่ออะไร|ชื่ออะไร|ผมเป็นใคร|รู้ไหมผมเป็นใคร|ฉันเป็นใคร/i.test(text)) {
+    let nameShow = userUpn;
+    if (userUpn.toLowerCase().includes("weerasak")) {
+      nameShow = "คุณวีรศักดิ์ พิมพ์ต้น (Weerasak Pimton)";
+    }
+    return {
+      intent: "who_am_i",
+      reply: `👤 คุณคือ **${nameShow}** (\`${userUpn}\`)\n\nผูกบัญชี Microsoft 365 และระบบองค์กรเรียบร้อยครับ 🤖✨\nวันนี้มีอะไรให้ผมช่วยจัดการปฏิทินหรือติดตามงานไหมครับ?`,
+      suggestions: [
+        { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+        { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+        { label: "ข่าววันนี้", text: "ข่าววันนี้" },
+      ],
+    };
+  }
+
   // Deterministic quick intent shortcuts at the very top of handle:
   const quickTop = await parseIntent(text, context);
   if (quickTop.source === "quick") {
