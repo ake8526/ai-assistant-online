@@ -4126,8 +4126,8 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     };
   }
 
-  // Immediate user identity query check (ผมชื่ออะไร / ฉันชื่ออะไร)
-  if (/ผมชื่ออะไร|ฉันชื่ออะไร|ชื่ออะไร|ผมเป็นใคร|รู้ไหมผมเป็นใคร|ฉันเป็นใคร/i.test(text)) {
+  // Immediate user identity query check (ผมชื่ออะไร / ฉันชื่ออะไร / ฉันชื่อ / ชื่อฉัน / ผมชื่อ / ชื่อผม)
+  if (/^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม|ชื่ออะไร|ผมชื่ออะไร|ฉันชื่ออะไร|ผมเป็นใคร|ฉันเป็นใคร|ผู้ใช้ชื่ออะไร|ชื่อผู้ใช้|ชื่อไร|ผมชื่อไร|ฉันชื่อไร)$|^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม)\b/i.test(text)) {
     let nameShow = userUpn;
     if (userUpn.toLowerCase().includes("weerasak")) {
       nameShow = "คุณวีรศักดิ์ พิมพ์ต้น (Weerasak Pimton)";
