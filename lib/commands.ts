@@ -4111,13 +4111,28 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         const data = JSON.parse(rawStored);
         if (data && Array.isArray(data.candidates) && data.candidates[idx]) {
           const u = data.candidates[idx] as UserInfo;
+          const queryKind = data.queryKind || "contact";
           await deleteSetting(userUpn.toLowerCase(), "_pending_candidate_picks");
-          const job = u.jobTitle ? `\n💼 **ตำแหน่ง:** ${u.jobTitle}` : "";
-          const dept = u.department ? `\n🏢 **ฝ่าย/แผนก:** ${u.department}` : "";
-          const phone = u.phone ? `\n📞 **เบอร์โทร:** \`${u.phone}\`` : "\n📞 **เบอร์โทร:** ไม่พบในระบบองค์กร";
+
+          const job = `💼 **ตำแหน่ง:** ${u.jobTitle || "ไม่ระบุในระบบ"}`;
+          const dept = `🏢 **ฝ่าย/แผนก:** ${u.department || "ไม่ระบุในระบบ"}`;
+          const email = `📧 **อีเมล:** \`${u.mail}\``;
+          const phoneLine = u.phone ? `\n📞 **เบอร์โทร:** \`${u.phone}\`` : "\n📞 **เบอร์โทร:** ไม่พบในระบบองค์กร";
+
+          let header = `👤 **ข้อมูลผู้ติดต่อ (${u.displayName})**`;
+          let body = `${job}\n${dept}\n${email}${phoneLine}`;
+
+          if (queryKind === "position") {
+            header = `💼 **ข้อมูลตำแหน่งงาน (${u.displayName})**`;
+            body = `${job}\n${dept}\n${email}${phoneLine}`;
+          } else if (queryKind === "phone") {
+            header = `📞 **ข้อมูลเบอร์โทรศัพท์ (${u.displayName})**`;
+            body = `${u.phone ? `📞 **เบอร์โทร:** \`${u.phone}\`` : "📞 **เบอร์โทร:** ไม่พบเบอร์โทรในระบบองค์กร"}\n${job}\n${dept}\n${email}`;
+          }
+
           return {
             intent: "get_contact_info",
-            reply: `👤 **ข้อมูลผู้ติดต่อ (${u.displayName})**\n\n📧 **อีเมล:** \`${u.mail}\`${job}${dept}${phone}\n\nต้องการให้ผมช่วยส่งนัดประชุมหรือเช็กเวลาว่างกับ ${u.displayName} ไหมครับ? 🤖✨`,
+            reply: `${header}\n\n${body}\n\nต้องการให้ผมช่วยส่งนัดประชุมหรือเช็กเวลาว่างกับ ${u.displayName} ไหมครับ? 🤖✨`,
             suggestions: [
               { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
               { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
@@ -4238,16 +4253,25 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
           };
         } else if (candidates.length > 1) {
           const topCandidates = candidates.slice(0, 5);
-          await setSetting(userUpn.toLowerCase(), "_pending_candidate_picks", JSON.stringify({ candidates: topCandidates, time: Date.now() }));
+          const queryKind = isPositionQuery ? "position" : isPhoneQuery ? "phone" : "contact";
+          await setSetting(userUpn.toLowerCase(), "_pending_candidate_picks", JSON.stringify({ candidates: topCandidates, queryKind, time: Date.now() }));
 
           const choicesList = topCandidates.map((c, i) => {
-            const jobStr = c.jobTitle ? `💼 ${c.jobTitle}` : "";
-            const deptStr = c.department ? `🏢 ${c.department}` : "";
-            const phoneStr = (isPhoneQuery || (!jobStr && !deptStr)) && c.phone ? `📞 ${c.phone}` : "";
-
-            const infoParts = [jobStr, deptStr, phoneStr].filter(Boolean).join(" · ");
-            const detailLine = infoParts ? `   ${infoParts}\n` : "";
-            return `${i + 1}) **${c.displayName}**\n${detailLine}   📧 \`${c.mail}\``;
+            if (isPositionQuery) {
+              const posStr = `💼 ตำแหน่ง: ${c.jobTitle || "ไม่ระบุในระบบ"}`;
+              const deptStr = `🏢 ฝ่าย/แผนก: ${c.department || "ไม่ระบุในระบบ"}`;
+              return `${i + 1}) **${c.displayName}**\n   ${posStr} · ${deptStr}\n   📧 \`${c.mail}\``;
+            } else if (isPhoneQuery) {
+              const phoneStr = c.phone ? `📞 เบอร์โทร: ${c.phone}` : "📞 เบอร์โทร: ไม่พบเบอร์ในระบบ";
+              return `${i + 1}) **${c.displayName}**\n   ${phoneStr}\n   📧 \`${c.mail}\``;
+            } else {
+              const jobStr = c.jobTitle ? `💼 ${c.jobTitle}` : "";
+              const deptStr = c.department ? `🏢 ${c.department}` : "";
+              const phoneStr = c.phone ? `📞 ${c.phone}` : "";
+              const infoParts = [jobStr, deptStr, phoneStr].filter(Boolean).join(" · ");
+              const detailLine = infoParts ? `   ${infoParts}\n` : "";
+              return `${i + 1}) **${c.displayName}**\n${detailLine}   📧 \`${c.mail}\``;
+            }
           }).join("\n\n");
 
           const titleHeader = isPositionQuery
