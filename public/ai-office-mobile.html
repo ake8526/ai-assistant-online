@@ -116,26 +116,52 @@
     padding: 3px 8px;
   }
 
-  /* department strip — the v2 cards, scrolled sideways */
+  /* department strip — the v2 cards, scrolled sideways.
+     A mouse has no sideways gesture, so the strip also takes the wheel and a
+     click-drag, shows a fade where it continues, and snaps card to card. */
+  .deptrow {
+    position: relative;
+    border-bottom: 1px solid var(--hair-soft);
+    padding-right: 46px;
+  }
+
   .depts {
     display: flex; gap: 8px; min-width: 0;
     overflow-x: auto; scrollbar-width: none;
-    padding: 10px 13px; border-bottom: 1px solid var(--hair-soft);
+    scroll-snap-type: x proximity; scroll-behavior: smooth;
+    padding: 10px 0 10px 13px;
+    cursor: grab;
   }
   .depts::-webkit-scrollbar { display: none; }
+  .depts.dragging { cursor: grabbing; scroll-behavior: auto; }
+
+  .fade {
+    position: absolute; top: 0; bottom: 0; right: 46px; width: 34px;
+    pointer-events: none;
+    background: linear-gradient(to right, rgba(10,10,10,0), #0a0a0a 78%);
+  }
+
+  .allbtn {
+    position: absolute; top: 50%; right: 10px; transform: translateY(-50%);
+    width: 32px; height: 32px; border-radius: 11px; cursor: pointer;
+    background: rgba(2, 6, 23, 0.92); border: 1px solid var(--hair);
+    color: #7dd3fc; font-family: var(--mono); font-size: 13px; line-height: 1;
+  }
+  .allbtn:hover { border-color: rgba(56, 189, 248, 0.55); }
 
   .dept {
     position: relative; overflow: hidden; flex: none;
-    width: 168px; text-align: left; cursor: pointer;
-    display: flex; align-items: center; gap: 9px;
-    padding: 9px 10px; border-radius: 16px;
+    width: 182px; text-align: left; cursor: inherit;
+    scroll-snap-align: start;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px; border-radius: 16px;
     background: rgba(15, 23, 42, 0.4);
     border: 1px solid var(--hair);
     color: var(--ink); font: inherit;
-    transition: background 0.2s, border-color 0.2s;
+    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
   }
   .dept:hover { background: rgba(15, 23, 42, 0.75); }
-  .dept[aria-current="true"] { background: rgba(15, 23, 42, 0.92); }
+  .dept[aria-current="true"] { background: rgba(15, 23, 42, 0.95); }
   .dept .bar { position: absolute; inset: 0 0 auto 0; height: 3px; display: none; }
   .dept[aria-current="true"] .bar { display: block; }
 
@@ -148,8 +174,8 @@
 
   .dept .lines { min-width: 0; flex: 1; }
   .dept .lines b {
-    display: block; font-size: 12px; font-weight: 700; color: #e2e8f0;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: block; font-size: 12.5px; font-weight: 700; color: #e2e8f0;
+    line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .dept .lines small {
     display: block; font-family: var(--mono); font-size: 8.5px;
@@ -341,7 +367,11 @@
           <span class="chainpill">LLM CHAIN ACTIVE</span>
         </div>
 
-        <div class="depts" id="depts"></div>
+        <div class="deptrow">
+          <div class="depts" id="depts"></div>
+          <div class="fade"></div>
+          <button class="allbtn" id="allbtn" type="button" aria-label="ดูทุกฝ่าย" title="ดูทุกฝ่าย">⋮⋮</button>
+        </div>
 
         <div class="body" id="body"></div>
 
@@ -406,7 +436,7 @@
 <script>
   const DEPTS = [
     {
-      id: "executive", name: "ฝ่ายบริหาร & เลขา AI", code: "Executive AI", icon: "💼",
+      id: "executive", short: "บริหาร & เลขา", name: "ฝ่ายบริหาร & เลขา AI", code: "Executive AI", icon: "💼",
       grad: "linear-gradient(90deg,#34d399,#2dd4bf,#22d3ee)",
       tint: "rgba(16,185,129,0.12)", ring: "rgba(16,185,129,0.45)", accent: "#34d399",
       role: "จัดการปฏิทิน Outlook, สรุปนัดประชุม & ติดตามวาระงานบริหาร",
@@ -423,7 +453,7 @@
       }
     },
     {
-      id: "hr", name: "ฝ่าย HR & เอกสารสัญญา", code: "HR & Legal AI", icon: "👥",
+      id: "hr", short: "HR & เอกสาร", name: "ฝ่าย HR & เอกสารสัญญา", code: "HR & Legal AI", icon: "👥",
       grad: "linear-gradient(90deg,#c084fc,#f472b6,#fb7185)",
       tint: "rgba(168,85,247,0.12)", ring: "rgba(168,85,247,0.45)", accent: "#c084fc",
       role: "คัดกรอง Resume, ตรวจสัญญา PDF/Word & นโยบายสวัสดิการ",
@@ -440,7 +470,7 @@
       }
     },
     {
-      id: "news", name: "ฝ่ายข่าวสาร & PR Digest", code: "News & PR AI", icon: "📰",
+      id: "news", short: "ข่าวสาร & PR", name: "ฝ่ายข่าวสาร & PR Digest", code: "News & PR AI", icon: "📰",
       grad: "linear-gradient(90deg,#38bdf8,#3b82f6,#6366f1)",
       tint: "rgba(56,189,248,0.12)", ring: "rgba(56,189,248,0.45)", accent: "#38bdf8",
       role: "รวบรวมข่าว RSS, สรุปเพจ Facebook & วิเคราะห์เทรนด์ประจำวัน",
@@ -457,7 +487,7 @@
       }
     },
     {
-      id: "finance", name: "ฝ่ายการเงิน & วิเคราะห์ข้อมูล", code: "Finance & Data", icon: "🧮",
+      id: "finance", short: "การเงิน & ข้อมูล", name: "ฝ่ายการเงิน & วิเคราะห์ข้อมูล", code: "Finance & Data", icon: "🧮",
       grad: "linear-gradient(90deg,#fbbf24,#fb923c,#facc15)",
       tint: "rgba(251,191,36,0.12)", ring: "rgba(251,191,36,0.45)", accent: "#fbbf24",
       role: "ตรวจสลิปโอนเงิน OCR, วิเคราะห์ไฟล์ Excel/CSV & สรุปงบ",
@@ -474,7 +504,7 @@
       }
     },
     {
-      id: "it", name: "ฝ่ายระบบ IT & Security", code: "IT & Security", icon: "🛡️",
+      id: "it", short: "IT & Security", name: "ฝ่ายระบบ IT & Security", code: "IT & Security", icon: "🛡️",
       grad: "linear-gradient(90deg,#818cf8,#a855f7,#f472b6)",
       tint: "rgba(129,140,248,0.12)", ring: "rgba(129,140,248,0.45)", accent: "#818cf8",
       role: "ตรวจสถานะระบบ, Log การใช้งาน & ควบคุมสิทธิ์การเข้าถึง",
@@ -509,13 +539,16 @@
 
   function renderDepts() {
     deptsEl.replaceChildren();
+    // Every department lives in the strip — the fade and the ⋮⋮ button say so,
+    // and the wheel/drag handlers below make it reachable without a touchscreen.
     DEPTS.forEach((d, i) => {
-      if (i >= 3 && i !== active) return;
       const b = el("button", "dept");
       b.type = "button";
+      b.dataset.i = String(i);
       if (i === active) {
         b.setAttribute("aria-current", "true");
         b.style.borderColor = d.ring;
+        b.style.boxShadow = "inset 0 0 0 1px " + d.ring + ", 0 0 18px -8px " + d.accent;
       }
       const bar = el("div", "bar");
       bar.style.background = d.grad;
@@ -523,21 +556,22 @@
       tile.style.background = d.tint;
       tile.style.borderColor = d.ring;
       const lines = el("div", "lines");
-      lines.append(el("b", null, d.name), el("small", null, d.code));
+      lines.append(el("b", null, d.short), el("small", null, d.code));
       const dot = el("span", "dot");
       b.append(bar, tile, lines, dot);
-      b.onclick = () => { active = i; result = null; echo = null; stage = 0; render(); };
+      b.onclick = () => { if (dragMoved) return; pick(i); };
       deptsEl.append(b);
     });
-    const more = el("button", "dept");
-    more.type = "button";
-    more.style.width = "104px";
-    more.style.justifyContent = "center";
-    const t = el("div", "lines");
-    t.append(el("b", null, "ทุกฝ่าย"), el("small", null, String(DEPTS.length) + " depts"));
-    more.append(t);
-    more.onclick = openSheet;
-    deptsEl.append(more);
+    const card = deptsEl.children[active];
+    if (card) card.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }
+
+  function pick(i) {
+    active = i;
+    result = null;
+    echo = null;
+    stage = 0;
+    render();
   }
 
   function renderBody() {
@@ -663,11 +697,42 @@
       mid.style.flex = "1";
       mid.append(el("b", null, d.name), el("small", null, d.role));
       b.append(tile, mid);
-      b.onclick = () => { active = i; result = null; echo = null; stage = 0; dimEl.hidden = true; render(); };
+      b.onclick = () => { dimEl.hidden = true; pick(i); };
       sheetListEl.append(b);
     });
     dimEl.hidden = false;
   }
+
+  // A mouse wheel only scrolls vertically; forward it to the strip.
+  deptsEl.addEventListener("wheel", (e) => {
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (!d) return;
+    e.preventDefault();
+    deptsEl.scrollLeft += d;
+  }, { passive: false });
+
+  // Click-drag to pan, so it works with a plain mouse too.
+  let dragging = false, dragX = 0, dragLeft = 0, dragMoved = false;
+  deptsEl.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "touch") return;   // touch scrolls natively
+    dragging = true; dragMoved = false;
+    dragX = e.clientX; dragLeft = deptsEl.scrollLeft;
+    deptsEl.classList.add("dragging");
+  });
+  window.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - dragX;
+    if (Math.abs(dx) > 4) dragMoved = true;
+    deptsEl.scrollLeft = dragLeft - dx;
+  });
+  window.addEventListener("pointerup", () => {
+    if (!dragging) return;
+    dragging = false;
+    deptsEl.classList.remove("dragging");
+    setTimeout(() => { dragMoved = false; }, 0);
+  });
+
+  $("allbtn").onclick = openSheet;
 
   dimEl.onclick = (e) => { if (e.target === dimEl) dimEl.hidden = true; };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") dimEl.hidden = true; });

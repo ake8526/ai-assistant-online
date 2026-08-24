@@ -63,6 +63,7 @@ import {
   loadPendingLineLocation,
   allSettings,
   setSetting,
+  deleteSetting,
   updateTaskStatus,
   type Task,
 } from "@/lib/store";
@@ -4100,6 +4101,35 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     .replace(/\s+/g, " ")
     .trim();
 
+  // Number selection for candidate list (1, 2, 3, ข้อ 1, คน 1)
+  const numberMatch = text.match(/^(?:ข้อ|คน(?:ที่)?|อัน(?:ที่)?)?\s*([1-5])\s*$/i);
+  if (numberMatch) {
+    const idx = parseInt(numberMatch[1], 10) - 1;
+    try {
+      const rawStored = await getSetting(userUpn.toLowerCase(), "_pending_candidate_picks");
+      if (rawStored) {
+        const data = JSON.parse(rawStored);
+        if (data && Array.isArray(data.candidates) && data.candidates[idx]) {
+          const u = data.candidates[idx] as UserInfo;
+          await deleteSetting(userUpn.toLowerCase(), "_pending_candidate_picks");
+          const job = u.jobTitle ? `\n💼 **ตำแหน่ง:** ${u.jobTitle}` : "";
+          const dept = u.department ? `\n🏢 **ฝ่าย/แผนก:** ${u.department}` : "";
+          const phone = u.phone ? `\n📞 **เบอร์โทร:** \`${u.phone}\`` : "\n📞 **เบอร์โทร:** ไม่พบในระบบองค์กร";
+          return {
+            intent: "get_contact_info",
+            reply: `👤 **ข้อมูลผู้ติดต่อ (${u.displayName})**\n\n📧 **อีเมล:** \`${u.mail}\`${job}${dept}${phone}\n\nต้องการให้ผมช่วยส่งนัดประชุมหรือเช็กเวลาว่างกับ ${u.displayName} ไหมครับ? 🤖✨`,
+            suggestions: [
+              { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+              { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+            ],
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("pick candidate error:", e);
+    }
+  }
+
   // Immediate date query check at the top of handle (Asia/Bangkok Wall Time)
   if (/วันนี้วันอะไร|วันนี้วันที่เท่าไหร่|วันนี้วันที่เท่าไร|วันนี้วันไร|เช็กวัน|เช็กวันที่|วันนี้วันที่/i.test(text)) {
     const nowBkk = nowWall();
@@ -4197,14 +4227,16 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
             ],
           };
         } else if (candidates.length > 1) {
-          const choicesList = candidates.slice(0, 5).map((c, i) => {
+          const topCandidates = candidates.slice(0, 5);
+          await setSetting(userUpn.toLowerCase(), "_pending_candidate_picks", JSON.stringify({ candidates: topCandidates, time: Date.now() }));
+          const choicesList = topCandidates.map((c, i) => {
             const extraParts = [c.jobTitle, c.department, c.phone ? `📞 ${c.phone}` : ""].filter(Boolean);
             const extra = extraParts.length > 0 ? ` (${extraParts.join(" · ")})` : "";
             return `${i + 1}) **${c.displayName}**${extra}:\n   \`${c.mail}\``;
           }).join("\n");
           return {
             intent: "get_contact_info",
-            reply: `พบรายชื่อ ${candidates.length} ท่านที่ตรงกับ “${rawTarget}” ในระบบครับ 👇\n\n${choicesList}`,
+            reply: `พบรายชื่อ ${candidates.length} ท่านที่ตรงกับ “${rawTarget}” ในระบบครับ 👇 (พิมพ์ **1**, **2** หรือ **3** เพื่อเลือกได้เลยครับ)\n\n${choicesList}`,
           };
         } else {
           return {
