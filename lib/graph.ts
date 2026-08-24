@@ -815,7 +815,15 @@ export function stripHonorificPublic(name: string): string {
   return stripHonorific(name);
 }
 
-export type UserInfo = { mail: string; displayName?: string; jobTitle?: string; department?: string };
+export type UserInfo = {
+  mail: string;
+  displayName?: string;
+  jobTitle?: string;
+  department?: string;
+  phone?: string;
+};
+
+
 
 const resolveCache = new Map<string, UserInfo | null>();
 
@@ -930,7 +938,7 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
 
   const merge = (
     results: UserInfo[],
-    items: { mail?: string; userPrincipalName?: string; displayName?: string; jobTitle?: string; department?: string; scoredEmailAddresses?: { address?: string }[] }[]
+    items: { mail?: string; userPrincipalName?: string; displayName?: string; jobTitle?: string; department?: string; mobilePhone?: string; businessPhones?: string[]; scoredEmailAddresses?: { address?: string }[] }[]
   ) => {
     const seen = new Set(results.map((r) => r.mail.toLowerCase()));
     for (const it of items) {
@@ -945,7 +953,8 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
         mail,
         displayName: normalizeDisplayName(it.displayName || "", mail),
         jobTitle: it.jobTitle || undefined,
-        department: it.department || undefined
+        department: it.department || undefined,
+        phone: it.mobilePhone || (it.businessPhones && it.businessPhones[0]) || undefined,
       });
     }
     return results;
@@ -960,6 +969,8 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
         displayName?: string;
         jobTitle?: string;
         department?: string;
+        mobilePhone?: string;
+        businessPhones?: string[];
       }[];
     } catch {
       return [];
@@ -967,7 +978,7 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   };
 
   let results: UserInfo[] = [];
-  const sel = "mail,userPrincipalName,displayName,jobTitle,department";
+  const sel = "mail,userPrincipalName,displayName,jobTitle,department,mobilePhone,businessPhones";
 
   // 1) Email-prefix directory hits first (pan → pan.s@, panom.p@) — most reliable for nicknames.
   if (shortQuery) {

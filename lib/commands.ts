@@ -4177,9 +4177,9 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     }
   }
 
-  // Immediate contact & job title query check (ขอตำแหน่งพี่แบงค์ / ขอตำแหน่ง... / ขอข้อมูลติดต่อ...)
-  if (/(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:ตำแหน่ง|ตำแหน่งงาน|แผนก|ฝ่าย|เบอร์|ข้อมูล|คอนแทค)\s*(?:ของ)?\s*(.+)/i.test(text)) {
-    const rawTarget = text.replace(/^(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:ตำแหน่ง|ตำแหน่งงาน|แผนก|ฝ่าย|เบอร์|ข้อมูล|คอนแทค)\s*(?:ของ)?\s*/i, "").trim();
+  // Immediate contact & job title query check (ขอตำแหน่งพี่แบงค์ / ขอเบอร์เบส / ขอข้อมูลติดต่อ...)
+  if (/(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:ตำแหน่ง|ตำแหน่งงาน|แผนก|ฝ่าย|เบอร์|เบอร์โทร|เบอร์โทรศัพท์|ข้อมูล|คอนแทค)\s*(?:ของ)?\s*(.+)/i.test(text)) {
+    const rawTarget = text.replace(/^(?:ขอ|หา|ขอเช็ก|ค้นหา)\s*(?:ตำแหน่ง|ตำแหน่งงาน|แผนก|ฝ่าย|เบอร์|เบอร์โทร|เบอร์โทรศัพท์|ข้อมูล|คอนแทค)\s*(?:ของ)?\s*/i, "").trim();
     if (rawTarget) {
       try {
         const candidates = await searchUsers(rawTarget);
@@ -4187,9 +4187,10 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
           const u = candidates[0];
           const job = u.jobTitle ? `\n💼 **ตำแหน่ง:** ${u.jobTitle}` : "";
           const dept = u.department ? `\n🏢 **ฝ่าย/แผนก:** ${u.department}` : "";
+          const phone = u.phone ? `\n📞 **เบอร์โทร:** \`${u.phone}\`` : "\n📞 **เบอร์โทร:** ไม่พบในระบบองค์กร";
           return {
             intent: "get_contact_info",
-            reply: `👤 **ข้อมูลตำแหน่งและผู้ติดต่อ (${u.displayName})**\n\n📧 **อีเมล:** \`${u.mail}\`${job}${dept}\n\nต้องการให้ผมช่วยส่งนัดประชุมหรือเช็กเวลาว่างกับ ${u.displayName} ไหมครับ? 🤖✨`,
+            reply: `👤 **ข้อมูลผู้ติดต่อ (${u.displayName})**\n\n📧 **อีเมล:** \`${u.mail}\`${job}${dept}${phone}\n\nต้องการให้ผมช่วยส่งนัดประชุมหรือเช็กเวลาว่างกับ ${u.displayName} ไหมครับ? 🤖✨`,
             suggestions: [
               { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
               { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
@@ -4197,8 +4198,9 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
           };
         } else if (candidates.length > 1) {
           const choicesList = candidates.slice(0, 5).map((c, i) => {
-            const extra = [c.jobTitle, c.department].filter(Boolean).join(" · ");
-            return `${i + 1}) **${c.displayName}**${extra ? ` (${extra})` : ""}: \`${c.mail}\``;
+            const extraParts = [c.jobTitle, c.department, c.phone ? `📞 ${c.phone}` : ""].filter(Boolean);
+            const extra = extraParts.length > 0 ? ` (${extraParts.join(" · ")})` : "";
+            return `${i + 1}) **${c.displayName}**${extra}:\n   \`${c.mail}\``;
           }).join("\n");
           return {
             intent: "get_contact_info",
@@ -4207,7 +4209,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
         } else {
           return {
             intent: "get_contact_info",
-            reply: `ไม่พบข้อมูลตำแหน่ง/รายชื่อของ “${rawTarget}” ในสมุดโทรศัพท์/ระบบองค์กร Microsoft 365 ครับ 🔍`,
+            reply: `ไม่พบข้อมูลผู้ติดต่อ/รายชื่อของ “${rawTarget}” ในสมุดโทรศัพท์/ระบบองค์กร Microsoft 365 ครับ 🔍`,
           };
         }
       } catch (e) {
