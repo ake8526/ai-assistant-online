@@ -4206,12 +4206,41 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     if (birthDay === "พฤหัส") birthDay = "พฤหัสบดี";
 
     await setSetting(userUpn.toLowerCase(), "user_birth_day", birthDay);
+
+    const nowBkk = nowWall();
+    const dayOfWeek = nowBkk.getDay();
+    const dateFormatted = fmtDate(nowBkk);
+    const dayNames = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+    const todayName = dayNames[dayOfWeek];
+
+    const birthColors: Record<string, { lucky: string; avoid: string }> = {
+      "อาทิตย์": { lucky: "❤️ สีแดง, ชมพู (การงาน/เสน่ห์) · 💚 สีเขียว (โชคลาภ)", avoid: "💙 สีน้ำเงิน, ฟ้า" },
+      "จันทร์": { lucky: "💛 สีเหลือง, ครีม (การงาน) · 🟢 สีเขียว (ผู้ใหญ่เมตตา)", avoid: "❤️ สีแดง" },
+      "อังคาร": { lucky: "🩷 สีชมพู, ม่วง (งานสำเร็จ) · 🖤 สีเทา, ดำ (โชคลาภการเงิน)", avoid: "💛 สีเหลือง, ขาว" },
+      "พุธ": { lucky: "💚 สีเขียว, ส้ม, ทอง (สื่อสารการงานเด่น/เจรจาปัง)", avoid: "🩷 สีชมพู" },
+      "พฤหัสบดี": { lucky: "🧡 สีส้ม, แสด, ทอง (ไอเดียพุ่ง/ผลงานโดดเด่น)", avoid: "💜 สีม่วง" },
+      "ศุกร์": { lucky: "💙 สีฟ้า, น้ำเงิน (งานราบรื่น/เสน่ห์ผู้ใหญ่)", avoid: "🖤 สีดำ, เทา" },
+      "เสาร์": { lucky: "💜 สีม่วง, ดำ, เทา (โชคลาภ/อำนาจบารมี)", avoid: "🟢 สีเขียว" },
+    };
+
+    const fortunes = [
+      "✨ **ดวงการงาน:** วันนี้มีเกณฑ์เจรจาสื่อสารราบรื่น ไอเดียใหม่ๆ ได้รับการตอบรับดีเยี่ยม!",
+      "🚀 **ดวงการงาน:** จังหวะการทำงานสดใส เหมาะแก่การตัดสินใจเรื่องสำคัญ ลุยงานโปรเจกต์ใหม่ได้เลยครับ",
+      "💡 **ดวงการงาน:** สมองแล่น เคลียร์งานค้างได้รวดเร็ว มีเกณฑ์ได้รับข่าวดีหรือการสนับสนุนจากเพื่อนร่วมงาน",
+      "🏆 **ดวงการงาน:** ผลงานโดดเด่น ผู้ใหญ่ให้ความไว้วางใจ การวางแผนงานในระยะยาวจะประสบความสำเร็จสูงครับ",
+    ];
+
+    const fortuneIdx = (nowBkk.getDate() + nowBkk.getMonth() + birthDay.length) % fortunes.length;
+    const todayFortune = fortunes[fortuneIdx];
+    const bInfo = birthColors[birthDay] || { lucky: "🌈 สีมงคลตามวัน", avoid: "หลีกเลี่ยงสีทึบ" };
+
     return {
       intent: "set_birth_day",
-      reply: `บันทึกวันเกิดของคุณเป็น **"วัน${birthDay}"** เรียบร้อยแล้วครับ! 🎉\n\nต่อไปเมื่อคุณพิมพ์ **"ดวงวันนี้"** ระบบจะคำนวณดวงชะตาและสีเสื้อมงคลเฉพาะคนเกิดวัน${birthDay} ให้อัตโนมัติเลยครับ! 🔮✨`,
+      reply: `บันทึกวันเกิดของคุณเป็น **"วัน${birthDay}"** เรียบร้อยแล้วครับ! 🎉\n\n🔮 **ดวงการงานประจำวัน${todayName} (สำหรับคนเกิดวัน${birthDay})** (${dateFormatted})\n\n${todayFortune}\n\n🎨 **สีเสื้อมงคลประจำตัวคนเกิดวัน${birthDay}:**\n• **สีเสริมโชคลาภ/การงาน:** ${bInfo.lucky}\n• **สีที่ควรหลีกเลี่ยง:** ${bInfo.avoid}\n\n☕ **ทริกเพิ่มพลัง:** จิบน้ำหรือกาแฟช่วงบ่าย และพักสายตา 5 นาที ช่วยให้โฟกัสงานดีเยี่ยมตลอดวันครับ! 🌟✨`,
       suggestions: [
-        { label: "ดวงวันนี้", text: "ดวงวันนี้" },
         { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+        { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+        { label: "เปลี่ยนวันเกิด", text: "เกิดวันจันทร์" },
       ],
     };
   }
@@ -4223,6 +4252,22 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     const dateFormatted = fmtDate(nowBkk);
 
     const userBirthDay = await getSetting(userUpn.toLowerCase(), "user_birth_day");
+
+    if (!userBirthDay) {
+      return {
+        intent: "ask_birth_day",
+        reply: `🔮 **คุณเกิดวันไหนครับ?**\n\nโปรดเลือกวันเกิดของคุณด้านล่าง เพื่อให้ระบบคำนวณดวงชะตาและจัดชุดสีเสื้อมงคลเสริมดวงการงานเฉพาะตัวได้อย่างแม่นยำครับ 👇`,
+        suggestions: [
+          { label: "เกิดวันจันทร์", text: "เกิดวันจันทร์" },
+          { label: "เกิดวันอังคาร", text: "เกิดวันอังคาร" },
+          { label: "เกิดวันพุธ", text: "เกิดวันพุธ" },
+          { label: "เกิดวันพฤหัสบดี", text: "เกิดวันพฤหัสบดี" },
+          { label: "เกิดวันศุกร์", text: "เกิดวันศุกร์" },
+          { label: "เกิดวันเสาร์", text: "เกิดวันเสาร์" },
+          { label: "เกิดวันอาทิตย์", text: "เกิดวันอาทิตย์" },
+        ],
+      };
+    }
 
     const dayNames = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
     const luckyColorsToday = [
