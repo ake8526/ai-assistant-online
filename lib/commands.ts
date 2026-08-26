@@ -51,7 +51,7 @@ import { HELP_TOPICS, findHelpTopic, helpMenuFlex, helpMenuText, helpTopicFlex, 
 import { notYetAnswer } from "@/lib/notYet";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
-import { busyRanges, findCommonSlots, formatBusy, formatFree, freeRanges, wantsLunchIncluded } from "@/lib/scheduling";
+import { busyRanges, findCommonSlots, formatBusy, freeRangesReply, wantsLunchIncluded } from "@/lib/scheduling";
 import {
   addPlace,
   addTask,
@@ -1990,7 +1990,15 @@ async function availabilityResponse(
   const denied = needCalendarConsent();
   if (denied) return denied;
   const { start, end, label } = range;
-  const ranges = await freeRanges(email, start, end, requesterUpn, includeLunch);
+  const { ranges, reply: emptyReply } = await freeRangesReply({
+    targetUpn: email,
+    start,
+    end,
+    requesterUpn,
+    label,
+    who: displayName,
+    includeLunch,
+  });
   const slots = ranges.map((r) => ({
     start: wallIso(r.start),
     end: wallIso(r.end),
@@ -1998,7 +2006,7 @@ async function availabilityResponse(
   }));
   const reply = slots.length
     ? `🗓️ เวลาว่างของ ${displayName} (${label}) 👇\nเลือกหมายเลขช่วงเพื่อจอง หรือกด “กำหนดเอง” เพื่อพิมพ์เวลาเองครับ`
-    : formatFree(ranges, label, displayName, { start, end });
+    : emptyReply;
   return { intent: "availability", reply, person: { mail: email, displayName }, slots };
 }
 
@@ -6418,8 +6426,15 @@ async function handleParsed(
         }
       }
     }
-    const ranges = await freeRanges(userUpn, range.start, range.end, userUpn, lunch);
-    return withCalendarNext({ intent, reply: formatFree(ranges, range.label, "คุณ", { start: range.start, end: range.end }), period }, "free");
+    const { reply } = await freeRangesReply({
+      targetUpn: userUpn,
+      start: range.start,
+      end: range.end,
+      requesterUpn: userUpn,
+      label: range.label,
+      includeLunch: lunch,
+    });
+    return withCalendarNext({ intent, reply, period }, "free");
   }
 
   if (intent === "set_work_location" || intent === "set_home_location") {

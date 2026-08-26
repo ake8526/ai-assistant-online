@@ -388,6 +388,21 @@ function isWeekendWindow(start: Date, end: Date): boolean {
   return true;
 }
 
+const THAI_DOW = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+
+/**
+ * "วันเสาร์ที่ 29/08/2026" for a single day, "ช่วง <label>" for a span.
+ *
+ * People ask with a weekday ("เสาร์นี้") and were answered with a bare
+ * "29/08/2026", which makes them check a calendar to confirm the assistant
+ * understood them. Naming the day says yes, we heard you.
+ */
+function dayLabel(start: Date, end: Date, label: string): string {
+  const oneDay = addDays(startOfDay(start), 1) >= end;
+  const name = THAI_DOW[start.getUTCDay()];
+  return oneDay && name ? `วัน${name}ที่ ${label}` : `ช่วง ${label}`;
+}
+
 /** Any working slot left in this window once the past is dropped. */
 function workingHoursRemain(start: Date, end: Date): boolean {
   const now = nowWall();
@@ -418,10 +433,7 @@ export function formatFree(
 ): string {
   if (!ranges.length) {
     if (window && isWeekendWindow(window.start, window.end)) {
-      return (
-        `ช่วง ${label} เป็นวันหยุดครับ ไม่มีเวลาทำงานให้เช็ก 🌤️\n\n` +
-        `อยากรู้ว่ามีนัดค้างอยู่ไหม พิมพ์ “ตาราง ${label}” ได้เลยครับ`
-      );
+      return `${dayLabel(window.start, window.end, label)} เป็นวันหยุดครับ 🌤️`;
     }
     if (window && !workingHoursRemain(window.start, window.end)) {
       return (
@@ -442,6 +454,62 @@ export function formatFree(
     lines.push(`  ${fmtTime(r.start)} - ${fmtTime(r.end)}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * Free ranges plus the sentence that describes them.
+ *
+ * "เสาร์นี้ว่างไหม" is one question, so it deserves one answer: it is a
+ * weekend, and here is what is on the calendar anyway. The previous version
+ * said only the first half and told the person to go type
+ * "ตาราง 29/08/2026" for the second — sending them off to do a lookup we were
+ * already holding the connection for.
+ *
+ * The second read only happens on a weekend with nothing free, so a weekday
+ * "ว่างกี่โมงพรุ่งนี้" still costs exactly one call.
+ */
+export async function freeRangesReply(opts: {
+  targetUpn: string;
+  start: Date;
+  end: Date;
+  requesterUpn?: string;
+  label: string;
+  /** Whose calendar this is, as it should read in a sentence. */
+  who?: string;
+  includeLunch?: boolean;
+}): Promise<{ ranges: Range[]; reply: string }> {
+  const { targetUpn, start, end, requesterUpn, label, includeLunch = false } = opts;
+  const who = opts.who || "คุณ";
+  const ranges = await freeRanges(targetUpn, start, end, requesterUpn, includeLunch);
+  if (ranges.length || !isWeekendWindow(start, end)) {
+    return { ranges, reply: formatFree(ranges, label, who, { start, end }) };
+  }
+
+  const day = dayLabel(start, end, label);
+  const whose = who === "คุณ" ? "ตาราง" : `ตารางของ ${who}`;
+  let busy: Range[] = [];
+  try {
+    busy = await busyRanges(targetUpn, start, end, requesterUpn);
+  } catch (e) {
+    // A weekend answer without the calendar half still beats no answer at all.
+    console.warn("freeRangesReply busy lookup failed:", e);
+    return { ranges, reply: `${day} เป็นวันหยุดครับ 🌤️` };
+  }
+
+  if (!busy.length) {
+    return {
+      ranges,
+      reply: `${day} เป็นวันหยุด และ${whose}ยังว่างอยู่ ไม่มีนัดอะไรเลยครับ 🌤️`,
+    };
+  }
+  return {
+    ranges,
+    reply: [
+      `${day} เป็นวันหยุดครับ แต่${whose}มีนัดอยู่ ${busy.length} ช่วง 📌`,
+      "",
+      ...busy.map((b) => `  ${fmtTime(b.start)} - ${fmtTime(b.end)}`),
+    ].join("\n"),
+  };
 }
 
 export function formatBusy(busy: BusyMap): string {

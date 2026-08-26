@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { AuthError, requireUser } from "@/lib/auth";
 import { getUserGraphToken } from "@/lib/graphAuth";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
-import { freeRanges, formatFree } from "@/lib/scheduling";
+import { freeRangesReply } from "@/lib/scheduling";
 import { fmtDateTime, fmtTime, periodRange, wallIso } from "@/lib/time";
 
 export const maxDuration = 60;
@@ -28,7 +28,14 @@ export async function POST(req: Request) {
           };
         }
         const { start, end, label } = periodRange(period);
-        const ranges = await freeRanges(email, start, end, upn);
+        const { ranges, reply: emptyReply } = await freeRangesReply({
+          targetUpn: email,
+          start,
+          end,
+          requesterUpn: upn,
+          label,
+          who,
+        });
         const slots = ranges.map((r) => ({
           start: wallIso(r.start),
           end: wallIso(r.end),
@@ -36,7 +43,7 @@ export async function POST(req: Request) {
         }));
         const reply = slots.length
           ? `🗓️ เวลาว่างของ ${who} (${label}) 👇 เลือกช่วงเพื่อจองได้เลยครับ`
-          : formatFree(ranges, label, who, { start, end });
+          : emptyReply;
         return { intent: "availability", reply, person: { mail: email, displayName: who }, slots };
       },
       live
