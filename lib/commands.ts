@@ -4859,14 +4859,36 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   }
 
   // Immediate target identity/person lookup check (บุรัสกรเป็นใคร / ใครคือพี่แบงค์ / รู้จักบุรัสกรไหม)
-  if (/(.+?)\s*(?:เป็นใคร|คือใคร|คือใครครับ|คือใครค่ะ)$|^(?:ใครคือ|รู้จัก|ขอข้อมูล|ค้นหา)\s*(.+)/i.test(text)) {
+  //
+  // This runs on raw text, before parseIntent, so it gets first refusal on
+  // every "…คือใคร" and "รู้จัก…" sentence — including the ones that are not
+  // about a person at all. Two of them have to be handed back:
+  //
+  //   "คุณคือใคร"     → the assistant, not an employee named "คุณ"
+  //   "รู้จักกันไหม"   → reciprocal, no object at all
+  //
+  // Both used to reach searchUsers() and come back as
+  // “ไม่พบข้อมูลรายชื่อของ “คุณ” ในระบบองค์กร Microsoft 365” — an answer to a
+  // question nobody asked. parseIntent already routes both correctly
+  // (who_are_you / do_you_know_me); they only had to survive this far.
+  if (
+    !/^รู้จัก\s*กัน(?:เอง)?\s*(?:ไหม|มั้ย|ปะ|หรอ|เหรอ|หรือเปล่า|รึเปล่า)?\s*(?:ครับ|ค่ะ|วะ|ว่ะ|จ๊ะ|นะ|อะ|อ่ะ)?$/i.test(text.trim()) &&
+    /(.+?)\s*(?:เป็นใคร|คือใคร|คือใครครับ|คือใครค่ะ)$|^(?:ใครคือ|รู้จัก|ขอข้อมูล|ค้นหา)\s*(.+)/i.test(text)
+  ) {
     let rawTarget = text
       .replace(/(?:เป็นใคร|คือใคร|คือใครครับ|คือใครค่ะ)$/i, "")
       .replace(/^(?:ใครคือ|รู้จัก|ขอข้อมูล|ค้นหา)\s*/i, "")
       .replace(/(?:ไหม|ครับ|ค่ะ|\?)$/i, "")
       .trim();
 
-    if (rawTarget && !/^(?:ผม|ฉัน|เรา|ผู้ใช้)$/i.test(rawTarget)) {
+    // A bare pronoun is never a name in the directory — it is either the person
+    // asking or the assistant being asked. An honorific carrying a name still
+    // resolves, because only the standalone word is rejected: "คุณป้องคือใคร"
+    // looks up ป้อง, "คุณคือใคร" does not look up anyone.
+    const barePronoun =
+      /^(?:ผม|ฉัน|หนู|ดิฉัน|กระผม|เรา|เราสองคน|ตัวเอง|ผู้ใช้|คุณ|คุณเอง|ท่าน|เธอ|นาย|มึง|กู|แก|ตัว|นี่|เขา|มัน)$/i;
+
+    if (rawTarget && !barePronoun.test(rawTarget)) {
       try {
         const candidates = await searchUsers(rawTarget);
         if (candidates.length === 1) {
