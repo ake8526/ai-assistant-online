@@ -36,7 +36,7 @@ export async function POST(req: Request) {
         }));
         const reply = slots.length
           ? `🗓️ เวลาว่างของ ${who} (${label}) 👇 เลือกช่วงเพื่อจองได้เลยครับ`
-          : formatFree(ranges, label, who);
+          : formatFree(ranges, label, who, { start, end });
         return { intent: "availability", reply, person: { mail: email, displayName: who }, slots };
       },
       live

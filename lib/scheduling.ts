@@ -379,8 +379,58 @@ export async function busyRanges(
   return availabilityRanges(targetUpn, start, end, requesterUpn, false);
 }
 
-export function formatFree(ranges: Range[], label: string, who = "คุณ"): string {
-  if (!ranges.length) return `ช่วง${label} ${who}ไม่มีเวลาว่างในเวลาทำงานเลยครับ (คิวแน่นมาก! 😮)`;
+/** Every calendar day this window touches falls on a weekend. */
+function isWeekendWindow(start: Date, end: Date): boolean {
+  for (let d = startOfDay(start); d <= end; d = addDays(d, 1)) {
+    const dow = d.getUTCDay();
+    if (dow >= 1 && dow <= 5) return false;
+  }
+  return true;
+}
+
+/** Any working slot left in this window once the past is dropped. */
+function workingHoursRemain(start: Date, end: Date): boolean {
+  const now = nowWall();
+  let slot = start < now ? new Date(now) : new Date(start);
+  slot.setUTCMinutes(0, 0, 0);
+  for (; slot < end; slot = addMinutes(slot, INTERVAL)) {
+    const dow = slot.getUTCDay();
+    const h = slot.getUTCHours();
+    if (dow >= 1 && dow <= 5 && h >= WORK_START_HOUR && h < WORK_END_HOUR) return true;
+  }
+  return false;
+}
+
+/**
+ * `window` is the span that was asked about — pass it whenever you have it.
+ *
+ * "no free ranges" means three very different things, and the old text asserted
+ * the rarest one for all of them: "เสาร์นี้ว่างไหม" came back "ไม่มีเวลาว่าง
+ * ในเวลาทำงานเลยครับ (คิวแน่นมาก!)" because Saturday has no working hours to be
+ * free in — the calendar was empty, not packed. Asking after 17:00 on a weekday
+ * had the same shape and the same wrong answer.
+ */
+export function formatFree(
+  ranges: Range[],
+  label: string,
+  who = "คุณ",
+  window?: { start: Date; end: Date }
+): string {
+  if (!ranges.length) {
+    if (window && isWeekendWindow(window.start, window.end)) {
+      return (
+        `ช่วง ${label} เป็นวันหยุดครับ ไม่มีเวลาทำงานให้เช็ก 🌤️\n\n` +
+        `อยากรู้ว่ามีนัดค้างอยู่ไหม พิมพ์ “ตาราง ${label}” ได้เลยครับ`
+      );
+    }
+    if (window && !workingHoursRemain(window.start, window.end)) {
+      return (
+        `ช่วง ${label} เลยเวลาทำงาน (${WORK_START_HOUR}:00–${WORK_END_HOUR}:00) ไปแล้วครับ ⏰\n\n` +
+        `ลองถามเป็นวันถัดไปดูไหมครับ เช่น “ว่างกี่โมงพรุ่งนี้”`
+      );
+    }
+    return `ช่วง ${label} ${who}ไม่มีเวลาว่างในเวลาทำงานเลยครับ (คิวแน่นมาก! 😮)`;
+  }
   const lines = [`🗓️ เวลาว่างของ${who} (${label}):`, ""];
   let lastDay: string | null = null;
   for (const r of ranges) {

@@ -1998,7 +1998,7 @@ async function availabilityResponse(
   }));
   const reply = slots.length
     ? `🗓️ เวลาว่างของ ${displayName} (${label}) 👇\nเลือกหมายเลขช่วงเพื่อจอง หรือกด “กำหนดเอง” เพื่อพิมพ์เวลาเองครับ`
-    : formatFree(ranges, label, displayName);
+    : formatFree(ranges, label, displayName, { start, end });
   return { intent: "availability", reply, person: { mail: email, displayName }, slots };
 }
 
@@ -2121,7 +2121,7 @@ async function personBusyResponse(
 
 function formatEventsSimple(events: GraphEvent[], label: string): string {
   if (!events.length) {
-    return `ช่วง${label}ยังไม่มีนัดประชุมในปฏิทินครับ 👍\n\nพิมพ์ได้ เช่น “งานค้างมีอะไรบ้าง” หรือ “นัดประชุมกับ...”`;
+    return `ช่วง ${label} ยังไม่มีนัดประชุมในปฏิทินครับ 👍\n\nพิมพ์ได้ เช่น “งานค้างมีอะไรบ้าง” หรือ “นัดประชุมกับ...”`;
   }
   const lines = [`🗓️ ประชุม${label} (${events.length} รายการ):`, ""];
   let lastDay: string | null = null;
@@ -6127,7 +6127,7 @@ async function handleParsed(
         return withCalendarNext(
           {
             intent,
-            reply: `ช่วง${label}ยังไม่มีนัดประชุมในปฏิทินครับ 👍`,
+            reply: `ช่วง ${label} ยังไม่มีนัดประชุมในปฏิทินครับ 👍`,
             data: [],
             period,
           },
@@ -6295,7 +6295,7 @@ async function handleParsed(
       return withCalendarNext(
         {
           intent,
-          reply: `ช่วง${label}ยังไม่มีนัดประชุมในปฏิทินครับ 👍`,
+          reply: `ช่วง ${label} ยังไม่มีนัดประชุมในปฏิทินครับ 👍`,
           data: [],
           period,
         },
@@ -6419,7 +6419,7 @@ async function handleParsed(
       }
     }
     const ranges = await freeRanges(userUpn, range.start, range.end, userUpn, lunch);
-    return withCalendarNext({ intent, reply: formatFree(ranges, range.label), period }, "free");
+    return withCalendarNext({ intent, reply: formatFree(ranges, range.label, "คุณ", { start: range.start, end: range.end }), period }, "free");
   }
 
   if (intent === "set_work_location" || intent === "set_home_location") {
