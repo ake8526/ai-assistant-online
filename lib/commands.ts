@@ -4259,6 +4259,34 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
   return { intent: "unknown", reply: "ไม่รู้จักคำสั่งนี้ครับ" };
 }
 
+/**
+ * Who the person talking to us is, in their own directory's words.
+ *
+ * "รู้จักฉันไหม" answered "รู้จักแน่นอนครับ ก็ผมเป็น AI ประจำตัวของคุณ" — which
+ * never actually names anyone, so it reads the same whether the system knows
+ * you or not. The name is already one Graph call away; ask for it.
+ *
+ * Everything is optional on purpose. A tester whose Graph profile carries no
+ * jobTitle should still get their name, and someone the directory cannot
+ * resolve at all still gets their UPN rather than an apology.
+ */
+async function describeSelf(userUpn: string): Promise<{ name: string; detail: string }> {
+  const upn = (userUpn || "").trim();
+  if (!upn) return { name: "คุณ", detail: "" };
+  try {
+    const me = await resolveUserInfo(upn);
+    const name = (me?.displayName || "").trim() || upn;
+    const bits = [
+      me?.jobTitle ? `💼 ${me.jobTitle}` : "",
+      me?.department ? `🏢 ${me.department}` : "",
+    ].filter(Boolean);
+    return { name, detail: bits.join(" · ") };
+  } catch (e) {
+    console.warn("describeSelf error:", e);
+    return { name: upn, detail: "" };
+  }
+}
+
 async function handle(userUpn: string, text: string, context?: CommandContext, lite = false): Promise<CommandResult> {
   text = (text || "")
     .normalize("NFC")
@@ -4607,13 +4635,14 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
 
   // Immediate user identity query check (ผมชื่ออะไร / ฉันชื่ออะไร / ฉันชื่อ / ชื่อฉัน / ผมชื่อ / ชื่อผม)
   if (/^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม|ชื่ออะไร|ผมชื่ออะไร|ฉันชื่ออะไร|ผมเป็นใคร|ฉันเป็นใคร|ผู้ใช้ชื่ออะไร|ชื่อผู้ใช้|ชื่อไร|ผมชื่อไร|ฉันชื่อไร)$|^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม)\b/i.test(text)) {
-    let nameShow = userUpn;
-    if (userUpn.toLowerCase().includes("weerasak")) {
-      nameShow = "คุณวีรศักดิ์ พิมพ์ต้น (Weerasak Pimton)";
-    }
+    // The name used to be a hardcoded string for the one account that had been
+    // tested with; everyone else saw their raw UPN. Ask the directory instead —
+    // it knows every account, and it knows the job title too.
+    const me = await describeSelf(userUpn);
+    const detailLine = me.detail ? `\n${me.detail}` : "";
     return {
       intent: "who_am_i",
-      reply: `👤 คุณคือ **${nameShow}** (\`${userUpn}\`)\n\nผูกบัญชี Microsoft 365 และระบบองค์กรเรียบร้อยครับ 🤖✨\nวันนี้มีอะไรให้ผมช่วยจัดการปฏิทินหรือติดตามงานไหมครับ?`,
+      reply: `👤 คุณคือ **${me.name}** (\`${userUpn}\`)${detailLine}\n\nผูกบัญชี Microsoft 365 และระบบองค์กรเรียบร้อยครับ 🤖✨\nวันนี้มีอะไรให้ผมช่วยจัดการปฏิทินหรือติดตามงานไหมครับ?`,
       suggestions: [
         { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
         { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
@@ -7181,9 +7210,14 @@ async function handleParsed(
   }
 
   if (intent === "do_you_know_me") {
-    // Style 3 (Confident & Warm):
+    // "รู้จักแน่นอนครับ" without a name reads identically whether the system
+    // knows the person or not. Say the name — it is the whole answer to the
+    // question that was asked.
+    const me = await describeSelf(userUpn);
+    const detailLine = me.detail ? `\n${me.detail}` : "";
     const knowReply =
-      "รู้จักแน่นอนครับ! ก็ผมเป็น **AI ประจำตัวของคุณ** ที่คอยดูแลเรื่องตารางและงานให้ทุกวันนี่ไงครับ 🤖✨\n\n" +
+      `รู้จักสิครับ! คุณคือ **${me.name}** (\`${userUpn}\`)${detailLine}\n\n` +
+      "ผมเป็น **AI ประจำตัวของคุณ** ที่คอยดูแลเรื่องตารางและงานให้ทุกวันครับ 🤖✨\n\n" +
       "วันนี้อยากให้ผมช่วยเช็กตาราง สรุปประชุม หรือหาเวลาว่างนัดใคร สั่งมาได้เลยครับ! 🚀";
 
     return {
@@ -7200,8 +7234,9 @@ async function handleParsed(
 
   if (intent === "know_each_other") {
     // Style 2 (Playful & Friendly for "รู้จักกันหรอ/เหรอ"):
+    const me = await describeSelf(userUpn);
     const knowReply =
-      "อ้าว... ไม่รู้จักกันจริงดิครับ เสียใจนะเนี่ย! 🥺\n\n" +
+      `อ้าว... ไม่รู้จักกันจริงดิครับ เสียใจนะเนี่ย! 🥺 ก็คุณคือ **${me.name}** ไงครับ\n\n` +
       "ผมคือ **AI เลขาส่วนตัวสุดฉลาด** ของคุณไงครับ ถึงยังไม่สนิทวันนี้ แต่ถ้าอยากให้ตามงาน สรุปประชุม หรือจัดตารางให้ เรียกใช้ผมได้ตลอด 24 ชม. เลยนะ 😎";
 
     return {

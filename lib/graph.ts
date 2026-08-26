@@ -842,6 +842,23 @@ function normalizeDisplayName(displayName: string, mail: string): string {
 }
 
 /** Look up displayName for a known mail/UPN via app-only Graph (directory read). */
+/**
+ * The optional half of a UserInfo, off a raw Graph user object.
+ *
+ * Looking someone up by name already returned jobTitle and department; looking
+ * the same person up by email did not, because this path only ever asked for
+ * displayName. Same call, same permission — so ask for the rest too, and every
+ * caller that wants to say more than a name can.
+ */
+function profileBits(u: Record<string, unknown>): Pick<UserInfo, "jobTitle" | "department" | "phone"> {
+  const phones = Array.isArray(u.businessPhones) ? (u.businessPhones as string[]) : [];
+  return {
+    jobTitle: (u.jobTitle as string) || undefined,
+    department: (u.department as string) || undefined,
+    phone: (u.mobilePhone as string) || phones[0] || undefined,
+  };
+}
+
 async function lookupUserByMail(mailOrUpn: string): Promise<UserInfo | null> {
   const raw = mailOrUpn.trim();
   const key = raw.toLowerCase();
@@ -860,19 +877,19 @@ async function lookupUserByMail(mailOrUpn: string): Promise<UserInfo | null> {
     // App-only token: delegated User.Read cannot read other users' profiles
     const token = await getToken();
     const r = await fetch(
-      `${GRAPH_BASE}/users/${encodeURIComponent(raw)}?$select=mail,userPrincipalName,displayName`,
+      `${GRAPH_BASE}/users/${encodeURIComponent(raw)}?$select=mail,userPrincipalName,displayName,jobTitle,department,mobilePhone,businessPhones`,
       { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
     );
     if (r.ok) {
       const data = await r.json();
       const mail = (data.mail || data.userPrincipalName || raw).trim();
       const displayName = (data.displayName || "").trim();
-      return finish({ mail, displayName: displayName || mail });
+      return finish({ mail, displayName: displayName || mail, ...profileBits(data) });
     }
     // Fallback: filter by mail / UPN
     const esc = raw.replace(/'/g, "''");
     const r2 = await fetch(
-      `${GRAPH_BASE}/users?$filter=mail eq '${esc}' or userPrincipalName eq '${esc}'&$select=mail,userPrincipalName,displayName&$top=1`,
+      `${GRAPH_BASE}/users?$filter=mail eq '${esc}' or userPrincipalName eq '${esc}'&$select=mail,userPrincipalName,displayName,jobTitle,department,mobilePhone,businessPhones&$top=1`,
       { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
     );
     if (r2.ok) {
@@ -881,7 +898,7 @@ async function lookupUserByMail(mailOrUpn: string): Promise<UserInfo | null> {
       if (row) {
         const mail = (row.mail || row.userPrincipalName || raw).trim();
         const displayName = (row.displayName || "").trim();
-        return finish({ mail, displayName: displayName || mail });
+        return finish({ mail, displayName: displayName || mail, ...profileBits(row) });
       }
     }
   } catch {
