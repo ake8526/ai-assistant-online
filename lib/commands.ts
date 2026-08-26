@@ -546,11 +546,30 @@ function nameFromCandidate(raw: string): string {
   return residue ? s : "";
 }
 
-function calendarSuggestions(kind: "meetings" | "free", period?: string): { label: string; text: string }[] {
+/**
+ * The follow-up chips under a calendar answer.
+ *
+ * `who` is the mailbox the answer was about — pass it whenever the reply was
+ * not about the person asking. A card headed "เวลาว่างของแบงค์" used to offer a
+ * bare "ดูนัด" that sent "นัดวันนี้", and a bare "นัดวันนี้" means *your* diary:
+ * one tap and the assistant was quietly answering about someone else, on a card
+ * that still had แบงค์'s name at the top. The chip has to carry the person it
+ * was drawn for, because a tap says nothing else about who is meant.
+ *
+ * Booking deliberately stays generic. Prefilling an attendee from whatever card
+ * happens to be on screen is how you send a real invite to the wrong person, so
+ * "นัดประชุม" keeps asking who.
+ */
+function calendarSuggestions(
+  kind: "meetings" | "free",
+  period?: string,
+  who?: string
+): { label: string; text: string }[] {
   const day =
     period === "tomorrow" ? "พรุ่งนี้" : period === "today" ? "วันนี้" : period === "week" ? "สัปดาห์นี้" : "";
-  const freeText = day ? `ขอตารางว่าง${day}` : "ขอตารางว่าง";
-  const meetText = day ? `นัด${day}` : "นัดวันนี้";
+  const of = who ? ` ${who} ` : "";
+  const freeText = who ? `ดูตารางว่าง${of}${day}`.trim() : day ? `ขอตารางว่าง${day}` : "ขอตารางว่าง";
+  const meetText = who ? `ดูนัด${of}${day || "วันนี้"}`.trim() : day ? `นัด${day}` : "นัดวันนี้";
   if (kind === "free") {
     return [
       { label: "📅 นัดประชุม", text: "นัดประชุม" },
@@ -572,7 +591,8 @@ function withAskNext(reply: string): string {
 }
 
 function withCalendarNext(res: CommandResult, kind: "meetings" | "free"): CommandResult {
-  const suggestions = calendarSuggestions(kind, res.period);
+  // res.person is set only when the answer was about somebody else's calendar.
+  const suggestions = calendarSuggestions(kind, res.period, res.person?.mail);
   return { ...res, reply: withAskNext(res.reply), suggestions };
 }
 
