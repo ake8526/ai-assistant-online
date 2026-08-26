@@ -25,7 +25,7 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/:path(home.html|system-functions.html)",
+        source: "/:path(home.html|system-functions.html|test-plan.html)",
         headers: [
           { key: "Cache-Control", value: "no-store, must-revalidate" },
         ],

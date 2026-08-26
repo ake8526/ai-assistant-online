@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="สคริปต์ทดสอบ KTIS X AI Assistant — พิมพ์อะไร ควรได้อะไร สำหรับผู้ร่วมทดสอบ" />
+<meta name="theme-color" content="#F1F3EF" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0F1613" media="(prefers-color-scheme: dark)" />
+<style>
+  /* reset — the hosted page has no wrapper stylesheet of its own */
+  html{-webkit-text-size-adjust:100%;}
+  h1,h2,h3,h4,h5,h6,p,dl,dd,figure,blockquote{margin:0;}
+  img,svg{max-width:100%;}
+  button{font:inherit; color:inherit;}
+  table{border-collapse:collapse;}
+</style>
+<title>สคริปต์ทดสอบผู้ช่วย KTIS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root{
+    --paper:#F1F3EF; --surface:#FFFFFF; --surface-2:#E9EDE7;
+    --ink:#16211B; --ink-2:#3D4A43; --muted:#6D7B72;
+    --rule:#D5DCD3; --rule-soft:#E4E9E2;
+    --accent:#06C755; --accent-deep:#04803A; --bubble:#8FE9B4; --bubble-ink:#0C2B18;
+    --warn:#96591A; --warn-bg:#FAEFDD; --warn-line:#E4C48C;
+    --write:#A02C1B; --write-bg:#F9E7E3; --write-line:#E0AA9E;
+    --time:#2E5580; --time-bg:#E6EDF6; --time-line:#AFC5DE;
+    --read:#3E6B52; --read-bg:#E4EFE7; --read-line:#B4D2BF;
+    --shadow:0 1px 2px rgba(22,33,27,.06), 0 8px 24px -16px rgba(22,33,27,.28);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#0F1613; --surface:#17201B; --surface-2:#1E2823;
+      --ink:#E4EBE6; --ink-2:#B5C1BA; --muted:#8B9A91;
+      --rule:#2A362F; --rule-soft:#222C27;
+      --accent:#29D46F; --accent-deep:#7BE8A6; --bubble:#1F5A38; --bubble-ink:#D8F6E4;
+      --warn:#E0A756; --warn-bg:#2B2214; --warn-line:#4A3A1E;
+      --write:#EC8E7A; --write-bg:#2C1916; --write-line:#4E2A23;
+      --time:#8FB6DE; --time-bg:#15222E; --time-line:#263F55;
+      --read:#7CC79A; --read-bg:#14251B; --read-line:#254232;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0F1613; --surface:#17201B; --surface-2:#1E2823;
+    --ink:#E4EBE6; --ink-2:#B5C1BA; --muted:#8B9A91;
+    --rule:#2A362F; --rule-soft:#222C27;
+    --accent:#29D46F; --accent-deep:#7BE8A6; --bubble:#1F5A38; --bubble-ink:#D8F6E4;
+    --warn:#E0A756; --warn-bg:#2B2214; --warn-line:#4A3A1E;
+    --write:#EC8E7A; --write-bg:#2C1916; --write-line:#4E2A23;
+    --time:#8FB6DE; --time-bg:#15222E; --time-line:#263F55;
+    --read:#7CC79A; --read-bg:#14251B; --read-line:#254232;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans Thai","Noto Sans Thai",system-ui,sans-serif;
+    font-size:16px; line-height:1.72; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px; margin:0 auto; padding:0 20px 96px;}
+
+  /* ---------- masthead ---------- */
+  .mast{
+    border-bottom:1px solid var(--rule);
+    background:var(--surface);
+    margin-bottom:34px;
+  }
+  .mast-in{max-width:940px; margin:0 auto; padding:36px 20px 28px;}
+  .eyebrow{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--accent-deep); margin:0 0 12px;
+  }
+  h1{
+    font-family:"Bai Jamjuree","IBM Plex Sans Thai",sans-serif;
+    font-weight:700; font-size:clamp(30px,5.4vw,44px); line-height:1.18;
+    letter-spacing:-.01em; margin:0 0 14px; text-wrap:balance;
+  }
+  .lede{max-width:60ch; color:var(--ink-2); margin:0 0 24px; font-size:17px;}
+  .facts{
+    display:grid; gap:1px; background:var(--rule);
+    grid-template-columns:repeat(auto-fit,minmax(158px,1fr));
+    border:1px solid var(--rule); border-radius:10px; overflow:hidden;
+  }
+  .fact{background:var(--surface); padding:12px 14px;}
+  .fact dt{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:10.5px; letter-spacing:.13em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 3px;
+  }
+  .fact dd{margin:0; font-weight:600; font-size:14.5px; font-variant-numeric:tabular-nums;}
+  .fact dd a{color:var(--accent-deep);}
+
+  /* ---------- progress rail ---------- */
+  .rail{
+    position:sticky; top:0; z-index:20;
+    background:color-mix(in srgb, var(--paper) 92%, transparent);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--rule);
+    margin:0 -20px 30px; padding:9px 20px;
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  }
+  .rail-count{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:12.5px; font-variant-numeric:tabular-nums; color:var(--ink-2); white-space:nowrap;
+  }
+  .rail-count b{color:var(--ink);}
+  .bar{flex:1 1 140px; height:5px; border-radius:99px; background:var(--surface-2); overflow:hidden; min-width:100px;}
+  .bar i{display:block; height:100%; width:0; background:var(--accent); transition:width .25s ease;}
+  .rail button{
+    font:inherit; font-size:13px; cursor:pointer;
+    border:1px solid var(--rule); background:var(--surface); color:var(--ink-2);
+    border-radius:99px; padding:4px 13px;
+  }
+  .rail button:hover{border-color:var(--accent); color:var(--ink);}
+  .rail button:focus-visible, a:focus-visible, .cmd:focus-visible, input:focus-visible{
+    outline:2px solid var(--accent); outline-offset:2px;
+  }
+
+  /* ---------- prose ---------- */
+  h2{
+    font-family:"Bai Jamjuree","IBM Plex Sans Thai",sans-serif;
+    font-weight:700; font-size:23px; line-height:1.3; margin:0; letter-spacing:-.005em;
+  }
+  h3{
+    font-family:"Bai Jamjuree","IBM Plex Sans Thai",sans-serif;
+    font-weight:600; font-size:18px; margin:34px 0 12px;
+  }
+  p{margin:0 0 14px; max-width:66ch;}
+  a{color:var(--accent-deep); text-underline-offset:3px;}
+
+  /* ---------- section ---------- */
+  section{margin:0 0 44px; scroll-margin-top:70px;}
+  .sec-head{display:flex; align-items:baseline; gap:14px; padding-bottom:11px; border-bottom:2px solid var(--ink); margin-bottom:18px;}
+  .sec-no{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:13px; font-weight:500; color:var(--accent-deep);
+    font-variant-numeric:tabular-nums; flex:none;
+  }
+  .sec-sub{margin:-6px 0 18px; color:var(--muted); font-size:14.5px; max-width:66ch;}
+
+  /* ---------- test rows ---------- */
+  .rows{display:flex; flex-direction:column; gap:10px;}
+  .row{
+    display:grid; grid-template-columns:26px minmax(0,1fr); gap:0 12px;
+    background:var(--surface); border:1px solid var(--rule); border-radius:12px;
+    padding:13px 15px 14px; box-shadow:var(--shadow);
+  }
+  .row.done{opacity:.48;}
+  .row.done .say{filter:saturate(.35);}
+  .tick{grid-row:1/3; padding-top:3px;}
+  .tick input{width:17px; height:17px; accent-color:var(--accent); cursor:pointer; margin:0;}
+  .say{
+    display:inline-block; background:var(--bubble); color:var(--bubble-ink);
+    border-radius:14px 14px 14px 4px; padding:5px 13px;
+    font-weight:600; font-size:15.5px; line-height:1.55;
+    border:none; text-align:left; font-family:inherit; cursor:copy;
+    max-width:100%; word-break:break-word;
+  }
+  .say[data-nocopy]{cursor:default;}
+  .say .lat{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:14.5px; font-weight:500;}
+  .act{
+    display:inline-block; background:var(--surface-2); color:var(--ink-2);
+    border-radius:8px; padding:4px 11px; font-size:14.5px; font-weight:500;
+    border:1px dashed var(--rule);
+  }
+  .expect{
+    margin-top:9px; padding-left:13px; border-left:2px solid var(--rule-soft);
+    color:var(--ink-2); font-size:14.5px; line-height:1.62;
+  }
+  .expect b{color:var(--ink); font-weight:600;}
+  .tags{display:flex; gap:6px; flex-wrap:wrap; margin-top:9px;}
+  .tag{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
+    padding:2px 8px; border-radius:5px; border:1px solid; white-space:nowrap;
+  }
+  .t-read {color:var(--read);  background:var(--read-bg);  border-color:var(--read-line);}
+  .t-write{color:var(--write); background:var(--write-bg); border-color:var(--write-line);}
+  .t-warn {color:var(--warn);  background:var(--warn-bg);  border-color:var(--warn-line);}
+  .t-time {color:var(--time);  background:var(--time-bg);  border-color:var(--time-line);}
+
+  /* rows that carry a hazard get a spine */
+  .row.hz-write{border-left:3px solid var(--write);}
+  .row.hz-warn {border-left:3px solid var(--warn);}
+  .row.hz-time {border-left:3px solid var(--time);}
+
+  /* ---------- callout ---------- */
+  .note{
+    border:1px solid var(--warn-line); background:var(--warn-bg); color:var(--ink);
+    border-radius:12px; padding:15px 17px; margin:0 0 20px;
+  }
+  .note h4{
+    font-family:"Bai Jamjuree",sans-serif; font-weight:600; font-size:15.5px;
+    margin:0 0 7px; color:var(--warn);
+  }
+  .note p{margin:0 0 8px; font-size:14.5px; color:var(--ink-2);}
+  .note p:last-child{margin-bottom:0;}
+  .note code{
+    font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:13px;
+    background:var(--surface); padding:1px 5px; border-radius:4px; border:1px solid var(--warn-line);
+  }
+
+  /* ---------- key / roles ---------- */
+  .key{display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); margin:0 0 30px;}
+  .key-item{
+    background:var(--surface); border:1px solid var(--rule); border-radius:10px;
+    padding:11px 13px; font-size:14px; color:var(--ink-2);
+  }
+  .key-item .tag{margin-bottom:6px; display:inline-block;}
+
+  .roles{width:100%; border-collapse:collapse; font-size:14.5px; margin:0 0 8px;}
+  .roles th,.roles td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule); vertical-align:top;}
+  .roles th{
+    font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--muted); font-weight:500;
+  }
+  .roles td:first-child{font-weight:600; white-space:nowrap;}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch;}
+
+  /* ---------- report block ---------- */
+  .report{
+    background:var(--surface-2); border:1px solid var(--rule); border-radius:12px;
+    padding:16px 18px; font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:13px; line-height:1.85; white-space:pre-wrap; color:var(--ink-2);
+  }
+
+  .toc{
+    display:flex; flex-wrap:wrap; gap:7px; margin:0 0 34px;
+  }
+  .toc a{
+    text-decoration:none; font-size:13.5px; color:var(--ink-2);
+    border:1px solid var(--rule); background:var(--surface);
+    border-radius:99px; padding:4px 12px;
+  }
+  .toc a:hover{border-color:var(--accent); color:var(--ink);}
+  .toc a b{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--accent-deep); font-weight:500;}
+
+  footer{
+    border-top:1px solid var(--rule); margin-top:44px; padding-top:20px;
+    color:var(--muted); font-size:13.5px;
+  }
+
+  .copied{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+    background:var(--ink); color:var(--paper); padding:7px 16px; border-radius:99px;
+    font-size:13.5px; opacity:0; pointer-events:none; transition:opacity .18s; z-index:60;
+  }
+  .copied.on{opacity:1;}
+
+  @media (max-width:560px){
+    .row{grid-template-columns:22px minmax(0,1fr); gap:0 10px; padding:12px 13px;}
+    .rail{gap:10px;}
+    .mast-in{padding:28px 20px 24px;}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none !important;}}
+  @media print{
+    .rail,.toc{display:none;} body{background:#fff;} .row{break-inside:avoid; box-shadow:none;}
+  }
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <div class="mast-in">
+    <p class="eyebrow">User Acceptance Test · รอบเปิดให้เพื่อนร่วมงานลอง</p>
+    <h1>สคริปต์ทดสอบ<br>KTIS X AI Assistant</h1>
+    <p class="lede">
+      เอกสารนี้คือ “บทพูด” สำหรับผู้ทดสอบ — บอกว่าต้อง<strong>พิมพ์อะไร</strong> ลงไปในแชท LINE
+      และ<strong>ควรได้คำตอบหน้าตาแบบไหน</strong>กลับมา ถ้าสิ่งที่ได้ไม่ตรงกับช่อง “ควรได้” ให้ถือว่าเป็นบั๊ก
+      แล้วรายงานตามแบบฟอร์มท้ายหน้า
+    </p>
+    <dl class="facts">
+      <div class="fact"><dt>LINE OA</dt><dd><a href="https://line.me/R/ti/p/@777nxuvm">@777nxuvm</a></dd></div>
+      <div class="fact"><dt>เว็บ</dt><dd><a href="https://ktis-ai-assistant.vercel.app">ktis-ai-assistant</a></dd></div>
+      <div class="fact"><dt>รายการทดสอบ</dt><dd><span id="total">–</span> ข้อ</dd></div>
+      <div class="fact"><dt>เวลาที่ใช้</dt><dd>~45 นาที + 1 เช้า</dd></div>
+      <div class="fact"><dt>แจ้งปัญหา</dt><dd>weerasak.pi</dd></div>
+    </dl>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="rail">
+    <span class="rail-count">ทำแล้ว <b id="done">0</b> / <span id="total2">0</span></span>
+    <span class="bar"><i id="barfill"></i></span>
+    <button type="button" id="hide">ซ่อนข้อที่ทำแล้ว</button>
+    <button type="button" id="reset">ล้างเครื่องหมาย</button>
+  </div>
+
+  <nav class="toc">
+    <a href="#s0"><b>00</b> ก่อนเริ่ม</a>
+    <a href="#s1"><b>01</b> ทักทาย &amp; คู่มือ</a>
+    <a href="#s2"><b>02</b> ตารางของฉัน</a>
+    <a href="#s3"><b>03</b> ตารางคนอื่น</a>
+    <a href="#s4"><b>04</b> นัดประชุม</a>
+    <a href="#s5"><b>05</b> งานที่ต้องติดตาม</a>
+    <a href="#s6"><b>06</b> สรุปประชุม</a>
+    <a href="#s7"><b>07</b> ไฟล์</a>
+    <a href="#s8"><b>08</b> ข่าว</a>
+    <a href="#s9"><b>09</b> คำสั่ง / &amp; ความจำ</a>
+    <a href="#s10"><b>10</b> เคสที่ต้องแกล้งพัง</a>
+    <a href="#s11"><b>11</b> งานอัตโนมัติ</a>
+    <a href="#report"><b>→</b> รายงานผล</a>
+  </nav>
+
+  <h3 style="margin-top:0">ป้ายกำกับแต่ละข้อ อ่านอย่างนี้</h3>
+  <div class="key">
+    <div class="key-item"><span class="tag t-read">อ่านอย่างเดียว</span>ลองได้ไม่จำกัด ไม่กระทบข้อมูลใคร</div>
+    <div class="key-item"><span class="tag t-write">เขียนจริง</span>สร้าง/ลบ event ใน Outlook หรือส่งคำเชิญถึงคนอื่นจริง ให้ทำเฉพาะกับคนในทีมทดสอบ</div>
+    <div class="key-item"><span class="tag t-warn">ต้องมีการยืนยัน</span>ระบบต้องถามก่อนเสมอ ถ้าลงมือทันทีโดยไม่ถาม = บั๊กร้ายแรง</div>
+    <div class="key-item"><span class="tag t-time">รอเวลา</span>ทดสอบไม่ได้ทันที ต้องรอรอบเวลาจริง</div>
+  </div>
+
+  <div class="note">
+    <h4>กติกา 4 ข้อของรอบทดสอบนี้</h4>
+    <p><strong>1. จองนัดกับคนในทีมทดสอบเท่านั้น</strong> — ข้อที่ติดป้าย “เขียนจริง” จะส่งคำเชิญเข้า Outlook ของคนที่ระบุจริง ๆ อย่าลองกับผู้บริหารหรือคนนอกรอบทดสอบ</p>
+    <p><strong>2. ใส่คำว่า “ทดสอบ” ในหัวข้อนัดทุกครั้ง</strong> เพื่อให้แยกออกจากนัดจริงและตามลบทีหลังได้</p>
+    <p><strong>3. ลบของที่สร้างไว้เมื่อทดสอบเสร็จ</strong> — นัดที่จอง และงานติดตามที่เพิ่ม</p>
+    <p><strong>4. ข้อความอัตโนมัติ (บรีฟเช้า/เตือนงาน) กินโควตา push ของ LINE</strong> ซึ่งมีจำกัดต่อเดือน ถ้าเช้าวันไหนไม่มีอะไรเข้ามาเลยทั้งระบบ ให้แจ้งก่อน อย่าเพิ่งสรุปว่าฟีเจอร์พัง</p>
+  </div>
+
+  <h3>ต้องใช้ผู้ทดสอบกี่คน</h3>
+  <p>ข้อ 00–03 และ 05–10 คนเดียวทำได้ครบ แต่หมวด 04 (นัดประชุม) ต้องมีคนที่สอง เพราะครึ่งหนึ่งของฟีเจอร์คือสิ่งที่เกิดขึ้น<em>ฝั่งผู้ถูกเชิญ</em></p>
+  <div class="scroll">
+    <table class="roles">
+      <thead><tr><th>บทบาท</th><th>ต้องเตรียม</th><th>ทำอะไรในรอบทดสอบ</th></tr></thead>
+      <tbody>
+        <tr><td>ผู้จัด (A)</td><td>ผูก M365 + LINE + อนุญาตปฏิทินครบ</td><td>ไล่ทุกหมวดตั้งแต่ 00 ถึง 11</td></tr>
+        <tr><td>ผู้ถูกเชิญ (B)</td><td>ผูก M365 + LINE ครบ (สำคัญ — ถ้าไม่ผูก LINE จะไม่ได้การ์ดตอบรับ)</td><td>รับการ์ดเชิญประชุม แล้วลองทั้ง 3 ปุ่ม: ยืนยัน / เปลี่ยนเวลา / ไม่สะดวก</td></tr>
+        <tr><td>ผู้ถูกดูตาราง (C)</td><td>แค่มีบัญชี M365 ในองค์กร ไม่ต้องผูก LINE</td><td>ไม่ต้องทำอะไร — A จะลองดูตารางของ C ในหมวด 03</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============ 00 ============ -->
+  <section id="s0">
+    <div class="sec-head"><span class="sec-no">00</span><h2>ก่อนเริ่ม — ผูกบัญชีให้ครบ</h2></div>
+    <p class="sec-sub">5 ข้อนี้เรียงตามลำดับ ห้ามข้าม ถ้าข้ามข้อ 2 คำสั่งที่แตะปฏิทินทั้งหมด (ประมาณครึ่งหนึ่งของระบบ) จะตอบว่า “กรุณาอนุญาตปฏิทินก่อน”</p>
+    <div class="rows">
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c0-1"></span>
+        <span class="act">เปิด ktis-ai-assistant.vercel.app → กด “เข้าสู่ระบบ Microsoft 365”</span>
+        <div class="expect">พาไปหน้า Microsoft แล้วเด้งกลับมาที่หน้าเดิม เห็นชื่อตัวเองแล้วพิมพ์แชทได้<br><b>ถ้าค้างที่หน้า login:</b> แจ้งทันที อาจเป็นเรื่อง redirect URI ฝั่ง Entra</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row hz-warn">
+        <span class="tick"><input type="checkbox" id="c0-2"></span>
+        <span class="act">ตั้งค่า → บัญชีของฉัน → แถว “ปฏิทินตามสิทธิ์ 365” → กด “อนุญาต” → กดปุ่มสีน้ำเงิน “ยอมรับ”</span>
+        <div class="expect">กลับมาแล้วแถวนั้นต้องเปลี่ยนเป็น <b>เชื่อมแล้ว</b><br>ข้อนี้คือข้อที่คนพลาดกันมากที่สุด ถ้าเผลอกด “ยกเลิก” ที่หน้า Microsoft ให้กด “อนุญาต” ใหม่</div>
+        <div class="tags"><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c0-3"></span>
+        <span class="act">เพิ่มเพื่อน LINE OA “KTIS X AI Assistant” (@777nxuvm)</span>
+        <div class="expect">ทันทีที่กดเพิ่มเพื่อน บอทต้องส่งการ์ดที่มีปุ่ม <b>ผูกบัญชี</b> มาให้เอง โดยไม่ต้องพิมพ์อะไร</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c0-4"></span>
+        <span class="act">กดปุ่ม “ผูกบัญชี” จากการ์ดนั้น → หน้าผูกบัญชีเปิดในแอป LINE → กด “กดผูกบัญชีกับ LINE”</span>
+        <div class="expect">สถานะเปลี่ยนเป็น <b>เชื่อมต่อแล้ว</b><br>ระบบไม่ผูกให้อัตโนมัติ ต้องกดปุ่มเองเสมอ · 1 บัญชี M365 ผูกได้ 1 LINE</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row hz-warn">
+        <span class="tick"><input type="checkbox" id="c0-5"></span>
+        <span class="act">ตอบ wizard ต้อนรับที่เด้งมาใน LINE ให้จบ</span>
+        <div class="expect">ถามเป็นชุด: อยากติดตามข่าวไหม → เลือกหัวข้อ → จำนวนข่าว → เวลาส่งข่าว → วัน → เวลาบรีฟเช้า → สรุปทั้งหมด<br><b>ระวัง:</b> ถ้ายังไม่จบ wizard ข้อความปกติทุกข้อความจะถูกดึงกลับมาที่ wizard เสมอ ถ้าอยากออกให้กดปุ่ม <b>❌ ไม่เอาตอนนี้</b> หรือ <b>ข้าม</b> — พิมพ์ /ยกเลิก ไม่พอ</div>
+        <div class="tags"><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 01 ============ -->
+  <section id="s1">
+    <div class="sec-head"><span class="sec-no">01</span><h2>ทักทาย รู้จักกัน และคู่มือคำสั่ง</h2></div>
+    <p class="sec-sub">ชุดอุ่นเครื่อง ไม่กระทบข้อมูลอะไรเลย ใช้ดูว่าบอทตื่นอยู่ไหมและตอบเป็นภาษาไทย</p>
+    <div class="rows">
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c1-1"></span>
+        <button class="say">สวัสดี</button>
+        <div class="expect">ทักกลับ แนะนำตัวว่าเป็น KTIS AI Assistant พร้อมปุ่มลัด 4 ปุ่ม: สรุปตารางเช้า · ดูงานที่ต้องติดตาม · ข่าววันนี้ · /ช่วยเหลือ</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c1-2"></span>
+        <button class="say">คุณคือใคร</button>
+        <div class="expect">แนะนำตัวยาว + ส่ง<b>การ์ดคู่มือ 8 หมวด</b>มาด้วย (ตารางฉัน / ตารางคนอื่น / นัดประชุม / สรุปประชุม / งานที่ต้องตาม / ไฟล์ / ข่าว / คำสั่ง /) แตะหมวดได้</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c1-3"></span>
+        <button class="say">รู้จักฉันไหม</button>
+        <div class="expect">ตอบว่ารู้จัก เพราะเป็น AI ประจำตัว แล้วชวนสั่งงานต่อ (ลอง “รู้จักกันหรอ” ด้วย จะได้คำตอบคนละแบบ)</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c1-4"></span>
+        <button class="say"><span class="lat">/ช่วยเหลือ</span></button>
+        <div class="expect">การ์ด <b>“📖 สั่งงานอะไรได้บ้าง”</b> 8 แถว แตะแถวไหนก็ได้ → เข้าไปเห็นคำสั่งในหมวดนั้นเป็นแถว ๆ แตะแล้วส่งเป็นข้อความเลย ไม่ต้องพิมพ์เอง<br>ลองพิมพ์คำอื่นที่ควรได้ผลเดียวกัน: <b>/คำสั่ง · /คู่มือ · /help · /เมนู</b></div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c1-5"></span>
+        <button class="say">วันนี้วันอะไร</button>
+        <div class="expect">วัน + วันที่ + เดือนไทย + <b>พ.ศ.</b> + เวลาปัจจุบัน · เช็กว่าปี พ.ศ. ถูก (ค.ศ.+543) และเวลาเป็นเวลาไทย</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c1-6"></span>
+        <button class="say">แจ้งปัญหาการใช้งาน</button>
+        <div class="expect">ให้อีเมลผู้ดูแล <b>weerasak.pi@ktisgroup.com</b> พร้อมบอกให้แนบภาพหน้าจอ</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c1-7"></span>
+        <span class="act">แตะเมนูรูปภาพด้านล่างจอ (rich menu) ให้ครบทั้ง 9 ช่อง</span>
+        <div class="expect">ทุกช่องต้องได้คำตอบที่มีความหมาย — <b>ห้ามมีช่องไหนตอบว่า “ยังไม่เข้าใจคำสั่งนี้”</b> ช่องที่มี: ตาราง·จอง / นัดประชุม / ตารางคนอื่น / สรุปประชุม / งานที่ต้องตาม / สรุปข่าว / ไฟล์ / คู่มือคำสั่ง / ตั้งค่า</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 02 ============ -->
+  <section id="s2">
+    <div class="sec-head"><span class="sec-no">02</span><h2>ตารางนัดของตัวเอง</h2></div>
+    <p class="sec-sub">อ่านจากปฏิทิน Outlook ของคุณเองด้วยสิทธิ์ของคุณเอง ถ้าวันนั้นไม่มีนัด คำตอบว่า “ไม่มีนัด” ก็ถือว่าผ่าน — ที่ต้องดูคือ<em>วันที่</em>ที่ระบบตีความ ตรงกับที่พิมพ์ไหม</p>
+    <div class="rows">
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c2-1"></span>
+        <button class="say">ตารางวันนี้</button>
+        <div class="expect">รายการนัดวันนี้ เรียงตามเวลา มีชื่อเรื่อง + เวลา · ถ้ามีลิงก์ Teams ต้องกดได้</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c2-2"></span>
+        <button class="say">นัดพรุ่งนี้</button>
+        <div class="expect">นัดของ<b>วันพรุ่งนี้</b> — เทียบกับ Outlook ด้วยตาว่าตรงกันจริง</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c2-3"></span>
+        <button class="say">ตารางเดือนนี้</button>
+        <div class="expect">สรุปทั้งเดือน · ถ้านัดเยอะควรย่อให้อ่านได้ ไม่ใช่พ่นออกมาเป็นพืด</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c2-4"></span>
+        <button class="say">ตารางเดือนตุลาคม</button>
+        <div class="expect">ต้องเข้าใจชื่อเดือนไทยและไปที่<b>เดือนตุลาคมที่จะถึง</b> ไม่ใช่ตุลาคมปีที่แล้ว · ลองเปลี่ยนเป็นเดือนอื่นและ “เดือนหน้า” ด้วย</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c2-5"></span>
+        <button class="say">10 โมงติดอะไร</button>
+        <div class="expect">บอกว่าช่วง 10:00 มีนัดอะไร หรือ “ว่าง” · ลองสำนวนอื่นด้วย: <b>บ่าย 2 ว่างไหม</b> · <b>ช่วงเช้าติดอะไรบ้าง</b></div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c2-6"></span>
+        <button class="say">ว่างกี่โมงพรุ่งนี้</button>
+        <div class="expect">ช่วงเวลาว่างเป็นช่วง ๆ เช่น 09:00–10:30, 13:00–15:00 · ไม่ควรนับเวลานอกเวลางานหรือช่วงที่ผ่านไปแล้ว</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c2-7"></span>
+        <button class="say">เสาร์นี้ว่างไหม</button>
+        <div class="expect">ตอบเรื่องวันเสาร์ที่จะถึง ไม่ใช่วันนี้ · เช็กว่านับ “เสาร์นี้” ถูกวันหรือเปล่าเมื่อวันนี้เป็นวันศุกร์หรือวันอาทิตย์</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c2-8"></span>
+        <button class="say">สรุปตารางเช้า</button>
+        <div class="expect">บรีฟตารางวันนี้ + <b>ปุ่มเลือกนัดเป็นตัวเลข</b> ให้กดดูข้อมูลเตรียมตัวรายนัด · กดปุ่ม 1 ดูว่าได้ข้อมูลเตรียมประชุมจริง</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c2-9"></span>
+        <button class="say">แล้วบ่ายล่ะ</button>
+        <div class="expect"><b>ทดสอบความจำ 30 นาที</b> — พิมพ์ต่อจากข้อบนทันที ระบบต้องรู้ว่ายังพูดถึงวันเดิมอยู่ ไม่ถามซ้ำว่า “วันไหน” · ตามด้วย <b>วันศุกร์ล่ะ</b> อีกที</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c2-10"></span>
+        <button class="say"><span class="lat">/</span>ล้างความจำ</button>
+        <div class="expect">ยืนยันว่าล้างแล้ว · จากนั้นพิมพ์ <b>แล้วบ่ายล่ะ</b> อีกครั้ง คราวนี้ระบบ<b>ควรไม่รู้เรื่อง</b>แล้ว — ถ้ายังตอบต่อเนื่องได้แปลว่าล้างไม่จริง</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 03 ============ -->
+  <section id="s3">
+    <div class="sec-head"><span class="sec-no">03</span><h2>ดูตารางของคนอื่น</h2></div>
+    <p class="sec-sub">เห็นได้เท่าที่ Outlook ของเขาแชร์ให้ เหมือนที่คุณเปิดดูใน Outlook เอง ถ้าเขาไม่ได้แชร์ ระบบต้อง<em>บอกว่าไม่มีสิทธิ์</em> ไม่ใช่ error เปล่า ๆ<br>แทน <code>&lt;ชื่อ&gt;</code> ด้วยชื่อเล่นเพื่อนร่วมงานจริง</p>
+    <div class="rows">
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c3-1"></span>
+        <button class="say" data-nocopy>ดูตาราง&lt;ชื่อ&gt;พรุ่งนี้</button>
+        <div class="expect">ตารางของคนนั้นในวันพรุ่งนี้ พร้อมบอกว่าเป็นตารางของใคร</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c3-2"></span>
+        <button class="say" data-nocopy>&lt;ชื่อ&gt;มีนัดอะไรบ้างวันนี้</button>
+        <div class="expect">ผลเหมือนข้อบน แต่สำนวนคนละแบบ · ทดสอบว่าดึงชื่อคนออกจากประโยคไทยได้โดยไม่ต้องเขียนตามรูปแบบตายตัว</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c3-3"></span>
+        <button class="say" data-nocopy>ดูตาราง &lt;ชื่อเล่น&gt; &lt;ชื่อจริง&gt;</button>
+        <div class="expect">ระบุตัวคนได้ตรงเลยโดยไม่ต้องเลือก · ใช้เมื่อชื่อเล่นซ้ำกันหลายคน</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c3-4"></span>
+        <button class="say" data-nocopy>ดูตาราง &lt;อีเมล&gt;@ktisgroup.com</button>
+        <div class="expect">ค้นด้วยอีเมลตรง ๆ ได้ · วิธีนี้แม่นที่สุด ใช้เป็นทางออกเมื่อหาด้วยชื่อไม่เจอ</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c3-5"></span>
+        <span class="act">ลองชื่อเล่นที่มีหลายคนในองค์กร เช่น “เบส” หรือ “ส้ม”</span>
+        <div class="expect">ต้องได้ <b>รายการให้เลือกเป็นตัวเลข</b> พร้อมชื่อ-นามสกุลเต็มของแต่ละคน → ตอบ <b>1</b> แล้วต้องได้ตารางของคนที่ 1 · ลองตอบ <b>1กับ2</b> ดูว่ารองรับหลายคนไหม</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c3-6"></span>
+        <button class="say">ดูตารางสมชายเทวดา</button>
+        <div class="expect"><b>เคสหาไม่เจอ</b> — ต้องบอกว่าหาชื่อนี้ไม่พบ และแนะให้ลองพิมพ์อีเมลแทน ห้ามขึ้น error หรือเงียบไป</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 04 ============ -->
+  <section id="s4">
+    <div class="sec-head"><span class="sec-no">04</span><h2>นัดประชุม · หาเวลาว่างตรงกัน · ยกเลิกนัด</h2></div>
+    <p class="sec-sub">หมวดที่เสี่ยงที่สุดและสำคัญที่สุด ทุกข้อในนี้แตะปฏิทินจริง<br><strong>สิ่งที่ต้องจับตาที่สุดคือ: ระบบต้องขอให้กดยืนยันก่อนเสมอ</strong> ถ้ามีข้อไหนที่นัดโผล่ใน Outlook โดยที่คุณไม่ได้กดยืนยัน ให้หยุดทดสอบแล้วแจ้งทันที</p>
+    <div class="rows">
+
+      <div class="row hz-warn">
+        <span class="tick"><input type="checkbox" id="c4-1"></span>
+        <button class="say">นัดประชุม</button>
+        <div class="expect">ยังไม่จองอะไร — เสนอ<b>รายชื่อคนที่คุณนัดบ่อย</b>ให้เลือกก่อน · ถ้าเป็นผู้ใช้ใหม่ที่ยังไม่เคยนัดใคร ควรบอกให้พิมพ์ชื่อหรืออีเมลแทน</div>
+        <div class="tags"><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+      <div class="row hz-write">
+        <span class="tick"><input type="checkbox" id="c4-2"></span>
+        <button class="say" data-nocopy>นัด&lt;ชื่อ B&gt;พรุ่งนี้ 30 นาที เรื่อง ทดสอบระบบ</button>
+        <div class="expect">ไล่เป็นขั้น: หาช่วงที่ทั้งคู่ว่าง → เสนอเวลาเป็นตัวเลขให้เลือก → เลือกแล้วได้ <b>การ์ดยืนยัน</b> ที่มีเวลา หัวข้อ และรายชื่อผู้เข้าร่วม → ต้องกด <b>“ยืนยัน”</b> ก่อนถึงจะไปต่อ<br><b>ห้าม</b>ลง Outlook ก่อนคุณกดยืนยัน</div>
+        <div class="tags"><span class="tag t-write">เขียนจริง</span><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+      <div class="row hz-write">
+        <span class="tick"><input type="checkbox" id="c4-3"></span>
+        <span class="act">ฝั่ง B: เปิด LINE ดูการ์ดคำเชิญที่เข้ามา แล้วกด “✅ ยืนยันเข้าร่วม”</span>
+        <div class="expect">B ควรได้การ์ดที่มี 3 ปุ่ม: <b>✅ ยืนยันเข้าร่วม · 🕐 เปลี่ยนเวลา · ❌ ไม่สะดวก</b><br>พอ B กดยืนยัน → นัดถึงจะไปโผล่ใน Outlook ของทั้งคู่ และ A ต้องได้ข้อความแจ้งว่าอีกฝั่งรับแล้ว</div>
+        <div class="tags"><span class="tag t-write">เขียนจริง</span></div>
+      </div>
+
+      <div class="row hz-write">
+        <span class="tick"><input type="checkbox" id="c4-4"></span>
+        <span class="act">ทำข้อ 4-2 ใหม่อีกนัด แล้วฝั่ง B กด “🕐 เปลี่ยนเวลา” แทน</span>
+        <div class="expect">B ได้เลือกเวลาใหม่ → A ได้ข้อความว่าอีกฝั่งขอเลื่อน พร้อมปุ่ม <b>✅ เอาตามที่ขอ · 🕐 เปลี่ยนเอง · ❌ ยกเลิกนัด</b> · กด “เอาตามที่ขอ” แล้วนัดต้องย้ายเวลาใน Outlook จริง</div>
+        <div class="tags"><span class="tag t-write">เขียนจริง</span></div>
+      </div>
+
+      <div class="row hz-write">
+        <span class="tick"><input type="checkbox" id="c4-5"></span>
+        <span class="act">ทำอีกนัด แล้วฝั่ง B กด “❌ ไม่สะดวก”</span>
+        <div class="expect">A ต้องรู้ว่าถูกปฏิเสธ พร้อมปุ่ม <b>📅 หาเวลาใหม่</b> · นัดต้อง<b>ไม่</b>ถูกสร้างใน Outlook</div>
+        <div class="tags"><span class="tag t-write">เขียนจริง</span></div>
+      </div>
+
+      <div class="row hz-write">
+        <span class="tick"><input type="checkbox" id="c4-6"></span>
+        <button class="say" data-nocopy>หาเวลาที่&lt;ชื่อ B&gt;กับ&lt;ชื่อ C&gt;ว่างตรงกันวันจันทร์</button>
+        <div class="expect">ช่วงเวลาที่<b>ทุกคนว่างพร้อมกัน</b> เรียงให้เลือก — ไม่ใช่ตารางของแต่ละคนแยกกัน · ถ้าไม่มีช่วงไหนตรงกันเลยต้องบอกตรง ๆ และเสนอวันอื่น</div>
+        <div class="tags"><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+      <div class="row hz-write">
+        <span class="tick"><input type="checkbox" id="c4-7"></span>
+        <button class="say">จองตารางให้เราวันศุกร์นี้ทั้งวัน ทดสอบระบบ</button>
+        <div class="expect">กันเวลาในปฏิทิน<b>ตัวเองคนเดียว</b> ไม่มีผู้เข้าร่วม ไม่ส่งเชิญใคร · การ์ดยืนยันต้องระบุชัดว่า “(ตัวเอง — ไม่มีผู้เข้าร่วม)”</div>
+        <div class="tags"><span class="tag t-write">เขียนจริง</span><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+      <div class="row hz-write">
+        <span class="tick"><input type="checkbox" id="c4-8"></span>
+        <button class="say">ยกเลิกนัดพรุ่งนี้</button>
+        <div class="expect">แสดงนัดของพรุ่งนี้ให้เลือกเป็นตัวเลข → เลือกแล้ว<b>ต้องถามยืนยันอีกชั้น</b> → ยืนยันแล้วนัดหายจาก Outlook จริง<br>ใช้ลบนัดทดสอบที่สร้างไว้ข้างบนได้เลย</div>
+        <div class="tags"><span class="tag t-write">เขียนจริง</span><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+      <div class="row hz-warn">
+        <span class="tick"><input type="checkbox" id="c4-9"></span>
+        <span class="act">เริ่มจองนัดใหม่ พอระบบถามหัวข้อ/เวลา ให้พิมพ์ <b>/ยกเลิก</b></span>
+        <div class="expect">ทิ้งร่างการจองทั้งหมด · จากนั้นพิมพ์ <b>ตารางวันนี้</b> ต้องทำงานปกติ ไม่ใช่กลับไปถามเรื่องการจองที่ทิ้งไปแล้ว</div>
+        <div class="tags"><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+      <div class="row hz-warn">
+        <span class="tick"><input type="checkbox" id="c4-10"></span>
+        <span class="act">เริ่มจองนัด แล้วพิมพ์ <b>/ตารางวันนี้</b> คากลางคัน</span>
+        <div class="expect">คำสั่ง slash ต้อง<b>แทรกได้เสมอ</b>แม้ค้างอยู่กลางขั้นตอนจอง — ต้องได้ตารางวันนี้ ไม่ใช่ให้ระบบเอาข้อความนี้ไปเป็นหัวข้อประชุม</div>
+        <div class="tags"><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 05 ============ -->
+  <section id="s5">
+    <div class="sec-head"><span class="sec-no">05</span><h2>งานที่ต้องติดตาม</h2></div>
+    <p class="sec-sub">งานที่ไม่ใช่ประชุม ระบบเตือนให้ต้นชั่วโมง จันทร์–ศุกร์ 09:00–20:00 (เตือนเฉพาะงานที่<em>เลยกำหนดแล้ว</em> ยังไม่มีเตือนล่วงหน้า)</p>
+    <div class="rows">
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c5-1"></span>
+        <button class="say">เพิ่มงานทดสอบ 3 งาน</button>
+        <div class="expect">สร้างงานตัวอย่าง 3 รายการพร้อมผู้รับผิดชอบและกำหนดส่ง ให้ทดสอบได้เร็วโดยไม่ต้องพิมพ์เอง</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c5-2"></span>
+        <button class="say">ดูงานที่ต้องติดตาม</button>
+        <div class="expect">รายการงานค้างเป็นตัวเลข พร้อมกำหนดส่ง ผู้รับผิดชอบ และป้าย <b>👤 (เพิ่มเอง)</b> / <b>🤖 (จากสรุปการประชุม)</b> · งานที่เลยกำหนดต้องมี <b>⚠️ เกินกำหนด</b><br>เช็กว่าวันที่แสดงเป็นเวลาไทย ไม่ใช่รูปแบบ UTC ที่อ่านไม่รู้เรื่อง</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c5-3"></span>
+        <button class="say">เพิ่มงาน ทำสไลด์นำเสนอ พรุ่งนี้ 17:00</button>
+        <div class="expect">ยืนยันว่าเพิ่มแล้ว · เช็กด้วย “ดูงานที่ต้องติดตาม” ว่ากำหนดส่งเป็น<b>พรุ่งนี้ 17:00</b> จริง ไม่ใช่เวลาเพี้ยน</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c5-4"></span>
+        <button class="say" data-nocopy>เพิ่มงาน ส่งรายงานทดสอบ ให้&lt;ชื่อ B&gt; วันศุกร์ 17:00</button>
+        <div class="expect">งานถูกเพิ่มพร้อม<b>ผู้รับผิดชอบ</b>เป็นคนที่ระบุ · ดูว่าจับชื่อคนออกจากคำว่า “ให้…” ได้ถูก</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c5-5"></span>
+        <button class="say">ปิดงาน 1</button>
+        <div class="expect">ปิดงานลำดับที่ 1 ทันที ไม่ต้องยืนยัน (เพราะเจาะจงชัดเจนแล้ว) · เช็กว่าหายจากรายการ</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c5-6"></span>
+        <button class="say">ปิดงาน 1 2</button>
+        <div class="expect">ปิดทีเดียวสองงาน · ลอง <b>ปิดงาน 1 กับ 3</b> ด้วย ว่ารองรับสำนวนไทยไหม</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c5-7"></span>
+        <button class="say">ปิดงาน สไลด์</button>
+        <div class="expect">ปิดงานด้วย<b>คำในชื่องาน</b> · ถ้ามีหลายงานชื่อใกล้กัน ต้อง<b>ถามยืนยัน</b>ก่อนว่าหมายถึงงานไหน ไม่ใช่เดาแล้วปิดมั่ว</div>
+        <div class="tags"><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+      <div class="row hz-warn">
+        <span class="tick"><input type="checkbox" id="c5-8"></span>
+        <button class="say">ปิดงานทั้งหมด</button>
+        <div class="expect">ต้อง<b>ถามยืนยันก่อนเสมอ</b> พร้อมบอกจำนวนงานที่จะปิด และมีปุ่ม <b>“ยืนยันปิดงาน”</b><br>กดปุ่มนั้น → งานทั้งหมดถูกปิด</div>
+        <div class="tags"><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+      <div class="row hz-warn">
+        <span class="tick"><input type="checkbox" id="c5-9"></span>
+        <span class="act">เคสสำคัญ: ตอนที่มี<b>การ์ดคำเชิญประชุมค้างอยู่</b>ในแชท ให้พิมพ์ “ปิดงานทั้งหมด” แล้วตอบด้วยคำว่า “ยืนยัน” เฉย ๆ</span>
+        <div class="expect">คำว่า “ยืนยัน” ต้องไปตอบ<b>คำถามล่าสุดที่ระบบเพิ่งถาม</b> คือการปิดงาน<br><b>ต้องไม่</b>ไปตอบรับคำเชิญประชุมและสร้าง event ใน Outlook — เคสนี้เคยเกิดจริงมาแล้ว ถ้าเกิดซ้ำถือเป็นบั๊กร้ายแรงที่สุดในรอบทดสอบนี้</div>
+        <div class="tags"><span class="tag t-warn">ต้องมีการยืนยัน</span><span class="tag t-write">เขียนจริง</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 06 ============ -->
+  <section id="s6">
+    <div class="sec-head"><span class="sec-no">06</span><h2>สรุปประชุมจาก Teams</h2></div>
+    <p class="sec-sub">ระบบสรุปได้ก็ต่อเมื่อประชุมนั้น<strong>เปิด “บันทึกและถอดเสียง” ใน Teams ไว้</strong> และ Teams ประมวลผล transcript เสร็จแล้ว ถ้าอาทิตย์นั้นไม่มีประชุมที่อัดไว้เลย ให้ทดสอบด้วย demo แทน</p>
+    <div class="rows">
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c6-1"></span>
+        <button class="say"><span class="lat">/test_meeting demo</span></button>
+        <div class="expect"><b>เริ่มจากข้อนี้ก่อนเสมอ</b> — สรุปจาก transcript ตัวอย่าง ได้ลิงก์เปิดอ่านบนมือถือ ไม่ต้องมีประชุมจริง<br>ในลิงก์ควรมี: ประเด็นที่คุย · ข้อสรุป · <b>งานที่ต้องตามพร้อมชื่อผู้รับผิดชอบ</b></div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c6-2"></span>
+        <button class="say"><span class="lat">/test_meeting</span></button>
+        <div class="expect">รายการประชุมออนไลน์ที่จบแล้วใน 7 วันที่ผ่านมา แต่ละรายการติดสถานะ <b>✅ สรุปแล้ว</b> / <b>📝 มี transcript</b> / <b>⚠️ ไม่มี transcript</b><br>ถ้าไม่มีเลย ต้องบอกเหตุผลว่าต้องอัดประชุมก่อน ไม่ใช่เงียบ</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c6-3"></span>
+        <button class="say"><span class="lat">/test_meeting 1</span></button>
+        <div class="expect">สรุปประชุมรายการที่ 1 จาก transcript จริง · ลองพิมพ์ชื่อเรื่องแทนเลขก็ได้ เช่น <b>/test_meeting sync</b></div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c6-4"></span>
+        <button class="say">สรุปประชุม</button>
+        <div class="expect">เสนอประชุมล่าสุดให้เลือก แล้วสรุปให้ · เช็กด้วยว่าคำว่า “สรุปประชุม” ต้อง<b>สรุปจริง</b> ไม่ใช่เปิดคู่มือหมวดสรุปประชุม</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c6-5"></span>
+        <button class="say">เตรียมนัด 1</button>
+        <div class="expect">ข้อมูลเตรียมตัวก่อนเข้าประชุมที่ 1: ใครเข้าบ้าง · เรื่องอะไร · ไฟล์ที่ผูกไว้ · สรุปครั้งก่อนถ้ามี</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c6-6"></span>
+        <button class="say">ประชุมไปกี่นาที</button>
+        <div class="expect">รวมเวลาที่ใช้ไปกับการประชุม · ลอง <b>ประชุมไปกี่นาทีสัปดาห์นี้</b> ด้วย</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row hz-time">
+        <span class="tick"><input type="checkbox" id="c6-7"></span>
+        <span class="act">นัดประชุม Teams จริงกับ B สัก 5 นาที <b>เปิดบันทึกและถอดเสียง</b> คุยกันสัก 2–3 ประโยคที่มีการมอบหมายงาน แล้วจบประชุม</span>
+        <div class="expect">ภายในราว <b>10–20 นาที</b> หลังประชุมจบ ระบบควรส่งสรุปเข้า LINE เอง (จ–ศ 08:20–20:55) พร้อมลิงก์ และงานที่มอบหมายควรไปโผล่ใน “ดูงานที่ต้องติดตาม” ติดป้าย 🤖<br>นี่คือฟีเจอร์ที่คุ้มค่าที่สุดของระบบ — ควรมีอย่างน้อยหนึ่งคนทดสอบข้อนี้ให้ได้</div>
+        <div class="tags"><span class="tag t-time">รอเวลา</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 07 ============ -->
+  <section id="s7">
+    <div class="sec-head"><span class="sec-no">07</span><h2>ไฟล์ใน OneDrive</h2></div>
+    <p class="sec-sub">ค้น เปิด และผูกไฟล์เข้ากับนัดประชุม · ข้อจำกัดที่รู้อยู่แล้ว: ไฟล์ Office (docx/xlsx/pptx) ยัง<em>สรุปเนื้อหาไม่ได้</em> จะตอบเป็นลิงก์เปิดไฟล์แทน — ถ้าเจอแบบนั้นไม่ถือว่าเป็นบั๊ก</p>
+    <div class="rows">
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c7-1"></span>
+        <button class="say" data-nocopy>หาไฟล์ &lt;คำที่อยู่ในชื่อไฟล์ของคุณ&gt;</button>
+        <div class="expect">รายการไฟล์เป็นตัวเลข พร้อมชื่อไฟล์และ<b>ลิงก์เปิด</b>ที่กดแล้วเปิดไฟล์ได้จริงบนมือถือ</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c7-2"></span>
+        <button class="say">สรุปอัน 1</button>
+        <div class="expect">ถ้าเป็นไฟล์ข้อความ → สรุปเนื้อหาให้ · ถ้าเป็นไฟล์ Office → ตอบเป็นลิงก์เปิดไฟล์ พร้อมบอกเหตุผล ไม่ใช่เงียบหรือ error</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c7-3"></span>
+        <button class="say">ผูกไฟล์นัด 1</button>
+        <div class="expect">ผูกไฟล์ที่เพิ่งค้นเจอเข้ากับนัดที่ 1 · ทำต่อจากข้อ 7-1 ทันที (ระบบจำผลค้นหาล่าสุดไว้)</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c7-4"></span>
+        <button class="say">เอกสารนัด 1</button>
+        <div class="expect">แสดงไฟล์ที่ผูกไว้กับนัดนั้น · จากนั้นพิมพ์ <b>เตรียมนัด 1</b> ระบบควรหยิบไฟล์นี้มาอ่านให้ก่อนเข้าประชุม</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c7-5"></span>
+        <span class="act">ระหว่างกำลังจองนัด ให้<b>ส่งรูปภาพ</b>เข้าไปในแชท</span>
+        <div class="expect">ระบบควรถามว่าจะแนบรูปนี้ไปกับนัดไหม แล้วการ์ดยืนยันควรระบุว่ามีไฟล์แนบ</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 08 ============ -->
+  <section id="s8">
+    <div class="sec-head"><span class="sec-no">08</span><h2>ข่าว &amp; บรีฟเช้า</h2></div>
+    <p class="sec-sub">ตั้งหัวข้อ เวลาส่ง และแหล่งข่าวเองได้ทั้งหมดในแชท</p>
+    <div class="rows">
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c8-1"></span>
+        <button class="say">ข่าววันนี้</button>
+        <div class="expect">สรุปข่าวจากหัวข้อ/แหล่งที่คุณเลือกไว้ พร้อมลิงก์ต้นทางที่กดได้ · ถ้ายังไม่ได้ตั้งค่า ต้องชวนไปตั้งค่า ไม่ใช่ตอบว่าไม่มีข่าว</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c8-2"></span>
+        <button class="say"><span class="lat">/</span>ตั้งค่าข่าว</button>
+        <div class="expect">เข้าโหมดตั้งค่า: เลือกหัวข้อ → จำนวนข่าวต่อรอบ → เวลาส่ง → วันที่ส่ง · ทุกขั้นมีปุ่มให้กด ไม่ต้องพิมพ์เอง<br><b>ตั้งเวลาส่งข่าวเป็นเวลาพรุ่งนี้เช้า</b> เพื่อทดสอบข้อ 11-1</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c8-3"></span>
+        <button class="say">ดูแหล่งข่าว</button>
+        <div class="expect">รายการฟีดที่ติดตามอยู่ เป็นตัวเลข</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c8-4"></span>
+        <button class="say"><span class="lat">เพิ่มแหล่งข่าว https://www.thairath.co.th/rss/news</span></button>
+        <div class="expect">ยืนยันว่าเพิ่มแล้ว พร้อมชื่อฟีด · ลองใส่ลิงก์มั่ว ๆ ที่ไม่ใช่ RSS ด้วย ระบบต้องบอกว่าอ่านฟีดไม่ได้ ไม่ใช่เพิ่มเข้าไปเฉย ๆ</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c8-5"></span>
+        <button class="say">ลบฟีด 1</button>
+        <div class="expect">ถามยืนยันก่อนลบ แล้วรายการหายไปจริง</div>
+        <div class="tags"><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c8-6"></span>
+        <button class="say"><span class="lat">/test</span></button>
+        <div class="expect">แสดง<b>ตัวอย่างข้อความเช้า</b>ที่จะได้รับ โดยไม่ต้องรอถึงเช้าและไม่กินโควตา push · ใช้ตรวจหน้าตาบรีฟก่อนได้เลย</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 09 ============ -->
+  <section id="s9">
+    <div class="sec-head"><span class="sec-no">09</span><h2>คำสั่ง / และความจำการสนทนา</h2></div>
+    <p class="sec-sub">คำสั่ง slash ออกแบบมาให้แทรกได้ตลอด แม้ค้างอยู่กลางขั้นตอนอื่น</p>
+    <div class="rows">
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c9-1"></span>
+        <button class="say"><span class="lat">/</span></button>
+        <div class="expect">พิมพ์ <b>/</b> ตัวเดียวแล้วส่ง → ได้เมนูคำสั่งทั้งหมด 8 รายการพร้อมคำอธิบายสั้น ๆ และปุ่มให้กด</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c9-2"></span>
+        <span class="act">กดทุกปุ่มในเมนู / ให้ครบ</span>
+        <div class="expect">ทั้ง 8 ปุ่มต้องทำงาน: /ล้างความจำ · /ยกเลิก · /ตารางวันนี้ · /นัดพรุ่งนี้ · /ตั้งค่าข่าว · /ช่วยเหลือ · /test · /test_meeting</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c9-3"></span>
+        <span class="act">คุยต่อเนื่อง 3 ทอด: “ตารางวันนี้” → “แล้วพรุ่งนี้ล่ะ” → “แล้ววันศุกร์ล่ะ”</span>
+        <div class="expect">ทุกทอดต้องเข้าใจว่ายังพูดเรื่องตารางอยู่ ไม่ถามซ้ำว่าจะให้ทำอะไร · ความจำอยู่ราว <b>30 นาที</b> — ถ้าเว้นนานกว่านั้นแล้วเริ่มเรื่องใหม่ถือว่าถูกต้อง</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c9-4"></span>
+        <span class="act">พิมพ์คำสั่งบนเว็บ (ktis-ai-assistant.vercel.app) เทียบกับที่พิมพ์ใน LINE</span>
+        <div class="expect">คำสั่งเดียวกันควรได้คำตอบเนื้อหาเดียวกันทั้งสองช่องทาง (หน้าตาปุ่มต่างกันได้)</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 10 ============ -->
+  <section id="s10">
+    <div class="sec-head"><span class="sec-no">10</span><h2>เคสที่ต้องแกล้งพัง</h2></div>
+    <p class="sec-sub">หมวดนี้สำคัญกว่าที่คิด — คนใช้จริงจะพิมพ์อะไรก็ได้ ระบบต้อง<strong>ตอบให้เขารู้ว่าจะไปทางไหนต่อ</strong> ไม่ใช่ตอบว่า “ไม่เข้าใจ” แล้วจบ</p>
+    <div class="rows">
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c10-1"></span>
+        <button class="say">ขอสลิปเงินเดือน</button>
+        <div class="expect">ต้องบอกตรง ๆ ว่า<b>ยังไม่มีฟีเจอร์นี้</b> โดยเรียกชื่อสิ่งที่ถามให้ถูก — ไม่ใช่ตอบรวม ๆ ว่า “ไม่เข้าใจคำสั่ง”</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c10-2"></span>
+        <button class="say">ขอลาพักร้อนวันศุกร์</button>
+        <div class="expect">บอกว่ายังไม่มีระบบใบลา <b>แต่ต้องเสนอทางออกที่ใกล้เคียง</b>: กันเวลาในปฏิทินตัวเองแทน พร้อมปุ่มให้กดลองเลย</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c10-3"></span>
+        <button class="say">จองห้องประชุมพรุ่งนี้</button>
+        <div class="expect">บอกว่ายังจองห้องไม่ได้ แต่แนะให้ใส่ชื่อห้องไว้ในหัวข้อนัดแทน พร้อมปุ่ม “นัดประชุม”</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c10-4"></span>
+        <span class="act">ลองอีก 3 เรื่องที่ระบบยังทำไม่ได้: <b>ส่งเมลให้เบส</b> · <b>แจ้งซ่อมคอม</b> · <b>เบิกค่าเดินทาง</b></span>
+        <div class="expect">ทั้งสามต้องได้คำตอบที่<b>เรียกชื่อเรื่องนั้นถูก</b>และชี้ทางต่อ ไม่ใช่คำตอบสำเร็จรูปเดียวกันหมด</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c10-5"></span>
+        <button class="say"><span class="lat">asdfgh</span></button>
+        <div class="expect">ขออภัยว่ายังไม่เข้าใจ + เสนอตัวอย่างคำสั่งที่ใช้ได้จริง 4 อย่าง + ปุ่มลัด · ห้ามเงียบ ห้ามขึ้น error</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row hz-warn">
+        <span class="tick"><input type="checkbox" id="c10-6"></span>
+        <button class="say">ยืนยัน</button>
+        <div class="expect"><b>พิมพ์ลอย ๆ ตอนที่ระบบไม่ได้ถามอะไรค้างไว้</b> — ต้องไม่มีอะไรเกิดขึ้นในปฏิทินหรือกับงานติดตาม ระบบควรบอกว่าไม่มีอะไรให้ยืนยัน<br>ลองซ้ำด้วยคำว่า <b>ตกลง</b> · <b>ใช่</b> · <b>ok</b></div>
+        <div class="tags"><span class="tag t-warn">ต้องมีการยืนยัน</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c10-7"></span>
+        <button class="say"><span class="lat">what is my schedule today?</span></button>
+        <div class="expect">เข้าใจคำถามภาษาอังกฤษได้ แต่<b>ตอบกลับเป็นภาษาไทย</b> (เป็นกติกาของระบบ)</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c10-8"></span>
+        <button class="say">ตารางวันนี้ แล้วก็ดูงานที่ต้องติดตามด้วย</button>
+        <div class="expect">สองคำสั่งในประโยคเดียว · อย่างน้อยต้องทำอันใดอันหนึ่งให้ถูกและไม่สับสน — ถ้าทำได้ทั้งคู่ยิ่งดี บันทึกไว้ว่าได้ผลอย่างไร</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c10-9"></span>
+        <span class="act">ส่ง <b>สติกเกอร์</b> · <b>ข้อความเสียง</b> · <b>ตำแหน่งที่ตั้ง</b> เข้าไปในแชท</span>
+        <div class="expect">ต้องไม่ทำให้บอทค้างหรือเงียบไปเลย — ตอบอะไรที่มีความหมายกลับมาก็พอ · ถ้าเงียบสนิทให้บันทึกว่าเงียบตอนส่งอะไร</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+      <div class="row">
+        <span class="tick"><input type="checkbox" id="c10-10"></span>
+        <span class="act">พิมพ์คำสั่งรัว ๆ 5 ข้อความติดกันโดยไม่รอคำตอบ</span>
+        <div class="expect">ต้องได้คำตอบครบทุกข้อความ ไม่มีตกหล่น ไม่สลับกัน · ถ้ามีอันไหนหาย ให้จดเวลาที่พิมพ์ไว้ด้วยจะได้ตามจาก log ได้</div>
+        <div class="tags"><span class="tag t-read">อ่านอย่างเดียว</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 11 ============ -->
+  <section id="s11">
+    <div class="sec-head"><span class="sec-no">11</span><h2>งานอัตโนมัติ — ต้องรอเวลาจริง</h2></div>
+    <p class="sec-sub">5 ข้อนี้ทดสอบทันทีไม่ได้ ตั้งค่าไว้วันนี้แล้วเช็กพรุ่งนี้เช้า · ทุกข้อในหมวดนี้ส่งด้วย push ซึ่งมีโควตาจำกัดต่อเดือน</p>
+    <div class="rows">
+
+      <div class="row hz-time">
+        <span class="tick"><input type="checkbox" id="c11-1"></span>
+        <span class="act">พรุ่งนี้เช้า: เช็กว่าได้<b>สรุปข่าว</b>ตามเวลาที่ตั้งไว้</span>
+        <div class="expect">มาถึงภายใน <b>±5 นาที</b>จากเวลาที่ตั้ง (ระบบรองรับเวลาตั้งได้ช่วง 05:30–08:20) · ถ้าช้ากว่านั้นมากให้จดเวลาที่ได้รับจริงไว้</div>
+        <div class="tags"><span class="tag t-time">รอเวลา</span></div>
+      </div>
+
+      <div class="row hz-time">
+        <span class="tick"><input type="checkbox" id="c11-2"></span>
+        <span class="act">พรุ่งนี้เช้า: เช็กว่าได้<b>บรีฟตาราง</b>ตามหลังข่าวมา</span>
+        <div class="expect">มาหลังข่าวประมาณ 1 นาที · ต้องมีตารางวันนี้ + <b>ปุ่มเลือกนัดเป็นตัวเลข</b>ให้กดดูข้อมูลเตรียมตัว<br>ส่ง<b>วันละครั้ง</b>เท่านั้น — ถ้าได้ซ้ำสองรอบในวันเดียวถือเป็นบั๊ก</div>
+        <div class="tags"><span class="tag t-time">รอเวลา</span></div>
+      </div>
+
+      <div class="row hz-time">
+        <span class="tick"><input type="checkbox" id="c11-3"></span>
+        <span class="act">เพิ่มงานที่มีกำหนดส่ง<b>เวลาที่ผ่านไปแล้ว</b> แล้วรอถึงต้นชั่วโมงถัดไป</span>
+        <div class="expect">ได้ข้อความเตือนงานค้างที่<b>ต้นชั่วโมง</b> (จ–ศ 09:00–20:00) · เตือนเฉพาะงานที่<b>เลยกำหนดแล้ว</b> ยังไม่มีเตือนล่วงหน้า — อย่ารายงานว่าเป็นบั๊ก</div>
+        <div class="tags"><span class="tag t-time">รอเวลา</span></div>
+      </div>
+
+      <div class="row hz-time">
+        <span class="tick"><input type="checkbox" id="c11-4"></span>
+        <span class="act">ให้คนอื่นส่งคำเชิญประชุมเข้าปฏิทินคุณจาก Outlook โดยตรง (ไม่ผ่านบอท)</span>
+        <div class="expect">ภายใน <b>5 นาที</b> ควรได้ข้อความแจ้งนัดใหม่เข้า LINE · ทดสอบว่าระบบเห็นการเปลี่ยนแปลงในปฏิทินที่เกิดนอกตัวมันเองด้วย</div>
+        <div class="tags"><span class="tag t-time">รอเวลา</span></div>
+      </div>
+
+      <div class="row hz-time">
+        <span class="tick"><input type="checkbox" id="c11-5"></span>
+        <span class="act">ต่อจากข้อ 6-7: เช็กว่าสรุปประชุมส่งมาเองโดยไม่ต้องสั่ง</span>
+        <div class="expect">รอบสรุปทำงานทุก 10 นาที จ–ศ 08:20–20:55 · ถ้าประชุมจบตอนเย็นแล้วยังไม่มา ให้รอถึงเช้าวันถัดไปก่อนแจ้งว่าไม่ทำงาน</div>
+        <div class="tags"><span class="tag t-time">รอเวลา</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ report ============ -->
+  <section id="report">
+    <div class="sec-head"><span class="sec-no">→</span><h2>รายงานผลกลับมาอย่างไร</h2></div>
+    <p>ส่งที่ <a href="mailto:weerasak.pi@ktisgroup.com">weerasak.pi@ktisgroup.com</a> หรือทักในกลุ่มทดสอบ ใช้แบบนี้ทีละบั๊ก — สิ่งที่ช่วยได้มากที่สุดคือ <strong>เวลาที่กด</strong> เพราะตามจาก log ย้อนหลังได้ตรงนาที</p>
+    <div class="report">ข้อที่:            04-2
+พิมพ์ว่า:         นัดเบสพรุ่งนี้ 30 นาที เรื่อง ทดสอบระบบ
+คาดว่าจะได้:      การ์ดยืนยันก่อนลง Outlook
+ได้จริง:          ลง Outlook เลยโดยไม่ถาม
+เวลาที่กด:        26 ส.ค. 14:32
+ช่องทาง:          LINE / เว็บ
+ภาพหน้าจอ:        แนบมาด้วย</div>
+    <p style="margin-top:16px">ถ้าเจอข้อที่ทำให้เกิดอะไรใน Outlook <strong>โดยไม่ได้กดยืนยัน</strong> — หยุดทดสอบหมวดนั้นแล้วแจ้งทันที ไม่ต้องรอรวบรวมทีเดียวตอนจบ</p>
+  </section>
+
+  <footer>
+    รายการทดสอบชุดนี้อ้างอิงจากคำสั่งที่มีอยู่จริงในระบบ ณ 26 สิงหาคม 2569 · เมื่อเพิ่มฟีเจอร์ใหม่ ให้เพิ่มข้อทดสอบในหมวดที่เกี่ยวข้องด้วย
+  </footer>
+</div>
+
+<div class="copied" id="toast">คัดลอกแล้ว</div>
+
+<script>
+(function(){
+  var KEY = "ktis-uat-v1";
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.row input[type=checkbox]'));
+  var doneEl = document.getElementById('done');
+  var fill   = document.getElementById('barfill');
+  var toast  = document.getElementById('toast');
+  var total  = boxes.length;
+
+  document.getElementById('total').textContent  = total;
+  document.getElementById('total2').textContent = total;
+
+  function read(){
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; }
+    catch(e){ return {}; }
+  }
+  function write(state){
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){}
+  }
+
+  var hidden = false;
+
+  function paint(){
+    var n = 0;
+    boxes.forEach(function(b){
+      var row = b.closest('.row');
+      if (b.checked){ n++; row.classList.add('done'); }
+      else { row.classList.remove('done'); }
+      row.style.display = (hidden && b.checked) ? 'none' : '';
+    });
+    doneEl.textContent = n;
+    fill.style.width = total ? (n / total * 100) + '%' : '0';
+  }
+
+  var state = read();
+  boxes.forEach(function(b){
+    if (state[b.id]) b.checked = true;
+    b.addEventListener('change', function(){
+      var s = read();
+      if (b.checked) s[b.id] = 1; else delete s[b.id];
+      write(s);
+      paint();
+    });
+  });
+  paint();
+
+  document.getElementById('hide').addEventListener('click', function(){
+    hidden = !hidden;
+    this.textContent = hidden ? 'แสดงทุกข้อ' : 'ซ่อนข้อที่ทำแล้ว';
+    paint();
+  });
+
+  document.getElementById('reset').addEventListener('click', function(){
+    boxes.forEach(function(b){ b.checked = false; });
+    write({});
+    hidden = false;
+    document.getElementById('hide').textContent = 'ซ่อนข้อที่ทำแล้ว';
+    paint();
+  });
+
+  // tap a green bubble to copy the exact text to type
+  var t;
+  function flash(msg){
+    toast.textContent = msg;
+    toast.classList.add('on');
+    clearTimeout(t);
+    t = setTimeout(function(){ toast.classList.remove('on'); }, 1400);
+  }
+  document.querySelectorAll('.say').forEach(function(el){
+    if (el.hasAttribute('data-nocopy')) return;
+    el.addEventListener('click', function(){
+      var txt = el.textContent.trim();
+      try {
+        navigator.clipboard.writeText(txt).then(
+          function(){ flash('คัดลอกแล้ว: ' + txt); },
+          function(){ select(el); }
+        );
+      } catch(e){ select(el); }
+    });
+  });
+  function select(el){
+    try {
+      var r = document.createRange();
+      r.selectNodeContents(el);
+      var s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      flash('เลือกข้อความไว้แล้ว — กดคัดลอกได้เลย');
+    } catch(e){}
+  }
+})();
+</script>
+</body>
+</html>
