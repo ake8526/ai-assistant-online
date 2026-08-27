@@ -120,6 +120,14 @@ export type CommandContext = {
   last_person_mail?: string;
   /** Last calendar day scope the user was talking about (today/tomorrow/week/…). */
   last_period?: string;
+  /**
+   * The range that scope actually resolved to.
+   *
+   * last_period alone remembers the word "month", not which month: after
+   * "ตารางเดือนตุลาคม", a follow-up of "แล้วบ่ายล่ะ" rebuilt the default month
+   * and answered for this one. Keep the dates the answer was really about.
+   */
+  last_window?: { start: string; end: string; label: string };
   files?: { id?: string; name?: string; url?: string; path?: string; is_folder?: boolean }[];
   selected?: { start: string; person?: { mail?: string; displayName?: string } };
   /** Last multi-person schedule search — used for follow-ups like "ตอนเย็นว่างไหม". */
@@ -225,6 +233,8 @@ export type CommandResult = {
   show_file_location?: boolean;
   /** LINE get_news: interim reply; digest continues on line-now / after(). */
   newsPending?: boolean;
+  /** The date range this answer covered — stored so a follow-up can inherit it. */
+  window?: { start: string; end: string; label: string };
 };
 
 /** Interactive calendar must use the user's M365 token (Outlook-like rights). */
@@ -455,7 +465,7 @@ function peelSchedulePhrases(text: string): string {
  * types, what is left over is the part that could be a name.
  */
 const CALENDAR_TALK =
-  /(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ต้อง|ให้|ว่าง|ว่า|ของ|เอง|ตรวจ|ช่วย|บอก|ทราบ|อยาก|ได้|ทั้ง|หมด|เอา|สรุป|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม|และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|ไหน|ที่ไหน|สถานที่|ห้อง|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้านี้|บ่ายนี้|เย็นนี้|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ปฏิทิน|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|ออนไลน์|online|อัน|อันไหน|\d+|[:.,\s/-])/gi;
+  /(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ต้อง|ให้|ว่าง|ว่า|ของ|เอง|ตรวจ|ช่วย|บอก|ทราบ|อยาก|ได้|ทั้ง|หมด|เอา|สรุป|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม|และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|ไหน|ที่ไหน|สถานที่|ห้อง|วันหยุด|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้านี้|บ่ายนี้|เย็นนี้|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ปฏิทิน|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|ออนไลน์|online|อัน|อันไหน|\d+|[:.,\s/-])/gi;
 
 /**
  * Day and time expressions that get typed straight onto a name, because Thai
@@ -2671,6 +2681,16 @@ function windowFromDayFollowUp(text: string): MtWindow | null {
   return null;
 }
 
+/** The range the previous calendar answer covered, if one is remembered. */
+function windowFromContext(context?: CommandContext): { start: Date; end: Date; label: string } | null {
+  const w = context?.last_window;
+  if (!w?.start || !w?.end) return null;
+  const start = parseWall(w.start);
+  const end = parseWall(w.end);
+  if (!start || !end) return null;
+  return { start, end, label: w.label || "" };
+}
+
 function windowFromStored(m?: CommandContext["last_meeting"]): MtWindow | null {
   if (!m?.window?.start || !m.window.end) return null;
   const start = parseWall(m.window.start);
@@ -4739,6 +4759,27 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     };
   }
 
+  // Asking for time off, with no day attached.
+  //
+  // There is no leave system to ask, and every other reading of these words is
+  // worse than saying so: "ขอวันหยุด" was read as a colleague named วันหยุด,
+  // then — once that was fixed — as "show me this month's meetings", which is
+  // 20 lines of calendar in answer to a question about not being at work.
+  //
+  // Only the bare ask. "ขอหยุดงานพรุ่งนี้" carries a day, and blocking that day
+  // out in the calendar is a real thing the assistant can do, so it keeps going.
+  if (
+    /^(?:ขอ|อยาก(?:จะ)?|จะ)?\s*(?:ใบลา|วันลา|โควตาลา|ลา(?:ป่วย|กิจ|พักร้อน|คลอด|งาน)?|วันหยุด|หยุด(?:งาน|ยาว)?)\s*(?:กี่วัน|เหลือกี่วัน|คงเหลือ|หน่อย|ที|ด้วย|ครับ|ค่ะ|คับ)?$/i.test(
+      text.trim()
+    )
+  ) {
+    const notYet = notYetAnswer("ขอลา");
+    if (notYet) {
+      trace("compose", `ยังไม่มีฟีเจอร์: ${notYet.topic}`);
+      return { intent: "not_yet", reply: notYet.reply, suggestions: notYet.suggestions };
+    }
+  }
+
   // Immediate user identity query check (ผมชื่ออะไร / ฉันชื่ออะไร / ฉันชื่อ / ชื่อฉัน / ผมชื่อ / ชื่อผม)
   if (/^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม|ชื่ออะไร|ผมชื่ออะไร|ฉันชื่ออะไร|ผมเป็นใคร|ฉันเป็นใคร|ผู้ใช้ชื่ออะไร|ชื่อผู้ใช้|ชื่อไร|ผมชื่อไร|ฉันชื่อไร)$|^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม)\b/i.test(text)) {
     // The name used to be a hardcoded string for the one account that had been
@@ -6205,13 +6246,18 @@ async function handleParsed(
     // Dedicated path: morning list — TODAY only.
     // Prefer ASCII flag `_morning` from quick intent (survives any Thai-regex bundling issues).
     const flaggedMorning = params._morning === true || params._morning === "true";
+    // "แล้วเช้าล่ะ" is a follow-up, not a request for today: forcing it here
+    // dropped an October conversation back onto this morning, the same way
+    // "แล้วบ่ายล่ะ" did further down. A follow-up carries no day of its own, so
+    // it belongs to whatever range is already on screen.
     const wantMorningToday =
-      (flaggedMorning && !hasTomorrowHint(tNorm)) ||
-      (!hasTomorrowHint(tNorm) &&
-        (hasMorningMeetingsHint(tNorm) ||
-          (String(params.period || "") === "today" &&
-            hasMorningWord(tNorm) &&
-            (params.before != null || params.after != null))));
+      !isTimeFollowUp(tNorm) &&
+      ((flaggedMorning && !hasTomorrowHint(tNorm)) ||
+        (!hasTomorrowHint(tNorm) &&
+          (hasMorningMeetingsHint(tNorm) ||
+            (String(params.period || "") === "today" &&
+              hasMorningWord(tNorm) &&
+              (params.before != null || params.after != null)))));
 
     if (wantMorningToday) {
       const todayYmd = nowLocal().date; // Asia/Bangkok YYYY-MM-DD — no wall-clock Date math
@@ -6338,7 +6384,26 @@ async function handleParsed(
       }
     }
 
-    let { start, end, label } = day || periodRange(period);
+    // A follow-up that names no day of its own belongs to the range already on
+    // screen. "ตารางเดือนตุลาคม" → "แล้วบ่ายล่ะ" used to answer for *this*
+    // month: last_period remembered the word "month" but not which one, so the
+    // range was rebuilt from today. Inherit the dates the last answer covered.
+    // A pure band follow-up ("แล้วบ่ายล่ะ") names no day at all, so the parser's
+    // guess of period=today is not something the person said — the window on
+    // screen is. It wins over the guess; an explicit day in the text does not
+    // reach here as a follow-up.
+    const bandFollowUp = isTimeFollowUp(tNorm);
+    const inherited =
+      !day && !params.date && !params.weekday && (bandFollowUp || (!params.period && !hasDayHint(tNorm)))
+        ? windowFromContext(context)
+        : null;
+    let { start, end, label } = day || inherited || periodRange(period);
+    // Snapshot for the next turn: the day scope only, never the time band.
+    // Handing "ตุลาคม 2569 ช่วง 12:00–16:00" to the next follow-up stacked a
+    // second band onto it — "…ช่วง 12:00–16:00 ช่วง 09:00–12:00". The band is
+    // what each follow-up brings; the month is what it inherits.
+    let baseLabel = label;
+    const answeredWindow = () => ({ start: wallIso(start), end: wallIso(end), label: baseLabel });
     let events = await getEventsRange(userUpn, wallIso(start), wallIso(end));
 
     // Don't widen to "upcoming" when user asked a specific day/window
@@ -6355,6 +6420,7 @@ async function handleParsed(
       if (events.length) label = `${label}ไม่มีนัด — นัดที่กำลังจะมาถึง (${up.label})`;
       start = up.start;
       end = up.end;
+      baseLabel = up.label;
     }
 
     // Point-in-time ("10 โมงติดอะไร") → is there a meeting overlapping that time?
@@ -6367,12 +6433,12 @@ async function handleParsed(
       const atLabel = `${label} ตอน ${fmtHHMM(at)}`;
       if (!overlapping.length) {
         return withCalendarNext(
-          { intent, reply: `✅ ${label} ตอน ${fmtHHMM(at)} ว่างครับ — ไม่มีนัด`, data: [], period },
+          { intent, reply: `✅ ${label} ตอน ${fmtHHMM(at)} ว่างครับ — ไม่มีนัด`, data: [], period, window: answeredWindow() },
           "meetings"
         );
       }
       const reply = lite ? formatEventsSimple(overlapping, atLabel) : await buildForEvents(userUpn, overlapping, atLabel);
-      return withCalendarNext({ intent, reply, data: overlapping, period }, "meetings");
+      return withCalendarNext({ intent, reply, data: overlapping, period, window: answeredWindow() }, "meetings");
     }
 
     if (after !== null || before !== null) {
@@ -6394,6 +6460,7 @@ async function handleParsed(
       });
       if (/7 วัน|สัปดาห์|2 สัปดาห์/.test(label)) {
         label = windowLabel(dayR.label, after, before);
+        baseLabel = dayR.label;
       }
     }
 
@@ -6404,13 +6471,14 @@ async function handleParsed(
           reply: `ช่วง ${label} ยังไม่มีนัดประชุมในปฏิทินครับ 👍`,
           data: [],
           period,
+          window: answeredWindow(),
         },
         "meetings"
       );
     }
     await saveAgendaIds(userUpn, events);
     const reply = lite ? formatEventsSimple(events, label) : await buildForEvents(userUpn, events, label);
-    return withCalendarNext({ intent, reply, data: events, period }, "meetings");
+    return withCalendarNext({ intent, reply, data: events, period, window: answeredWindow() }, "meetings");
   }
 
   if (intent === "my_availability") {

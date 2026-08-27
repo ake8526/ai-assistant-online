@@ -411,6 +411,9 @@ async function saveCtx(upn: string, prev: CommandContext | undefined, res: Comma
     last_person: prev?.last_person,
     last_person_mail: prev?.last_person_mail,
     last_period: res.period || prev?.last_period,
+    // Which month/day the last answer really covered, so "แล้วบ่ายล่ะ" stays in
+    // October instead of falling back to whatever month it is now.
+    last_window: res.window || prev?.last_window,
     last_meeting: prev?.last_meeting,
     history: pruned.history,
     summary: pruned.summary,
