@@ -71,6 +71,12 @@ export function postbackRow(
   );
 }
 
+/** Tap opens a web page — the settings page, a map, a summary link. */
+export function uriRow(display: string, url: string, sub?: string): object | null {
+  if (!url) return null;
+  return row(display, { type: "uri", label: truncate(display, 20), uri: url }, sub);
+}
+
 /** A small grey footnote under the rows (the “💡 …” line). */
 export function noteRow(text: string): object {
   return { type: "text", text: `💡 ${text}`, size: "xxs", color: "#69707d", wrap: true, margin: "lg" };

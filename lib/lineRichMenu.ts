@@ -12,9 +12,17 @@ export function sanitizeMenuText(text: string): string {
     .trim();
 }
 
+function appBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/$/, "");
+}
+
 export function settingsPageUrl(): string {
-  const base = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/$/, "");
-  return `${base}/settings`;
+  return `${appBaseUrl()}/settings`;
+}
+
+/** Where the "อนุญาต" button for Microsoft 365 calendar access actually lives. */
+export function accountPageUrl(): string {
+  return `${appBaseUrl()}/account`;
 }
 
 const W = 2500;
@@ -43,6 +51,7 @@ export type RichMenuArea = {
 export { RICH_MENU_TILES } from "./lineMenuTiles";
 import { RICH_MENU_TILES } from "./lineMenuTiles";
 import type { IconKind } from "./lineMenuTiles";
+import { messageRow, noteRow, pickerCard, uriRow } from "./lineCards";
 
 export const RICH_MENU_AREAS: RichMenuArea[] = RICH_MENU_TILES.map((t) => ({
   bounds: { x: cx3(t.col), y: cy3(t.row), width: colW(t.col), height: rowH(t.row) },
@@ -263,13 +272,26 @@ export async function buildRichMenuPng(opts?: { force?: boolean }): Promise<Buff
   return png;
 }
 
-function qrItems(labels: { label: string; text: string }[]) {
-  return {
-    items: labels.slice(0, 13).map((c) => ({
-      type: "action",
-      action: { type: "message", label: c.label.slice(0, 20), text: c.text },
-    })),
-  };
+/**
+ * A rich-menu tap opens a submenu, so the submenu has to be readable.
+ *
+ * These used to answer with a quick-reply strip: LINE cuts those labels at 20
+ * characters and scrolls them sideways, so a five-item submenu showed three and
+ * hid the rest behind a swipe nobody knows is there. The person picker and the
+ * help menu already solved this with a Flex card whose rows take the tap
+ * themselves (lib/lineCards.ts) — the submenus use the same card, so every list
+ * in this bot is picked the same way.
+ */
+function menuCard(
+  title: string,
+  subtitle: string,
+  choices: { label: string; text: string; sub?: string }[],
+  note?: string
+): object {
+  const rows: object[] = choices.map((c) => messageRow(c.label, c.text, c.sub));
+  if (note) rows.push(noteRow(note));
+  const { altText, contents } = pickerCard(title, subtitle, rows, `${title} — แตะคำสั่งที่ต้องการ`);
+  return { type: "flex", altText, contents };
 }
 
 /**
@@ -283,37 +305,29 @@ export function richMenuReply(text: string): object[] | null {
 
   if (t === "ตาราง·จอง" || t === "ตารางจอง" || t === "ตาราง-จอง" || norm === "ตารางจอง") {
     return [
-      {
-        type: "text",
-        text: "ตาราง · จอง · ติดตามนัด — เลือกได้เลยครับ",
-        quickReply: qrItems([
-          { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
-          { label: "จองนัดใหม่", text: "จองนัด" },
-          { label: "ตารางวันนี้", text: "ตารางวันนี้" },
-          { label: "นัดพรุ่งนี้", text: "นัดพรุ่งนี้" },
-        ]),
-      },
+      menuCard("🗓 ตาราง · จอง · ติดตามนัด", "แตะคำสั่งที่ต้องการได้เลยครับ", [
+        { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า", sub: "ตารางวันนี้ + ปุ่มเตรียมตัวรายนัด" },
+        { label: "ตารางวันนี้", text: "ตารางวันนี้", sub: "นัดทั้งหมดของวันนี้" },
+        { label: "นัดพรุ่งนี้", text: "นัดพรุ่งนี้", sub: "นัดทั้งหมดของพรุ่งนี้" },
+        { label: "จองนัดใหม่", text: "จองนัด", sub: "หาเวลาว่างแล้วส่งคำเชิญ" },
+      ]),
     ];
   }
 
   if (t === "สรุปประชุม" || norm === "สรุปประชุม") {
-    // Let handleCommand list past meetings with LINE quick-replies (do not intercept).
+    // Let handleCommand list past meetings with its own picker (do not intercept).
     return null;
   }
 
   if (t === "ไฟล์" || t === "ไฟล์·นัด" || t === "ไฟล์นัด" || t === "ไฟล์-นัด" || norm === "ไฟล์" || norm === "ไฟล์นัด") {
     return [
-      {
-        type: "text",
-        text: "ไฟล์ — ค้น OneDrive / ผูกไฟล์ / แนบตอนจอง — เลือกได้เลยครับ",
-        quickReply: qrItems([
-          { label: "ค้นไฟล์ OneDrive", text: "หาไฟล์" },
-          { label: "ผูกไฟล์กับนัด", text: "ผูกไฟล์นัด 1" },
-          { label: "รายการไฟล์นัด", text: "ไฟล์ที่ผูกกับนัด" },
-          { label: "เตรียมตัวนัด 1", text: "เตรียมตัวนัด 1" },
-          { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
-        ]),
-      },
+      menuCard("📂 ไฟล์", "ค้น OneDrive · ผูกไฟล์ · แนบตอนจอง", [
+        { label: "ค้นไฟล์ OneDrive", text: "หาไฟล์", sub: "พิมพ์คำค้นต่อท้ายได้ เช่น “หาไฟล์ งบ Q3”" },
+        { label: "ผูกไฟล์กับนัด", text: "ผูกไฟล์นัด 1", sub: "เอาไฟล์ที่เพิ่งค้นเจอไปแปะกับนัด" },
+        { label: "รายการไฟล์นัด", text: "ไฟล์ที่ผูกกับนัด", sub: "ดูว่านัดไหนมีเอกสารอะไรอยู่" },
+        { label: "เตรียมตัวนัด 1", text: "เตรียมตัวนัด 1", sub: "อ่านไฟล์ที่ผูกไว้ก่อนเข้าประชุม" },
+        { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+      ]),
     ];
   }
 
@@ -336,38 +350,34 @@ export function richMenuReply(text: string): object[] | null {
   }
 
   if (t === "ตั้งค่า" || norm === "ตั้งค่า") {
-    const settingsUrl = settingsPageUrl();
-    return [
-      {
-        type: "template",
-        altText: "ตั้งค่า — เปิดหน้าเว็บหรือเลือกคำสั่ง",
-        template: {
-          type: "buttons",
-          title: "ตั้งค่า",
-          text: "เปิดหน้าเว็บ หรือเลือกคำสั่งจากเมนู /",
-          actions: [
-            { type: "uri", label: "เปิดหน้าตั้งค่าเว็บ", uri: settingsUrl },
-            { type: "message", label: "ตั้งค่าข่าว", text: "ตั้งค่าข่าว" },
-            { type: "message", label: "ตารางวันนี้", text: "/ตารางวันนี้" },
-            // The manual: the answer to "what can I even type?" — a button, not
-            // something to be told about once and forgotten.
-            { type: "message", label: "📖 คู่มือคำสั่ง", text: "/ช่วยเหลือ" },
-          ],
-        },
-      },
-      {
-        type: "text",
-        text: "คำสั่งอื่น: /นัดพรุ่งนี้ · /ล้างความจำ · /ยกเลิก · สิทธิ์ปฏิทิน",
-        quickReply: qrItems([
-          { label: "📖 คู่มือคำสั่ง", text: "/ช่วยเหลือ" },
-          { label: "/นัดพรุ่งนี้", text: "/นัดพรุ่งนี้" },
-          { label: "/ล้างความจำ", text: "/ล้างความจำ" },
-          { label: "/ยกเลิก", text: "/ยกเลิก" },
-          { label: "/ตั้งค่าข่าว", text: "/ตั้งค่าข่าว" },
-          { label: "สิทธิ์ปฏิทิน", text: "อนุญาตปฏิทิน" },
-        ]),
-      },
-    ];
+    // One card instead of a button template plus a trailing quick-reply text:
+    // the template capped out at four buttons, so the rest of the commands were
+    // stranded in a strip below it.
+    const rows: object[] = [];
+    const open = uriRow("เปิดหน้าตั้งค่าเว็บ", settingsPageUrl(), "ข่าว · บัญชี · การแจ้งเตือน");
+    if (open) rows.push(open);
+    // A tap, not a sentence telling you where to tap: the consent button is on
+    // the account page, so send people straight to it.
+    const consent = uriRow("อนุญาตปฏิทิน 365", accountPageUrl(), "ต้องอนุญาตก่อนถึงจะดูตารางได้");
+    if (consent) rows.push(consent);
+    rows.push(
+      // The manual: the answer to "what can I even type?" — a row, not
+      // something to be told about once and forgotten.
+      messageRow("📖 คู่มือคำสั่ง", "/ช่วยเหลือ", "สั่งงานอะไรได้บ้าง"),
+      messageRow("ตั้งค่าข่าว", "ตั้งค่าข่าว", "หัวข้อ · เวลาส่ง · แหล่งข่าว"),
+
+      messageRow("/ตารางวันนี้", "/ตารางวันนี้"),
+      messageRow("/นัดพรุ่งนี้", "/นัดพรุ่งนี้"),
+      messageRow("/ล้างความจำ", "/ล้างความจำ", "เริ่มเรื่องใหม่ ยกเลิกงานค้าง"),
+      messageRow("/ยกเลิก", "/ยกเลิก", "ทิ้งการจองที่พิมพ์ค้างไว้")
+    );
+    const { altText, contents } = pickerCard(
+      "⚙️ ตั้งค่า",
+      "แตะรายการที่ต้องการได้เลยครับ",
+      rows,
+      "ตั้งค่า — แตะรายการที่ต้องการ"
+    );
+    return [{ type: "flex", altText, contents }];
   }
 
   return null;
