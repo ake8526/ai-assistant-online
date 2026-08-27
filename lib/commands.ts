@@ -6511,9 +6511,60 @@ async function handleParsed(
         "meetings"
       );
     }
+    // Sort once, here, and let everything downstream agree on the order.
+    // saveAgendaIds() was handed the raw list while the text was rendered from a
+    // sorted copy, so "กด 1" could resolve to a different meeting than the one
+    // printed as 1. The card numbers the same list.
+    events = events
+      .slice()
+      .sort((a, b) => (a.start?.dateTime || "").localeCompare(b.start?.dateTime || ""));
     await saveAgendaIds(userUpn, events);
     const reply = lite ? formatEventsSimple(events, label) : await buildForEvents(userUpn, events, label);
-    return withCalendarNext({ intent, reply, data: events, period, window: answeredWindow() }, "meetings");
+    const { pickerCard, postbackRow, messageRow, noteRow } = await import("@/lib/lineCards");
+    const rows: object[] = [];
+    events.slice(0, 11).forEach((ev, i) => {
+      const n = i + 1;
+      const st = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+      const en = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
+      const when = ev.isAllDay ? "ทั้งวัน" : st && en ? `${fmtTime(st)}-${fmtTime(en)}` : "?";
+      const bodyText = ev.body?.content || ev.bodyPreview || "";
+      const online = ev.onlineMeeting || /teams\.microsoft\.com|meet\.google\.com|zoom\.us/i.test(bodyText);
+      const sub = [
+        st ? fmtDate(st) : "",
+        when,
+        ev.location?.displayName ? `📍 ${ev.location.displayName}` : "",
+        online ? "💻 ออนไลน์" : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const title = `${n}) ${ev.subject || "(ไม่มีหัวข้อ)"}`;
+      rows.push(
+        postbackRow(title, `a=prep&i=${n}`, `เตรียมนัด ${n}) ${ev.subject || ""}`, sub) ||
+          messageRow(title, `เตรียมนัด ${n}`, sub)
+      );
+    });
+    // A card that quietly stops at 11 of 20 reads as "that is all of them".
+    // The text above the card carries the full list either way — say which.
+    if (events.length > 11) {
+      rows.push(noteRow(`การ์ดแสดง 11 จาก ${events.length} นัด — รายการเต็มอยู่ในข้อความด้านบนครับ`));
+    }
+    rows.push(noteRow("แตะที่นัดเพื่อดูข้อมูลเตรียมตัว — ใครเข้าบ้าง เอกสารที่ผูกไว้ ลิงก์ Teams"));
+    return withCalendarNext(
+      {
+        intent,
+        reply,
+        data: events,
+        period,
+        window: answeredWindow(),
+        flex: pickerCard(
+          `🗓 ${label}`,
+          `มี ${events.length} นัด — แตะนัดที่ต้องการ`,
+          rows,
+          `${label} — แตะนัดที่ต้องการ`
+        ),
+      },
+      "meetings"
+    );
   }
 
   if (intent === "my_availability") {
