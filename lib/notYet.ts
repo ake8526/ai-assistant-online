@@ -36,7 +36,13 @@ const ROWS: Row[] = [
   {
     key: "leave",
     topic: "การลา / ใบลา",
-    match: /(?:ใบ)?ลา(?:ป่วย|กิจ|พักร้อน|คลอด|งาน)|ขอลา|ลากี่วัน|วันลา(?:คงเหลือ|เหลือ)?|โควตาลา/,
+    // People ask for a day off in more words than "ลา": "ขอวันหยุด" reached
+    // nothing at all and came back as "ยังไม่เข้าใจคำสั่งนี้", while the answer
+    // for the very same question was already sitting in this row.
+    // Bare "วันหยุด" stays out on purpose — it belongs to the weekend replies
+    // and to the hr row's "วันหยุดบริษัท".
+    match:
+      /(?:ใบ)?ลา(?:ป่วย|กิจ|พักร้อน|คลอด|งาน)|ขอลา|ลากี่วัน|วันลา(?:คงเหลือ|เหลือ)?|โควตาลา|ขอวันหยุด|ขอหยุด(?:งาน|ยาว)?|ลาหยุด|วันหยุดพักผ่อน|หยุดพักร้อน/,
     instead: "กันเวลาในปฏิทินตัวเองได้ เช่น “จองตารางให้เราวันศุกร์นี้ทั้งวัน ลาพักร้อน”",
     suggestions: [{ label: "กันเวลาทั้งวัน", text: "จองตารางให้เราวันศุกร์นี้ทั้งวัน ลาพักร้อน" }],
   },

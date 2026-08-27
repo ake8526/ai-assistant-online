@@ -1729,12 +1729,18 @@ async function parseIntent(
 
   // Fast deterministic shortcuts — skip LLM so LINE replies before the reply-token expires.
   //
-  // Sample data only when the person asks for sample data. Matching every
-  // "เพิ่มงาน…" turned "เพิ่มงาน ทำสลิปการประชุม พรุ่งนี้ 17:00" into two
-  // invented tasks and silently dropped the real one.
+  // Sample data only when the person asks for sample data, and the whole
+  // sentence has to be that request.
+  //
+  // Looking for ทดสอบ/ตัวอย่าง anywhere in the text read the word out of the
+  // task's own title: "เพิ่มงาน ทดสอบการ์ดปิดงาน พรุ่งนี้ 17:00" invented two
+  // unrelated tasks and dropped the real one — the same failure the previous
+  // rule was written to stop, one level further in. Anchoring both ends means
+  // anything carrying a title or a due date is a real task, by definition.
   const wantsSampleTasks =
-    /(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม)?/i.test(textClean) &&
-    (/(?:ทดสอบ|ตัวอย่าง|สมมติ)/i.test(textClean) || /\d{1,2}\s*งาน/i.test(textClean) || /^(?:ขอ)?\s*(?:เพิ่ม|สร้าง|ขอ|ใส่)\s*งาน(?:ติดตาม)?(?:\s*ให้)?(?:\s*\d{1,2}\s*งาน)?(?:\s*ที|\s*ครับ|\s*ค่ะ)?$/i.test(textClean));
+    /^(?:ขอ)?\s*(?:เพิ่ม|สร้าง|ใส่)\s*งาน(?:ติดตาม)?\s*(?:ทดสอบ|ตัวอย่าง|สมมติ)?\s*(?:ให้)?\s*(?:\d{1,2}\s*งาน)?\s*(?:หน่อย|ที|ด้วย|ครับ|ค่ะ|คับ)?$/i.test(
+      textClean
+    );
   if (wantsSampleTasks) {
     const countMatch = textClean.match(/(\d{1,2})\s*งาน/);
     const count = countMatch ? Math.min(Number(countMatch[1]), 5) : 2;
