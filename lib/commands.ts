@@ -3572,7 +3572,18 @@ async function collapseToOnePerson(tokens: string[]): Promise<UserInfo | null> {
  * needs someone, but a dead end. The calendar already knows who they meet: read
  * the last six weeks of events and count who turns up.
  */
-async function frequentContacts(userUpn: string, limit = 8): Promise<UserInfo[]> {
+/**
+ * People you actually meet with, most-met first, over the last 45 days.
+ *
+ * The order has always been by count. It just never looked like it: the picker
+ * showed name and email, so a list sorted by "how often" read as a list in no
+ * order at all, and the first name being the right guess looked like luck.
+ * Return the count so the card can say it.
+ */
+async function frequentContacts(
+  userUpn: string,
+  limit = 8
+): Promise<(UserInfo & { meetings: number })[]> {
   const now = nowWall();
   const from = addMinutes(now, -45 * 24 * 60);
   let events: Awaited<ReturnType<typeof getEventsRange>> = [];
@@ -3601,7 +3612,7 @@ async function frequentContacts(userUpn: string, limit = 8): Promise<UserInfo[]>
     .filter((v) => v.info.mail.toLowerCase().endsWith("@ktisgroup.com"))
     .sort((a, b) => b.n - a.n)
     .slice(0, limit)
-    .map((v) => v.info);
+    .map((v) => ({ ...v.info, meetings: v.n }));
 }
 
 export async function runFindMeeting(
@@ -7352,13 +7363,15 @@ async function handleParsed(
         contactChoices.push({
           mail: c.mail,
           displayName: c.displayName || c.mail,
+          // Under the name on the card: why this person is at this position.
+          short_label: `นัดกัน ${c.meetings} ครั้งใน 45 วัน · ${c.mail}`,
           data: await encodeMtDataSafe(userUpn, next, dur, null, null, false, null, "ประชุม", dnRef),
         });
       }
       return {
         intent: "choose_mt_person",
         reply:
-          "จะนัดกับใครครับ? นี่คือคนที่คุณนัดบ่อยช่วงนี้ — เลือกได้เลย 👇\n" +
+          "จะนัดกับใครครับ? เรียงจากคนที่คุณนัดบ่อยที่สุดใน 45 วันที่ผ่านมา 👇\n" +
           "💡 พิมพ์เลขได้ เช่น 1 หรือ 1กับ2 (เลือกสองคนพร้อมกัน) หรือพิมพ์ชื่อ/อีเมลคนอื่นก็ได้",
         choices: contactChoices,
         pending_mt_pick: {

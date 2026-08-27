@@ -95,8 +95,11 @@ export function pickerFlexFor(res: CommandResult): { altText: string; contents: 
       const name = c.displayName || c.mail || `ตัวเลือก ${n}`;
       const data = res.intent === "choose_mt_person" ? c.data || "" : personPickData(c);
       const label = `${n}) ${name}`;
+      // short_label carries "why this row is here" when the list is ranked
+      // (นัดกัน N ครั้ง); otherwise the mail is the useful second line.
+      const sub = c.short_label || c.mail;
       rows.push(
-        postbackRow(label, data, `เลือก ${n}) ${name}`, c.mail) || messageRow(label, String(n), c.mail)
+        postbackRow(label, data, `เลือก ${n}) ${name}`, sub) || messageRow(label, String(n), sub)
       );
     });
     if (choices.length > 1) {
@@ -109,8 +112,16 @@ export function pickerFlexFor(res: CommandResult): { altText: string; contents: 
     }
     // No “พิมพ์เลขก็ได้” note here — the text bubble above the card already
     // carries that hint, and it is the same copy the web chat shows.
-    const title = busy ? "👥 เลือกคนที่จะดูนัด" : "👥 เลือกคนที่จะดูตาราง";
-    return pickerCard(title, "ชื่อนี้ตรงกันหลายคน — แตะคนที่ต้องการ", rows, `${title} — แตะคนที่ต้องการ`);
+    // Two different lists arrive here. choose_person is a name that matched
+    // several people; choose_mt_person is "who do you want to book with",
+    // ranked by how often you actually meet. Saying "ชื่อนี้ตรงกันหลายคน" over
+    // the ranked list explained the wrong thing and made the order look random.
+    const ranked = res.intent === "choose_mt_person";
+    const title = ranked ? "👥 นัดประชุมกับใคร" : busy ? "👥 เลือกคนที่จะดูนัด" : "👥 เลือกคนที่จะดูตาราง";
+    const subtitle = ranked
+      ? "เรียงจากคนที่คุณนัดบ่อยที่สุด — แตะคนที่ต้องการ"
+      : "ชื่อนี้ตรงกันหลายคน — แตะคนที่ต้องการ";
+    return pickerCard(title, subtitle, rows, `${title} — แตะคนที่ต้องการ`);
   }
 
   // Which meeting to summarise. Meeting titles are the longest strings this bot
