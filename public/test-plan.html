@@ -206,25 +206,6 @@
     background:var(--surface); padding:1px 5px; border-radius:4px; border:1px solid var(--warn-line);
   }
 
-  /* The one thing a tester has to internalise before they start. */
-  .note.lead{border-width:1px 1px 1px 4px; padding:19px 21px; margin-bottom:30px;}
-  .note.lead h4{font-size:18px; margin-bottom:10px;}
-  .note.lead p{font-size:15px;}
-  .note.lead strong{color:var(--ink);}
-  .caught{
-    list-style:none; margin:12px 0 14px; padding:0;
-    display:flex; flex-direction:column; gap:9px;
-  }
-  .caught li{
-    background:var(--surface); border:1px solid var(--warn-line); border-radius:9px;
-    padding:9px 12px; font-size:14px; line-height:1.6; color:var(--ink-2);
-  }
-  .caught b{color:var(--ink); font-weight:600;}
-  .caught .arrow{color:var(--warn); font-family:"IBM Plex Mono",monospace; padding:0 4px;}
-  /* Thai has no true italic — browsers fake a slant that reads as a rendering
-     fault. Set these apart by colour instead. */
-  .caught em{font-style:normal; color:var(--muted); display:block; margin-top:2px;}
-
   /* ---------- key / roles ---------- */
   .key{display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); margin:0 0 30px;}
   .key-item{
@@ -326,18 +307,6 @@
     <a href="#s11"><b>11</b> งานอัตโนมัติ</a>
     <a href="#report"><b>→</b> รายงานผล</a>
   </nav>
-
-  <div class="note lead">
-    <h4>อ่านข้อนี้ก่อนเริ่ม — บั๊กในระบบนี้ส่วนใหญ่ไม่ใช่ error</h4>
-    <p>วันเปิดรอบทดสอบเจอบั๊กไป 5 ตัว <strong>ไม่มีตัวไหนขึ้น error ค้าง หรือเงียบไปเลยสักตัว</strong> ทุกตัวตอบกลับมาเป็นประโยคไทยที่อ่านดูสุภาพและสมเหตุสมผล — แต่ตอบคนละคำถามกับที่ถาม</p>
-    <ul class="caught">
-      <li><b>“คุณคือใคร”</b> <span class="arrow">→</span> “ไม่พบข้อมูลรายชื่อของ <b>คุณ</b> ในระบบองค์กร” <em>— ไปค้นหาพนักงานที่ชื่อว่า “คุณ”</em></li>
-      <li><b>“เสาร์นี้ว่างไหม”</b> <span class="arrow">→</span> “ไม่มีเวลาว่างเลยครับ คิวแน่นมาก! 😮” <em>— ปฏิทินว่างเปล่า แค่วันนั้นเป็นวันหยุด</em></li>
-      <li><b>กด “ดูนัด” บนการ์ดตารางของเพื่อน</b> <span class="arrow">→</span> ตอบปฏิทินของตัวเอง <em>— ชื่อเพื่อนยังอยู่บนหัวการ์ดตรงนั้น</em></li>
-    </ul>
-    <p><strong>ถ้าคำตอบฟังดูมั่นใจ แต่คุณรู้ว่ามันไม่ตรงกับที่ถาม นั่นคือบั๊ก — แคปหน้าจอส่งมาได้เลย</strong> อย่าเพิ่งคิดว่าตัวเองพิมพ์ผิดหรือถามไม่ชัด</p>
-    <p>ทุกข้อในหน้านี้มีบรรทัด <strong>“ควรได้”</strong> กำกับไว้ใต้คำสั่ง ให้อ่านเทียบทุกครั้งก่อนติ๊ก — อย่ากดผ่านเพราะคำตอบดูเนียน นั่นแหละคือจุดที่บั๊กแบบนี้รอดสายตาไปได้</p>
-  </div>
 
   <h3 style="margin-top:0">ป้ายกำกับแต่ละข้อ อ่านอย่างนี้</h3>
   <div class="key">
