@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { checkCronSecret } from "@/lib/auth";
 import { notifyNewAppointments } from "@/lib/calendarNotify";
 import { nudgePendingMeetingInvites } from "@/lib/meetingInvite";
+import { pushQuotaGone } from "@/lib/line";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace } from "@/lib/trace";
 import { jobSkipReason } from "@/lib/jobHealth";
@@ -25,6 +26,14 @@ async function run(req: Request) {
     // that never finished — poll nothing until the pause lapses.
     const calendarSkip = await jobSkipReason("calendar");
     if (calendarSkip) return NextResponse.json({ ok: true, skipped: { calendar: calendarSkip } });
+
+    // Announcing a new appointment is a LINE push and nothing else, so with the
+    // monthly quota at zero there is no work here — only a trace per linked user
+    // every five minutes, and an error if anything was actually found. The quota
+    // resets with the billing month, not later today.
+    if (await pushQuotaGone()) {
+      return NextResponse.json({ ok: true, skipped: { calendar: "LINE push quota exhausted" } });
+    }
 
     const { data } = await admin.from("line_links").select("upn");
     const users = (data || []).map((r) => r.upn);

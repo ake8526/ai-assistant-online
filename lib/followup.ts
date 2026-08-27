@@ -1,7 +1,7 @@
 // Task follow-up + reminders — ported from morning_brief/followup.py.
 import { createHash } from "crypto";
 import { Attendee, resolveAttendee, resolveUser } from "@/lib/graph";
-import { getLineId, pushLineMessages, sendLine } from "@/lib/line";
+import { getLineId, pushLineMessages, pushQuotaGone, sendLine } from "@/lib/line";
 import { Task, addTask, duePendingTasks, markReminded, updateTaskStatus } from "@/lib/store";
 
 const NOTIFY_RESPONSIBLE = (process.env.NOTIFY_RESPONSIBLE || "true").toLowerCase() === "true";
@@ -155,6 +155,20 @@ function recipientsFor(task: Task): string[] {
 
 /** Remind owners + responsible people about overdue tasks, then mark them overdue. */
 export async function checkDue(): Promise<Record<string, number>> {
+  // Nothing left to push with, so there is nothing to try.
+  //
+  // The reminder tick runs every minute (cloudflare/src/worker.js) so that a
+  // due task lands on the minute. With the monthly push quota at zero that
+  // became the same reminder failing sixty times an hour, every hour, for the
+  // rest of the month — a screenful of identical LineQuotaError rows in
+  // /monitor/log, and a room that looks busy while nobody is doing anything.
+  // The quota resets with the billing month, never later today, so retrying
+  // sooner cannot help. Same guard the morning brief already uses; the reading
+  // is cached, so asking costs nothing per tick.
+  if (await pushQuotaGone()) {
+    console.log("reminders: skipped — LINE push quota exhausted this month");
+    return {};
+  }
   const overdue = await duePendingTasks();
 
   const byRecipient = new Map<string, Task[]>();
