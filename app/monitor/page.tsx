@@ -114,6 +114,10 @@ const CSS = `
 .mon .badge{font-size:14px;color:var(--dim);border:1px solid var(--hair);padding:2px 6px}.mon .badge b{color:var(--green)}
 .mon .badge.llm b{color:var(--amber)}
 .mon .badge.llm.hot b{color:#fff;animation:monpulse .7s steps(1) infinite}
+.mon .badge.push b{color:var(--green,#4ade80)}
+.mon .badge.push.hot b{color:var(--amber)}
+.mon .badge.push.out{border-color:#ee1b24}
+.mon .badge.push.out b{color:#ee1b24;animation:monpulse .9s steps(1) infinite}
 .mon .badge.hot b{color:var(--red);animation:monpulse .7s steps(1) infinite}
 .mon .badges{display:flex;gap:6px;flex-wrap:nowrap;align-items:center}
 .mon .panel{border:2px solid var(--hair);background:var(--panel);margin-bottom:6px}
@@ -335,6 +339,10 @@ function MonitorRoom({
   const [newsWriter, setNewsWriter] = useState<NewsDesk>(NEWS_WRITER_IDLE);
   const [floorJobs, setFloorJobs] = useState<FloorJob[]>([]);
   const [loadStats, setLoadStats] = useState({ active: 0, queued: 0, doneRecent: 0 });
+  // LINE push budget for the month. The room is where you look when something
+  // proactive did not arrive, so the reason should be visible here rather than
+  // only in a LineQuotaError buried in the log.
+  const [push, setPush] = useState<{ used: number; limit: number | null; left: number | null } | null>(null);
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -1583,6 +1591,7 @@ function MonitorRoom({
           }
           if (r.ok) {
             const d = await r.json();
+            if (d.push) setPush(d.push);
             if (d.llm?.ready?.length) {
               const chain = d.llm.ready
                 .map((p: { id: string; model: string; keyEnv: string }) => `${p.id.toUpperCase()}(${p.keyEnv})`)
@@ -1662,6 +1671,28 @@ function MonitorRoom({
             <div className={`badge llm${llmHot ? " hot" : ""}`} title={llmChain || "AI API provider"}>
               LLM <b>{llmLabel}</b>
             </div>
+            {push ? (
+              <div
+                className={`badge push${push.left !== null && push.left <= 0 ? " out" : push.left !== null && push.left <= 20 ? " hot" : ""}`}
+                title={
+                  push.limit === null
+                    ? "แพ็กเกจส่งไม่จำกัด"
+                    : `ส่งไปแล้ว ${push.used} จาก ${push.limit} ข้อความในเดือนนี้ · เหลือ ${push.left}` +
+                      (push.left !== null && push.left <= 0
+                        ? " — งานแจ้งเตือนอัตโนมัติหยุดทั้งหมดจนถึงรอบบิลใหม่ (ตอบเมื่อพิมพ์เข้ามายังใช้ได้)"
+                        : "")
+                }
+              >
+                PUSH{" "}
+                <b>
+                  {push.limit === null
+                    ? "∞"
+                    : push.left !== null && push.left <= 0
+                      ? "หมด"
+                      : `${push.used}/${push.limit}`}
+                </b>
+              </div>
+            ) : null}
             <div className={`badge${loadStats.active >= 3 ? " hot" : ""}`} title="งานที่กำลังทำพร้อมกัน">
               FLOOR <b>{loadStats.active}</b>
             </div>

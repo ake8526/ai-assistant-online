@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/guard";
+import { lineQuotaReading } from "@/lib/line";
 import { llmMonitorInfo } from "@/lib/llm";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 
@@ -93,6 +94,7 @@ export async function GET(req: Request) {
           cursor: 0,
           note: "agent_traces table not found — run supabase/migration_agent_traces.sql",
           llm: llmMonitorInfo(),
+          push: await lineQuotaReading(),
         });
       }
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -126,6 +128,7 @@ export async function GET(req: Request) {
       seeded: true,
       catchup: true, // the client plays these without pretending they arrived just now
       llm: llmMonitorInfo(),
+          push: await lineQuotaReading(),
     });
   }
 
@@ -159,6 +162,7 @@ export async function GET(req: Request) {
         cursor: sinceId,
         note: "agent_traces table not found — run supabase/migration_agent_traces.sql",
         llm: llmMonitorInfo(),
+          push: await lineQuotaReading(),
       });
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -170,5 +174,5 @@ export async function GET(req: Request) {
   const events = rows.map(toEvent);
 
   const cursor = events.length ? events[events.length - 1].id : sinceId;
-  return NextResponse.json({ events, cursor, llm: llmMonitorInfo() });
+  return NextResponse.json({ events, cursor, llm: llmMonitorInfo(), push: await lineQuotaReading() });
 }

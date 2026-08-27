@@ -98,6 +98,21 @@ async function readQuota(): Promise<QuotaReading | null> {
   return reading;
 }
 
+/**
+ * used / limit / left for the month, for anything that needs to *show* the
+ * budget rather than decide on it.
+ *
+ * The number was only ever consulted by the jobs that spend it, so when the
+ * month ran out the only symptom anyone saw was proactive messages going quiet
+ * and /monitor/log filling with LineQuotaError. Reads the same 10-minute cache
+ * as the guards, so displaying it costs nothing.
+ */
+export async function lineQuotaReading(): Promise<{ used: number; limit: number | null; left: number | null } | null> {
+  const r = await readQuota();
+  if (!r) return null;
+  return { used: r.used, limit: r.limit, left: r.limit === null ? null : Math.max(0, r.limit - r.used) };
+}
+
 /** Remaining pushes this month, or null when unknown / on an unlimited plan. */
 export async function lineQuotaLeft(): Promise<number | null> {
   const r = await readQuota();

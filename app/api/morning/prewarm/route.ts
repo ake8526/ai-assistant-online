@@ -18,7 +18,7 @@ import { waitUntil } from "@vercel/functions";
 import { checkCronSecret } from "@/lib/auth";
 import { buildMorningAgenda } from "@/lib/brief";
 import { buildDigest } from "@/lib/digest";
-import { resolveLinkedUpn } from "@/lib/line";
+import { resolveLinkedUpn, pushQuotaGone } from "@/lib/line";
 import { withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { hasFreshNewsPrewarm, saveBriefPrewarm, saveNewsPrewarm } from "@/lib/morningCache";
 import {
@@ -134,6 +134,15 @@ async function run(req: Request) {
     const url = new URL(req.url);
     const stage = parseStage(req);
     const force = url.searchParams.get("force") === "1";
+
+    // Nothing here sends to LINE — it prepares what /api/brief/run will push.
+    // With the month's push budget spent there is no push to prepare for, so
+    // building a digest per user every minute through the morning is an LLM and
+    // Graph bill with no delivery at the end of it. ?force=1 still runs, for
+    // testing the build itself.
+    if (!force && (await pushQuotaGone())) {
+      return NextResponse.json({ ok: true, skipped: "LINE push quota exhausted this month" });
+    }
     const wait = url.searchParams.get("wait") === "1"; // manual runs: hold for results
     const upnQuery = (url.searchParams.get("upn") || "").trim();
 
