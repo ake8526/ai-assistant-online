@@ -4661,6 +4661,47 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     }
   }
 
+  // Asking for calendar access — the one thing that unlocks half the assistant.
+  //
+  // Nothing used to answer this. "ขอสิทธิ์ปฏิทิน" fell all the way through to
+  // the "not built yet" table, whose IT-support row matches a bare ขอสิทธิ์,
+  // and the reply came back about repair tickets. The rich-menu button that
+  // sends this phrase was pointing at that answer.
+  //
+  // It also has to answer the question two ways, because the same words are
+  // asked by someone who has already granted access and wants to know if it
+  // took.
+  if (
+    /^(?:ขอ|ให้|กด)?\s*(?:สิทธิ์|อนุญาต|เชื่อม|ผูก|ต่อ)\s*(?:การเข้าถึง)?\s*(?:ปฏิทิน|calendar|outlook|365|m365|microsoft\s*365)/i.test(
+      text
+    ) ||
+    /^(?:ปฏิทิน|calendar)\s*(?:ยัง)?(?:ไม่)?(?:ได้)?(?:เชื่อม|ผูก|อนุญาต)/i.test(text)
+  ) {
+    const accountUrl = `${(process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/$/, "")}/account`;
+    const linked = !!getUserGraphToken();
+    return {
+      intent: "need_calendar_consent",
+      reply: linked
+        ? "✅ ปฏิทิน Microsoft 365 ของคุณเชื่อมไว้เรียบร้อยแล้วครับ\n\n" +
+          "สั่งดูตาราง หาเวลาว่าง หรือจองประชุมได้เลย 🗓️\n" +
+          `ถ้าอยากตรวจหรือยกเลิกการเชื่อม เปิดหน้าบัญชีได้ที่ ${accountUrl}`
+        : "🔐 ต้องอนุญาตปฏิทินก่อนครับ ระบบถึงจะดูตารางด้วยสิทธิ์ Microsoft 365 ของคุณได้ (เหมือนที่คุณเปิด Outlook เอง)\n\n" +
+          `1) เปิดหน้าบัญชี: ${accountUrl}\n` +
+          "2) แถว “ปฏิทินตามสิทธิ์ 365” → กด **อนุญาต**\n" +
+          "3) ที่หน้า Microsoft กดปุ่มสีน้ำเงิน **ยอมรับ**\n\n" +
+          "เสร็จแล้วพิมพ์ “ตารางวันนี้” มาลองได้เลยครับ",
+      suggestions: linked
+        ? [
+            { label: "ตารางวันนี้", text: "ตารางวันนี้" },
+            { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+          ]
+        : [
+            { label: "เปิดหน้าบัญชี", text: "ตั้งค่า" },
+            { label: "📖 คู่มือคำสั่ง", text: "/ช่วยเหลือ" },
+          ],
+    };
+  }
+
   // Immediate user identity query check (ผมชื่ออะไร / ฉันชื่ออะไร / ฉันชื่อ / ชื่อฉัน / ผมชื่อ / ชื่อผม)
   if (/^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม|ชื่ออะไร|ผมชื่ออะไร|ฉันชื่ออะไร|ผมเป็นใคร|ฉันเป็นใคร|ผู้ใช้ชื่ออะไร|ชื่อผู้ใช้|ชื่อไร|ผมชื่อไร|ฉันชื่อไร)$|^(?:ผมชื่อ|ฉันชื่อ|ชื่อฉัน|ชื่อผม)\b/i.test(text)) {
     // The name used to be a hardcoded string for the one account that had been
