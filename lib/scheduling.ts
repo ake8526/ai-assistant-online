@@ -1,8 +1,8 @@
 // Find common free slots + free/busy ranges — ported from morning_brief/scheduling.py.
 // availabilityView: one char per interval: '0'=free, '1'=tentative, '2'=busy,
 // '3'=out-of-office, '4'=working-elsewhere. A slot is bookable only if everyone is '0'.
-import { getSchedule } from "@/lib/graph";
-import { addDays, addMinutes, fmtDate, fmtDateTime, fmtDayHeader, fmtSlotRange, fmtTime, nowWall, startOfDay, endOfDay, wallIso } from "@/lib/time";
+import { getEventsRange, getSchedule } from "@/lib/graph";
+import { addDays, addMinutes, fmtDate, fmtDateTime, fmtDayHeader, fmtSlotRange, fmtTime, nowWall, parseWall, startOfDay, endOfDay, wallIso } from "@/lib/time";
 
 const INTERVAL = 30; // minutes per availability slot
 
@@ -502,12 +502,54 @@ export async function freeRangesReply(opts: {
       reply: `${day} เป็นวันหยุด และ${whose}ยังว่างอยู่ ไม่มีนัดอะไรเลยครับ 🌤️`,
     };
   }
+  // Say what the meetings ARE, and count meetings — not blocks.
+  //
+  // busyRanges() merges adjacent 30-minute slots and never carries a subject,
+  // so three back-to-back meetings came back as "มีนัดอยู่ 1 ช่วง" over a bare
+  // time span: a wrong number attached to an answer that never said what was on
+  // the calendar anyway. The events are one call away, and the ตาราง command
+  // has been listing them by name all along.
+  //
+  // Own diary only: getEventsRange() reads /me with a delegated token, so
+  // pointing it at a colleague would quietly return YOUR calendar under THEIR
+  // name. For anyone else the busy blocks stay, described as what they honestly
+  // are — hours that are not free, subjects we are not allowed to see.
+  const own = !requesterUpn || requesterUpn.toLowerCase() === targetUpn.toLowerCase();
+  if (own) {
+    try {
+      const events = await getEventsRange(targetUpn, wallIso(start), wallIso(end));
+      if (events.length) {
+        const lines = events
+          .slice()
+          .sort((a, b) => (a.start?.dateTime || "").localeCompare(b.start?.dateTime || ""))
+          .map((ev) => {
+            // parseWall, never new Date(): Graph sends "2026-08-29T10:00:00"
+            // with no offset, which new Date() reads as machine-local and
+            // fmtTime then re-reads as UTC — a 10:00 meeting printed 03:00.
+            const st = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+            const en = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
+            const when = st && en ? `${fmtTime(st)}-${fmtTime(en)}` : "?";
+            const place = ev.location?.displayName ? ` 📍 ${ev.location.displayName}` : "";
+            return `  ${when} · ${ev.subject || "(ไม่มีหัวข้อ)"}${place}`;
+          });
+        return {
+          ranges,
+          reply: [`${day} เป็นวันหยุดครับ แต่มีนัดอยู่ ${events.length} รายการ 📌`, "", ...lines].join("\n"),
+        };
+      }
+    } catch (e) {
+      console.warn("freeRangesReply event lookup failed:", e);
+    }
+  }
+
   return {
     ranges,
     reply: [
-      `${day} เป็นวันหยุดครับ แต่${whose}มีนัดอยู่ ${busy.length} ช่วง 📌`,
+      `${day} เป็นวันหยุดครับ แต่${who === "คุณ" ? "คุณ" : who}ติดอยู่ ${busy.length} ช่วง 📌`,
       "",
       ...busy.map((b) => `  ${fmtTime(b.start)} - ${fmtTime(b.end)}`),
+      "",
+      "💡 เห็นได้แค่ช่วงเวลา หัวข้อนัดของคนอื่นต้องดูใน Outlook ครับ",
     ].join("\n"),
   };
 }
