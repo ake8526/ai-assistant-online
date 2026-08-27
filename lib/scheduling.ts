@@ -486,62 +486,65 @@ export async function freeRangesReply(opts: {
   }
 
   const day = dayLabel(start, end, label);
-  const whose = who === "คุณ" ? "ตาราง" : `ตารางของ ${who}`;
-  let busy: Range[] = [];
-  try {
-    busy = await busyRanges(targetUpn, start, end, requesterUpn);
-  } catch (e) {
-    // A weekend answer without the calendar half still beats no answer at all.
-    console.warn("freeRangesReply busy lookup failed:", e);
-    return { ranges, reply: `${day} เป็นวันหยุดครับ 🌤️` };
-  }
 
-  if (!busy.length) {
-    return {
-      ranges,
-      reply: `${day} เป็นวันหยุด และ${whose}ยังว่างอยู่ ไม่มีนัดอะไรเลยครับ 🌤️`,
-    };
-  }
-  // Say what the meetings ARE, and count meetings — not blocks.
+  // Ask the calendar what is on it — do not infer it from free/busy.
   //
-  // busyRanges() merges adjacent 30-minute slots and never carries a subject,
-  // so three back-to-back meetings came back as "มีนัดอยู่ 1 ช่วง" over a bare
-  // time span: a wrong number attached to an answer that never said what was on
-  // the calendar anyway. The events are one call away, and the ตาราง command
-  // has been listing them by name all along.
+  // The first version read busyRanges() and, when that came back empty, said
+  // "ตารางยังว่างอยู่ ไม่มีนัดอะไรเลย". But availabilityView is a derived view:
+  // an all-day entry, or anything the owner marked Free (ลาพักร้อน, งานนอก,
+  // เตือนความจำ), occupies no busy slot at all. So a Saturday with a real
+  // entry on it was reported as completely clear — confidently, and wrongly.
+  //
+  // The events themselves have no such blind spot, so for your own diary they
+  // are the answer: real count, real subjects, all-day entries included.
   //
   // Own diary only: getEventsRange() reads /me with a delegated token, so
   // pointing it at a colleague would quietly return YOUR calendar under THEIR
-  // name. For anyone else the busy blocks stay, described as what they honestly
-  // are — hours that are not free, subjects we are not allowed to see.
+  // name. For anyone else, fall back to busy blocks and say plainly that the
+  // subjects are not visible to us.
   const own = !requesterUpn || requesterUpn.toLowerCase() === targetUpn.toLowerCase();
+  const whose = who === "คุณ" ? "ตาราง" : `ตารางของ ${who}`;
+
   if (own) {
     try {
       const events = await getEventsRange(targetUpn, wallIso(start), wallIso(end));
-      if (events.length) {
-        const lines = events
-          .slice()
-          .sort((a, b) => (a.start?.dateTime || "").localeCompare(b.start?.dateTime || ""))
-          .map((ev) => {
-            // parseWall, never new Date(): Graph sends "2026-08-29T10:00:00"
-            // with no offset, which new Date() reads as machine-local and
-            // fmtTime then re-reads as UTC — a 10:00 meeting printed 03:00.
-            const st = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
-            const en = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
-            const when = st && en ? `${fmtTime(st)}-${fmtTime(en)}` : "?";
-            const place = ev.location?.displayName ? ` 📍 ${ev.location.displayName}` : "";
-            return `  ${when} · ${ev.subject || "(ไม่มีหัวข้อ)"}${place}`;
-          });
-        return {
-          ranges,
-          reply: [`${day} เป็นวันหยุดครับ แต่มีนัดอยู่ ${events.length} รายการ 📌`, "", ...lines].join("\n"),
-        };
+      if (!events.length) {
+        return { ranges, reply: `${day} เป็นวันหยุด และ${whose}ยังว่างอยู่ ไม่มีนัดอะไรเลยครับ 🌤️` };
       }
+      const lines = events
+        .slice()
+        .sort((a, b) => (a.start?.dateTime || "").localeCompare(b.start?.dateTime || ""))
+        .map((ev) => {
+          // parseWall, never new Date(): Graph sends "2026-08-29T10:00:00" with
+          // no offset, which new Date() reads as machine-local and fmtTime then
+          // re-reads as UTC — a 10:00 meeting printed 03:00.
+          const st = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+          const en = ev.end?.dateTime ? parseWall(ev.end.dateTime) : null;
+          const when = ev.isAllDay ? "ทั้งวัน" : st && en ? `${fmtTime(st)}-${fmtTime(en)}` : "?";
+          const place = ev.location?.displayName ? ` 📍 ${ev.location.displayName}` : "";
+          return `  ${when} · ${ev.subject || "(ไม่มีหัวข้อ)"}${place}`;
+        });
+      return {
+        ranges,
+        reply: [`${day} เป็นวันหยุดครับ แต่มีนัดอยู่ ${events.length} รายการ 📌`, "", ...lines].join("\n"),
+      };
     } catch (e) {
+      // Fall through to free/busy rather than answering nothing.
       console.warn("freeRangesReply event lookup failed:", e);
     }
   }
 
+  let busy: Range[] = [];
+  try {
+    busy = await busyRanges(targetUpn, start, end, requesterUpn);
+  } catch (e) {
+    // Half an answer still beats none: the day really is a holiday.
+    console.warn("freeRangesReply busy lookup failed:", e);
+    return { ranges, reply: `${day} เป็นวันหยุดครับ 🌤️` };
+  }
+  if (!busy.length) {
+    return { ranges, reply: `${day} เป็นวันหยุด และ${whose}ยังว่างอยู่ ไม่มีนัดอะไรเลยครับ 🌤️` };
+  }
   return {
     ranges,
     reply: [

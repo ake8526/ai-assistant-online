@@ -120,6 +120,8 @@ export type GraphEvent = {
   subject?: string;
   start?: { dateTime: string; timeZone: string };
   end?: { dateTime: string; timeZone: string };
+  /** All-day entries occupy no busy slot, so callers reading free/busy miss them. */
+  isAllDay?: boolean;
   location?: { displayName?: string };
   attendees?: { emailAddress?: { name?: string; address?: string }; type?: string }[];
   onlineMeeting?: { joinUrl?: string } | null;
@@ -154,7 +156,7 @@ export async function getEventsRange(userUpn: string, startIso: string, endIso: 
   const params: Record<string, string> = {
     startDateTime: startIso,
     endDateTime: endIso,
-    $select: "id,subject,start,end,location,attendees,onlineMeeting,bodyPreview,organizer,sensitivity,showAs",
+    $select: "id,subject,start,end,isAllDay,location,attendees,onlineMeeting,bodyPreview,organizer,sensitivity,showAs",
     $top: "100",
   };
   const prefer = { Prefer: `outlook.timezone="${TIMEZONE}"` };
@@ -188,7 +190,7 @@ export async function getEventsRange(userUpn: string, startIso: string, endIso: 
     const data = await graphGet(
       evPath,
       {
-        $select: "id,subject,start,end,location,attendees,onlineMeeting,bodyPreview,organizer,sensitivity,showAs",
+        $select: "id,subject,start,end,isAllDay,location,attendees,onlineMeeting,bodyPreview,organizer,sensitivity,showAs",
         $filter: `start/dateTime ge '${startIso}' and start/dateTime lt '${endIso}'`,
         $orderby: "start/dateTime",
         $top: "50",

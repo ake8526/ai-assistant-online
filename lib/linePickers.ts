@@ -113,6 +113,50 @@ export function pickerFlexFor(res: CommandResult): { altText: string; contents: 
     return pickerCard(title, "ชื่อนี้ตรงกันหลายคน — แตะคนที่ต้องการ", rows, `${title} — แตะคนที่ต้องการ`);
   }
 
+  // Which meeting to summarise. Meeting titles are the longest strings this bot
+  // shows anyone, and a 20-character quick-reply label cut every one of them to
+  // "ประชุมประจำสัปดาห์ฝ่…" — the list was numbers with the answer hidden.
+  if (res.intent === "choose_meeting" && Array.isArray(res.choices)) {
+    const choices = (res.choices as Choice[]).filter((c) => c.event_id);
+    if (!choices.length) return null;
+    const rows: object[] = [];
+    choices.forEach((c, i) => {
+      const n = i + 1;
+      // Choices arrive pre-formatted as "21/08/2026 14:00 — หัวข้อ · 1 ชม.".
+      // Put the subject on the row and the when underneath it, so a column of
+      // meetings reads as titles rather than as a column of identical dates.
+      const raw = c.label || `ประชุม ${n}`;
+      const cut = raw.indexOf(" — ");
+      const when = cut > 0 ? raw.slice(0, cut).trim() : "";
+      const subject = cut > 0 ? raw.slice(cut + 3).trim() : raw;
+      const label = `${n}) ${subject}`;
+      const data = new URLSearchParams({ a: "sum", id: c.event_id as string }).toString();
+      rows.push(
+        postbackRow(label, data, `สรุป ${n}) ${subject}`, when || c.short_label) ||
+          messageRow(label, String(n), when || c.short_label)
+      );
+    });
+    rows.push(noteRow("สรุปได้เฉพาะประชุมที่เปิดบันทึกและถอดเสียงไว้ตอนประชุมครับ"));
+    return pickerCard("📝 เลือกประชุมที่จะสรุป", "แตะประชุมที่ต้องการ", rows, "เลือกประชุมที่จะสรุป");
+  }
+
+  // Which task to close. The rows carry a=doneask, not a=done: the card asks
+  // before it finishes anybody's work.
+  if (res.intent === "choose_task" && Array.isArray(res.choices)) {
+    const choices = (res.choices as Choice[]).filter((c) => c.task_id);
+    if (!choices.length) return null;
+    const rows: object[] = [];
+    choices.forEach((c, i) => {
+      const n = i + 1;
+      const label = `${n}) ${c.label || `งาน ${n}`}`;
+      rows.push(
+        postbackRow(label, `a=doneask&t=${c.task_id}`, `ปิดงาน ${label}`) || messageRow(label, `ปิดงาน ${n}`)
+      );
+    });
+    rows.push(noteRow("แตะที่งานแล้วจะถามยืนยันก่อนปิดครับ"));
+    return pickerCard("✅ เลือกงานที่จะปิด", "แตะงานที่ทำเสร็จแล้ว", rows, "เลือกงานที่จะปิด");
+  }
+
   if (Array.isArray(res.slots) && res.slots.length && (res.intent === "availability" || res.intent === "choose_slot")) {
     const meeting = (res.meeting as { attendees?: string[]; subject?: string; duration?: number }) || {};
     const attendees = meeting.attendees || (res.person?.mail ? [res.person.mail] : []);

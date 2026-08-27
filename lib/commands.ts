@@ -4064,6 +4064,32 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
       const ok = await updateTaskStatus(tid, "done");
       return { intent: "complete_task", reply: ok ? "ปิดงานแล้วครับ ✅" : "งานนี้ถูกปิดไปแล้ว หรือไม่พบครับ" };
     }
+    // Ask before closing. The task list is a card now, and a row on a card is
+    // something people tap to look at — so a tap must not be the last word on
+    // work that is finished or not. The confirm button says ยืนยันปิดงาน and
+    // names the task, so the chat log records which question was answered.
+    if (a === "doneask") {
+      const tid = Number(data.get("t") || "");
+      if (!tid) return { intent: "error", reply: "ข้อมูลไม่ครบ ลองใหม่อีกครั้งครับ" };
+      const task = (await listTasks(userUpn)).find((t) => t.id === tid);
+      if (!task) return { intent: "complete_task", reply: "ไม่พบงานนี้ครับ อาจถูกปิดไปแล้ว" };
+      if (task.status === "done") {
+        return { intent: "complete_task", reply: `งาน “${task.title}” ปิดไปแล้วครับ ✅` };
+      }
+      const { pickerCard, postbackRow, messageRow, noteRow } = await import("@/lib/lineCards");
+      const rows: object[] = [];
+      const yes = postbackRow("✅ ยืนยันปิดงาน", `a=done&t=${tid}`, `ยืนยันปิดงาน: ${task.title}`);
+      if (yes) rows.push(yes);
+      rows.push(messageRow("◀ ยังไม่ปิด กลับไปดูรายการ", "ดูงานที่ต้องติดตาม"));
+      rows.push(noteRow("ปิดแล้วงานจะหายจากรายการติดตาม และหยุดเตือน"));
+      return {
+        intent: "confirm_complete_task",
+        reply: `ปิดงานนี้เลยไหมครับ?
+
+📌 ${task.title}`,
+        flex: pickerCard("✅ ยืนยันปิดงาน", task.title, rows, `ยืนยันปิดงาน — ${task.title}`),
+      };
+    }
     if (a === "avail" || a === "book" || a === "cancel" || a === "cancelok" || a === "findmt") {
       const denied = needCalendarConsent();
       if (denied) return denied;
@@ -6857,8 +6883,39 @@ async function handleParsed(
       const srcTag = t.source === "meeting_auto" ? " 🤖 (จากสรุปการประชุม)" : t.source === "manual" ? " 👤 (เพิ่มเอง)" : "";
       lines.push(`${i + 1}) ${t.title}${dueStr}${resp}${srcTag}${stTag}`);
     });
-    lines.push("\nพิมพ์ เช่น “ปิดงาน 1” เพื่อทำเครื่องหมายสำเร็จ");
-    return { intent, reply: lines.join("\n"), data: pending };
+    lines.push("\nแตะงานในการ์ดเพื่อปิด หรือพิมพ์ “ปิดงาน 1” ก็ได้ครับ");
+    // The card carries the same list, numbered the same way. Each row asks
+    // before it closes anything: a row on a card is something people tap to
+    // look at, and a tap must not be the last word on whether work is done.
+    const { pickerCard, postbackRow, messageRow, noteRow } = await import("@/lib/lineCards");
+    const rows: object[] = [];
+    pending.slice(0, 11).forEach((t, i) => {
+      const n = i + 1;
+      const bits = [
+        t.due ? `⏰ ${dueLabel(t.due)}` : "",
+        t.responsible ? `👤 ${t.responsible}` : "",
+        t.status === "overdue" ? "⚠️ เกินกำหนด" : "",
+        t.source === "meeting_auto" ? "🤖 จากสรุปประชุม" : "",
+      ].filter(Boolean);
+      const label = `${n}) ${t.title}`;
+      rows.push(
+        postbackRow(label, `a=doneask&t=${t.id}`, `ปิดงาน ${n}) ${t.title}`, bits.join(" · ")) ||
+          messageRow(label, `ปิดงาน ${n}`, bits.join(" · "))
+      );
+    });
+    if (pending.length > 1) rows.push(messageRow("✅ ปิดงานทั้งหมด", "ปิดงานทั้งหมด"));
+    rows.push(noteRow("แตะที่งานแล้วจะถามยืนยันก่อนปิดครับ"));
+    return {
+      intent,
+      reply: lines.join("\n"),
+      data: pending,
+      flex: pickerCard(
+        "✅ งานที่ต้องติดตาม",
+        `ค้างอยู่ ${pending.length} รายการ — แตะงานที่ทำเสร็จแล้ว`,
+        rows,
+        "งานที่ต้องติดตาม — แตะงานที่ทำเสร็จแล้ว"
+      ),
+    };
   }
 
   if (intent === "add_sample_tasks") {
