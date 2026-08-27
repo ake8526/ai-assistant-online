@@ -4759,6 +4759,41 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     };
   }
 
+  // Someone saying they are ill.
+  //
+  // "วันนี้ป่วย" went straight to a booking card — a form, in answer to a person
+  // telling you they are sick. Three things have to happen first, in this
+  // order: say something human, be honest that leave still cannot be filed
+  // here, and then *offer* the calendar block rather than opening it.
+  //
+  // Anchored to the whole message on purpose: "เพิ่มงาน ไปเยี่ยมคนป่วย" is a
+  // task about someone else being ill, not a report of your own.
+  {
+    const t = text.trim();
+    const sick =
+      /^(?:วันนี้|พรุ่งนี้)?\s*(?:ผม|ฉัน|หนู|เรา|ดิฉัน)?\s*(?:ขอ)?\s*(?:ลาป่วย|ไม่ค่อยสบาย|ไม่สบาย|ป่วย|เป็นไข้)\s*(?:วันนี้|พรุ่งนี้)?\s*(?:มาก|นิดหน่อย|เลย|อยู่|นะ|อ่ะ|ครับ|ค่ะ|คะ|คับ)?$/i.test(
+        t
+      );
+    if (sick) {
+      const tomorrow = /พรุ่งนี้/.test(t);
+      const dayWord = tomorrow ? "พรุ่งนี้" : "วันนี้";
+      const bookText = `จองตารางให้เรา${dayWord}ทั้งวัน ลาป่วย`;
+      return {
+        intent: "not_yet",
+        reply:
+          `ดูแลตัวเองด้วยนะครับ หายไว ๆ 🙏\n\n` +
+          `ต้องบอกไว้ก่อนว่า **ระบบใบลายังทำไม่ได้ครับ** ผมยื่นลาให้ไม่ได้ — ต้องแจ้งหัวหน้าหรือ HR ตามปกติ\n\n` +
+          `แต่ผมกันเวลาในปฏิทิน${dayWord}ให้ทั้งวันได้ คนอื่นจะได้เห็นว่าคุณไม่อยู่ และไม่มีใครนัดทับ\n` +
+          `ให้กันไว้เลยไหมครับ? 👇`,
+        suggestions: [
+          { label: `🛏 กัน${dayWord}ทั้งวัน`, text: bookText },
+          { label: `ดูนัด${dayWord}ก่อน`, text: tomorrow ? "นัดพรุ่งนี้" : "ตารางวันนี้" },
+          { label: "ไม่ต้อง ขอบคุณ", text: "ไม่ต้องครับ" },
+        ],
+      };
+    }
+  }
+
   // Asking for time off, with no day attached.
   //
   // There is no leave system to ask, and every other reading of these words is
