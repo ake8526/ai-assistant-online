@@ -1190,9 +1190,10 @@ export function isNonPersonAccount(u: UserInfo): boolean {
   const dn = (u.displayName || "").trim();
   const local = ((u.mail || "").split("@")[0] || "").toLowerCase();
   if (
-    /(department|factory|company|\bco\.?\s*,?\s*ltd\b|\bteam\b|shared\s*mailbox|noreply|no-?reply|vacuum\s+pan)/i.test(
+    /(department|factory|company|\bco\.?\s*,?\s*ltd\b|\bteam\b|shared\s*mailbox|noreply|no-?reply|vacuum\s+pan|^ktisx$|^ktisx_hq$)/i.test(
       dn
-    )
+    ) ||
+    /^(ktisx|ktisx_hq)$/i.test(local)
   ) {
     return true;
   }

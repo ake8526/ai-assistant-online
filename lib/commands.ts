@@ -108,7 +108,7 @@ import {
   utcIsoToWall,
   wallIso,
 } from "@/lib/time";
-import { findMatchingRooms, findRoomByText, isMeetingRoomEmail, getRoomDisplayName } from "@/lib/meetingRooms";
+import { findMatchingRooms, findRoomByText, isMeetingRoomEmail, getRoomDisplayName, resolveRoomToken } from "@/lib/meetingRooms";
 
 const WORK_START_HOUR = Number(process.env.WORK_START_HOUR || 9);
 const WORK_END_HOUR = Number(process.env.WORK_END_HOUR || 17);
@@ -887,10 +887,11 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     if (m) return { intent: "test_meeting", params: { query: (m[1] || "").trim() } };
   }
 
-  // Meeting booking / availability check (single or multi-person) — e.g. "นัดแบงค์วันจันทร์นี้10โมงเรื่องทดสอบ"
+  // Meeting booking / availability check (single, multi-person, or room booking) — e.g. "จองห้องktisxพุธนี้บ่ายสาม", "นัดแบงค์วันจันทร์นี้10โมงเรื่องทดสอบ"
   {
+    const matchingRooms = findMatchingRooms(t);
     const people = peopleFromText(t);
-    if (people.length >= 1 && /^(?:นัด|ชวน|เชิญ|จอง|นัดคุยกับ|นัดประชุมกับ|นัดหมายกับ|ชวนคุยกับ|ชวนประชุมกับ|จองคิวกับ|จองคิว|จองนัด)(?!ตาราง|วันนี้|พรุ่งนี้|มะรืน|เช้า|บ่าย|เย็น|ข่าว|งาน)/i.test(t)) {
+    if ((people.length >= 1 || matchingRooms.length >= 1) && /^(?:นัด|ชวน|เชิญ|จอง|จองห้อง|ขอห้อง|นัดคุยกับ|นัดประชุมกับ|นัดหมายกับ|ชวนคุยกับ|ชวนประชุมกับ|จองคิวกับ|จองคิว|จองนัด)(?!ตาราง|วันนี้|พรุ่งนี้|มะรืน|เช้า|บ่าย|เย็น|ข่าว|งาน)/i.test(t)) {
       const weekday = /วันจันทร์|จันทร์/.test(t)
         ? "mon"
         : /วันอังคาร|อังคาร/.test(t)
@@ -912,12 +913,20 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
       if (timeM) {
         let hr = parseInt(timeM[1], 10);
         const min = timeM[2] ? parseInt(timeM[2], 10) : 0;
-        if (/บ่าย/i.test(t) && hr < 12) hr += 12;
+        if (/บ่าย/i.test(t) && hr < 12) {
+          if (hr <= 5) hr += 12;
+        }
         at = `${String(hr).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+      } else {
+        const clockM = parseClockToMinutes(t);
+        if (clockM != null) {
+          const hr = Math.floor(clockM / 60);
+          const min = clockM % 60;
+          at = `${String(hr).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+        }
       }
 
       // Room / Location extraction (e.g. ที่ห้องktisx, ห้องประชุม 1)
-      const matchingRooms = findMatchingRooms(t);
       let room: string | undefined = undefined;
       const attendees = [...people];
       if (matchingRooms.length === 1) {
@@ -939,6 +948,8 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
       const noteM = t.match(/เรื่อง\s*(.+)$/);
       if (noteM) {
         note = noteM[1].replace(/(?:ที่)?ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+/gi, "").trim();
+      } else if (people.length === 0 && matchingRooms.length >= 1) {
+        note = "จองห้องประชุม";
       } else {
         note = "ประชุม";
       }
@@ -7628,6 +7639,12 @@ async function handleParsed(
         attendeeTokens.push(roomQ);
       }
     }
+
+    // Map attendee tokens that match room names directly to room emails
+    attendeeTokens = attendeeTokens.map((tok) => {
+      const roomEmail = resolveRoomToken(tok);
+      return roomEmail || tok;
+    });
 
     const attendees: MtAttendee[] = attendeeTokens.map((token) =>
       attendeeFromToken(String(token), userUpn)

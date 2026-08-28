@@ -52,6 +52,14 @@ export function findRoomByText(text: string): MeetingRoom | null {
   return matches.length === 1 ? matches[0] : null;
 }
 
+/** Check if a token is a room name/alias and return its email. */
+export function resolveRoomToken(token: string): string | null {
+  const t = (token || "").toLowerCase().trim();
+  if (!t) return null;
+  const match = findRoomByText(t);
+  return match ? match.email : null;
+}
+
 /** Check if an email belongs to a known meeting room. */
 export function isMeetingRoomEmail(email: string): boolean {
   const e = (email || "").toLowerCase().trim();
