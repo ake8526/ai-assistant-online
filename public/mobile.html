@@ -3,42 +3,42 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>KTIS X — AI Assistant</title>
+  <title>KTIS X — 3D Motion AI Assistant</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
 
   <style>
     :root {
-      --bg-base: #080b11;
-      --bg-surface: rgba(255, 255, 255, 0.035);
-      --bg-surface-elevated: rgba(255, 255, 255, 0.07);
-      --bg-glass: rgba(10, 14, 23, 0.88);
-      
-      --border-subtle: rgba(255, 255, 255, 0.07);
-      --border-focus: #0078d4;
+      --bg-deep: #050811;
+      --glass-base: rgba(15, 23, 42, 0.65);
+      --glass-elevated: rgba(30, 41, 59, 0.7);
       
       --accent-azure: #0078d4;
-      --accent-cyan: #00c8f8;
+      --accent-cyan: #00f0ff;
+      --accent-purple: #8b5cf6;
       --accent-emerald: #10b981;
       --accent-rose: #f43f5e;
       --accent-amber: #f59e0b;
       
-      --text-primary: #f8fafc;
+      --text-primary: #ffffff;
       --text-secondary: #94a3b8;
       --text-muted: #64748b;
       
       --safe-top: env(safe-area-inset-top, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
       
-      --top-nav-h: calc(60px + var(--safe-top));
-      --bottom-nav-h: calc(64px + var(--safe-bottom));
+      --top-nav-h: calc(62px + var(--safe-top));
+      --bottom-nav-h: calc(68px + var(--safe-bottom));
       
-      --radius-sm: 8px;
-      --radius-md: 12px;
-      --radius-lg: 18px;
+      --radius-sm: 10px;
+      --radius-md: 16px;
+      --radius-lg: 22px;
       --radius-full: 9999px;
+      
+      --shadow-3d: 0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 0 25px rgba(0, 120, 212, 0.15);
+      --shadow-neon: 0 0 20px rgba(0, 240, 255, 0.35);
     }
 
     * {
@@ -52,11 +52,25 @@
     body, html {
       width: 100%;
       height: 100%;
-      background-color: var(--bg-base);
+      background-color: var(--bg-deep);
+      background-image: radial-gradient(at 0% 0%, rgba(0, 120, 212, 0.25) 0px, transparent 50%),
+                        radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.2) 0px, transparent 50%),
+                        radial-gradient(at 50% 50%, rgba(0, 240, 255, 0.1) 0px, transparent 60%);
       color: var(--text-primary);
       font-family: 'Prompt', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       overflow: hidden;
       -webkit-font-smoothing: antialiased;
+      perspective: 1200px;
+    }
+
+    #motionCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.85;
     }
 
     .icon {
@@ -720,12 +734,12 @@
     .nav-item.active svg { color: var(--accent-cyan); }
 
     /* ==========================================================================
-       1. CINEMATIC INTRO SPLASH SCREEN
+       1. CINEMATIC 3D INTRO SPLASH SCREEN (EXPLODED HOLOGRAM STAGE)
        ========================================================================== */
     .intro-screen {
       position: fixed;
       inset: 0;
-      background: radial-gradient(circle at 50% 35%, #0f1c3f 0%, #080b11 80%);
+      background: radial-gradient(circle at 50% 35%, #0f1c3f 0%, #03060f 85%);
       z-index: 9999;
       display: flex;
       flex-direction: column;
@@ -734,106 +748,149 @@
       padding: calc(24px + var(--safe-top)) 24px calc(24px + var(--safe-bottom));
       text-align: center;
       overflow: hidden;
-      transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .intro-screen.fade-out {
       opacity: 0;
-      transform: scale(1.08);
+      transform: scale(1.15) rotateX(10deg);
       pointer-events: none;
     }
 
-    .mascot-stage {
+    .hologram-stage {
       position: relative;
-      width: 220px;
-      height: 220px;
+      width: 250px;
+      height: 250px;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 20px;
+      margin-bottom: 24px;
+      transform-style: preserve-3d;
       cursor: pointer;
     }
 
-    .mascot-glow {
+    .holo-gyro-1, .holo-gyro-2, .holo-gyro-3 {
       position: absolute;
-      width: 180px;
-      height: 180px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(0, 200, 248, 0.35) 0%, rgba(0, 120, 212, 0) 70%);
-      filter: blur(20px);
-      animation: pulseGlow 3s infinite ease-in-out;
+      border: 1.5px solid rgba(0, 240, 255, 0.4);
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+      pointer-events: none;
     }
 
-    @keyframes pulseGlow {
-      0%, 100% { transform: scale(0.9); opacity: 0.6; }
-      50% { transform: scale(1.15); opacity: 1; }
+    .holo-gyro-1 {
+      width: 220px;
+      height: 220px;
+      animation: gyroRotate1 8s infinite linear;
     }
 
-    .mascot-img {
+    .holo-gyro-2 {
+      width: 190px;
+      height: 190px;
+      border-color: rgba(139, 92, 246, 0.45);
+      box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
+      animation: gyroRotate2 10s infinite linear reverse;
+    }
+
+    .holo-gyro-3 {
+      width: 240px;
+      height: 240px;
+      border-style: dashed;
+      border-color: rgba(0, 120, 212, 0.3);
+      animation: gyroRotate3 14s infinite linear;
+    }
+
+    @keyframes gyroRotate1 {
+      0% { transform: rotateX(65deg) rotateY(20deg) rotateZ(0deg); }
+      100% { transform: rotateX(65deg) rotateY(20deg) rotateZ(360deg); }
+    }
+
+    @keyframes gyroRotate2 {
+      0% { transform: rotateX(30deg) rotateY(65deg) rotateZ(0deg); }
+      100% { transform: rotateX(30deg) rotateY(65deg) rotateZ(360deg); }
+    }
+
+    @keyframes gyroRotate3 {
+      0% { transform: rotateX(75deg) rotateZ(0deg); }
+      100% { transform: rotateX(75deg) rotateZ(360deg); }
+    }
+
+    .holo-mascot {
       position: relative;
-      width: 100%;
-      height: 100%;
+      width: 170px;
+      height: 170px;
       object-fit: contain;
-      z-index: 2;
-      filter: drop-shadow(0 8px 24px rgba(0, 120, 212, 0.45));
+      z-index: 5;
+      filter: drop-shadow(0 10px 25px rgba(0, 240, 255, 0.5));
+      animation: floatMascot 4s ease-in-out infinite;
+    }
+
+    @keyframes floatMascot {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-8px) rotate(2deg); }
     }
 
     .intro-badge {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 6px 14px;
+      gap: 8px;
+      padding: 6px 16px;
       border-radius: var(--radius-full);
-      background: rgba(0, 120, 212, 0.15);
-      border: 1px solid rgba(0, 200, 248, 0.3);
+      background: rgba(0, 240, 255, 0.1);
+      border: 1px solid rgba(0, 240, 255, 0.35);
       color: var(--accent-cyan);
-      font-size: 11px;
+      font-size: 11.5px;
       font-weight: 700;
-      letter-spacing: 0.5px;
+      letter-spacing: 1px;
       margin-bottom: 12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
     }
 
     .intro-title {
-      font-size: 24px;
+      font-family: 'Space Grotesk', 'Prompt', sans-serif;
+      font-size: 26px;
       font-weight: 800;
-      color: #ffffff;
-      margin-bottom: 6px;
+      background: linear-gradient(135deg, #ffffff 0%, #00f0ff 60%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
       letter-spacing: -0.5px;
     }
 
     .intro-desc {
       font-size: 13px;
       color: var(--text-secondary);
-      max-width: 280px;
-      line-height: 1.5;
-      margin-bottom: 28px;
+      max-width: 300px;
+      line-height: 1.6;
+      margin-bottom: 30px;
     }
 
     .intro-loader {
-      width: 180px;
-      height: 4px;
-      border-radius: 2px;
+      width: 200px;
+      height: 5px;
+      border-radius: 4px;
       background: rgba(255, 255, 255, 0.1);
       overflow: hidden;
       position: relative;
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
     }
 
     .intro-loader-bar {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, #0078d4, #00c8f8);
-      border-radius: 2px;
-      animation: loadProgress 2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+      background: linear-gradient(90deg, #0078d4, #00f0ff, #8b5cf6);
+      border-radius: 4px;
+      animation: loadProgress 2.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
     }
 
     @keyframes loadProgress {
       0% { width: 0%; }
-      50% { width: 70%; }
+      50% { width: 75%; }
       100% { width: 100%; }
     }
 
     .intro-skip-hint {
-      margin-top: 14px;
+      margin-top: 16px;
       font-size: 11px;
       color: var(--text-muted);
       cursor: pointer;
@@ -1024,20 +1081,25 @@
 
   </div>
 
-  <!-- 1. CINEMATIC INTRO SPLASH SCREEN -->
+  <!-- Abstract 3D Motion Particle Canvas -->
+  <canvas id="motionCanvas"></canvas>
+
+  <!-- 1. CINEMATIC 3D INTRO SPLASH SCREEN (EXPLODED HOLOGRAM STAGE) -->
   <div class="intro-screen" id="introScreen" onclick="dismissIntro()">
-    <div class="mascot-stage">
-      <div class="mascot-glow"></div>
-      <img class="mascot-img" src="ktisx-reading-video.gif?v=10" onerror="this.src='/ktisx-reading-video.gif?v=10'" alt="KTIS X Mascot">
+    <div class="hologram-stage">
+      <div class="holo-gyro-1"></div>
+      <div class="holo-gyro-2"></div>
+      <div class="holo-gyro-3"></div>
+      <img class="holo-mascot" src="ktisx-reading-video.gif?v=11" onerror="this.src='/ktisx-reading-video.gif?v=11'" alt="KTIS X Mascot">
     </div>
 
     <div class="intro-badge">
       <svg class="icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
-      <span>MICROSOFT AGENT 365</span>
+      <span>FLUENT 3D MOTION · AGENT 365</span>
     </div>
 
     <h1 class="intro-title">KTIS X AI Assistant</h1>
-    <p class="intro-desc">ระบบผู้ช่วยอัจฉริยะองค์กร · เชื่อมต่อข้อมูลเรียลไทม์</p>
+    <p class="intro-desc">ระบบผู้ช่วยอัจฉริยะองค์กร 3D Motion · เชื่อมต่อข้อมูลเรียลไทม์</p>
 
     <div class="intro-loader">
       <div class="intro-loader-bar"></div>
@@ -1047,21 +1109,103 @@
   </div>
 
   <script>
-    let introTimer = null;
+    // 1. Abstract 3D Motion Graphics Canvas Engine
+    const canvas = document.getElementById('motionCanvas');
+    const ctx = canvas.getContext('2d');
+    let width, height;
+    let particles = [];
+    let shards = [];
 
+    function resizeCanvas() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    class Particle {
+      constructor() { this.reset(); }
+      reset() {
+        this.x = Math.random() * width;
+        this.y = Math.random() * height;
+        this.z = Math.random() * 500 + 50;
+        this.size = Math.random() * 2 + 1;
+        this.speedX = (Math.random() - 0.5) * 0.4;
+        this.speedY = (Math.random() - 0.5) * 0.4;
+        this.hue = Math.random() > 0.5 ? 190 : 260;
+        this.alpha = Math.random() * 0.5 + 0.2;
+      }
+      update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) this.reset();
+      }
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${this.hue}, 100%, 65%, ${this.alpha})`;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = `hsla(${this.hue}, 100%, 65%, 0.8)`;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    class GlassShard {
+      constructor() {
+        this.x = Math.random() * width;
+        this.y = Math.random() * height;
+        this.size = Math.random() * 40 + 20;
+        this.angle = Math.random() * Math.PI * 2;
+        this.rotSpeed = (Math.random() - 0.5) * 0.01;
+        this.speedY = -Math.random() * 0.3 - 0.1;
+      }
+      update() {
+        this.y += this.speedY;
+        this.angle += this.rotSpeed;
+        if (this.y < -50) this.y = height + 50;
+      }
+      draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        ctx.beginPath();
+        ctx.moveTo(0, -this.size);
+        ctx.lineTo(this.size * 0.86, this.size * 0.5);
+        ctx.lineTo(-this.size * 0.86, this.size * 0.5);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0, 240, 255, 0.03)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0, 240, 255, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    for (let i = 0; i < 40; i++) particles.push(new Particle());
+    for (let i = 0; i < 8; i++) shards.push(new GlassShard());
+
+    function animateMotion() {
+      ctx.clearRect(0, 0, width, height);
+      shards.forEach(s => { s.update(); s.draw(); });
+      particles.forEach(p => { p.update(); p.draw(); });
+      requestAnimationFrame(animateMotion);
+    }
+    animateMotion();
+
+    let introTimer = null;
     document.addEventListener('DOMContentLoaded', () => {
       initWeekStrip();
       introTimer = setTimeout(() => {
         dismissIntro();
-      }, 2200);
+      }, 2400);
     });
 
     function dismissIntro() {
       if (introTimer) clearTimeout(introTimer);
       const intro = document.getElementById('introScreen');
-      if (intro) {
-        intro.classList.add('fade-out');
-      }
+      if (intro) intro.classList.add('fade-out');
     }
 
     function showIntroAgain() {
@@ -1070,9 +1214,22 @@
         intro.classList.remove('fade-out');
         introTimer = setTimeout(() => {
           dismissIntro();
-        }, 2200);
+        }, 2400);
       }
     }
+
+    // 3D Card Interactive Tilt Effect
+    document.addEventListener('mousemove', (e) => {
+      const cards = document.querySelectorAll('.card-3d-tilt, .agenda-card-3d');
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      const dx = (e.clientX - cx) / cx;
+      const dy = (e.clientY - cy) / cy;
+
+      cards.forEach(card => {
+        card.style.transform = `perspective(1000px) rotateY(${dx * 5}deg) rotateX(${-dy * 5}deg)`;
+      });
+    });
 
     function switchTab(tabId) {
       document.querySelectorAll('.tab-page').forEach(el => el.classList.remove('active'));
