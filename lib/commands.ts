@@ -19,7 +19,7 @@ import { runWithTrace, trace } from "@/lib/trace";
 import { after } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { normalizeDue, resolveResponsible, ingestActionItems } from "@/lib/followup";
-import { normalizeThaiTypo, detectWrongKeyboard } from "@/lib/keyboard";
+import { normalizeThaiTypo, detectWrongKeyboard, suggestCorrectedNick } from "@/lib/keyboard";
 import { createHash } from "crypto";
 import {
   GraphEvent,
@@ -3841,14 +3841,58 @@ export async function runFindMeeting(
   );
   const unresolved = attendees.filter((a) => !a.mail && a.name).map((a) => a.name as string);
   if (!resolved.length) {
+    if (unresolved.length > 0) {
+      const suggestions: { original: string; suggested: string }[] = [];
+      for (const un of unresolved) {
+        const sugg = suggestCorrectedNick(un);
+        if (sugg) suggestions.push({ original: un, suggested: sugg });
+      }
+      if (suggestions.length > 0) {
+        const orig = suggestions[0].original;
+        const sugg = suggestions[0].suggested;
+        const correctedPrompt = `นัด${sugg}${window?.label ? ` ${window.label}` : ""}${atMin != null ? ` ตอน ${fmtHHMM(atMin)}` : ""}${subject && subject !== "ประชุม" ? ` เรื่อง ${subject}` : ""}`;
+        const replyMsg = `ไม่พบคนชื่อ "${orig}" ในระบบครับ หมายถึงคนชื่อ "${sugg}" ใช่ไหมครับ?`;
+        return {
+          intent: "confirm_person_typo",
+          reply: replyMsg,
+          suggestions: [
+            { label: `✅ ใช่ (${sugg})`, text: correctedPrompt },
+            { label: "❌ ไม่ใช่", text: "ไม่ใช่" },
+          ],
+        };
+      }
+      return {
+        intent: "find_meeting_time",
+        reply: `หาคนชื่อ "${unresolved.join(", ")}" ใน Microsoft 365 ไม่เจอครับ ลองระบุชื่อหรืออีเมลที่ชัดเจนอีกครั้งได้ไหมครับ`,
+      };
+    }
     return { intent: "find_meeting_time", reply: "หาคนที่จะดูตารางไม่เจอครับ ลองระบุชื่อ/อีเมลที่ชัดเจนอีกครั้งได้ไหม" };
   }
   if (unresolved.length) {
+    const suggestions: { original: string; suggested: string }[] = [];
+    for (const un of unresolved) {
+      const sugg = suggestCorrectedNick(un);
+      if (sugg) suggestions.push({ original: un, suggested: sugg });
+    }
+    if (suggestions.length > 0) {
+      const orig = suggestions[0].original;
+      const sugg = suggestions[0].suggested;
+      const correctedPrompt = `นัด${sugg}${window?.label ? ` ${window.label}` : ""}${atMin != null ? ` ตอน ${fmtHHMM(atMin)}` : ""}${subject && subject !== "ประชุม" ? ` เรื่อง ${subject}` : ""}`;
+      const replyMsg = `ไม่พบคนชื่อ "${orig}" ในระบบครับ หมายถึงคนชื่อ "${sugg}" ใช่ไหมครับ?`;
+      return {
+        intent: "confirm_person_typo",
+        reply: replyMsg,
+        suggestions: [
+          { label: `✅ ใช่ (${sugg})`, text: correctedPrompt },
+          { label: "❌ ไม่ใช่", text: "ไม่ใช่" },
+        ],
+      };
+    }
     return {
       intent: "find_meeting_time",
       reply:
-        `หา “${unresolved.join(", ")}” ใน Microsoft 365 ไม่เจอครับ\n` +
-        `ลองพิมพ์อีเมลของคนนี้มาด้วย เช่น “นัด ake@gmail.com กับ base@ktisgroup.com …”\n` +
+        `หา "${unresolved.join(", ")}" ใน Microsoft 365 ไม่เจอครับ\n` +
+        `ลองพิมพ์อีเมลของคนนี้มาด้วย เช่น "นัด ake@gmail.com กับ base@ktisgroup.com ..."\n` +
         `(คนที่เจอแล้ว: ${resolved.join(", ")})`,
     };
   }

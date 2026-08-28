@@ -318,3 +318,30 @@ export function detectWrongKeyboard(text: string): {
 
   return null;
 }
+
+/** Check if a name has a close colleague nickname typo and suggest the right name. */
+export function suggestCorrectedNick(name: string): string | null {
+  const n = (name || "").trim();
+  if (/^แบ[น]?ค์$/i.test(n) || /^แบค$/i.test(n) || /^แบ็ค$/i.test(n) || /^แบก์$/i.test(n) || /^แบค์$/i.test(n) || /^แบ้ง$/i.test(n)) {
+    return "แบงค์";
+  }
+  if (/^เบส[ทสศ]$/i.test(n) || /^เบท$/i.test(n) || /^บส$/i.test(n)) {
+    return "เบส";
+  }
+  if (/^นน[ท]$/i.test(n) || /^นันท์$/i.test(n) || /^นท์$/i.test(n)) {
+    return "นนท์";
+  }
+  if (/^เอม[มี่ส์]?$/i.test(n)) {
+    return "เอ็ม";
+  }
+  if (/^เอ๊ก|เอ็ก|เอกก์|เอ้ก$/i.test(n)) {
+    return "เอก";
+  }
+  if (/^บ็อม|บ๋อม|บอมบ์$/i.test(n)) {
+    return "บอม";
+  }
+  if (/^บอน$/i.test(n)) {
+    return "บอล";
+  }
+  return null;
+}
