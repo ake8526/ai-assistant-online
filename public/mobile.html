@@ -872,72 +872,267 @@
       font-weight: 600;
     }
 
-    /* Meeting Item */
-    .meeting-row {
+    /* ==========================================================================
+       EXECUTIVE SCHEDULE & CALENDAR DASHBOARD
+       ========================================================================== */
+    .date-strip-container {
       display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 12px;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 4px 2px 14px 2px;
+      margin-bottom: 16px;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .date-strip-container::-webkit-scrollbar { display: none; }
+
+    .date-pill {
+      flex: 0 0 54px;
+      height: 68px;
       background: rgba(255, 255, 255, 0.04);
-      border-radius: var(--radius-md);
-      border-left: 4px solid var(--ribbon-blue);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .date-pill .dp-day {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .date-pill .dp-num {
+      font-size: 17px;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    .date-pill .dp-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: transparent;
+    }
+
+    .date-pill.has-event .dp-dot {
+      background: var(--ribbon-cyan);
+      box-shadow: 0 0 6px var(--ribbon-cyan);
+    }
+
+    .date-pill.active {
+      background: linear-gradient(135deg, #0078d4 0%, #00a4ef 100%);
+      border-color: rgba(255, 255, 255, 0.4);
+      box-shadow: 0 6px 18px rgba(0, 120, 212, 0.5);
+      transform: translateY(-2px);
+    }
+
+    .date-pill.active .dp-day { color: rgba(255, 255, 255, 0.9); }
+    .date-pill.active .dp-num { color: #ffffff; }
+    .date-pill.active .dp-dot { background: #ffffff; }
+
+    /* Executive Metrics Strip */
+    .metrics-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .metric-box {
+      background: rgba(14, 25, 60, 0.7);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 14px;
+      padding: 10px 8px;
+      text-align: center;
+      backdrop-filter: blur(15px);
+    }
+
+    .metric-box .m-val {
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+      line-height: 1.2;
+    }
+
+    .metric-box .m-lbl {
+      font-size: 9.5px;
+      color: var(--text-muted);
+      margin-top: 3px;
+      font-weight: 600;
+    }
+
+    /* Timeline Cards */
+    .timeline-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .event-card {
+      background: linear-gradient(135deg, rgba(16, 28, 68, 0.85) 0%, rgba(8, 14, 38, 0.95) 100%);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 16px;
+      padding: 14px 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.2s;
+    }
+
+    .event-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: linear-gradient(180deg, #00c8f8 0%, #0078d4 100%);
+    }
+
+    .event-card.event-urgent::before {
+      background: linear-gradient(180deg, #f43f5e 0%, #fb923c 100%);
+    }
+
+    .event-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       margin-bottom: 8px;
     }
 
-    .meeting-time-box {
-      text-align: center;
-      min-width: 52px;
-    }
-
-    .meeting-time-box .m-start { font-size: 13px; font-weight: 700; color: #fff; }
-    .meeting-time-box .m-end { font-size: 10px; color: var(--text-muted); }
-
-    .meeting-info h4 {
-      font-size: 13px;
+    .event-time-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
       font-weight: 700;
-      color: #fff;
-      margin-bottom: 4px;
+      color: var(--ribbon-cyan);
+      background: rgba(0, 242, 254, 0.1);
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid rgba(0, 242, 254, 0.25);
     }
 
-    .meeting-tags {
+    .event-status-tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 12px;
+    }
+
+    .status-upcoming {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--ribbon-blue);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    .status-active {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .event-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 6px;
+      line-height: 1.35;
+    }
+
+    .event-meta-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 10px;
       font-size: 11px;
       color: var(--text-secondary);
+      margin-bottom: 10px;
     }
 
-    .tag-item {
+    .meta-tag {
       display: inline-flex;
       align-items: center;
       gap: 4px;
     }
 
-    /* Room Availability Card */
-    .room-box {
+    .event-actions-bar {
+      display: flex;
+      gap: 8px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .event-action-btn {
+      flex: 1;
+      padding: 7px 10px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .event-action-btn.btn-teams {
+      background: rgba(98, 100, 167, 0.3);
+      border-color: rgba(98, 100, 167, 0.6);
+      color: #a0a4ff;
+    }
+
+    .event-action-btn:active {
+      transform: scale(0.97);
+    }
+
+    /* Free Slot Card */
+    .free-slot-card {
+      border: 1px dashed rgba(0, 242, 254, 0.3);
+      border-radius: 14px;
+      padding: 12px 14px;
+      background: rgba(0, 242, 254, 0.03);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 14px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-lg);
+      transition: all 0.2s;
     }
 
-    .room-box h4 {
-      font-size: 13px;
+    .free-slot-card:hover {
+      background: rgba(0, 242, 254, 0.08);
+      border-color: var(--ribbon-cyan);
+    }
+
+    .free-slot-info {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .free-slot-info strong {
+      color: var(--ribbon-cyan);
+    }
+
+    .free-slot-btn {
+      padding: 6px 12px;
+      border-radius: 20px;
+      background: rgba(0, 242, 254, 0.15);
+      border: 1px solid var(--ribbon-cyan);
+      color: #ffffff;
+      font-size: 11px;
       font-weight: 700;
-      color: #fff;
-      margin-bottom: 2px;
+      cursor: pointer;
     }
-
-    .room-box p { font-size: 11px; color: var(--text-muted); }
-
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 12px;
       border-radius: 20px;
       background: rgba(16, 185, 129, 0.18);
       border: 1px solid rgba(16, 185, 129, 0.35);
@@ -1701,38 +1896,115 @@
 
         <!-- TAB 2: SCHEDULE -->
         <div class="tab-page" id="tab-schedule">
+          <!-- Header Bar -->
           <div class="section-header">
             <div class="section-title">
               <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
-              <span>ปฏิทิน Microsoft 365</span>
+              <span>ปฏิทินงานและการประชุม M365</span>
+            </div>
+            <span class="section-link" onclick="quickChat('ตารางวันนี้')">🔄 ซิงค์สด</span>
+          </div>
+
+          <!-- Dynamic 7-Day Week Strip -->
+          <div class="date-strip-container" id="scheduleDateStrip"></div>
+
+          <!-- Executive Summary Metrics -->
+          <div class="metrics-row">
+            <div class="metric-box">
+              <div class="m-val" id="metricEvents">2 งาน</div>
+              <div class="m-lbl">นัดหมายวันนี้</div>
+            </div>
+            <div class="metric-box">
+              <div class="m-val" id="metricFree">5.5 ชม.</div>
+              <div class="m-lbl">เวลาว่างรวม</div>
+            </div>
+            <div class="metric-box">
+              <div class="m-val" style="color:var(--accent-emerald);">ว่างพร้อม</div>
+              <div class="m-lbl">ห้องประชุม KTISX</div>
             </div>
           </div>
 
-          <div class="fluent-card" style="margin-bottom:12px;">
-            <div style="font-size:13px; font-weight:700; color:var(--ribbon-cyan); margin-bottom:10px;">
-              02/10/2026 (ตุลาคม 2569)
-            </div>
-            <div class="meeting-row">
-              <div class="meeting-time-box">
-                <div class="m-start">09:00</div>
-                <div class="m-end">10:00</div>
+          <!-- Timeline Events List -->
+          <div class="timeline-list" id="scheduleTimeline">
+            <!-- Event 1: Morning Brief & AI Sync -->
+            <div class="event-card">
+              <div class="event-top">
+                <span class="event-time-badge">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+                  09:30 - 10:30 น.
+                </span>
+                <span class="event-status-tag status-upcoming">เร็วๆ นี้</span>
               </div>
-              <div class="meeting-info">
-                <h4>Weekly Meeting</h4>
-                <div class="meeting-tags">
-                  <span class="tag-item">ห้อง KTISX (ชั้น 3)</span>
-                </div>
+              <div class="event-title">Weekly Meeting & ติดตามความคืบหน้าระบบ AI</div>
+              <div class="event-meta-row">
+                <span class="meta-tag">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
+                  ห้องประชุม KTISX (ชั้น 3)
+                </span>
+                <span class="meta-tag">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                  คุณวีระศักดิ์ (Host) + 4 ท่าน
+                </span>
+              </div>
+              <div class="event-actions-bar">
+                <button class="event-action-btn btn-teams" onclick="quickChat('ขอสรุปนัดหมาย Weekly Meeting')">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                  <span>สรุปวาระด้วย AI</span>
+                </button>
+                <button class="event-action-btn" onclick="quickChat('ขอเลื่อนประชุม Weekly Meeting')">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+                  <span>ขอเลื่อนเวลา</span>
+                </button>
               </div>
             </div>
-          </div>
 
-          <div class="fluent-card">
-            <div style="font-size:13px; font-weight:700; color:var(--ribbon-blue); margin-bottom:10px;">
-              03/09/2026 (พฤหัสบดี)
+            <!-- Free Slot 1 -->
+            <div class="free-slot-card">
+              <div class="free-slot-info">
+                <span>ช่วงว่าง: <strong>10:30 - 13:30 น.</strong> (ว่าง 3 ชม.)</span>
+              </div>
+              <button class="free-slot-btn" onclick="quickChat('นัดหมายช่วง 11 โมง')">+ จองเวลานี้</button>
             </div>
-            <p style="font-size:12px; color:var(--text-secondary); line-height:1.6;">
-              ไม่มีนัดประชุม — ว่างตลอดทั้งวัน (09:00 - 17:00 น.)
-            </p>
+
+            <!-- Event 2: Executive Project Review -->
+            <div class="event-card">
+              <div class="event-top">
+                <span class="event-time-badge" style="color:var(--ribbon-blue); background:rgba(56,189,248,0.1); border-color:rgba(56,189,248,0.25);">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+                  14:00 - 15:30 น.
+                </span>
+                <span class="event-status-tag status-upcoming">ช่วงบ่าย</span>
+              </div>
+              <div class="event-title">Executive Sync & Review การดำเนินงาน KTIS Group</div>
+              <div class="event-meta-row">
+                <span class="meta-tag">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
+                  Microsoft Teams Online
+                </span>
+                <span class="meta-tag">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                  ฝ่ายบริหารองค์กร
+                </span>
+              </div>
+              <div class="event-actions-bar">
+                <button class="event-action-btn btn-teams" onclick="quickChat('เปิดห้องประชุม Teams')">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
+                  <span>เข้าร่วม Teams</span>
+                </button>
+                <button class="event-action-btn" onclick="quickChat('ขอสรุปวาระประชุมบ่าย')">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                  <span>สรุปข้อมูล</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Free Slot 2 -->
+            <div class="free-slot-card">
+              <div class="free-slot-info">
+                <span>ช่วงว่าง: <strong>15:30 - 18:00 น.</strong> (ว่าง 2.5 ชม.)</span>
+              </div>
+              <button class="free-slot-btn" onclick="quickChat('พฤมีห้องว่างไหม')">+ เช็คห้องว่าง</button>
+            </div>
           </div>
         </div>
 
@@ -1955,6 +2227,7 @@
     // 1. Splash & Auth Flow
     window.addEventListener('DOMContentLoaded', () => {
       initParticles();
+      initScheduleDateStrip();
       setTimeout(() => {
         const isAuth = localStorage.getItem(AUTH_KEY) === "true";
         document.getElementById('introScreen').classList.add('fade-out');
@@ -1966,6 +2239,125 @@
         }
       }, 2000);
     });
+
+    // Dynamic 7-Day Date Strip & Schedule Switcher
+    function initScheduleDateStrip() {
+      const container = document.getElementById('scheduleDateStrip');
+      if (!container) return;
+
+      const daysOfWeek = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+      const today = new Date();
+      const currentDayIdx = today.getDay(); // 0-6
+      
+      // Calculate Monday of current week
+      const monday = new Date(today);
+      const diff = today.getDate() - currentDayIdx + (currentDayIdx === 0 ? -6 : 1);
+      monday.setDate(diff);
+
+      let html = '';
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+
+        const isToday = d.toDateString() === today.toDateString();
+        const dayLabel = daysOfWeek[d.getDay()];
+        const dateNum = d.getDate();
+        const hasEvent = (d.getDay() >= 1 && d.getDay() <= 5); // Mon-Fri has events
+
+        html += `
+          <div class="date-pill ${isToday ? 'active' : ''} ${hasEvent ? 'has-event' : ''}" onclick="selectScheduleDay(this, '${dayLabel}', ${dateNum})">
+            <span class="dp-day">${dayLabel}</span>
+            <span class="dp-num">${dateNum}</span>
+            <span class="dp-dot"></span>
+          </div>
+        `;
+      }
+      container.innerHTML = html;
+    }
+
+    function selectScheduleDay(elem, dayLabel, dateNum) {
+      document.querySelectorAll('.date-pill').forEach(el => el.classList.remove('active'));
+      elem.classList.add('active');
+
+      const isToday = elem.classList.contains('active') && elem.querySelector('.dp-dot').parentElement === elem && elem.querySelector('.dp-day').textContent.trim() === 'ศ.';
+      const timeline = document.getElementById('scheduleTimeline');
+      const metricEvents = document.getElementById('metricEvents');
+      const metricFree = document.getElementById('metricFree');
+
+      if (metricEvents) metricEvents.textContent = isToday ? '2 งาน' : 'ไม่มีนัด';
+      if (metricFree) metricFree.textContent = isToday ? '5.5 ชม.' : '8.0 ชม.';
+
+      if (!isToday) {
+        timeline.innerHTML = `
+          <div class="fluent-card" style="text-align:center; padding:28px 16px;">
+            <div style="font-size:32px; margin-bottom:8px;">🏖️</div>
+            <div style="font-size:14px; font-weight:700; color:#fff; margin-bottom:4px;">ไม่มีนัดหมายในวัน${dayLabel}ที่ ${dateNum}</div>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:16px;">ตารางงานว่างตลอดทั้งวัน สามารถให้ AI ช่วยจองเวลานัดหมายได้ครับ</p>
+            <button class="fluent-btn-primary" style="margin:0 auto; max-width:200px;" onclick="quickChat('จองห้องประชุมวัน${dayLabel}')">
+              <span>+ สร้างนัดหมายใหม่</span>
+            </button>
+          </div>
+        `;
+      } else {
+        timeline.innerHTML = `
+          <div class="event-card">
+            <div class="event-top">
+              <span class="event-time-badge">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+                09:30 - 10:30 น.
+              </span>
+              <span class="event-status-tag status-upcoming">เร็วๆ นี้</span>
+            </div>
+            <div class="event-title">Weekly Meeting & ติดตามความคืบหน้าระบบ AI</div>
+            <div class="event-meta-row">
+              <span class="meta-tag">ห้องประชุม KTISX (ชั้น 3)</span>
+              <span class="meta-tag">คุณวีระศักดิ์ (Host) + 4 ท่าน</span>
+            </div>
+            <div class="event-actions-bar">
+              <button class="event-action-btn btn-teams" onclick="quickChat('ขอสรุปนัดหมาย Weekly Meeting')">
+                <span>สรุปวาระด้วย AI</span>
+              </button>
+              <button class="event-action-btn" onclick="quickChat('ขอเลื่อนประชุม Weekly Meeting')">
+                <span>ขอเลื่อนเวลา</span>
+              </button>
+            </div>
+          </div>
+          <div class="free-slot-card">
+            <div class="free-slot-info">
+              <span>ช่วงว่าง: <strong>10:30 - 13:30 น.</strong> (ว่าง 3 ชม.)</span>
+            </div>
+            <button class="free-slot-btn" onclick="quickChat('นัดหมายช่วง 11 โมง')">+ จองเวลานี้</button>
+          </div>
+          <div class="event-card">
+            <div class="event-top">
+              <span class="event-time-badge" style="color:var(--ribbon-blue); background:rgba(56,189,248,0.1); border-color:rgba(56,189,248,0.25);">
+                14:00 - 15:30 น.
+              </span>
+              <span class="event-status-tag status-upcoming">ช่วงบ่าย</span>
+            </div>
+            <div class="event-title">Executive Sync & Review การดำเนินงาน KTIS Group</div>
+            <div class="event-meta-row">
+              <span class="meta-tag">Microsoft Teams Online</span>
+              <span class="meta-tag">ฝ่ายบริหารองค์กร</span>
+            </div>
+            <div class="event-actions-bar">
+              <button class="event-action-btn btn-teams" onclick="quickChat('เปิดห้องประชุม Teams')">
+                <span>เข้าร่วม Teams</span>
+              </button>
+              <button class="event-action-btn" onclick="quickChat('ขอสรุปวาระประชุมบ่าย')">
+                <span>สรุปข้อมูล</span>
+              </button>
+            </div>
+          </div>
+          <div class="free-slot-card">
+            <div class="free-slot-info">
+              <span>ช่วงว่าง: <strong>15:30 - 18:00 น.</strong> (ว่าง 2.5 ชม.)</span>
+            </div>
+            <button class="free-slot-btn" onclick="quickChat('พฤมีห้องว่างไหม')">+ เช็คห้องว่าง</button>
+          </div>
+        `;
+      }
+    }
 
     function showLoginScreen() {
       document.getElementById('loginScreen').classList.add('active');
