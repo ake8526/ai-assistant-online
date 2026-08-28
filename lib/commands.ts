@@ -4100,20 +4100,24 @@ export async function runFindMeeting(
     resolvedAt != null ? ` ตอน ${fmtHHMM(resolvedAt)}` : band?.label ? ` ${band.label}` : "";
   const attachNote = opts?.attachFile?.name ? `\n📎 จะแนบไฟล์: ${opts.attachFile.name}` : "";
   const photoNote = opts?.attachLinePhoto ? `\n📷 จะแนบรูปจาก LINE` : "";
-  const meetingBase = (): NonNullable<CommandResult["meeting"]> => ({
-    attendees: resolved,
-    duration,
-    subject,
-    window: window
-      ? {
-          start: wallIso(window.start),
-          end: wallIso(window.end),
-          label: dayLabel || window.label,
-        }
-      : undefined,
-    ...(opts?.attachFile ? { attach_file: opts.attachFile } : {}),
-    ...(opts?.attachLinePhoto ? { attach_line_photo: true } : {}),
-  });
+  const meetingBase = (): NonNullable<CommandResult["meeting"]> => {
+    const firstSlot = result.slots[0];
+    const firstSlotDate = firstSlot ? parseWall(firstSlot.start) : null;
+    const effStart = firstSlotDate ? startOfDay(firstSlotDate) : (window ? window.start : nowWall());
+    const effEnd = firstSlotDate ? endOfDay(firstSlotDate) : (window ? window.end : endOfDay(addDays(nowWall(), 5)));
+    return {
+      attendees: resolved,
+      duration,
+      subject,
+      window: {
+        start: wallIso(effStart),
+        end: wallIso(effEnd),
+        label: dayLabel || window?.label || fmtDate(effStart),
+      },
+      ...(opts?.attachFile ? { attach_file: opts.attachFile } : {}),
+      ...(opts?.attachLinePhoto ? { attach_line_photo: true } : {}),
+    };
+  };
   if (!result.slots.length) {
     if (opts?.showMore && totalFound > 0 && offset >= totalFound) {
       return {
@@ -5595,11 +5599,25 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     const isAlt = isAlternativeTimeRequest(text);
     const dayFollow = !isAlt && (isDayFollowUp(text) || isDayBandFollowUp(text));
     const band = isAlt ? null : (dayFollow ? timeBandFromText(text.replace(/เช้ส/g, "เช้า")) : timeBandFromText(text));
-    const window = isAlt
-      ? upcomingAlternativeWindow()
-      : (dayFollow
-        ? windowFromDayFollowUp(text)
-        : windowFromStored(context.last_meeting) || dayHintFromText(text));
+    let window: MtWindow | null = null;
+    if (isAlt) {
+      const prevWindow = windowFromStored(context.last_meeting);
+      if (prevWindow?.start) {
+        const nextDayStart = startOfDay(addDays(prevWindow.start, 1));
+        const nextDayEnd = endOfDay(addDays(nextDayStart, 5));
+        window = {
+          start: nextDayStart,
+          end: nextDayEnd,
+          label: `${fmtDate(nextDayStart)} เป็นต้นไป`,
+        };
+      } else {
+        window = upcomingAlternativeWindow();
+      }
+    } else if (dayFollow) {
+      window = windowFromDayFollowUp(text);
+    } else {
+      window = windowFromStored(context.last_meeting) || dayHintFromText(text);
+    }
     trace(
       "parse",
       `★ AI:NONE · intent=find_meeting_time (${isAlt ? "แนะนำเวลาอื่น" : (dayFollow ? "ติดตามวัน" : "ติดตามเวลา")} ไม่เรียก API)`

@@ -280,7 +280,7 @@ function detailText(res: CommandResult, upn?: string, cardHandled = false): stri
   if ((res.intent === "choose_person" || res.intent === "choose_mt_person") && Array.isArray(res.choices)) {
     if (cardHandled) return "";
     lines = (res.choices as Choice[]).filter((c) => c.mail).map((c, i) => `${i + 1}) ${c.displayName || c.mail} — ${c.mail}`);
-  } else if (Array.isArray(res.slots) && res.slots.length && (res.intent === "availability" || res.intent === "choose_slot")) {
+  } else if (Array.isArray(res.slots) && res.slots.length && (res.intent === "availability" || res.intent === "choose_slot" || res.intent === "find_meeting_time")) {
     const ranges = Array.isArray(res.ranges) ? (res.ranges as Slot[]) : [];
     const slots = res.slots as Slot[];
     const parts: string[] = [];
@@ -422,13 +422,16 @@ async function saveCtx(upn: string, prev: CommandContext | undefined, res: Comma
 
   // Log assistant reply to chat_logs for LLM fine-tuning
   if (res.reply?.trim()) {
+    let fullLogged = res.reply;
+    const extra = detailText(res, upn, false);
+    if (extra) fullLogged += extra;
     after(async () => {
       await logChatTurn({
         session_id: upn,
         user_upn: upn,
         channel: "line",
         role: "assistant",
-        content: res.reply,
+        content: fullLogged,
         metadata: { intent: res.intent },
       });
     });
@@ -1729,13 +1732,16 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       await sendResult(ev.replyToken, res, upn);
       trace("reply", `ตอบกลับ (${res.intent})`);
       if (res.reply?.trim()) {
+        let fullLogged = res.reply;
+        const extra = detailText(res, upn, false);
+        if (extra) fullLogged += extra;
         after(async () => {
           await logChatTurn({
             session_id: upn,
             user_upn: upn,
             channel: "line",
             role: "assistant",
-            content: res.reply,
+            content: fullLogged,
             metadata: { intent: res.intent },
           });
         });
