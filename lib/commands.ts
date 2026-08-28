@@ -5753,11 +5753,12 @@ async function handleParsed(
     const yearBe = now.getUTCFullYear() + 543;
     const hh = String(now.getUTCHours()).padStart(2, "0");
     const mm = String(now.getUTCMinutes()).padStart(2, "0");
+    const ss = String(now.getUTCSeconds()).padStart(2, "0");
 
     const reply =
       `🕐 **วันและเวลาปัจจุบัน (ประเทศไทย)**\n\n` +
       `📅 **วัน${dayName}ที่ ${dateNum} ${monthName} ${yearBe}**\n` +
-      `⏰ **เวลา ${hh}:${mm} น.**`;
+      `⏰ **เวลา ${hh}:${mm}:${ss} น.**`;
 
     return {
       intent: "current_datetime",
