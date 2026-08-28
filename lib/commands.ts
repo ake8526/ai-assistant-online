@@ -887,6 +887,14 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     if (m) return { intent: "test_meeting", params: { query: (m[1] || "").trim() } };
   }
 
+  // Current time & date query — e.g. "เวลาปัจจุบัน", "วันปัจจุบัน", "ตอนนี้กี่โมง", "วันนี้วันที่เท่าไหร่", "วันนี้วันอะไร", "วันที่ปัจจุบัน"
+  if (
+    /^(?:เวลาปัจจุบัน|วันปัจจุบัน|วันที่ปัจจุบัน|เวลาตอนนี้|ตอนนี้เวลาเท่าไหร่|ตอนนี้กี่โมง|กี่โมงแล้ว|วันนี้วันที่เท่าไหร่|วันนี้วันอะไร|วันนี้วันที่เท่าไร|วันอะไร|วันที่เท่าไหร่|วันที่เท่าไร|เวลา|วันที่)[!?.\s]*$/i.test(t) ||
+    /^(?:ขอทราบ|บอก|ดู|เช็ค|เช็ก)?(?:เวลา|วันที่|วันและเวลา|วัน)(?:ปัจจุบัน|ตอนนี้)[!?.\s]*$/i.test(t)
+  ) {
+    return { intent: "current_datetime", params: {} };
+  }
+
   // Month agenda check — e.g. "เดือน10มีนัดไหม", "ตารางเดือนตุลา", "เดือนนี้มีประชุมอะไรบ้าง"
   if (
     !/^(?:นัด|ชวน|เชิญ|จอง)/.test(t) &&
@@ -5527,6 +5535,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       quick?.intent === "preview_summary_link" ||
       quick?.intent === "test_meeting" ||
       quick?.intent === "meeting_durations" ||
+      quick?.intent === "current_datetime" ||
       quick?.intent === "help_menu" ||
       quick?.intent === "preview_morning" ||
       quick?.intent === "search_files" ||
@@ -5728,6 +5737,31 @@ async function handleParsed(
         { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
         { label: "ตารางวันนี้", text: "ตารางวันนี้" },
       ],
+    };
+  }
+
+  if (intent === "current_datetime") {
+    const now = nowWall();
+    const thaiDayNames = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+    const thaiMonthNames = [
+      "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+      "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม",
+    ];
+    const dayName = thaiDayNames[now.getUTCDay()];
+    const dateNum = now.getUTCDate();
+    const monthName = thaiMonthNames[now.getUTCMonth()];
+    const yearBe = now.getUTCFullYear() + 543;
+    const hh = String(now.getUTCHours()).padStart(2, "0");
+    const mm = String(now.getUTCMinutes()).padStart(2, "0");
+
+    const reply =
+      `🕐 **วันและเวลาปัจจุบัน (ประเทศไทย)**\n\n` +
+      `📅 **วัน${dayName}ที่ ${dateNum} ${monthName} ${yearBe}**\n` +
+      `⏰ **เวลา ${hh}:${mm} น.**`;
+
+    return {
+      intent: "current_datetime",
+      reply,
     };
   }
 
