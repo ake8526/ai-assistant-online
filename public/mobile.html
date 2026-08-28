@@ -477,46 +477,115 @@
     .sso-card {
       width: 100%;
       max-width: 360px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       backdrop-filter: blur(25px);
-      border-radius: 20px;
-      padding: 16px 18px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+      border-radius: 24px;
+      padding: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.12);
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
 
+    /* Luminous Cyber-Fluent Action Button Wrapper */
+    .sso-btn-wrapper {
+      position: relative;
+      width: 100%;
+      border-radius: 16px;
+      padding: 2px;
+      background: linear-gradient(135deg, #00f2fe, #38bdf8, #818cf8, #c084fc, #00f2fe);
+      background-size: 300% 300%;
+      animation: ssoBorderGlow 4s linear infinite;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 25px rgba(0, 242, 254, 0.35);
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes ssoBorderGlow {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .sso-btn-wrapper:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 35px rgba(0, 0, 0, 0.6), 0 0 35px rgba(0, 242, 254, 0.55);
+    }
+
+    .sso-btn-wrapper:active {
+      transform: scale(0.97);
+    }
+
     .sso-ms-button {
       width: 100%;
-      padding: 15px 20px;
+      padding: 14px 16px;
       border-radius: 14px;
-      background: #ffffff;
-      color: #0f172a;
-      font-size: 14px;
-      font-weight: 700;
+      background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 60%, #e2e8f0 100%);
+      color: #090e24;
+      font-size: 14.5px;
+      font-weight: 800;
       border: none;
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 12px;
+      justify-content: space-between;
       cursor: pointer;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.2);
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: inset 0 1px 1px #ffffff, 0 4px 12px rgba(0, 0, 0, 0.15);
       position: relative;
       overflow: hidden;
     }
 
-    .sso-ms-button:hover {
-      background: #f8fafc;
-      transform: translateY(-2px);
-      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(56, 189, 248, 0.35);
+    .sso-btn-content {
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
 
-    .sso-ms-button:active {
-      transform: scale(0.98);
-      background: #e2e8f0;
+    .sso-ms-emblem {
+      display: grid;
+      grid-template-columns: repeat(2, 8px);
+      gap: 2.5px;
+      padding: 6px;
+      background: rgba(15, 23, 42, 0.05);
+      border-radius: 8px;
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+    }
+
+    .sso-ms-arrow {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #0f172a;
+      color: #00f2fe;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      transition: transform 0.2s ease;
+    }
+
+    .sso-btn-wrapper:hover .sso-ms-arrow {
+      transform: translateX(3px);
+      background: #0284c7;
+      color: #ffffff;
+    }
+
+    .sso-ms-button::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 60%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+      transform: skewX(-20deg);
+      animation: ssoBtnShimmer 3.5s infinite;
+    }
+
+    @keyframes ssoBtnShimmer {
+      0% { left: -100%; }
+      30% { left: 140%; }
+      100% { left: 140%; }
     }
 
     .sso-trust-line {
@@ -1258,15 +1327,22 @@
 
       <!-- Executive Action Card -->
       <div class="sso-card">
-        <button class="sso-ms-button" onclick="performM365Login()">
-          <div class="ms-grid-4" style="grid-template-columns: repeat(2, 9px); gap: 3px;">
-            <div class="t-red" style="width:9px; height:9px; border-radius:1px;"></div>
-            <div class="t-green" style="width:9px; height:9px; border-radius:1px;"></div>
-            <div class="t-blue" style="width:9px; height:9px; border-radius:1px;"></div>
-            <div class="t-yellow" style="width:9px; height:9px; border-radius:1px;"></div>
-          </div>
-          <span>เข้าสู่ระบบด้วย Microsoft 365</span>
-        </button>
+        <div class="sso-btn-wrapper" onclick="performM365Login()">
+          <button class="sso-ms-button">
+            <div class="sso-btn-content">
+              <div class="sso-ms-emblem">
+                <div class="t-red" style="width:8px; height:8px; border-radius:1px;"></div>
+                <div class="t-green" style="width:8px; height:8px; border-radius:1px;"></div>
+                <div class="t-blue" style="width:8px; height:8px; border-radius:1px;"></div>
+                <div class="t-yellow" style="width:8px; height:8px; border-radius:1px;"></div>
+              </div>
+              <span>เข้าสู่ระบบด้วย Microsoft 365</span>
+            </div>
+            <div class="sso-ms-arrow">
+              <svg class="icon icon-sm" style="width:15px; height:15px;" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+          </button>
+        </div>
 
         <div class="sso-trust-line">
           <svg class="icon icon-sm" style="width:14px; height:14px; color:var(--accent-emerald);" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>

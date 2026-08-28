@@ -81,19 +81,30 @@ function LoginGate() {
         </div>
 
         {/* Action Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10 backdrop-blur-xl shadow-2xl shadow-black/60 space-y-3">
-          <button
+        <div className="p-4 sm:p-5 rounded-3xl bg-white/[0.03] border border-white/10 backdrop-blur-xl shadow-2xl shadow-black/60 space-y-3">
+          <div
             onClick={() => login()}
-            className="w-full inline-flex items-center justify-center gap-3 px-5 py-3.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-sm transition-all duration-200 shadow-lg hover:shadow-sky-500/20 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+            className="relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-sky-400 via-indigo-500 to-fuchsia-500 shadow-[0_10px_25px_rgba(0,0,0,0.5),0_0_25px_rgba(0,242,254,0.35)] hover:shadow-[0_16px_35px_rgba(0,0,0,0.6),0_0_35px_rgba(0,242,254,0.55)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 cursor-pointer group"
           >
-            <div className="grid grid-cols-2 gap-1 w-4 h-4">
-              <span className="bg-[#f25022] rounded-[1px]" />
-              <span className="bg-[#7fba00] rounded-[1px]" />
-              <span className="bg-[#00a4ef] rounded-[1px]" />
-              <span className="bg-[#ffb900] rounded-[1px]" />
-            </div>
-            เข้าสู่ระบบด้วย Microsoft 365
-          </button>
+            <button
+              className="w-full flex items-center justify-between px-4 sm:px-5 py-3.5 rounded-[14px] bg-gradient-to-r from-white via-slate-50 to-slate-100 text-slate-950 font-extrabold text-[14.5px] border-none shadow-[inset_0_1px_1px_#ffffff]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="grid grid-cols-2 gap-1 p-1.5 rounded-lg bg-slate-900/5 shadow-inner">
+                  <span className="w-2 h-2 bg-[#f25022] rounded-[1px] shadow-[0_0_8px_rgba(242,80,34,0.6)]" />
+                  <span className="w-2 h-2 bg-[#7fba00] rounded-[1px] shadow-[0_0_8px_rgba(127,186,0,0.6)]" />
+                  <span className="w-2 h-2 bg-[#00a4ef] rounded-[1px] shadow-[0_0_8px_rgba(0,164,239,0.6)]" />
+                  <span className="w-2 h-2 bg-[#ffb900] rounded-[1px] shadow-[0_0_8px_rgba(255,185,0,0.6)]" />
+                </div>
+                <span>เข้าสู่ระบบด้วย Microsoft 365</span>
+              </div>
+              <div className="w-7 h-7 rounded-full bg-slate-950 text-cyan-400 flex items-center justify-center shadow-md group-hover:bg-sky-600 group-hover:text-white group-hover:translate-x-1 transition-all duration-200">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </div>
+            </button>
+          </div>
           <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-medium">
             <span className="text-emerald-400">🛡️</span>
             <span>ความปลอดภัยระดับองค์กร (Microsoft Entra ID SSO)</span>
