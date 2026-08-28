@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>KTIS X AI Assistant — Mobile App</title>
+  <!-- Google Fonts: Inter & Prompt -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#0d1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    :root {
+      --bg-primary: #0a0d14;
+      --bg-surface: #121824;
+      --bg-glass: rgba(18, 24, 36, 0.85);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(0, 230, 153, 0.3);
+      --text-primary: #f0f6fc;
+      --text-secondary: #8b949e;
+      --accent-green: #00e699;
+      --accent-green-glow: rgba(0, 230, 153, 0.25);
+      --accent-blue: #38bdf8;
+      --accent-purple: #a855f7;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --bottom-nav-h: 74px;
+      --top-nav-h: 64px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Prompt', 'Inter', -apple-system, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      background-color: #030712;
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    /* Mobile Frame Wrapper */
+    .phone-container {
+      width: 100%;
+      max-width: 430px;
+      height: 100vh;
+      max-height: 932px;
+      background: var(--bg-primary);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    }
+
+    @media (min-width: 480px) {
+      .phone-container {
+        height: 880px;
+        border-radius: 40px;
+      }
+    }
+
+    /* Header Bar */
+    .app-header {
+      height: var(--top-nav-h);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-glass);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-user {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .avatar-wrapper {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #00e699, #0284c7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+      color: #000;
+      box-shadow: 0 0 15px var(--accent-green-glow);
+    }
+
+    .online-badge {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #22c55e;
+      border: 2px solid var(--bg-primary);
+    }
+
+    .user-info h2 {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    .user-info p {
+      font-size: 11px;
+      color: var(--accent-green);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .icon-btn:active {
+      transform: scale(0.92);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .badge-dot {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-red);
+      box-shadow: 0 0 8px var(--accent-red);
+    }
+
+    /* Content Area */
+    .app-content {
+      flex: 1;
+      overflow-y: auto;
+      padding-bottom: calc(var(--bottom-nav-h) + 16px);
+      -webkit-overflow-scrolling: touch;
+      position: relative;
+    }
+
+    .app-content::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* Tab Page Views */
+    .tab-page {
+      display: none;
+      padding: 16px;
+      animation: fadeIn 0.25s ease-out forwards;
+    }
+
+    .tab-page.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Hero Banner: Unlimited Push Alert Box */
+    .hero-banner {
+      background: linear-gradient(135deg, rgba(0, 230, 153, 0.15), rgba(56, 189, 248, 0.08));
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      margin-bottom: 18px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-banner::after {
+      content: '';
+      position: absolute;
+      top: -30px;
+      right: -30px;
+      width: 100px;
+      height: 100px;
+      background: radial-gradient(circle, var(--accent-green-glow) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .hero-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pulse-tag {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: rgba(0, 230, 153, 0.2);
+      color: var(--accent-green);
+      font-weight: 600;
+      border: 1px solid rgba(0, 230, 153, 0.4);
+    }
+
+    .hero-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+
+    .hero-btn {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--accent-green);
+      color: #000;
+      font-weight: 600;
+      font-size: 13px;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 14px var(--accent-green-glow);
+      transition: all 0.2s;
+    }
+
+    .hero-btn:active {
+      transform: scale(0.97);
+    }
+
+    /* Section Headers */
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .section-title span {
+      color: var(--accent-blue);
+      font-size: 12px;
+      font-weight: 500;
+      text-transform: none;
+      cursor: pointer;
+    }
+
+    /* Schedule Card */
+    .schedule-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+
+    .clock-display {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+    }
+
+    .live-time {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #fff;
+    }
+
+    .live-date {
+      font-size: 12px;
+      color: var(--accent-green);
+      font-weight: 500;
+    }
+
+    .meeting-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: var(--radius-md);
+      margin-bottom: 10px;
+      border-left: 4px solid var(--accent-green);
+      transition: background 0.2s;
+    }
+
+    .meeting-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .meeting-time {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 50px;
+    }
+
+    .meeting-time .start {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .meeting-time .end {
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+
+    .meeting-details {
+      flex: 1;
+    }
+
+    .meeting-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .meeting-meta {
+      font-size: 11px;
+      color: var(--text-secondary);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .meta-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Room Status Card */
+    .room-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .room-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .room-info h4 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .room-info p {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .room-status {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status-available {
+      background: rgba(0, 230, 153, 0.15);
+      color: var(--accent-green);
+      border: 1px solid rgba(0, 230, 153, 0.3);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* Quick Action Chips */
+    .quick-actions {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      margin-bottom: 18px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .quick-actions::-webkit-scrollbar {
+      display: none;
+    }
+
+    .action-chip {
+      flex-shrink: 0;
+      padding: 8px 14px;
+      border-radius: 30px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .action-chip:active {
+      transform: scale(0.94);
+      border-color: var(--accent-green);
+      background: rgba(0, 230, 153, 0.1);
+    }
+
+    /* Chat Tab View */
+    .chat-view {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - var(--top-nav-h) - var(--bottom-nav-h));
+      max-height: 740px;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .chat-bubble {
+      max-width: 85%;
+      padding: 12px 14px;
+      border-radius: var(--radius-lg);
+      font-size: 13px;
+      line-height: 1.45;
+      position: relative;
+      word-break: break-word;
+    }
+
+    .bubble-user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .bubble-bot {
+      align-self: flex-start;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      border-bottom-left-radius: 4px;
+    }
+
+    .bubble-time {
+      font-size: 9px;
+      color: rgba(255, 255, 255, 0.5);
+      margin-top: 4px;
+      text-align: right;
+    }
+
+    .chat-input-bar {
+      padding: 10px 12px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(15px);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .chat-input {
+      flex: 1;
+      height: 42px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 0 16px;
+      font-size: 13px;
+      color: #fff;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .chat-input:focus {
+      border-color: var(--accent-green);
+    }
+
+    .send-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      border: none;
+      color: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    /* Bottom Navigation Bar */
+    .bottom-nav {
+      height: var(--bottom-nav-h);
+      background: var(--bg-glass);
+      backdrop-filter: blur(25px);
+      border-top: 1px solid var(--border);
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 0 10px;
+      z-index: 100;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 10px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      transition: all 0.2s;
+    }
+
+    .nav-item.active {
+      color: var(--accent-green);
+    }
+
+    .nav-icon {
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    /* Toast Notification Floating Banner */
+    .floating-toast {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      background: rgba(18, 24, 36, 0.95);
+      border: 1px solid var(--accent-green);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 20px var(--accent-green-glow);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      z-index: 999;
+      transform: translateY(-120%);
+      transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .floating-toast.show {
+      transform: translateY(0);
+    }
+
+    .toast-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--accent-green-glow);
+      color: var(--accent-green);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .toast-body h4 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 2px;
+    }
+
+    .toast-body p {
+      font-size: 11px;
+      color: var(--text-secondary);
+      line-height: 1.35;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="phone-container">
+    
+    <!-- Floating Push Toast Alert (Simulated Native Push) -->
+    <div class="floating-toast" id="floatingToast">
+      <div class="toast-icon">🔔</div>
+      <div class="toast-body">
+        <h4 id="toastTitle">แจ้งเตือนประชุมถัดไป</h4>
+        <p id="toastBody">อีก 15 นาที: Weekly Meeting (09:00 - 10:00 น.) ณ ห้อง KTISX ชั้น 3</p>
+      </div>
+    </div>
+
+    <!-- App Header -->
+    <header class="app-header">
+      <div class="header-user">
+        <div class="avatar-wrapper">
+          เอก
+          <div class="online-badge"></div>
+        </div>
+        <div class="user-info">
+          <h2>Weerasak (เอก)</h2>
+          <p>● ออนไลน์ (Outlook Live)</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" onclick="testInstantNotification()" title="ทดสอบ Push Notification">
+          🔔
+          <div class="badge-dot"></div>
+        </button>
+        <button class="icon-btn" onclick="switchTab('settings')" title="ตั้งค่า">
+          ⚙️
+        </button>
+      </div>
+    </header>
+
+    <!-- App Content Pages -->
+    <main class="app-content">
+
+      <!-- TAB 1: HOME / DASHBOARD -->
+      <div class="tab-page active" id="tab-home">
+        
+        <!-- Hero: Web Push Solution Banner -->
+        <div class="hero-banner">
+          <div class="hero-header">
+            <div class="hero-title">⚡ ระบบแจ้งเตือนอิสระ (ไม่พึ่งโควตา LINE)</div>
+            <div class="pulse-tag">ฟรี ไม่จำกัด</div>
+          </div>
+          <p class="hero-desc">
+            รับเสียงเตือนล่วงหน้า 15 นาทีก่อนเริ่มประชุม พร้อมเด้ง Notification บนจอมือถือทันที แม้ปิดหน้าจออยู่
+          </p>
+          <button class="hero-btn" onclick="testInstantNotification()">
+            <span>🔔 ทดสอบยิง Push Notification + เสียงเตือน</span>
+          </button>
+        </div>
+
+        <!-- Quick AI Command Chips -->
+        <div class="section-title">
+          <span>คำสั่งด่วน AI</span>
+          <span onclick="switchTab('chat')">เปิดแชทเต็ม ➜</span>
+        </div>
+        <div class="quick-actions">
+          <div class="action-chip" onclick="quickSend('พฤมีห้องว่างไหม')">🏢 พฤมีห้องว่างไหม</div>
+          <div class="action-chip" onclick="quickSend('เวลาปัจจุบัน')">⏰ เวลาปัจจุบัน</div>
+          <div class="action-chip" onclick="quickSend('ตารางวันนี้')">📅 ตารางวันนี้</div>
+          <div class="action-chip" onclick="quickSend('ข่าววันนี้')">📰 ข่าววันนี้</div>
+          <div class="action-chip" onclick="quickSend('ขอดูเพิ่มเติม')">🔍 ขอดูเพิ่มเติม</div>
+        </div>
+
+        <!-- Schedule Today -->
+        <div class="schedule-card">
+          <div class="clock-display">
+            <div>
+              <div class="live-time" id="liveClock">--:--:--</div>
+              <div class="live-date" id="liveDate">กำลังโหลดวันที่...</div>
+            </div>
+            <div style="text-align: right;">
+              <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: var(--accent-blue); padding: 4px 8px; border-radius: 12px; font-weight: 600;">
+                วันนี้ 1 รายการ
+              </span>
+            </div>
+          </div>
+
+          <div class="meeting-item">
+            <div class="meeting-time">
+              <span class="start">09:00</span>
+              <span class="end">10:00</span>
+            </div>
+            <div class="meeting-details">
+              <div class="meeting-title">Weekly Meeting</div>
+              <div class="meeting-meta">
+                <span class="meta-tag">🏢 ห้อง KTISX (ชั้น 3)</span>
+                <span class="meta-tag">💻 Teams Meeting</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Meeting Room Availability -->
+        <div class="section-title">
+          <span>ห้องประชุม KTISX</span>
+          <span onclick="quickSend('พฤมีห้องว่างไหม')">เช็กคิวว่าง ➜</span>
+        </div>
+        <div class="room-grid">
+          <div class="room-card">
+            <div class="room-info">
+              <h4>ห้องประชุม KTISX (ชั้น 3)</h4>
+              <p>ktisx_room_fl3@ktisgroup.com</p>
+            </div>
+            <div class="room-status status-available">
+              <div class="status-dot"></div>
+              <span>พร้อมใช้งาน</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- TAB 2: SCHEDULE -->
+      <div class="tab-page" id="tab-schedule">
+        <div class="section-title">
+          <span>ปฏิทินนัดหมายทั้งหมด</span>
+        </div>
+        <div class="schedule-card" style="margin-bottom: 12px;">
+          <h3 style="font-size: 14px; margin-bottom: 10px; color: var(--accent-green);">📅 02/10/2026 (ตุลาคม 2569)</h3>
+          <div class="meeting-item">
+            <div class="meeting-time">
+              <span class="start">09:00</span>
+              <span class="end">10:00</span>
+            </div>
+            <div class="meeting-details">
+              <div class="meeting-title">Weekly Meeting</div>
+              <div class="meeting-meta">
+                <span class="meta-tag">🏢 ห้อง KTISX (ชั้น 3)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="schedule-card">
+          <h3 style="font-size: 14px; margin-bottom: 10px; color: var(--accent-blue);">📅 03/09/2026 (พฤหัสบดี)</h3>
+          <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
+            ว่างตลอดทั้งวัน: 09:00 - 17:00 น.
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: AI CHAT CONSOLE -->
+      <div class="tab-page" id="tab-chat" style="padding: 0;">
+        <div class="chat-view">
+          <div class="chat-messages" id="chatMessages">
+            <div class="chat-bubble bubble-bot">
+              สวัสดีครับคุณเอก! มีอะไรให้ผมช่วยจัดการตารางนัดหมาย ห้องประชุม หรือสรุปงานวันนี้ไหมครับ? 😊
+              <div class="bubble-time">15:40 น.</div>
+            </div>
+          </div>
+          <div class="chat-input-bar">
+            <input type="text" class="chat-input" id="chatInput" placeholder="พิมพ์สั่งงาน เช่น 'พฤมีห้องว่างไหม'..." onkeypress="handleKey(event)">
+            <button class="send-btn" onclick="sendMessage()">➤</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: SETTINGS & NOTIFICATIONS -->
+      <div class="tab-page" id="tab-settings">
+        <div class="section-title"><span>ตั้งค่าการแจ้งเตือน</span></div>
+        <div class="schedule-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div>
+              <div style="font-size:13px; font-weight:600;">🔔 แจ้งเตือนล่วงหน้า 15 นาที</div>
+              <div style="font-size:11px; color:var(--text-secondary);">ส่งแจ้งเตือนเข้าจอมือถือทันที</div>
+            </div>
+            <input type="checkbox" checked style="accent-color: var(--accent-green); width: 20px; height: 20px;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div>
+              <div style="font-size:13px; font-weight:600;">🔊 เสียงเตือนแบบชัดเจน</div>
+              <div style="font-size:11px; color:var(--text-secondary);">มีเสียงแจ้งเตือนสำหรับประชุมด่วน</div>
+            </div>
+            <input type="checkbox" checked style="accent-color: var(--accent-green); width: 20px; height: 20px;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:13px; font-weight:600;">☀️ สรุปยามเช้า (Morning Brief)</div>
+              <div style="font-size:11px; color:var(--text-secondary);">ส่งเวลา 07:00 น. ทุกวันทำงาน</div>
+            </div>
+            <input type="checkbox" checked style="accent-color: var(--accent-green); width: 20px; height: 20px;">
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bottom-nav">
+      <div class="nav-item active" onclick="switchTab('home')" id="nav-home">
+        <div class="nav-icon">🏠</div>
+        <span>หน้าหลัก</span>
+      </div>
+      <div class="nav-item" onclick="switchTab('schedule')" id="nav-schedule">
+        <div class="nav-icon">📅</div>
+        <span>ตารางนัด</span>
+      </div>
+      <div class="nav-item" onclick="switchTab('chat')" id="nav-chat">
+        <div class="nav-icon">🤖</div>
+        <span>สั่งงาน AI</span>
+      </div>
+      <div class="nav-item" onclick="switchTab('settings')" id="nav-settings">
+        <div class="nav-icon">⚙️</div>
+        <span>ตั้งค่า</span>
+      </div>
+    </nav>
+
+  </div>
+
+  <script>
+    // Live Clock & Date
+    function updateClock() {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      document.getElementById('liveClock').textContent = `${hh}:${mm}:${ss} น.`;
+
+      const dayNames = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
+      const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+      const dateStr = `${dayNames[now.getDay()]}ที่ ${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear() + 543}`;
+      document.getElementById('liveDate').textContent = dateStr;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Tab Navigation
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-page').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      
+      const targetPage = document.getElementById(`tab-${tabId}`);
+      const targetNav = document.getElementById(`nav-${tabId}`);
+      if (targetPage) targetPage.classList.add('active');
+      if (targetNav) targetNav.classList.add('active');
+    }
+
+    // Audio Notification Synthesizer (Chime Sound)
+    function playNotificationSound() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12); // A5
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.6);
+      } catch (e) {
+        console.log("Audio not allowed yet:", e);
+      }
+    }
+
+    // Native & Floating Push Notification Trigger
+    function testInstantNotification() {
+      playNotificationSound();
+
+      // Show in-app floating banner
+      const toast = document.getElementById('floatingToast');
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 4000);
+
+      // Trigger Browser/Mobile System Notification if permitted
+      if ("Notification" in window) {
+        if (Notification.permission === "granted") {
+          new Notification("🔔 ประชุมถัดไป: Weekly Meeting", {
+            body: "เริ่มในอีก 15 นาที ณ ห้อง KTISX (ชั้น 3)",
+            icon: "https://ktis-ai-assistant.vercel.app/favicon.ico",
+            badge: "https://ktis-ai-assistant.vercel.app/favicon.ico"
+          });
+        } else if (Notification.permission !== "denied") {
+          Notification.requestPermission().then(permission => {
+            if (permission === "granted") {
+              new Notification("🔔 ประชุมถัดไป: Weekly Meeting", {
+                body: "เริ่มในอีก 15 นาที ณ ห้อง KTISX (ชั้น 3)"
+              });
+            }
+          });
+        }
+      }
+    }
+
+    // Quick Command Helper
+    function quickSend(cmdText) {
+      switchTab('chat');
+      const input = document.getElementById('chatInput');
+      input.value = cmdText;
+      sendMessage();
+    }
+
+    // Chat Message Handling
+    function handleKey(e) {
+      if (e.key === 'Enter') sendMessage();
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+
+      const container = document.getElementById('chatMessages');
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} น.`;
+
+      // Append User Bubble
+      const userBubble = document.createElement('div');
+      userBubble.className = 'chat-bubble bubble-user';
+      userBubble.innerHTML = `${text}<div class="bubble-time">${timeStr}</div>`;
+      container.appendChild(userBubble);
+      container.scrollTop = container.scrollHeight;
+
+      // Bot Bubble with Live Response
+      const botBubble = document.createElement('div');
+      botBubble.className = 'chat-bubble bubble-bot';
+      botBubble.innerHTML = `กำลังตรวจสอบข้อมูล...<div class="bubble-time">${timeStr}</div>`;
+      container.appendChild(botBubble);
+      container.scrollTop = container.scrollHeight;
+
+      // Call Backend API or Instant Simulator
+      try {
+        const res = await fetch('https://ktis-ai-assistant.vercel.app/api/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, userUpn: 'weerasak.p@ktisgroup.com' })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          botBubble.innerHTML = `${data.reply || data.text || 'รับทราบครับ'}<div class="bubble-time">${timeStr}</div>`;
+          container.scrollTop = container.scrollHeight;
+          return;
+        }
+      } catch (err) {
+        // Local Smart Fallback if offline / CORS
+        let mockReply = "รับทราบครับ";
+        if (text.includes("พฤ") || text.includes("ห้อง")) {
+          mockReply = "🏢 **เจอเวลาที่ห้อง KTISX ว่างตรงกัน (03/09/2026)**:\n1) 09:00-09:30\n2) 09:30-10:00\n3) 10:00-10:30\n4) 10:30-11:00\n\nแตะเลือกเวลาที่ต้องการจองได้เลยครับ 👍";
+        } else if (text.includes("เวลา")) {
+          mockReply = `🕐 **วันและเวลาปัจจุบัน**:\nวันศุกร์ที่ 28 สิงหาคม 2569\nเวลา ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')} น.`;
+        } else if (text.includes("ตาราง")) {
+          mockReply = "📅 **ตารางวันนี้ (28/08/2569)**:\n- 09:00-10:00 Weekly Meeting (ห้อง KTISX)";
+        } else if (text.includes("เพิ่มเติม")) {
+          mockReply = "🔍 **ช่วงว่างวันถัดไป (04/09/2026 เป็นต้นไป)**:\n1) 04/09 09:00-09:30\n2) 04/09 10:00-10:30\n3) 04/09 13:30-14:00";
+        }
+        botBubble.innerHTML = `${mockReply}<div class="bubble-time">${timeStr}</div>`;
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+  </script>
+</body>
+</html>
