@@ -354,6 +354,27 @@ export function resolveThaiMonthRange(
     return { start: first, end: next, label: `เดือนที่แล้ว (${names[first.getUTCMonth()]} ${first.getUTCFullYear() + 543})` };
   }
 
+  // Numeric month like "เดือน10", "เดือน 10", "เดือน10 2569", "เดือน10มีนัดไหม"
+  const numMonthM = /(?:^|[^\d\u0E00-\u0E7F])เดือน\s*(1[0-2]|[1-9])(?:\s*(?:พ\.?\s*ศ\.?\s*)?(\d{4}|\d{2}))?(?=[^\u0E00-\u0E7F]|$)/u.exec(t);
+  if (numMonthM) {
+    const mo = parseInt(numMonthM[1], 10);
+    let year = now.getUTCFullYear();
+    if (numMonthM[2]) {
+      let y = Number(numMonthM[2]);
+      if (y > 2400) y -= 543;
+      else if (y < 100) y += y > 50 ? 2400 - 543 : 2000;
+      year = y;
+    } else {
+      const monthsAhead = mo - 1 - now.getUTCMonth();
+      if (monthsAhead > 6) year -= 1;
+      if (/ปีที่แล้ว|ปีก่อน/u.test(t)) year -= 1;
+      if (/ปีหน้า/u.test(t)) year += 1;
+    }
+    const start = new Date(Date.UTC(year, mo - 1, 1));
+    const end = new Date(Date.UTC(year, mo, 1));
+    return { start, end, label: `เดือน${names[mo - 1]} ${year + 543}` };
+  }
+
   const m = THAI_MONTH_ONLY.exec(t);
   if (!m) return null;
   const mo = thaiMonthNum(m[1]!);

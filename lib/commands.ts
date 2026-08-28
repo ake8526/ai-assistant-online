@@ -887,6 +887,18 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     if (m) return { intent: "test_meeting", params: { query: (m[1] || "").trim() } };
   }
 
+  // Month agenda check — e.g. "เดือน10มีนัดไหม", "ตารางเดือนตุลา", "เดือนนี้มีประชุมอะไรบ้าง"
+  if (
+    !/^(?:นัด|ชวน|เชิญ|จอง)/.test(t) &&
+    (/(?:มี)?(?:นัด|ประชุม|ตาราง).*(?:เดือน|ม\.ค|ก\.พ|มี\.ค|เม\.ย|พ\.ค|มิ\.ย|ก\.ค|ส\.ค|ก\.ย|ต\.ค|พ\.ย|ธ\.ค|มกรา|กุมภา|มีนา|เมษา|พฤษภา|มิถุนา|กรกฎา|สิงหา|กันยา|ตุลา|พฤศจิ|ธันวา)/i.test(t) ||
+      /(?:เดือน|ม\.ค|ก\.พ|มี\.ค|เม\.ย|พ\.ค|มิ\.ย|ก\.ค|ส\.ค|ก\.ย|ต\.ค|พ\.ย|ธ\.ค|มกรา|กุมภา|มีนา|เมษา|พฤษภา|มิถุนา|กรกฎา|สิงหา|กันยา|ตุลา|พฤศจิ|ธันวา).*(?:มี)?(?:นัด|ประชุม|ตาราง|ไหม|บ้าง)/i.test(t))
+  ) {
+    const monthRange = resolveThaiMonthRange(t);
+    if (monthRange) {
+      return { intent: "get_schedule", params: { period: "month" } };
+    }
+  }
+
   // Meeting booking / availability check (single, multi-person, or room booking) — e.g. "จองห้องktisxพุธนี้บ่ายสาม", "นัดแบงค์วันจันทร์นี้10โมงเรื่องทดสอบ"
   {
     const matchingRooms = findMatchingRooms(t);
