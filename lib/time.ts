@@ -355,7 +355,7 @@ export function resolveThaiMonthRange(
   }
 
   // Numeric month like "เดือน10", "เดือน 10", "เดือน10 2569", "เดือน10มีนัดไหม"
-  const numMonthM = /(?:^|[^\d\u0E00-\u0E7F])เดือน\s*(1[0-2]|[1-9])(?:\s*(?:พ\.?\s*ศ\.?\s*)?(\d{4}|\d{2}))?(?=[^\u0E00-\u0E7F]|$)/u.exec(t);
+  const numMonthM = /(?:^|[^\d])เดือน\s*(1[0-2]|[1-9])(?!\d)(?:\s*(?:พ\.?\s*ศ\.?\s*)?(\d{4}|\d{2}))?/u.exec(t);
   if (numMonthM) {
     const mo = parseInt(numMonthM[1], 10);
     let year = now.getUTCFullYear();
