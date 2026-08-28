@@ -7,6 +7,7 @@ import { inflateRawSync } from "zlib";
 import { getUserGraphToken, runAsAppOnly } from "@/lib/graphAuth";
 import { trace } from "@/lib/trace";
 import { parseWall, wallIso } from "@/lib/time";
+import { findRoomByText, isMeetingRoomEmail, getRoomDisplayName } from "@/lib/meetingRooms";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -866,6 +867,9 @@ async function lookupUserByMail(mailOrUpn: string): Promise<UserInfo | null> {
   const raw = mailOrUpn.trim();
   const key = raw.toLowerCase();
   if (!key.includes("@")) return null;
+  if (isMeetingRoomEmail(key)) {
+    return { mail: key, displayName: getRoomDisplayName(key) };
+  }
   const cached = resolveCache.get(key);
   // Ignore prior failed lookups that stored email as the "name"
   if (cached?.displayName && cached.displayName.toLowerCase() !== key && !cached.displayName.includes("@")) {
@@ -915,6 +919,10 @@ async function lookupUserByMail(mailOrUpn: string): Promise<UserInfo | null> {
 export async function resolveUserInfo(nameOrEmail: string): Promise<UserInfo | null> {
   const q = nameOrEmail.trim();
   if (!q) return null;
+  const room = findRoomByText(q);
+  if (room) {
+    return { mail: room.email, displayName: `🏢 ${room.name}` };
+  }
   if (q.includes("@")) return lookupUserByMail(q);
   if (resolveCache.has(q)) return resolveCache.get(q)!;
   const candidates = await searchUsers(q);

@@ -108,6 +108,7 @@ import {
   utcIsoToWall,
   wallIso,
 } from "@/lib/time";
+import { findRoomByText, isMeetingRoomEmail, getRoomDisplayName } from "@/lib/meetingRooms";
 
 const WORK_START_HOUR = Number(process.env.WORK_START_HOUR || 9);
 const WORK_END_HOUR = Number(process.env.WORK_END_HOUR || 17);
@@ -916,20 +917,24 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
       }
 
       // Room / Location extraction (e.g. ที่ห้องktisx, ห้องประชุม 1)
-      const roomM = t.match(/(?:ที่)?(ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+)/i);
-      const room = roomM ? roomM[1].trim() : undefined;
+      const matchedRoom = findRoomByText(t);
+      const roomM = !matchedRoom ? t.match(/(?:ที่)?(ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+)/i) : null;
+      const room = matchedRoom ? matchedRoom.name : (roomM ? roomM[1].trim() : undefined);
 
       let note: string | undefined = undefined;
       const noteM = t.match(/เรื่อง\s*(.+)$/);
       if (noteM) {
         note = noteM[1].replace(/(?:ที่)?ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+/gi, "").trim();
-      } else if (room) {
-        note = `ประชุม (${room})`;
       } else {
         note = "ประชุม";
       }
 
-      const params: Record<string, unknown> = { attendees: people };
+      const attendees = [...people];
+      if (matchedRoom && !attendees.some((a) => a.toLowerCase() === matchedRoom.email.toLowerCase())) {
+        attendees.push(matchedRoom.email);
+      }
+
+      const params: Record<string, unknown> = { attendees };
       if (weekday) params.weekday = weekday;
       if (period) params.period = period;
       if (at) params.at = at;
@@ -4153,6 +4158,10 @@ async function formatAttendeeLines(attendees: MtAttendee[]): Promise<string> {
   for (const a of attendees) {
     const mail = (a.mail || "").trim().toLowerCase();
     if (!mail) continue;
+    if (isMeetingRoomEmail(mail)) {
+      lines.push(`${getRoomDisplayName(mail)} · ${mail}`);
+      continue;
+    }
     let name = (a.name || "").trim();
     const nameIsMail = !name || name.toLowerCase() === mail || name.includes("@");
     if (nameIsMail) {
@@ -7595,6 +7604,13 @@ async function handleParsed(
     } else if (!attendeeTokens.length) {
       attendeeTokens = (context?.last_meeting?.attendees || []).map(String);
     }
+
+    // If text mentions a known meeting room, add the room email to attendees
+    const recognizedRoom = findRoomByText(text);
+    if (recognizedRoom && !attendeeTokens.some((tok) => tok.toLowerCase() === recognizedRoom.email.toLowerCase())) {
+      attendeeTokens.push(recognizedRoom.email);
+    }
+
     const attendees: MtAttendee[] = attendeeTokens.map((token) =>
       attendeeFromToken(String(token), userUpn)
     );
