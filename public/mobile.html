@@ -1103,24 +1103,26 @@
     }
 
     .bubble {
-      display: inline-block;
+      display: inline-flex;
+      flex-direction: column;
       width: fit-content;
       max-width: 100%;
-      padding: 9px 13px;
-      border-radius: 16px;
+      padding: 8px 12px;
+      border-radius: 14px;
       font-size: 13px;
-      line-height: 1.45;
+      line-height: 1.4;
       position: relative;
       word-break: break-word;
-      white-space: pre-wrap;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+      white-space: normal;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+      box-sizing: border-box;
     }
 
     .bubble-bot {
-      background: rgba(14, 25, 60, 0.9);
+      background: rgba(14, 25, 60, 0.92);
       border: 1px solid rgba(56, 189, 248, 0.25);
       color: #f1f5f9;
-      border-bottom-left-radius: 4px;
+      border-bottom-left-radius: 3px;
       backdrop-filter: blur(16px);
     }
 
@@ -1129,16 +1131,22 @@
       color: #ffffff;
       font-weight: 500;
       border: 1px solid rgba(255, 255, 255, 0.2);
-      border-bottom-right-radius: 4px;
-      box-shadow: 0 4px 14px rgba(0, 120, 212, 0.4);
+      border-bottom-right-radius: 3px;
+      box-shadow: 0 3px 12px rgba(0, 120, 212, 0.35);
+    }
+
+    .bubble-text {
+      display: block;
+      margin: 0;
+      padding: 0;
     }
 
     .bubble-meta {
       font-size: 9px;
       opacity: 0.55;
       margin-top: 3px;
+      align-self: flex-end;
       display: block;
-      text-align: right;
     }
 
     .bubble-user .bubble-meta {
@@ -1757,7 +1765,7 @@
                   <img src="ktisx-reading-video.gif?v=8" onerror="this.src='/ktisx-reading-video.gif?v=8'" alt="AI">
                 </div>
                 <div class="bubble bubble-bot">
-                  สวัสดีครับคุณเอก! 👋 ผมคือผู้ช่วย AI พร้อมช่วยค้นหาตารางงาน เช็คห้องประชุม หรือนัดหมาย Microsoft 365 ได้เลยครับ
+                  <div class="bubble-text">สวัสดีครับคุณเอก! 👋 ผมคือผู้ช่วย AI พร้อมช่วยค้นหาตารางงาน เช็คห้องประชุม หรือนัดหมาย Microsoft 365 ได้เลยครับ</div>
                   <div class="bubble-meta">พร้อมใช้งาน</div>
                 </div>
               </div>
@@ -2109,7 +2117,7 @@
       // User Bubble
       const uRow = document.createElement('div');
       uRow.className = 'chat-msg-row msg-user';
-      uRow.innerHTML = `<div class="bubble bubble-user">${formatMarkdown(text)}<div class="bubble-meta">${timeStr}</div></div>`;
+      uRow.innerHTML = `<div class="bubble bubble-user"><div class="bubble-text">${formatMarkdown(text)}</div><div class="bubble-meta">${timeStr}</div></div>`;
       stream.appendChild(uRow);
       stream.scrollTop = stream.scrollHeight;
 
@@ -2121,7 +2129,7 @@
           <img src="ktisx-reading-video.gif?v=8" onerror="this.src='/ktisx-reading-video.gif?v=8'" alt="AI">
         </div>
         <div class="bubble bubble-bot">
-          กำลังค้นหาข้อมูลสดจาก Microsoft 365... ⏳
+          <div class="bubble-text">กำลังค้นหาข้อมูลสดจาก Microsoft 365... ⏳</div>
           <div class="bubble-meta">${timeStr}</div>
         </div>
       `;
@@ -2178,12 +2186,12 @@
         }
 
         if (botBubble) {
-          botBubble.innerHTML = `${replyHtml}<div class="bubble-meta">${timeStr}</div>`;
+          botBubble.innerHTML = `<div class="bubble-text">${replyHtml}</div><div class="bubble-meta">${timeStr}</div>`;
         }
         stream.scrollTop = stream.scrollHeight;
       } else {
         if (botBubble) {
-          botBubble.innerHTML = `ขออภัยครับ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ<div class="bubble-meta">${timeStr}</div>`;
+          botBubble.innerHTML = `<div class="bubble-text">ขออภัยครับ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ</div><div class="bubble-meta">${timeStr}</div>`;
         }
       }
     }
