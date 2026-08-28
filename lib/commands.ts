@@ -884,7 +884,7 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   // Meeting booking / availability check (single or multi-person) — e.g. "นัดแบงค์วันจันทร์นี้10โมงเรื่องทดสอบ"
   {
     const people = peopleFromText(t);
-    if (people.length >= 1 && /^(?:นัด|นัดคุยกับ|นัดประชุมกับ|นัดหมายกับ|จองคิวกับ|จองคิว|จองนัด)(?!ตาราง|วันนี้|พรุ่งนี้|มะรืน|เช้า|บ่าย|เย็น|ข่าว|งาน)/i.test(t)) {
+    if (people.length >= 1 && /^(?:นัด|ชวน|เชิญ|จอง|นัดคุยกับ|นัดประชุมกับ|นัดหมายกับ|ชวนคุยกับ|ชวนประชุมกับ|จองคิวกับ|จองคิว|จองนัด)(?!ตาราง|วันนี้|พรุ่งนี้|มะรืน|เช้า|บ่าย|เย็น|ข่าว|งาน)/i.test(t)) {
       const weekday = /วันจันทร์|จันทร์/.test(t)
         ? "mon"
         : /วันอังคาร|อังคาร/.test(t)
@@ -909,13 +909,27 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
         if (/บ่าย/i.test(t) && hr < 12) hr += 12;
         at = `${String(hr).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
       }
+
+      // Room / Location extraction (e.g. ที่ห้องktisx, ห้องประชุม 1)
+      const roomM = t.match(/(?:ที่)?(ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+)/i);
+      const room = roomM ? roomM[1].trim() : undefined;
+
+      let note: string | undefined = undefined;
       const noteM = t.match(/เรื่อง\s*(.+)$/);
-      const note = noteM ? noteM[1].trim() : undefined;
+      if (noteM) {
+        note = noteM[1].replace(/(?:ที่)?ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+/gi, "").trim();
+      } else if (room) {
+        note = `ประชุม (${room})`;
+      } else {
+        note = "ประชุม";
+      }
+
       const params: Record<string, unknown> = { attendees: people };
       if (weekday) params.weekday = weekday;
       if (period) params.period = period;
       if (at) params.at = at;
       if (note) params.note = note;
+      if (room) params.room = room;
       return {
         intent: "find_meeting_time",
         params,
@@ -7624,6 +7638,11 @@ async function handleParsed(
       };
     }
     let subject = String(params.note || params.subject || "ประชุม").trim() || "ประชุม";
+    // Clean up subject if it only contains verbs and room without real "เรื่อง"
+    if (/^(?:คุย|นัด|ชวน|มาคุย)?(?:ที่)?ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+$/i.test(subject)) {
+      const rm = subject.match(/(?:ที่)?(ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+)/i);
+      subject = rm ? `ประชุม (${rm[1].trim()})` : "ประชุม";
+    }
     let atMin = parseHHMM(params.at);
     let meetDuration = duration;
 
