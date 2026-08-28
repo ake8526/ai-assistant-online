@@ -847,6 +847,11 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
 
   // "ทำอะไรได้บ้าง" — the question every new user asks first, and until now the
   // only answer was whatever the model improvised. Fixed rules, no API call.
+  // Cancellation / Rejection (e.g. "ไม่ใช่", "ไม่เอา", "ยกเลิก")
+  if (/^(?:ไม่ใช่|ไม่ใช่ครับ|ไม่ใช่ค่ะ|ไม่ใช่จ้า|ไม่เอา|ไม่ใช่อันนี้|ไม่ใช่อันนั้น|ไม่ใช่คนนี้|ผิด|cancel|ยกเลิก)[!?.\s]*$/i.test(t)) {
+    return { intent: "cancel_action", params: {} };
+  }
+
   if (
     /^(?:\/?(?:ช่วยเหลือ|ช่วยด้วย|ช่วยหน่อย|คำสั่ง|คู่มือ|help|menu|เมนู|start|เริ่ม)|ช่วยเรื่องอื่น|ขอ(?:ดู)?(?:คำสั่ง|รายการคำสั่ง|เมนู|คู่มือ)|ดู(?:คำสั่ง|เมนู|คู่มือ)|(?:มี|ทำ|สั่ง|สั่งงาน|ใช้)(?:อะไร|คำสั่งอะไร)(?:ได้)?(?:บ้าง|ไหม)?|ทำอะไรได้(?:บ้าง)?|สั่งอะไรได้(?:บ้าง)?|สั่งงานอะไรได้(?:บ้าง)?|มีคำสั่งอะไร(?:บ้าง)?|มีอะไรให้ใช้(?:บ้าง)?|ใช้(?:งาน)?(?:ยัง)?ไง|ใช้อะไรได้(?:บ้าง)?|คู่มือ(?:การใช้งาน|คำสั่ง)?)[!?.\s]*$/i.test(t)
   ) {
@@ -4558,6 +4563,14 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     }
   }
 
+  // Direct negative response / cancellation of previous question / typo prompt
+  if (/^(?:ไม่ใช่|ไม่ใช่ครับ|ไม่ใช่ค่ะ|ไม่ใช่จ้า|ไม่เอา|ไม่ใช่อันนี้|ไม่ใช่อันนั้น|ไม่ใช่คนนี้|ผิด|cancel|ยกเลิก)[!?.\s]*$/i.test(text)) {
+    return {
+      intent: "cancel_action",
+      reply: "รับทราบครับ ยกเลิกรายการแล้วครับ 👍\nพิมพ์คำสั่งใหม่หรือบอกสิ่งที่ต้องการให้ช่วยได้เลยครับ",
+    };
+  }
+
   // Normalize common Thai typos / spelling mistakes (e.g. พรุ้งนี้ -> พรุ่งนี้)
   text = normalizeThaiTypo(text);
 
@@ -5594,6 +5607,13 @@ async function handleParsed(
         { label: "/นัดพรุ่งนี้", text: "/นัดพรุ่งนี้" },
         { label: "/ช่วยเหลือ", text: "/ช่วยเหลือ" },
       ],
+    };
+  }
+
+  if (intent === "cancel_action") {
+    return {
+      intent: "cancel_action",
+      reply: "รับทราบครับ ยกเลิกรายการแล้วครับ 👍\nพิมพ์คำสั่งใหม่หรือบอกสิ่งที่ต้องการให้ช่วยได้เลยครับ",
     };
   }
 
