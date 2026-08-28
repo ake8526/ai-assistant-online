@@ -214,13 +214,17 @@
       justify-content: center;
       z-index: 10;
       animation: robotHoverFloat 4s ease-in-out infinite alternate;
+      will-change: transform;
+      transform: translate3d(0, 0, 0);
     }
 
     .robot-base-img {
       width: 100%;
       height: 100%;
       object-fit: contain;
-      filter: drop-shadow(0 15px 30px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 25px rgba(0, 242, 254, 0.5));
+      filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 20px rgba(0, 242, 254, 0.45));
+      transform: translateZ(0);
+      backface-visibility: hidden;
     }
 
     @keyframes robotHoverFloat {
@@ -238,11 +242,7 @@
       filter: blur(8px);
       z-index: 4;
       animation: shadowPulse 4s ease-in-out infinite alternate;
-    }
-
-    @keyframes shadowPulse {
-      0% { transform: scale(1.15); opacity: 0.9; }
-      100% { transform: scale(0.85); opacity: 0.4; }
+      will-change: transform, opacity;
     }
 
     @keyframes shadowPulse {
@@ -438,17 +438,21 @@
       z-index: 10;
     }
 
-    .deck-robot-img {
+    .deck-robot-img,
+    .deck-mascot-center .robot-base-img {
       width: 100%;
       height: 100%;
       object-fit: contain;
-      filter: drop-shadow(0 15px 25px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 20px rgba(0, 242, 254, 0.6));
+      filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 18px rgba(0, 242, 254, 0.5));
       animation: deckRobotHover 4s ease-in-out infinite alternate;
+      will-change: transform;
+      transform: translate3d(0, 0, 0);
+      backface-visibility: hidden;
     }
 
     @keyframes deckRobotHover {
-      0% { transform: translateY(-5px) scale(0.98); }
-      100% { transform: translateY(6px) scale(1.02); }
+      0% { transform: translateY(-4px) scale(0.99); }
+      100% { transform: translateY(5px) scale(1.01); }
     }
 
     .deck-pedestal-ring {
