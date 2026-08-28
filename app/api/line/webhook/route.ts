@@ -60,7 +60,7 @@ type LineEvent = {
     latitude?: number;
     longitude?: number;
   };
-  postback?: { data?: string };
+  postback?: { data?: string; params?: Record<string, string>; displayText?: string };
 };
 
 
@@ -827,6 +827,35 @@ function parseCustomMeetingWindow(
   return { start: wallIso(start), end: wallIso(end) };
 }
 
+async function replyAndLog(
+  upn: string,
+  replyToken: string,
+  messageOrText: any,
+  metadata?: Record<string, unknown>
+): Promise<void> {
+  const content =
+    typeof messageOrText === "string"
+      ? messageOrText
+      : String((messageOrText as { text?: string }).text || (messageOrText as { altText?: string }).altText || "การ์ดตอบกลับ");
+  if (typeof messageOrText === "string") {
+    await replyLine(replyToken, messageOrText);
+  } else {
+    await replyLineMessages(replyToken, [messageOrText as Parameters<typeof replyLineMessages>[1][number]]);
+  }
+  if (content.trim()) {
+    after(async () => {
+      await logChatTurn({
+        session_id: upn,
+        user_upn: upn,
+        channel: "line",
+        role: "assistant",
+        content,
+        metadata,
+      });
+    });
+  }
+}
+
 async function handleBookingFlow(upn: string, act: string, params: URLSearchParams, replyToken: string): Promise<void> {
   if (act === "book") {
     const ctx = await loadCtx(upn);
@@ -843,7 +872,7 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       ts: Date.now(),
     };
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [await confirmCardMessage(draft, "", upn)]);
+    await replyAndLog(upn, replyToken, await confirmCardMessage(draft, "", upn), { action: act });
     return;
   }
 
@@ -862,7 +891,9 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
       ts: Date.now(),
     };
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [
+    await replyAndLog(
+      upn,
+      replyToken,
       textWithDraftEscape(
         "พิมพ์วันและเวลาที่ต้องการจองได้เลยครับ เช่น\n" +
           "• พรุ่งนี้ 10:00-11:00\n" +
@@ -872,25 +903,29 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
           `${draft.durationMin} นาที)\n\n` +
           "หรือกด /ล้างความจำ · /ยกเลิก ด้านล่างได้ครับ"
       ),
-    ]);
+      { action: act }
+    );
     return;
   }
 
   const draft = await loadDraft(upn);
   if (!draft) {
-    await replyLine(replyToken, "ไม่พบรายการนัดที่ค้างอยู่ (อาจหมดเวลา 30 นาที) — เริ่มเลือกช่วงเวลาใหม่อีกครั้งได้ครับ");
+    await replyAndLog(upn, replyToken, "ไม่พบรายการนัดที่ค้างอยู่ (อาจหมดเวลา 30 นาที) — เริ่มเลือกช่วงเวลาใหม่อีกครั้งได้ครับ", { action: act });
     return;
   }
 
   if (act === "setsubj") {
     draft.await = "subject";
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [
+    await replyAndLog(
+      upn,
+      replyToken,
       textWithDraftEscape(
         "พิมพ์หัวข้อประชุมมาได้เลยครับ (เช่น “อัปเดตงาน IT”)\n" +
           "ถ้าอยากใส่รายละเอียดด้วย — ขึ้นบรรทัดใหม่ต่อท้ายได้เลย"
       ),
-    ]);
+      { action: act }
+    );
     return;
   }
   if (act === "settime") {
@@ -903,7 +938,9 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
     draft.durationMin = dur;
     draft.await = "custom_time";
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [
+    await replyAndLog(
+      upn,
+      replyToken,
       textWithDraftEscape(
         "พิมพ์วันและเวลาใหม่ได้เลยครับ เช่น\n" +
           "• วันนี้ 18:00-18:30\n" +
@@ -911,41 +948,53 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
           "• 10:00-11:00\n\n" +
           "หรือกด /ล้างความจำ · /ยกเลิก ด้านล่างได้ครับ"
       ),
-    ]);
+      { action: act }
+    );
     return;
   }
   if (act === "setdetail") {
     draft.await = "detail";
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [
+    await replyAndLog(
+      upn,
+      replyToken,
       textWithDraftEscape("พิมพ์รายละเอียด/วาระการประชุมมาได้เลยครับ (จะแนบไว้ในคำเชิญ)"),
-    ]);
+      { action: act }
+    );
     return;
   }
   if (act === "addppl") {
     draft.await = "attendee";
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [
+    await replyAndLog(
+      upn,
+      replyToken,
       textWithDraftEscape("พิมพ์ชื่อคนที่จะเพิ่มเข้าประชุมครับ (หลายคนคั่นด้วย , หรือขึ้นบรรทัดใหม่)"),
-    ]);
+      { action: act }
+    );
     return;
   }
   if (act === "rmppl") {
     if (!draft.attendees.length) {
-      await replyLineMessages(replyToken, [await confirmCardMessage(draft, "ยังไม่มีผู้เข้าร่วมให้ลบครับ\n\n", upn)]);
+      await replyAndLog(upn, replyToken, await confirmCardMessage(draft, "ยังไม่มีผู้เข้าร่วมให้ลบครับ\n\n", upn), { action: act });
       return;
     }
     if (draft.attendees.length === 1) {
       const removed = draft.attendees[0];
       draft.attendees = [];
       await saveDraft(upn, draft);
-      await replyLineMessages(replyToken, [
+      await replyAndLog(
+        upn,
+        replyToken,
         await confirmCardMessage(draft, `ลบออกแล้ว: ${removed}\n(ยังไม่มีผู้เข้าร่วม — เพิ่มคนก่อนยืนยันได้ครับ)\n\n`, upn),
-      ]);
+        { action: act }
+      );
       return;
     }
     const lines = draft.attendees.map((a, i) => `${i + 1}) ${a}`);
-    await replyLineMessages(replyToken, [
+    await replyAndLog(
+      upn,
+      replyToken,
       {
         type: "text",
         text: `เลือกคนที่จะลบออกครับ 👇\n${lines.join("\n")}`,
@@ -970,34 +1019,35 @@ async function handleBookingFlow(upn: string, act: string, params: URLSearchPara
           ],
         },
       },
-    ]);
+      { action: act }
+    );
     return;
   }
   if (act === "pickrm") {
     const idx = Number(params.get("i"));
     if (!Number.isFinite(idx) || idx < 0 || idx >= draft.attendees.length) {
-      await replyLineMessages(replyToken, [await confirmCardMessage(draft, "เลือกไม่ถูกต้องครับ\n\n", upn)]);
+      await replyAndLog(upn, replyToken, await confirmCardMessage(draft, "เลือกไม่ถูกต้องครับ\n\n", upn), { action: act });
       return;
     }
     const removed = draft.attendees[idx];
     draft.attendees = draft.attendees.filter((_, i) => i !== idx);
     await saveDraft(upn, draft);
-    await replyLineMessages(replyToken, [await confirmCardMessage(draft, `ลบออกแล้ว: ${removed}\n\n`, upn)]);
+    await replyAndLog(upn, replyToken, await confirmCardMessage(draft, `ลบออกแล้ว: ${removed}\n\n`, upn), { action: act });
     return;
   }
   if (act === "backdraft") {
-    await replyLineMessages(replyToken, [await confirmCardMessage(draft, "", upn)]);
+    await replyAndLog(upn, replyToken, await confirmCardMessage(draft, "", upn), { action: act });
     return;
   }
   if (act === "canceldraft") {
     await clearDraft(upn);
-    await replyLine(replyToken, "ยกเลิกแล้วครับ — ไม่มีการส่งนัดออกไป");
+    await replyAndLog(upn, replyToken, "ยกเลิกแล้วครับ — ไม่มีการส่งนัดออกไป", { action: act });
     return;
   }
   if (act === "confirmbook") {
     const s = parseWall(draft.start), e = parseWall(draft.end);
     if (!s || !e) {
-      await replyLine(replyToken, "ช่วงเวลาไม่ถูกต้อง ลองเลือกใหม่ครับ");
+      await replyAndLog(upn, replyToken, "ช่วงเวลาไม่ถูกต้อง ลองเลือกใหม่ครับ", { action: act });
       return;
     }
     try {
@@ -1593,6 +1643,42 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     const data = new URLSearchParams(ev.postback?.data || "");
     const act = data.get("a") || "";
     trace("receive", `กดปุ่ม: ${act || "?"}`);
+
+    // Log incoming user postback action synchronously
+    const userActionText =
+      ev.postback?.displayText ||
+      (act === "canceldraft"
+        ? "ยกเลิกการนัด"
+        : act === "rmppl"
+        ? "ลบคนออกจากนัด"
+        : act === "pickrm"
+        ? "ลบคนออกจากนัด"
+        : act === "settime"
+        ? "แก้วันเวลา"
+        : act === "setsubj"
+        ? "ตั้งหัวข้อประชุม"
+        : act === "setdetail"
+        ? "ใส่รายละเอียด"
+        : act === "confirmbook"
+        ? "ยืนยันส่งนัด"
+        : act === "addppl"
+        ? "เพิ่มคนเข้าประชุม"
+        : act === "backdraft"
+        ? "กลับไปหน้ายืนยัน"
+        : act ? `กดปุ่ม: ${act}` : "กดปุ่มตัวเลือก");
+    try {
+      await logChatTurn({
+        session_id: upn,
+        user_upn: upn,
+        channel: "line",
+        role: "user",
+        content: userActionText,
+        metadata: { postback: ev.postback?.data },
+      });
+    } catch {
+      /* ignore log write error */
+    }
+
     // Attendee RSVP on LINE after being invited
     if (MEETING_RSVP_ACTIONS.has(act)) {
       const oid = decodeURIComponent(data.get("oid") || "");
@@ -1603,13 +1689,16 @@ async function handlePostback(ev: LineEvent): Promise<void> {
         hostChoice ||
         attendeeChoice ||
         (await respondMeetingInvite(upn, oid, id, act === "mtaccept"));
-      await replyLineMessages(ev.replyToken, [
+      await replyAndLog(
+        upn,
+        ev.replyToken,
         {
           type: "text",
           text: result.reply,
           ...(result.quickReply ? { quickReply: result.quickReply } : {}),
         },
-      ]);
+        { action: act }
+      );
       return;
     }
     // Booking confirmation flow (tap slot → draft → confirm) is handled here.
@@ -1625,6 +1714,18 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     try {
       await sendResult(ev.replyToken, res, upn);
       trace("reply", `ตอบกลับ (${res.intent})`);
+      if (res.reply?.trim()) {
+        after(async () => {
+          await logChatTurn({
+            session_id: upn,
+            user_upn: upn,
+            channel: "line",
+            role: "assistant",
+            content: res.reply,
+            metadata: { intent: res.intent },
+          });
+        });
+      }
     } catch (replyErr) {
       console.warn("[line] postback reply failed, pushing:", String(replyErr).slice(0, 120));
       await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res, upn));
@@ -1636,7 +1737,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     console.error("[line] handlePostback", String(e).slice(0, 300));
     const msg = `ขออภัยครับ ${llmUserErrorMessage(e)}`;
     try {
-      await replyLine(ev.replyToken, msg);
+      await replyAndLog(upn, ev.replyToken, msg, { error: String(e).slice(0, 200) });
     } catch {
       try {
         await pushLineToId(userId, msg);
