@@ -106,7 +106,7 @@ async function graphFetch(
   }
 }
 
-async function graphGet(path: string, params?: Record<string, string>, headers?: Record<string, string>) {
+export async function graphGet(path: string, params?: Record<string, string>, headers?: Record<string, string>) {
   const r = await graphFetch(path, { params, headers });
   if (!r.ok) throw new Error(`Graph ${r.status} ${path}: ${(await r.text()).slice(0, 300)}`);
   return r.json();
@@ -1010,7 +1010,7 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   );
 
   const wideTop = Math.max(top, 25);
-  const shortQuery = q.length <= 4 && !q.includes(" ");
+  const shortQuery = q.length <= 15 && !q.includes(" ");
 
   const merge = (
     results: UserInfo[],
@@ -1082,16 +1082,12 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
     }
   }
 
-  // 2) Directory startswith on names + mail
+  // 2) Directory search on displayName + startswith on names + mail
   for (const v of variants) {
     const esc = v.replace(/'/g, "''");
     const attempts: { params: Record<string, string>; headers?: Record<string, string> }[] = [
       {
         params: { $search: `"displayName:${v}"`, $select: sel, $top: String(wideTop) },
-        headers: { ConsistencyLevel: "eventual" },
-      },
-      {
-        params: { $search: `"${v}"`, $select: sel, $top: String(wideTop) },
         headers: { ConsistencyLevel: "eventual" },
       },
       {
@@ -1102,18 +1098,6 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
         },
       },
     ];
-    // Short Thai/roman nick often sits in parentheses: "Name Surname (เบส)"
-    if (v.length <= 6) {
-      attempts.push({
-        params: {
-          $filter: `contains(displayName,'${esc}')`,
-          $select: sel,
-          $top: String(wideTop),
-          $count: "true",
-        },
-        headers: { ConsistencyLevel: "eventual" },
-      });
-    }
     for (const a of attempts) {
       results = merge(results, await directorySearch(a.params, a.headers));
     }
