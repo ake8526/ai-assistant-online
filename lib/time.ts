@@ -449,13 +449,13 @@ export function resolveThaiDateInText(text: string): { start: Date; end: Date; l
 }
 
 const WEEKDAYS: Record<string, number> = {
-  sun: 0, sunday: 0, "อาทิตย์": 0,
-  mon: 1, monday: 1, "จันทร์": 1,
-  tue: 2, tuesday: 2, "อังคาร": 2,
-  wed: 3, wednesday: 3, "พุธ": 3,
-  thu: 4, thursday: 4, "พฤหัส": 4, "พฤหัสบดี": 4,
-  fri: 5, friday: 5, "ศุกร์": 5,
-  sat: 6, saturday: 6, "เสาร์": 6,
+  sun: 0, sunday: 0, "อาทิตย์": 0, "อา": 0, "อา.": 0,
+  mon: 1, monday: 1, "จันทร์": 1, "จ": 1, "จ.": 1,
+  tue: 2, tuesday: 2, "อังคาร": 2, "อ": 2, "อ.": 2,
+  wed: 3, wednesday: 3, "พุธ": 3, "พ": 3, "พ.": 3,
+  thu: 4, thursday: 4, "พฤหัส": 4, "พฤหัสบดี": 4, "พฤ": 4, "พฤ.": 4,
+  fri: 5, friday: 5, "ศุกร์": 5, "ศ": 5, "ศ.": 5,
+  sat: 6, saturday: 6, "เสาร์": 6, "ส": 6, "ส.": 6,
 };
 
 /** Turn a weekday name ("mon", "จันทร์", "เสาร์นี้", "อาทิตย์หน้า") into that
