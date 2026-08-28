@@ -479,7 +479,7 @@ const CALENDAR_TALK =
  * ศุกร์ยังคงหาเจอ.
  */
 const GLUED_WHEN =
-  /(?:พรุ่งนี้|พรุ้งนี้|พุ่งนี้|วันพรุ้งนี้|วันนี้|มะรืนนี้|มะรืน|มะรืนนี|เมื่อวานนี้|เมื่อวาน|คืนนี้|เช้านี้|บ่ายนี้|เย็นนี้|สัปดาห์นี้|สัปดาห์หน้า|อาทิตย์นี้|อาทิตย์หน้า|เดือนนี้|เดือนหน้า|วันจันทร์|วันอังคาร|วันพุธ|วันพฤหัสบดี|วันพฤหัส|วันศุกร์|วันเสาร์|วันอาทิตย์|จันทร์นี้|อังคารนี้|พุธนี้|พฤหัสนี้|ศุกร์นี้|เสาร์นี้|อาทิตย์นี้|ตอนเช้า|ตอนบ่าย|ตอนเย็น|ทั้งวัน|กี่โมง)/gu;
+  /(?:พรุ่งนี้|พรุ้งนี้|พุ่งนี้|วันพรุ้งนี้|วันนี้|วันนั้น|วันโน้น|วันไหน|วันก่อน|มะรืนนี้|มะรืน|มะรืนนี|เมื่อวานนี้|เมื่อวาน|คืนนี้|เช้านี้|บ่ายนี้|เย็นนี้|สัปดาห์นี้|สัปดาห์หน้า|อาทิตย์นี้|อาทิตย์หน้า|เดือนนี้|เดือนหน้า|วันจันทร์|วันอังคาร|วันพุธ|วันพฤหัสบดี|วันพฤหัส|วันศุกร์|วันเสาร์|วันอาทิตย์|จันทร์นี้|อังคารนี้|พุธนี้|พฤหัสนี้|ศุกร์นี้|เสาร์นี้|อาทิตย์นี้|ตอนเช้า|ตอนบ่าย|ตอนเย็น|ทั้งวัน|กี่โมง)/gu;
 
 /** Pull the day/time phrase off a name that was typed against it. */
 function stripGluedWhen(raw: string): string {
@@ -503,11 +503,12 @@ function isCalendarTalk(s: string): boolean {
 function cleanPersonToken(raw: string): string {
   let n = String(raw || "").trim();
   n = n.replace(/^ของ/u, "").trim();
-  n = n.replace(/(?:วันนี้|พรุ่งนี้|มะรืนนี้|มะรืน)\s*$/u, "").trim();
+  n = n.replace(/(?:วันนี้|วันนั้น|วันโน้น|วันไหน|วันก่อน|พรุ่งนี้|มะรืนนี้|มะรืน)\s*$/u, "").trim();
   n = stripHonorificPublic(n).replace(/^[ .,/-]+|[ .,/-]+$/g, "").trim();
   n = n.replace(/^(?:นัด|จอง|เชิญ|invite|กับ|และ|หา)\s+/i, "").trim();
   if (!n || n.includes("@")) return "";
-  if (/^(?:วันนี้|พรุ่งนี้|มะรืน|นาที|โมง|ทุ่ม|เรื่อง|ตอน|บ่าย|เช้า|เย็น|เที่ยง|ชั่วโมง|ช่วง|เวลา|ว่าง|ตรงกัน|หาเวลาว่าง|หาเวลา|\d+)$/i.test(n)) {
+  if (n.replace(/\s+/g, "").length < 2) return "";
+  if (/^(?:วันนี้|วันนั้น|วันโน้น|วันไหน|วันก่อน|พรุ่งนี้|มะรืน|นาที|โมง|ทุ่ม|เรื่อง|ตอน|บ่าย|เช้า|เย็น|เที่ยง|ชั่วโมง|ช่วง|เวลา|ว่าง|ตรงกัน|หาเวลาว่าง|หาเวลา|\d+)$/i.test(n)) {
     return "";
   }
   if (/(?:ว่าง|กี่โมง|ตาราง|ประชุม|ปฏิทิน|วัน|พรุ่ง|เมื่อวาน)/.test(n) && (n.includes("ว่าง") || n.includes("ไหม") || n.includes("มั้ย") || n.includes("มัย") || n.includes("ปะ") || n.includes("กี่โมง"))) {
@@ -554,16 +555,21 @@ const REQUEST_WORDS = /(?:นัด|ตาราง|ประชุม|คิว
 function nameFromCandidate(raw: string): string {
   const s = String(raw || "").trim();
   if (!s) return "";
-  // An address inside a sentence is the answer, not the sentence:
-  // "สรุปตารางของ someone@ktisgroup.com ทั้งเดือน" was used whole as the name.
   const mail = s.match(/[^\s<>(),;]+@[^\s<>(),;]+/)?.[0];
   if (mail) return mail;
+  // A single letter (like "น") is never a person name; searching it matches everyone starting with that letter.
+  if (s.replace(/\s+/g, "").length < 2) return "";
+  if (/^(?:วัน|นี้|นั้น|โน้น|ไหน|วันนั้น|วันนี้|วันไหน|วันก่อน|ตอน|เช้า|บ่าย|เย็น|ค่ำ|เที่ยง|เมื่อวาน|พรุ่งนี้|มะรืน)$/u.test(s)) return "";
   const wordy = s.split(/\s+/).filter(Boolean).length > 1 || s.replace(/\s+/g, "").length > 12;
-  if (!wordy && !REQUEST_WORDS.test(s)) return s;
+  if (!wordy && !REQUEST_WORDS.test(s)) {
+    if (isCalendarTalk(s)) return "";
+    return s;
+  }
   const residue = s.replace(CALENDAR_TALK, " ").replace(/\s+/g, " ").trim();
   // One stray letter is what is left when a word was chewed in half; it is
   // not a name, and searching it matches whoever happens to start that way.
   if (residue.replace(/\s+/g, "").length < 2) return "";
+  if (isCalendarTalk(residue)) return "";
   if (residue.replace(/\s+/g, "").length <= 20) return residue;
   return residue ? s : "";
 }
