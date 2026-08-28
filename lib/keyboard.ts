@@ -238,33 +238,6 @@ export function normalizeThaiTypo(text: string): string {
   s = s.replace(/เอกสารร+/g, "เอกสาร");
   s = s.replace(/ช่วยเตรียมม+/g, "ช่วยเตรียม");
 
-  // 5. ชื่อเพื่อนร่วมงาน / ผู้ติดต่อ (Colleague Nicknames & Typos)
-  // แบงค์ / แบงก์ / Bank / แบง (รวมถึงพิมพ์ตก ง งู เช่น แบค์, แบค, แบ็ค)
-  s = s.replace(/แบ[งน]?ค์/g, "แบงค์");
-  s = s.replace(/แบ[งน]?ก์/g, "แบงค์");
-  s = s.replace(/แบ็ค/g, "แบงค์");
-  s = s.replace(/แบค(?!ก)/g, "แบงค์");
-  s = s.replace(/แบ้ง(?!ค)/g, "แบงค์");
-  s = s.replace(/แบนก์/g, "แบงค์");
-  s = s.replace(/แบค์/g, "แบงค์");
-  // เบส / เบสท์ / Base / Best
-  s = s.replace(/เบสท[์ิื]?/g, "เบส");
-  s = s.replace(/เบสต์/g, "เบส");
-  s = s.replace(/เบสส+/g, "เบส");
-  s = s.replace(/เบศ/g, "เบส");
-  // นนท์ / นน / Non
-  s = s.replace(/นนท[์ิื]?/g, "นนท์");
-  s = s.replace(/นันท์/g, "นนท์");
-  // เอ็ม / เอม / Em
-  s = s.replace(/เอมมี่/g, "เอ็ม");
-  s = s.replace(/เอมส์/g, "เอ็ม");
-  // เอก / Ake
-  s = s.replace(/เอ๊ก|เอ็ก|เอกก์|เอ้ก/g, "เอก");
-  // บอม / Bom
-  s = s.replace(/บ็อม|บ๋อม|บอมบ์/g, "บอม");
-  // บอล / Ball
-  s = s.replace(/บอน(?!ด)/g, "บอล");
-
   return s;
 }
 

@@ -991,7 +991,7 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
     const out = [s];
     const low = s.toLowerCase();
     // Common Thai nick spellings
-    if (s === "แบง" || s === "แบงค์" || s === "แบงก์" || s === "แบค์" || s === "แบค" || s === "แบ็ค" || low === "bank" || low === "bang") {
+    if (s === "แบง" || s === "แบงค์" || s === "แบงก์" || low === "bank" || low === "bang") {
       out.push("แบง", "แบงค์", "แบงก์", "Bank", "Bang");
     }
     if (s === "เบส" || s === "เบสต์" || low === "base" || low === "bes" || low === "best") {
