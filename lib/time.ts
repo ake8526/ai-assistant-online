@@ -299,7 +299,15 @@ function thaiMonthNum(token: string): number | null {
 
 /** Thai month names, full and abbreviated, without a day in front. */
 const THAI_MONTH_ONLY =
-  /(?:^|[^\d])(?:เดือน\s*)?(ม\.?ค\.?|ก\.?พ\.?|มี\.?ค\.?|เม\.?ย\.?|พ\.?ค\.?|มิ\.?ย\.?|ก\.?ค\.?|ส\.?ค\.?|ก\.?ย\.?|ต\.?ค\.?|พ\.?ย\.?|ธ\.?ค\.?|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)(?:\s*(?:พ\.?\s*ศ\.?\s*)?(\d{4}|\d{2}))?/u;
+  /(?:^|[^\d\u0E00-\u0E7F])(?:เดือน\s*)?(ม\.ค\.?|ก\.พ\.?|มี\.ค\.?|เม\.ย\.?|พ\.ค\.?|มิ\.ย\.?|ก\.ค\.?|ส\.ค\.?|ก\.ย\.?|ต\.ค\.?|พ\.ย\.?|ธ\.ค\.?|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)(?:\s*(?:พ\.?\s*ศ\.?\s*)?(\d{4}|\d{2}))?(?=[^\u0E00-\u0E7F]|$)/u;
+
+/** Upcoming 5 days window for "แนะนำเวลาอื่น". */
+export function upcomingAlternativeWindow(): { start: Date; end: Date; label: string } {
+  const now = nowWall();
+  const start = startOfDay(now);
+  const end = endOfDay(addDays(now, 5));
+  return { start, end, label: "5 วันถัดไป" };
+}
 
 /**
  * "เดือนกรกฎาคม", "ส.ค. 2569", "ธันวาคมปีที่แล้ว" → that whole month.

@@ -104,6 +104,7 @@ import {
   resolveWeekday,
   startOfDay,
   endOfDay,
+  upcomingAlternativeWindow,
   utcIsoToWall,
   wallIso,
 } from "@/lib/time";
@@ -2777,6 +2778,12 @@ function isDayBandFollowUp(text: string): boolean {
   if (peopleFromText(t).length >= 2) return false;
   if (/^(?:นัด|จอง|ส่งนัด)/u.test(t)) return false;
   return true;
+}
+
+function isAlternativeTimeRequest(text: string): boolean {
+  const t = text.trim().replace(/\s+/g, " ");
+  if (!t) return false;
+  return /^(?:แนะนำ|ขอ|มี)?\s*(?:เวลาอื่น|ช่วงอื่น|วันอื่น|เวลาว่างอื่น|ชั่วโมงอื่น|เวลาว่าง)(?:\s*(?:สิ|หน่อย|ไหม|มั้ย|บ้าง|ครับ|ค่ะ|จ้า))?[!?.…]*$/i.test(t);
 }
 
 function windowFromDayFollowUp(text: string): MtWindow | null {
@@ -5478,18 +5485,22 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
 
   // Follow-up on a multi-person search: keep the same attendees.
   // “ตอนเย็นว่างไหม” = same day + time band; “พรุ่งนี้ล่ะ” / “แต่พรุ่งนี้เช้าว่างนะ” = new day (± band).
+  // “แนะนำเวลาอื่นสิ” = search upcoming 5 days for available slots.
   if (
     context?.last_meeting?.attendees?.length &&
-    (isTimeFollowUp(text) || isDayFollowUp(text) || isDayBandFollowUp(text))
+    (isTimeFollowUp(text) || isDayFollowUp(text) || isDayBandFollowUp(text) || isAlternativeTimeRequest(text))
   ) {
-    const dayFollow = isDayFollowUp(text) || isDayBandFollowUp(text);
-    const band = dayFollow ? timeBandFromText(text.replace(/เช้ส/g, "เช้า")) : timeBandFromText(text);
-    const window = dayFollow
-      ? windowFromDayFollowUp(text)
-      : windowFromStored(context.last_meeting) || dayHintFromText(text);
+    const isAlt = isAlternativeTimeRequest(text);
+    const dayFollow = !isAlt && (isDayFollowUp(text) || isDayBandFollowUp(text));
+    const band = isAlt ? null : (dayFollow ? timeBandFromText(text.replace(/เช้ส/g, "เช้า")) : timeBandFromText(text));
+    const window = isAlt
+      ? upcomingAlternativeWindow()
+      : (dayFollow
+        ? windowFromDayFollowUp(text)
+        : windowFromStored(context.last_meeting) || dayHintFromText(text));
     trace(
       "parse",
-      `★ AI:NONE · intent=find_meeting_time (${dayFollow ? "ติดตามวัน" : "ติดตามเวลา"} ไม่เรียก API)`
+      `★ AI:NONE · intent=find_meeting_time (${isAlt ? "แนะนำเวลาอื่น" : (dayFollow ? "ติดตามวัน" : "ติดตามเวลา")} ไม่เรียก API)`
     );
     return runFindMeeting(
       userUpn,
