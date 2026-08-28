@@ -365,10 +365,16 @@ export function resolveThaiMonthRange(
       else if (y < 100) y += y > 50 ? 2400 - 543 : 2000;
       year = y;
     } else {
-      const monthsAhead = mo - 1 - now.getUTCMonth();
-      if (monthsAhead > 6) year -= 1;
-      if (/ปีที่แล้ว|ปีก่อน/u.test(t)) year -= 1;
-      if (/ปีหน้า/u.test(t)) year += 1;
+      if (/ปีที่แล้ว|ปีก่อน/u.test(t)) {
+        year -= 1;
+      } else if (/ปีหน้า/u.test(t)) {
+        year += 1;
+      } else if (/ปีนี้/u.test(t)) {
+        // Explicitly requested this year
+      } else if (mo - 1 < now.getUTCMonth()) {
+        // Month has already passed this year -> default to next year
+        year += 1;
+      }
     }
     const start = new Date(Date.UTC(year, mo - 1, 1));
     const end = new Date(Date.UTC(year, mo, 1));
@@ -387,10 +393,16 @@ export function resolveThaiMonthRange(
     else if (y < 100) y += y > 50 ? 2400 - 543 : 2000; // "68" → 2568 → 2025
     year = y;
   } else {
-    const monthsAhead = mo - 1 - now.getUTCMonth();
-    if (monthsAhead > 6) year -= 1;
-    if (/ปีที่แล้ว|ปีก่อน/u.test(t)) year -= 1;
-    if (/ปีหน้า/u.test(t)) year += 1;
+    if (/ปีที่แล้ว|ปีก่อน/u.test(t)) {
+      year -= 1;
+    } else if (/ปีหน้า/u.test(t)) {
+      year += 1;
+    } else if (/ปีนี้/u.test(t)) {
+      // Explicitly requested this year
+    } else if (mo - 1 < now.getUTCMonth()) {
+      // Month has already passed this year -> default to next year
+      year += 1;
+    }
   }
 
   const start = new Date(Date.UTC(year, mo - 1, 1));
