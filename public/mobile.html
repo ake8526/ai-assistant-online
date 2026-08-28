@@ -719,67 +719,124 @@
     .nav-item.active { color: var(--accent-cyan); }
     .nav-item.active svg { color: var(--accent-cyan); }
 
-    /* Login Gate */
-    .gate-screen {
+    /* ==========================================================================
+       1. CINEMATIC INTRO SPLASH SCREEN
+       ========================================================================== */
+    .intro-screen {
       position: fixed;
       inset: 0;
-      background: var(--bg-base);
+      background: radial-gradient(circle at 50% 35%, #0f1c3f 0%, #080b11 80%);
+      z-index: 9999;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      z-index: 999;
-      padding: 24px;
+      padding: calc(24px + var(--safe-top)) 24px calc(24px + var(--safe-bottom));
       text-align: center;
+      overflow: hidden;
+      transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .gate-screen.hidden { display: none; }
+    .intro-screen.fade-out {
+      opacity: 0;
+      transform: scale(1.08);
+      pointer-events: none;
+    }
 
-    .gate-logo {
-      width: 90px;
-      height: 90px;
-      margin-bottom: 20px;
-      border-radius: 24px;
-      background: rgba(0, 120, 212, 0.1);
-      border: 1px solid rgba(0, 120, 212, 0.3);
+    .mascot-stage {
+      position: relative;
+      width: 220px;
+      height: 220px;
       display: flex;
       align-items: center;
       justify-content: center;
+      margin-bottom: 20px;
+      cursor: pointer;
     }
 
-    .gate-logo img { width: 75%; height: 75%; object-fit: contain; }
+    .mascot-glow {
+      position: absolute;
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0, 200, 248, 0.35) 0%, rgba(0, 120, 212, 0) 70%);
+      filter: blur(20px);
+      animation: pulseGlow 3s infinite ease-in-out;
+    }
 
-    .gate-title {
-      font-size: 20px;
+    @keyframes pulseGlow {
+      0%, 100% { transform: scale(0.9); opacity: 0.6; }
+      50% { transform: scale(1.15); opacity: 1; }
+    }
+
+    .mascot-img {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      z-index: 2;
+      filter: drop-shadow(0 8px 24px rgba(0, 120, 212, 0.45));
+    }
+
+    .intro-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      background: rgba(0, 120, 212, 0.15);
+      border: 1px solid rgba(0, 200, 248, 0.3);
+      color: var(--accent-cyan);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+
+    .intro-title {
+      font-size: 24px;
       font-weight: 800;
       color: #ffffff;
       margin-bottom: 6px;
+      letter-spacing: -0.5px;
     }
 
-    .gate-desc {
+    .intro-desc {
       font-size: 13px;
       color: var(--text-secondary);
       max-width: 280px;
       line-height: 1.5;
-      margin-bottom: 32px;
+      margin-bottom: 28px;
     }
 
-    .sso-btn {
-      width: 100%;
-      max-width: 320px;
-      height: 48px;
-      border-radius: var(--radius-full);
-      background: linear-gradient(135deg, #0078d4 0%, #00a4ef 100%);
-      border: none;
-      color: #ffffff;
-      font-size: 13.5px;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
+    .intro-loader {
+      width: 180px;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .intro-loader-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0078d4, #00c8f8);
+      border-radius: 2px;
+      animation: loadProgress 2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    }
+
+    @keyframes loadProgress {
+      0% { width: 0%; }
+      50% { width: 70%; }
+      100% { width: 100%; }
+    }
+
+    .intro-skip-hint {
+      margin-top: 14px;
+      font-size: 11px;
+      color: var(--text-muted);
       cursor: pointer;
-      box-shadow: 0 4px 16px rgba(0, 120, 212, 0.4);
     }
   </style>
 </head>
@@ -941,9 +998,9 @@
           </div>
         </div>
 
-        <button class="logout-btn" onclick="handleLogout()">
-          <svg class="icon-sm" viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
-          ออกจากระบบ Microsoft 365
+        <button class="logout-btn" onclick="showIntroAgain()">
+          <svg class="icon-sm" viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+          ดูหน้าแอนิเมชันเปิดตัว (Replay Intro)
         </button>
 
       </section>
@@ -967,42 +1024,54 @@
 
   </div>
 
-  <div class="gate-screen hidden" id="loginScreen">
-    <div class="gate-logo">
-      <img src="ktisx-reading-video.gif?v=9" onerror="this.src='/ktisx-reading-video.gif?v=9'" alt="Logo">
+  <!-- 1. CINEMATIC INTRO SPLASH SCREEN -->
+  <div class="intro-screen" id="introScreen" onclick="dismissIntro()">
+    <div class="mascot-stage">
+      <div class="mascot-glow"></div>
+      <img class="mascot-img" src="ktisx-reading-video.gif?v=10" onerror="this.src='/ktisx-reading-video.gif?v=10'" alt="KTIS X Mascot">
     </div>
-    <h1 class="gate-title">KTIS X AI Assistant</h1>
-    <p class="gate-desc">ระบบผู้ช่วยอัจฉริยะองค์กร เชื่อมต่อตารางนัดหมายและประสานงานตลอด 24 ชม.</p>
-    <button class="sso-btn" onclick="performLogin()">
-      <svg class="icon-sm" viewBox="0 0 21 21">
-        <rect x="1" y="1" width="9" height="9" fill="#f25022" rx="1.5"/>
-        <rect x="11" y="1" width="9" height="9" fill="#7fba00" rx="1.5"/>
-        <rect x="1" y="11" width="9" height="9" fill="#00a4ef" rx="1.5"/>
-        <rect x="11" y="11" width="9" height="9" fill="#ffb900" rx="1.5"/>
-      </svg>
-      <span>เข้าสู่ระบบด้วย Microsoft 365</span>
-    </button>
+
+    <div class="intro-badge">
+      <svg class="icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
+      <span>MICROSOFT AGENT 365</span>
+    </div>
+
+    <h1 class="intro-title">KTIS X AI Assistant</h1>
+    <p class="intro-desc">ระบบผู้ช่วยอัจฉริยะองค์กร · เชื่อมต่อข้อมูลเรียลไทม์</p>
+
+    <div class="intro-loader">
+      <div class="intro-loader-bar"></div>
+    </div>
+
+    <div class="intro-skip-hint">แตะที่หน้าจอเพื่อเริ่มใช้งานทันที</div>
   </div>
 
   <script>
-    const AUTH_KEY = 'ktisx_m365_auth_state';
+    let introTimer = null;
 
     document.addEventListener('DOMContentLoaded', () => {
       initWeekStrip();
-      const isAuth = localStorage.getItem(AUTH_KEY) === 'true';
-      if (!isAuth) {
-        document.getElementById('loginScreen').classList.remove('hidden');
-      }
+      introTimer = setTimeout(() => {
+        dismissIntro();
+      }, 2200);
     });
 
-    function performLogin() {
-      localStorage.setItem(AUTH_KEY, 'true');
-      document.getElementById('loginScreen').classList.add('hidden');
+    function dismissIntro() {
+      if (introTimer) clearTimeout(introTimer);
+      const intro = document.getElementById('introScreen');
+      if (intro) {
+        intro.classList.add('fade-out');
+      }
     }
 
-    function handleLogout() {
-      localStorage.removeItem(AUTH_KEY);
-      document.getElementById('loginScreen').classList.remove('hidden');
+    function showIntroAgain() {
+      const intro = document.getElementById('introScreen');
+      if (intro) {
+        intro.classList.remove('fade-out');
+        introTimer = setTimeout(() => {
+          dismissIntro();
+        }, 2200);
+      }
     }
 
     function switchTab(tabId) {
