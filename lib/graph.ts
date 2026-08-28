@@ -1069,97 +1069,45 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
   let results: UserInfo[] = [];
   const sel = "mail,userPrincipalName,displayName,jobTitle,department,mobilePhone,businessPhones";
 
-  // 1) Email-prefix directory hits first (pan → pan.s@, panom.p@) — most reliable for nicknames.
-  if (shortQuery) {
-    for (const v of variants) {
-      const esc = v.replace(/'/g, "''");
-      const prefixHits = await directorySearch({
-        $filter: `startswith(mail,'${esc}.') or startswith(userPrincipalName,'${esc}.') or startswith(mail,'${esc}') or startswith(userPrincipalName,'${esc}')`,
+  // Execute primary searches in parallel to avoid LINE webhook 5s timeout
+  const searchPromises: Promise<any[]>[] = [];
+
+  // 1) Directory search on displayName for top variants (in parallel)
+  for (const v of variants.slice(0, 3)) {
+    const esc = v.replace(/'/g, "''");
+    searchPromises.push(
+      directorySearch(
+        { $search: `"displayName:${v}"`, $select: sel, $top: String(wideTop) },
+        { ConsistencyLevel: "eventual" }
+      )
+    );
+    searchPromises.push(
+      directorySearch({
+        $filter: `startswith(displayName,'${esc}') or startswith(givenName,'${esc}') or startswith(surname,'${esc}') or startswith(mail,'${esc}') or startswith(userPrincipalName,'${esc}')`,
         $select: sel,
         $top: String(wideTop),
-      });
-      results = merge(results, prefixHits);
-    }
+      })
+    );
   }
 
-  // 2) Directory search on displayName + startswith on names + mail
-  for (const v of variants) {
-    const esc = v.replace(/'/g, "''");
-    const attempts: { params: Record<string, string>; headers?: Record<string, string> }[] = [
-      {
-        params: { $search: `"displayName:${v}"`, $select: sel, $top: String(wideTop) },
-        headers: { ConsistencyLevel: "eventual" },
-      },
-      {
-        params: {
-          $filter: `startswith(displayName,'${esc}') or startswith(givenName,'${esc}') or startswith(surname,'${esc}') or startswith(mail,'${esc}') or startswith(userPrincipalName,'${esc}')`,
-          $select: sel,
-          $top: String(wideTop),
-        },
-      },
-    ];
-    for (const a of attempts) {
-      results = merge(results, await directorySearch(a.params, a.headers));
-    }
-  }
-
-  // 3) People the signed-in user already knows (Thai nicknames like “นนท์”)
+  // 2) People the signed-in user already knows
   if (getUserGraphToken()) {
-    for (const v of variants) {
-      try {
-        const data = await graphGet("/me/people", {
+    for (const v of variants.slice(0, 2)) {
+      searchPromises.push(
+        graphGet("/me/people", {
           $search: v,
           $top: String(wideTop),
           $select: "displayName,scoredEmailAddresses",
-        });
-        results = merge(results, data.value || []);
-      } catch {
-        /* People.Read may be missing — fall through */
-      }
+        })
+          .then((d) => d.value || [])
+          .catch(() => [])
+      );
     }
   }
 
-  // 4) Fuzzy match against recent calendar attendees (nicknames often appear only there)
-  if (getUserGraphToken() && q.length >= 2) {
-    try {
-      const now = new Date();
-      const past = new Date(now.getTime() - 45 * 24 * 3600_000);
-      const future = new Date(now.getTime() + 45 * 24 * 3600_000);
-      const data = await graphGet(
-        "/me/calendarView",
-        {
-          startDateTime: past.toISOString(),
-          endDateTime: future.toISOString(),
-          $select: "attendees,organizer",
-          $top: "50",
-        },
-        { Prefer: `outlook.timezone="${TIMEZONE}"` }
-      );
-      const qLow = q.toLowerCase();
-      const hits: UserInfo[] = [];
-      const seen = new Set<string>();
-      const consider = (name?: string, mail?: string) => {
-        if (!mail || seen.has(mail.toLowerCase())) return;
-        const n = (name || "").toLowerCase();
-        const nameRaw = name || "";
-        if (!n.includes(qLow) && !nameRaw.includes(q) && !qLow.split(/\s+/).some((t) => t.length >= 2 && n.includes(t))) {
-          return;
-        }
-        seen.add(mail.toLowerCase());
-        hits.push({ mail, displayName: name || mail });
-      };
-      for (const ev of (data.value || []) as GraphEvent[]) {
-        const org = ev.organizer?.emailAddress;
-        consider(org?.name, org?.address);
-        for (const a of ev.attendees || []) {
-          consider(a.emailAddress?.name, a.emailAddress?.address);
-        }
-        if (hits.length >= wideTop) break;
-      }
-      if (hits.length) results = merge(results, hits);
-    } catch {
-      /* ignore */
-    }
+  const allHits = await Promise.all(searchPromises);
+  for (const hits of allHits) {
+    results = merge(results, hits);
   }
   const vset = Array.from(new Set(variants.map((v) => v.toLowerCase())));
   const qLow = q.toLowerCase();
