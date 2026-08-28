@@ -875,9 +875,46 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     if (m) return { intent: "test_meeting", params: { query: (m[1] || "").trim() } };
   }
 
-  // Multi-person first (before single-person “ดูตาราง…”) — “ดูตารางเบสกับพี่แบง”
+  // Meeting booking / availability check (single or multi-person) — e.g. "นัดแบงค์วันจันทร์นี้10โมงเรื่องทดสอบ"
   {
     const people = peopleFromText(t);
+    if (people.length >= 1 && /^(?:นัด|นัดคุยกับ|นัดประชุมกับ|นัดหมายกับ|จองคิวกับ|จองคิว|จองนัด)(?!ตาราง|วันนี้|พรุ่งนี้|มะรืน|เช้า|บ่าย|เย็น|ข่าว|งาน)/i.test(t)) {
+      const weekday = /วันจันทร์|จันทร์/.test(t)
+        ? "mon"
+        : /วันอังคาร|อังคาร/.test(t)
+        ? "tue"
+        : /วันพุธ|พุธ/.test(t)
+        ? "wed"
+        : /วันพฤหัสบดี|วันพฤหัส|พฤหัส/.test(t)
+        ? "thu"
+        : /วันศุกร์|ศุกร์/.test(t)
+        ? "fri"
+        : /วันเสาร์|เสาร์/.test(t)
+        ? "sat"
+        : /วันอาทิตย์|อาทิตย์/.test(t)
+        ? "sun"
+        : undefined;
+      const period = /พรุ่งนี้/.test(t) ? "tomorrow" : /วันนี้/.test(t) ? "today" : undefined;
+      const timeM = t.match(/(?:ตอน|ช่วง|เวลา)?\s*(\d{1,2})(?:[:.](\d{2}))?\s*(?:โมง|น\.?)/);
+      let at: string | undefined = undefined;
+      if (timeM) {
+        let hr = parseInt(timeM[1], 10);
+        const min = timeM[2] ? parseInt(timeM[2], 10) : 0;
+        if (/บ่าย/i.test(t) && hr < 12) hr += 12;
+        at = `${String(hr).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+      }
+      const noteM = t.match(/เรื่อง\s*(.+)$/);
+      const note = noteM ? noteM[1].trim() : undefined;
+      const params: Record<string, unknown> = { attendees: people };
+      if (weekday) params.weekday = weekday;
+      if (period) params.period = period;
+      if (at) params.at = at;
+      if (note) params.note = note;
+      return {
+        intent: "find_meeting_time",
+        params,
+      };
+    }
     if (
       people.length >= 2 &&
       /(ตาราง|ว่าง|นัด|หาเวลา|ตรงกัน)/.test(t)

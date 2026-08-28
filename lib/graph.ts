@@ -991,11 +991,18 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
     const out = [s];
     const low = s.toLowerCase();
     // Common Thai nick spellings
-    if (s === "แบง" || low === "bang") out.push("แบงค์", "Bank");
-    if (s === "แบงค์" || low === "bank") out.push("แบง", "Bank");
-    if (s === "เบส" || low === "base" || low === "bes") out.push("Base", "Best");
-    if (s === "เอม" || s === "เอ็ม" || low === "em" || low === "aem") out.push("เอม", "เอ็ม", "Em", "Aem");
-    if (s === "นน" || s === "นนท์" || low === "non") out.push("นน", "นนท์", "Non");
+    if (s === "แบง" || s === "แบงค์" || s === "แบงก์" || low === "bank" || low === "bang") {
+      out.push("แบง", "แบงค์", "แบงก์", "Bank", "Bang");
+    }
+    if (s === "เบส" || s === "เบสต์" || low === "base" || low === "bes" || low === "best") {
+      out.push("เบส", "เบสต์", "Base", "Best");
+    }
+    if (s === "เอม" || s === "เอ็ม" || low === "em" || low === "aem") {
+      out.push("เอม", "เอ็ม", "Em", "Aem");
+    }
+    if (s === "นน" || s === "นนท์" || low === "non") {
+      out.push("นน", "นนท์", "Non");
+    }
     return out;
   };
   const variants = Array.from(
@@ -1042,7 +1049,20 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
         businessPhones?: string[];
       }[];
     } catch {
-      return [];
+      try {
+        const data = await graphGet("/users", params, headers);
+        return (data.value || []) as {
+          mail?: string;
+          userPrincipalName?: string;
+          displayName?: string;
+          jobTitle?: string;
+          department?: string;
+          mobilePhone?: string;
+          businessPhones?: string[];
+        }[];
+      } catch {
+        return [];
+      }
     }
   };
 
