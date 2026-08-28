@@ -3,1297 +3,312 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>KTIS X AI Assistant</title>
-  <!-- Google Fonts: Inter & Prompt -->
+  <title>KTIS X — AI Assistant</title>
+  
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Prompt:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <meta name="theme-color" content="#030718">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <style>
     :root {
-      --bg-canvas: #02040c;
-      --bg-primary: #04081c;
-      --bg-surface: rgba(18, 28, 64, 0.7);
-      --bg-surface-elevated: rgba(28, 44, 98, 0.85);
-      --bg-glass: rgba(10, 18, 48, 0.78);
-      --border-subtle: rgba(255, 255, 255, 0.12);
-      --border-glow: rgba(56, 189, 248, 0.45);
-      --border-agent: rgba(168, 85, 247, 0.5);
-      --text-primary: #ffffff;
-      --text-secondary: #cbd5e1;
-      --text-muted: #94a3b8;
+      --bg-base: #080b11;
+      --bg-surface: rgba(255, 255, 255, 0.035);
+      --bg-surface-elevated: rgba(255, 255, 255, 0.07);
+      --bg-glass: rgba(10, 14, 23, 0.88);
       
-      /* Pure Code 3D Holographic Ribbon Palette */
-      --ribbon-cyan: #00f2fe;
-      --ribbon-blue: #3b82f6;
-      --ribbon-indigo: #6366f1;
-      --ribbon-purple: #a855f7;
-      --ribbon-magenta: #ec4899;
+      --border-subtle: rgba(255, 255, 255, 0.07);
+      --border-focus: #0078d4;
+      
+      --accent-azure: #0078d4;
+      --accent-cyan: #00c8f8;
       --accent-emerald: #10b981;
-      --accent-amber: #f59e0b;
       --accent-rose: #f43f5e;
+      --accent-amber: #f59e0b;
       
-      --gradient-agent: linear-gradient(135deg, #00f2fe 0%, #38bdf8 30%, #a855f7 70%, #ec4899 100%);
-      --glow-agent: rgba(56, 189, 248, 0.45);
-
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      
       --safe-top: env(safe-area-inset-top, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
-      --radius-xl: 26px;
+      
+      --top-nav-h: calc(60px + var(--safe-top));
+      --bottom-nav-h: calc(64px + var(--safe-bottom));
+      
+      --radius-sm: 8px;
+      --radius-md: 12px;
       --radius-lg: 18px;
-      --radius-md: 14px;
-      --radius-sm: 10px;
-      --top-nav-h: calc(70px + var(--safe-top));
-      --bottom-nav-h: calc(76px + var(--safe-bottom));
+      --radius-full: 9999px;
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: 'Prompt', 'Inter', -apple-system, sans-serif;
       -webkit-tap-highlight-color: transparent;
-      outline: none;
+      user-select: none;
     }
 
-    /* Custom Fluent Minimal Scrollbars (NO default scrollbar) */
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 10px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
-
-    body {
-      background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #02040c 75%);
-      color: var(--text-primary);
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 0;
-      overflow: hidden;
-    }
-
-    /* Mobile Viewport Frame */
-    .app-viewport {
+    body, html {
       width: 100%;
-      max-width: 430px;
-      height: 100vh;
-      max-height: 932px;
-      background: radial-gradient(ellipse at 80% -10%, #1d4ed8 0%, #0f172a 45%, #02040c 100%);
-      position: relative;
+      height: 100%;
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      font-family: 'Prompt', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      box-shadow: 0 30px 80px -10px rgba(0, 0, 0, 0.98), 0 0 0 1px rgba(255, 255, 255, 0.18);
+      -webkit-font-smoothing: antialiased;
     }
 
-    @media (min-width: 480px) {
-      .app-viewport {
-        height: 880px;
-        border-radius: 44px;
-      }
-    }
-
-    /* SVG Icon System (No Emojis) */
     .icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
       width: 20px;
       height: 20px;
       fill: currentColor;
       flex-shrink: 0;
     }
     .icon-sm { width: 16px; height: 16px; }
-    .icon-lg { width: 24px; height: 24px; }
-    .icon-xl { width: 32px; height: 32px; }
+    .icon-xs { width: 13px; height: 13px; }
 
-    /* ==========================================================================
-       1. CINEMATIC HIGH-ENERGY AI INTRO SPLASH
-       ========================================================================== */
-    .intro-screen {
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at 50% 40%, #172554 0%, #02040c 85%);
-      z-index: 1000;
+    .app-viewport {
+      width: 100%;
+      height: 100%;
+      max-width: 480px;
+      margin: 0 auto;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: calc(32px + var(--safe-top)) 24px calc(32px + var(--safe-bottom));
-      text-align: center;
-      overflow: hidden;
-      transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    .intro-screen.fade-out {
-      opacity: 0;
-      transform: scale(1.1);
-      pointer-events: none;
-    }
-
-    #particleCanvas {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 1;
-    }
-
-    /* ==========================================================================
-       REALISTIC 3D KTIS X READING ROBOT & PAGE-TURNING ENGINE
-       ========================================================================== */
-    .orb-stage {
       position: relative;
-      width: 280px;
-      height: 280px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 12px;
-      z-index: 2;
-      cursor: pointer;
-    }
-
-    .sonic-ring {
-      position: absolute;
-      width: 180px;
-      height: 180px;
-      border-radius: 50%;
-      border: 1.5px solid rgba(0, 242, 254, 0.6);
-      animation: sonicPulse 3s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
-      pointer-events: none;
-    }
-    .sonic-ring:nth-child(2) { animation-delay: 1s; border-color: rgba(168, 85, 247, 0.6); }
-    .sonic-ring:nth-child(3) { animation-delay: 2s; border-color: rgba(236, 72, 153, 0.5); }
-
-    @keyframes sonicPulse {
-      0% { transform: scale(0.8); opacity: 0.9; }
-      100% { transform: scale(2.2); opacity: 0; }
-    }
-
-    .gyro-ring {
-      position: absolute;
-      width: 240px;
-      height: 240px;
-      border-radius: 50%;
-      border: 1px dashed rgba(56, 189, 248, 0.5);
-      box-shadow: 0 0 25px rgba(0, 242, 254, 0.25);
-      animation: rotateRing 12s linear infinite;
-    }
-
-    .gyro-ring-inner {
-      position: absolute;
-      width: 210px;
-      height: 210px;
-      border-radius: 50%;
-      border: 2px solid transparent;
-      border-top-color: var(--ribbon-magenta);
-      border-bottom-color: var(--ribbon-cyan);
-      animation: rotateRingRev 6s linear infinite;
-    }
-
-    @keyframes rotateRing {
-      from { transform: rotate(0deg) scale(1); }
-      50% { transform: rotate(180deg) scale(1.04); }
-      to { transform: rotate(360deg) scale(1); }
-    }
-
-    @keyframes rotateRingRev {
-      from { transform: rotate(360deg); }
-      to { transform: rotate(0deg); }
-    }
-
-    /* Large Expressive Mascot Container (Using Genuine 3D Video Transparent Loop) */
-    .robot-mascot-wrap {
-      position: relative;
-      width: 175px;
-      height: 255px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10;
-      animation: robotHoverFloat 4s ease-in-out infinite alternate;
-      will-change: transform;
-      transform: translate3d(0, 0, 0);
-    }
-
-    .robot-base-img {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 20px rgba(0, 242, 254, 0.45));
-      transform: translateZ(0);
-      backface-visibility: hidden;
-      z-index: 2;
-    }
-
-    @keyframes robotHoverFloat {
-      0% { transform: translateY(-4px); }
-      100% { transform: translateY(6px); }
-    }
-
-    .robot-ground-glow {
-      position: absolute;
-      bottom: -6px;
-      width: 140px;
-      height: 24px;
-      border-radius: 50%;
-      background: radial-gradient(ellipse, rgba(0, 242, 254, 0.8) 0%, rgba(168, 85, 247, 0.4) 50%, transparent 80%);
-      filter: blur(8px);
-      z-index: 1;
-      animation: shadowPulse 4s ease-in-out infinite alternate;
-      will-change: transform, opacity;
-      pointer-events: none;
-    }
-
-    @keyframes shadowPulse {
-      0% { transform: scale(1.15); opacity: 0.9; }
-      100% { transform: scale(0.85); opacity: 0.4; }
-    }
-
-    .intro-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 16px;
-      border-radius: 30px;
-      background: rgba(0, 242, 254, 0.12);
-      border: 1px solid rgba(0, 242, 254, 0.4);
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--ribbon-cyan);
-      box-shadow: 0 0 20px rgba(0, 242, 254, 0.25);
-      margin-bottom: 16px;
-      z-index: 2;
-      letter-spacing: 1px;
-    }
-
-    .intro-title {
-      font-size: 30px;
-      font-weight: 900;
-      letter-spacing: -0.5px;
-      background: linear-gradient(90deg, #ffffff 0%, #00f2fe 30%, #ec4899 60%, #ffffff 100%);
-      background-size: 200% auto;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      animation: shimmerText 3s linear infinite;
-      margin-bottom: 10px;
-      z-index: 2;
-    }
-
-    @keyframes shimmerText { to { background-position: 200% center; } }
-
-    .intro-desc {
-      font-size: 13px;
-      color: var(--text-secondary);
-      line-height: 1.6;
-      max-width: 320px;
-      z-index: 2;
-      margin-bottom: 24px;
-    }
-
-    .intro-loader {
-      width: 180px;
-      height: 4px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 10px;
-      overflow: hidden;
-      position: relative;
-      z-index: 2;
-    }
-
-    .intro-loader-bar {
-      position: absolute;
-      top: 0;
-      left: 0;
-      height: 100%;
-      width: 0%;
-      background: var(--gradient-agent);
-      border-radius: 10px;
-      animation: loadProgress 2s ease-in-out forwards;
-    }
-
-    @keyframes loadProgress {
-      0% { width: 0%; }
-      50% { width: 65%; }
-      100% { width: 100%; }
-    }
-
-    /* ==========================================================================
-       2. 3D HOLOGRAPHIC AGENT COMMAND DECK & CYBERNETIC LOGIN SCREEN
-       ========================================================================== */
-    .login-screen {
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #070d24 50%, #02040c 100%);
-      z-index: 900;
-      display: none;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 22px 18px 18px 18px;
-      animation: fadeIn 0.4s ease-out forwards;
-      overflow-y: auto;
-    }
-
-    /* ==========================================================================
-       2. MINIMALIST EXECUTIVE SSO LOGIN SCREEN
-       ========================================================================== */
-    .login-screen {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 100;
-      background: radial-gradient(circle at 50% 12%, #12224d 0%, #08102b 50%, #030612 100%);
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
-      padding: calc(38px + var(--safe-top)) 24px calc(28px + var(--safe-bottom));
-      box-sizing: border-box;
-      overflow-y: auto;
-    }
-    .login-screen.active { display: flex; }
-
-    .sso-brand-header {
-      width: 100%;
-      display: flex;
-      justify-content: center;
-      margin-bottom: 4px;
-    }
-
-    .sso-brand-capsule {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      backdrop-filter: blur(20px);
-      padding: 6px 14px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.6px;
-      color: rgba(255, 255, 255, 0.88);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-    }
-
-    /* Hero Mascot Spotlight */
-    .sso-hero-stage {
-      position: relative;
-      width: 100%;
-      height: 250px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 8px 0;
-    }
-
-    .sso-ambient-aurora {
-      position: absolute;
-      width: 240px;
-      height: 240px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(0, 242, 254, 0.28) 0%, rgba(99, 102, 241, 0.18) 50%, transparent 70%);
-      filter: blur(35px);
-      pointer-events: none;
-      animation: ssoAuroraPulse 5s ease-in-out infinite alternate;
-    }
-
-    @keyframes ssoAuroraPulse {
-      0% { transform: scale(0.88); opacity: 0.55; }
-      100% { transform: scale(1.15); opacity: 0.95; }
-    }
-
-    .sso-mascot-box {
-      position: relative;
-      width: 185px;
-      height: 240px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 2;
-      animation: ssoMascotFloat 4s ease-in-out infinite alternate;
-    }
-
-    .sso-robot-img {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      filter: drop-shadow(0 16px 30px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 24px rgba(0, 242, 254, 0.45));
-      z-index: 2;
-    }
-
-    @keyframes ssoMascotFloat {
-      0% { transform: translateY(-4px); }
-      100% { transform: translateY(6px); }
-    }
-
-    .sso-pedestal-glow {
-      position: absolute;
-      bottom: 0;
-      width: 140px;
-      height: 24px;
-      border-radius: 50%;
-      background: radial-gradient(ellipse, rgba(0, 242, 254, 0.65) 0%, rgba(168, 85, 247, 0.25) 60%, transparent 80%);
-      box-shadow: 0 0 25px rgba(0, 242, 254, 0.8);
-      z-index: 1;
-      pointer-events: none;
-    }
-
-    /* Heading Block */
-    .sso-heading-block {
-      text-align: center;
-      margin-bottom: 20px;
-      padding: 0 10px;
-    }
-
-    .sso-title {
-      font-size: 25px;
-      font-weight: 800;
-      color: #ffffff;
-      margin: 0 0 8px;
-      letter-spacing: -0.5px;
-    }
-
-    .sso-title-gradient {
-      background: linear-gradient(135deg, #00f2fe 0%, #38bdf8 40%, #a855f7 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .sso-subtitle {
-      font-size: 13px;
-      line-height: 1.55;
-      color: rgba(255, 255, 255, 0.65);
-      margin: 0;
-      font-weight: 400;
-    }
-
-    /* Executive Action Card */
-    .sso-card {
-      width: 100%;
-      max-width: 360px;
-      background: rgba(10, 18, 48, 0.7);
-      border: 1px solid rgba(56, 189, 248, 0.25);
-      backdrop-filter: blur(25px);
-      border-radius: 22px;
-      padding: 16px 18px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.1);
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    /* Microsoft 365 Cyber Azure Button (100% In-Theme) */
-    .sso-ms-button {
-      width: 100%;
-      padding: 15px 18px;
-      border-radius: 15px;
-      background: linear-gradient(135deg, #005ea6 0%, #0078d4 35%, #0099e6 70%, #00c8f8 100%);
-      color: #ffffff;
-      font-size: 14.5px;
-      font-weight: 700;
-      letter-spacing: -0.2px;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      cursor: pointer;
-      box-shadow: 0 10px 25px rgba(0, 120, 212, 0.45), 0 0 20px rgba(0, 242, 254, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.45);
-      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-      position: relative;
+      background: var(--bg-base);
       overflow: hidden;
     }
 
-    .sso-ms-button:hover {
-      background: linear-gradient(135deg, #006ec4 0%, #0086eb 35%, #00abff 70%, #22d3ee 100%);
-      transform: translateY(-2px);
-      box-shadow: 0 15px 35px rgba(0, 120, 212, 0.6), 0 0 30px rgba(0, 242, 254, 0.55), inset 0 1px 2px rgba(255, 255, 255, 0.6);
-    }
-
-    .sso-ms-button:active {
-      transform: scale(0.98);
-      box-shadow: 0 5px 15px rgba(0, 120, 212, 0.4);
-    }
-
-    .sso-btn-content {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .sso-ms-emblem {
-      display: grid;
-      grid-template-columns: repeat(2, 9px);
-      gap: 3px;
-      padding: 0;
-      background: transparent;
-      box-shadow: none;
-    }
-
-    .sso-ms-arrow {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.2);
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      color: #ffffff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: transform 0.2s ease, background 0.2s ease;
-    }
-
-    .sso-ms-button:hover .sso-ms-arrow {
-      transform: translateX(3px);
-      background: rgba(255, 255, 255, 0.35);
-    }
-
-    .sso-ms-button::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 60%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-      transform: skewX(-20deg);
-      animation: ssoBtnShimmer 4s infinite;
-    }
-
-    @keyframes ssoBtnShimmer {
-      0% { left: -100%; }
-      25% { left: 140%; }
-      100% { left: 140%; }
-    }
-
-    .sso-trust-line {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      font-size: 11px;
-      color: rgba(255, 255, 255, 0.55);
-      font-weight: 500;
-    }
-
-    .sso-footer-tag {
-      margin-top: 14px;
-      font-size: 10px;
-      color: rgba(255, 255, 255, 0.35);
-      font-weight: 500;
-      letter-spacing: 0.4px;
-    }
-
-    /* ==========================================================================
-       3. MAIN APP INTERFACE
-       ========================================================================== */
-    .main-app {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      position: relative;
-    }
-
+    /* Minimalist Header */
     .app-header {
       height: var(--top-nav-h);
-      padding: calc(12px + var(--safe-top)) 18px 12px 18px;
+      padding-top: var(--safe-top);
+      padding-left: 18px;
+      padding-right: 18px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       background: var(--bg-glass);
-      backdrop-filter: blur(25px);
-      border-bottom: 1px solid var(--border-subtle);
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      box-sizing: border-box;
-    }
-
-    .header-profile {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .profile-avatar {
-      position: relative;
-      width: 44px;
-      height: 44px;
-      border-radius: 14px;
-      background: var(--gradient-agent);
-      padding: 2px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 4px 15px var(--glow-agent);
-    }
-
-    .avatar-inner {
-      width: 100%;
-      height: 100%;
-      background: var(--bg-primary);
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      font-size: 14px;
-      color: #fff;
-    }
-
-    .header-details h3 {
-      font-size: 14px;
-      font-weight: 700;
-      color: #fff;
-      line-height: 1.2;
-    }
-
-    .header-details p {
-      font-size: 11px;
-      color: var(--ribbon-cyan);
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .pulse-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--ribbon-cyan);
-      box-shadow: 0 0 10px var(--ribbon-cyan);
-    }
-
-    .app-content {
-      flex: 1;
-      overflow-y: auto;
-      padding-bottom: calc(var(--bottom-nav-h) + 16px);
-      -webkit-overflow-scrolling: touch;
-      position: relative;
-    }
-
-    .tab-page {
-      display: none;
-      padding: 18px 16px;
-      animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    .tab-page.active { display: block; }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* 3D Agent 365 Control Plane Card */
-    .agent-control-card {
-      position: relative;
-      border-radius: var(--radius-xl);
-      padding: 22px;
-      margin-bottom: 20px;
-      overflow: hidden;
-      background: linear-gradient(135deg, rgba(30, 58, 138, 0.6) 0%, rgba(15, 23, 42, 0.85) 100%);
-      border: 1px solid var(--border-glow);
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 0 25px var(--glow-agent);
-    }
-
-    .card-banner-bg {
-      position: absolute;
-      top: -40px;
-      right: -40px;
-      width: 220px;
-      height: 220px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(56, 189, 248, 0.35) 0%, rgba(168, 85, 247, 0.2) 40%, transparent 70%);
-      filter: blur(25px);
-      pointer-events: none;
-    }
-
-    .hero-top-badge {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-      position: relative;
-      z-index: 2;
-    }
-
-    .agent-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 12px;
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      font-size: 11px;
-      font-weight: 700;
-      color: #fff;
-    }
-
-    .agent-control-card h2 {
-      font-size: 19px;
-      font-weight: 800;
-      color: #fff;
-      margin-bottom: 6px;
-      letter-spacing: -0.3px;
-      position: relative;
-      z-index: 2;
-    }
-
-    .agent-control-card p {
-      font-size: 12px;
-      color: var(--text-secondary);
-      line-height: 1.55;
-      margin-bottom: 16px;
-      position: relative;
-      z-index: 2;
-    }
-
-    .fluent-btn-primary {
-      width: 100%;
-      padding: 13px 18px;
-      border-radius: var(--radius-md);
-      background: var(--gradient-agent);
-      color: #02040c;
-      font-weight: 800;
-      font-size: 13px;
-      border: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      cursor: pointer;
-      box-shadow: 0 6px 20px var(--glow-agent);
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-      position: relative;
-      z-index: 2;
-    }
-
-    .fluent-btn-primary:active {
-      transform: scale(0.97);
-      filter: brightness(1.1);
-    }
-
-    /* Section Headers */
-    .section-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-    }
-
-    .section-title {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .section-link {
-      font-size: 12px;
-      color: var(--ribbon-blue);
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    /* Quick Action Chips */
-    .action-chip-grid {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding-bottom: 4px;
-      margin-bottom: 20px;
-    }
-
-    .fluent-chip {
-      flex-shrink: 0;
-      padding: 10px 15px;
-      border-radius: var(--radius-md);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-subtle);
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .fluent-chip:active {
-      background: var(--bg-surface-elevated);
-      border-color: var(--ribbon-cyan);
-      transform: scale(0.96);
-    }
-
-    /* Fluent Card */
-    .fluent-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-subtle);
       backdrop-filter: blur(20px);
-      border-radius: var(--radius-xl);
-      padding: 18px;
-      margin-bottom: 20px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-    }
-
-    .live-time-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding-bottom: 14px;
+      -webkit-backdrop-filter: blur(20px);
       border-bottom: 1px solid var(--border-subtle);
-      margin-bottom: 14px;
-    }
-
-    .time-val {
-      font-size: 26px;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      color: #fff;
-    }
-
-    .date-val {
-      font-size: 12px;
-      color: var(--ribbon-cyan);
-      font-weight: 600;
-    }
-
-    /* ==========================================================================
-       EXECUTIVE SCHEDULE & CALENDAR DASHBOARD
-       ========================================================================== */
-    .date-strip-container {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding: 4px 2px 14px 2px;
-      margin-bottom: 16px;
-      scrollbar-width: none;
-      -webkit-overflow-scrolling: touch;
-    }
-    .date-strip-container::-webkit-scrollbar { display: none; }
-
-    .date-pill {
-      flex: 0 0 54px;
-      height: 68px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 3px;
-      cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    .date-pill .dp-day {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-    }
-
-    .date-pill .dp-num {
-      font-size: 17px;
-      font-weight: 800;
-      color: #ffffff;
-    }
-
-    .date-pill .dp-dot {
-      width: 4px;
-      height: 4px;
-      border-radius: 50%;
-      background: transparent;
-    }
-
-    .date-pill.has-event .dp-dot {
-      background: var(--ribbon-cyan);
-      box-shadow: 0 0 6px var(--ribbon-cyan);
-    }
-
-    .date-pill.active {
-      background: linear-gradient(135deg, #0078d4 0%, #00a4ef 100%);
-      border-color: rgba(255, 255, 255, 0.4);
-      box-shadow: 0 6px 18px rgba(0, 120, 212, 0.5);
-      transform: translateY(-2px);
-    }
-
-    .date-pill.active .dp-day { color: rgba(255, 255, 255, 0.9); }
-    .date-pill.active .dp-num { color: #ffffff; }
-    .date-pill.active .dp-dot { background: #ffffff; }
-
-    /* Executive Metrics Strip */
-    .metrics-row {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      margin-bottom: 16px;
-    }
-
-    .metric-box {
-      background: rgba(14, 25, 60, 0.7);
-      border: 1px solid rgba(56, 189, 248, 0.2);
-      border-radius: 14px;
-      padding: 10px 8px;
-      text-align: center;
-      backdrop-filter: blur(15px);
-    }
-
-    .metric-box .m-val {
-      font-size: 16px;
-      font-weight: 800;
-      color: #ffffff;
-      line-height: 1.2;
-    }
-
-    .metric-box .m-lbl {
-      font-size: 9.5px;
-      color: var(--text-muted);
-      margin-top: 3px;
-      font-weight: 600;
-    }
-
-    /* Timeline Cards */
-    .timeline-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-
-    .event-card {
-      background: linear-gradient(135deg, rgba(16, 28, 68, 0.85) 0%, rgba(8, 14, 38, 0.95) 100%);
-      border: 1px solid rgba(56, 189, 248, 0.25);
-      border-radius: 16px;
-      padding: 14px 16px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-      position: relative;
-      overflow: hidden;
-      transition: all 0.2s;
-    }
-
-    .event-card::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 4px;
-      background: linear-gradient(180deg, #00c8f8 0%, #0078d4 100%);
-    }
-
-    .event-card.event-urgent::before {
-      background: linear-gradient(180deg, #f43f5e 0%, #fb923c 100%);
-    }
-
-    .event-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-
-    .event-time-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11.5px;
-      font-weight: 700;
-      color: var(--ribbon-cyan);
-      background: rgba(0, 242, 254, 0.1);
-      padding: 4px 10px;
-      border-radius: 20px;
-      border: 1px solid rgba(0, 242, 254, 0.25);
-    }
-
-    .event-status-tag {
-      font-size: 10px;
-      font-weight: 700;
-      padding: 3px 8px;
-      border-radius: 12px;
-    }
-
-    .status-upcoming {
-      background: rgba(56, 189, 248, 0.15);
-      color: var(--ribbon-blue);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-    }
-
-    .status-active {
-      background: rgba(16, 185, 129, 0.15);
-      color: var(--accent-emerald);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-    }
-
-    .event-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: #ffffff;
-      margin-bottom: 6px;
-      line-height: 1.35;
-    }
-
-    .event-meta-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      font-size: 11px;
-      color: var(--text-secondary);
-      margin-bottom: 10px;
-    }
-
-    .meta-tag {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .event-actions-bar {
-      display: flex;
-      gap: 8px;
-      padding-top: 10px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .event-action-btn {
-      flex: 1;
-      padding: 7px 10px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: #ffffff;
-      font-size: 11px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 5px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .event-action-btn.btn-teams {
-      background: rgba(98, 100, 167, 0.3);
-      border-color: rgba(98, 100, 167, 0.6);
-      color: #a0a4ff;
-    }
-
-    .event-action-btn:active {
-      transform: scale(0.97);
-    }
-
-    /* Free Slot Card */
-    .free-slot-card {
-      border: 1px dashed rgba(0, 242, 254, 0.3);
-      border-radius: 14px;
-      padding: 12px 14px;
-      background: rgba(0, 242, 254, 0.03);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      transition: all 0.2s;
-    }
-
-    .free-slot-card:hover {
-      background: rgba(0, 242, 254, 0.08);
-      border-color: var(--ribbon-cyan);
-    }
-
-    .free-slot-info {
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-
-    .free-slot-info strong {
-      color: var(--ribbon-cyan);
-    }
-
-    .free-slot-btn {
-      padding: 6px 12px;
-      border-radius: 20px;
-      background: rgba(0, 242, 254, 0.15);
-      border: 1px solid var(--ribbon-cyan);
-      color: #ffffff;
-      font-size: 11px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-      border-radius: 20px;
-      background: rgba(16, 185, 129, 0.18);
-      border: 1px solid rgba(16, 185, 129, 0.35);
-      color: var(--accent-emerald);
-      font-size: 11px;
-      font-weight: 700;
-    }
-
-    /* Chat Tab */
-    /* ==========================================================================
-       CHAT SCREEN & AI COMMAND HUB
-       ========================================================================== */
-    .tab-page#tab-chat {
-      height: 100%;
-      padding: 0;
-      display: none;
-      flex-direction: column;
-      overflow: hidden;
-      position: relative;
-    }
-    .tab-page#tab-chat.active {
-      display: flex;
-    }
-
-    .chat-container {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      width: 100%;
-      overflow: hidden;
-      position: relative;
-      background: radial-gradient(circle at 50% 0%, rgba(14, 30, 75, 0.4) 0%, rgba(4, 8, 28, 0.8) 60%, rgba(2, 4, 12, 0.95) 100%);
-    }
-
-    /* Agent Status Header Bar */
-    .chat-agent-bar {
-      padding: 10px 16px;
-      background: rgba(10, 18, 48, 0.65);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      backdrop-filter: blur(20px);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      z-index: 50;
       flex-shrink: 0;
-      z-index: 10;
     }
 
-    .chat-agent-info {
+    .header-user {
       display: flex;
       align-items: center;
       gap: 10px;
     }
 
-    .chat-robot-avatar {
+    .user-avatar {
       width: 34px;
       height: 34px;
       border-radius: 10px;
-      background: rgba(0, 242, 254, 0.15);
-      border: 1px solid rgba(0, 242, 254, 0.4);
-      box-shadow: 0 0 12px rgba(0, 242, 254, 0.35);
+      background: linear-gradient(135deg, #0078d4 0%, #00c8f8 100%);
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 13px;
       display: flex;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
-      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0, 120, 212, 0.35);
     }
 
-    .chat-robot-avatar img {
-      width: 90%;
-      height: 90%;
-      object-fit: contain;
-    }
-
-    .chat-agent-name {
-      font-size: 13px;
-      font-weight: 800;
+    .user-details h3 {
+      font-size: 13.5px;
+      font-weight: 700;
       color: #ffffff;
       line-height: 1.2;
     }
 
-    .chat-agent-status {
+    .user-details p {
       font-size: 10.5px;
-      color: var(--ribbon-cyan);
+      color: var(--text-secondary);
       display: flex;
       align-items: center;
       gap: 5px;
-      margin-top: 1px;
     }
 
-    .chat-clear-btn {
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 8px;
-      width: 32px;
-      height: 32px;
+    .online-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-emerald);
+      box-shadow: 0 0 8px var(--accent-emerald);
+      display: inline-block;
+    }
+
+    .header-action-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--text-muted);
       cursor: pointer;
       transition: all 0.2s;
     }
 
-    .chat-clear-btn:hover {
-      background: rgba(244, 63, 94, 0.2);
-      color: var(--accent-rose);
-      border-color: rgba(244, 63, 94, 0.4);
+    .header-action-btn:active {
+      background: var(--bg-surface-elevated);
+      color: #fff;
     }
 
-    /* Message Stream */
+    /* Tab Pages */
+    .app-main {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tab-page {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 16px 16px var(--bottom-nav-h);
+    }
+
+    .tab-page.active {
+      display: flex;
+    }
+
+    #tab-assistant.tab-page {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    /* Tab 1: AI Assistant */
+    .assistant-container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: var(--bottom-nav-h);
+      position: relative;
+    }
+
+    .glance-widget {
+      margin: 12px 14px 4px;
+      padding: 10px 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      backdrop-filter: blur(16px);
+      flex-shrink: 0;
+    }
+
+    .glance-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .glance-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: rgba(0, 120, 212, 0.15);
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .glance-text { min-width: 0; }
+
+    .glance-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .glance-sub {
+      font-size: 10.5px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .glance-btn {
+      padding: 5px 10px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      font-size: 10.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
     .chat-stream {
       flex: 1;
       overflow-y: auto;
-      padding: 14px 14px 8px;
+      padding: 12px 14px 6px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 14px;
       -webkit-overflow-scrolling: touch;
     }
 
-    .chat-msg-row {
+    .chat-row {
       display: flex;
       gap: 8px;
       width: fit-content;
-      max-width: 82%;
-      animation: msgPop 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      max-width: 84%;
+      animation: fadeIn 0.2s ease-out forwards;
     }
 
-    @keyframes msgPop {
+    @keyframes fadeIn {
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    .chat-msg-row.msg-bot {
+    .chat-row.bot {
       align-self: flex-start;
       align-items: flex-end;
     }
 
-    .chat-msg-row.msg-user {
+    .chat-row.user {
       align-self: flex-end;
       flex-direction: row-reverse;
     }
 
-    .msg-avatar {
-      width: 26px;
-      height: 26px;
+    .bot-avatar {
+      width: 28px;
+      height: 28px;
       border-radius: 8px;
-      background: rgba(0, 242, 254, 0.12);
-      border: 1px solid rgba(0, 242, 254, 0.35);
-      box-shadow: 0 0 8px rgba(0, 242, 254, 0.25);
+      background: rgba(0, 120, 212, 0.15);
+      border: 1px solid rgba(0, 120, 212, 0.3);
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-shrink: 0;
       overflow: hidden;
+      flex-shrink: 0;
       margin-bottom: 2px;
     }
 
-    .msg-avatar img {
-      width: 88%;
-      height: 88%;
+    .bot-avatar img {
+      width: 90%;
+      height: 90%;
       object-fit: contain;
     }
 
@@ -1302,66 +317,55 @@
       flex-direction: column;
       width: fit-content;
       max-width: 100%;
-      padding: 8px 12px;
+      padding: 9px 13px;
       border-radius: 14px;
       font-size: 13px;
-      line-height: 1.4;
+      line-height: 1.45;
       position: relative;
       word-break: break-word;
       white-space: normal;
-      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
-      box-sizing: border-box;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
 
-    .bubble-bot {
-      background: rgba(14, 25, 60, 0.92);
-      border: 1px solid rgba(56, 189, 248, 0.25);
+    .chat-row.bot .bubble {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
       color: #f1f5f9;
       border-bottom-left-radius: 3px;
-      backdrop-filter: blur(16px);
     }
 
-    .bubble-user {
-      background: linear-gradient(135deg, #0078d4 0%, #0099e6 50%, #00bcf2 100%);
+    .chat-row.user .bubble {
+      background: linear-gradient(135deg, #0078d4 0%, #00a4ef 100%);
       color: #ffffff;
       font-weight: 500;
-      border: 1px solid rgba(255, 255, 255, 0.2);
       border-bottom-right-radius: 3px;
-      box-shadow: 0 3px 12px rgba(0, 120, 212, 0.35);
-    }
-
-    .bubble-text {
-      display: block;
-      margin: 0;
-      padding: 0;
     }
 
     .bubble-meta {
       font-size: 9px;
       opacity: 0.55;
-      margin-top: 3px;
+      margin-top: 4px;
       align-self: flex-end;
-      display: block;
     }
 
-    .bubble-user .bubble-meta {
+    .chat-row.user .bubble-meta {
       color: rgba(255, 255, 255, 0.85);
     }
 
     .interactive-list {
-      margin-top: 10px;
+      margin-top: 8px;
       display: flex;
       flex-direction: column;
-      gap: 7px;
+      gap: 6px;
     }
 
     .interactive-btn {
-      padding: 9px 13px;
-      border-radius: 12px;
-      background: rgba(0, 242, 254, 0.08);
-      border: 1px solid rgba(56, 189, 248, 0.4);
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
       color: #ffffff;
-      font-size: 12.5px;
+      font-size: 12px;
       font-weight: 600;
       display: flex;
       align-items: center;
@@ -1370,1091 +374,640 @@
       transition: all 0.2s;
     }
 
-    .interactive-btn:hover,
     .interactive-btn:active {
-      background: rgba(0, 242, 254, 0.25);
-      border-color: #00f2fe;
-      transform: translateY(-1px);
+      background: rgba(0, 120, 212, 0.25);
+      border-color: var(--accent-azure);
     }
 
-    /* Prompt Suggestion Chips */
-    .chat-suggestions-bar {
+    .prompt-ribbon {
       padding: 6px 14px;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
       overflow-x: auto;
-      white-space: nowrap;
-      flex-shrink: 0;
       scrollbar-width: none;
-    }
-    .chat-suggestions-bar::-webkit-scrollbar { display: none; }
-
-    .chat-sug-chip {
-      padding: 6px 12px;
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      color: rgba(255, 255, 255, 0.85);
-      font-size: 11.5px;
-      font-weight: 600;
-      cursor: pointer;
       flex-shrink: 0;
+    }
+    .prompt-ribbon::-webkit-scrollbar { display: none; }
+
+    .prompt-chip {
+      padding: 6px 12px;
+      border-radius: var(--radius-full);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-size: 11.5px;
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
       transition: all 0.2s;
-      backdrop-filter: blur(10px);
+      flex-shrink: 0;
     }
 
-    .chat-sug-chip:hover,
-    .chat-sug-chip:active {
-      background: rgba(0, 242, 254, 0.18);
-      border-color: rgba(0, 242, 254, 0.5);
+    .prompt-chip:active {
+      background: var(--bg-surface-elevated);
       color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.2);
     }
 
-    /* Bottom Input Bar */
-    .chat-bottom-input {
-      padding: 10px 14px calc(12px + var(--safe-bottom));
-      background: rgba(8, 14, 38, 0.85);
-      backdrop-filter: blur(25px);
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    .chat-input-bar {
+      padding: 8px 14px 10px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+
+    .chat-input-capsule {
       display: flex;
       align-items: center;
       gap: 8px;
-      flex-shrink: 0;
-      box-sizing: border-box;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-full);
+      padding: 3px 4px 3px 14px;
+      transition: border-color 0.2s;
     }
 
-    .chat-input-pill {
+    .chat-input-capsule:focus-within {
+      border-color: var(--accent-azure);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .chat-input-field {
       flex: 1;
-      display: flex;
-      align-items: center;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 26px;
-      padding: 2px 4px 2px 14px;
-      transition: all 0.2s;
-      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
-    }
-
-    .chat-input-pill:focus-within {
-      border-color: var(--ribbon-cyan);
-      background: rgba(255, 255, 255, 0.1);
-      box-shadow: 0 0 15px rgba(0, 242, 254, 0.25), inset 0 1px 3px rgba(0, 0, 0, 0.3);
-    }
-
-    .fluent-text-input {
-      flex: 1;
-      height: 40px;
+      height: 38px;
       background: transparent;
       border: none;
-      padding: 0;
-      font-size: 13.5px;
-      color: #fff;
       outline: none;
+      color: #ffffff;
+      font-size: 13px;
+      font-family: inherit;
     }
 
-    .fluent-text-input::placeholder {
-      color: rgba(255, 255, 255, 0.45);
-    }
+    .chat-input-field::placeholder { color: var(--text-muted); }
 
-    .send-icon-btn {
-      width: 38px;
-      height: 38px;
+    .chat-send-btn {
+      width: 36px;
+      height: 36px;
       border-radius: 50%;
-      background: linear-gradient(135deg, #0078d4 0%, #00a4ef 60%, #00c8f8 100%);
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: linear-gradient(135deg, #0078d4 0%, #00c8f8 100%);
+      border: none;
       color: #ffffff;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       flex-shrink: 0;
-      box-shadow: 0 4px 14px rgba(0, 120, 212, 0.5);
-      transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(0, 120, 212, 0.4);
+      transition: transform 0.15s;
     }
 
-    .send-icon-btn:hover {
-      transform: scale(1.05);
-      box-shadow: 0 6px 18px rgba(0, 242, 254, 0.6);
-    }
+    .chat-send-btn:active { transform: scale(0.92); }
 
-    .send-icon-btn:active {
-      transform: scale(0.95);
-    }
-
-    /* Bottom Navigation Bar (No Emojis) */
-    .fluent-nav {
-      height: var(--bottom-nav-h);
-      background: var(--bg-glass);
-      backdrop-filter: blur(25px);
-      border-top: 1px solid var(--border-subtle);
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
+    /* Tab 2: Calendar */
+    .calendar-header {
       display: flex;
       align-items: center;
-      justify-content: space-around;
-      padding: 0 8px var(--safe-bottom);
-      box-sizing: border-box;
-      z-index: 100;
+      justify-content: space-between;
+      margin-bottom: 14px;
     }
 
-    .nav-btn {
+    .calendar-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .refresh-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
+      color: var(--accent-cyan);
+      background: rgba(0, 200, 248, 0.1);
+      border: 1px solid rgba(0, 200, 248, 0.25);
+      padding: 4px 10px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .week-strip {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 12px;
+      margin-bottom: 12px;
+      scrollbar-width: none;
+    }
+    .week-strip::-webkit-scrollbar { display: none; }
+
+    .day-pill {
+      flex: 0 0 52px;
+      height: 64px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 4px;
-      color: var(--text-muted);
-      font-size: 10px;
-      font-weight: 600;
-      padding: 6px 14px;
-      border-radius: var(--radius-md);
+      gap: 2px;
       cursor: pointer;
       transition: all 0.2s;
     }
 
-    .nav-btn.active { color: var(--ribbon-cyan); }
-    .nav-btn.active .icon { filter: drop-shadow(0 0 8px var(--ribbon-cyan)); }
-
-    /* ==========================================================================
-       4. CUSTOM DIALOGS & POPUPS (NO browser alerts)
-       ========================================================================== */
-    .modal-backdrop {
-      position: absolute;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(12px);
-      z-index: 999;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      animation: fadeIn 0.2s ease-out forwards;
+    .day-pill .d-name {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      font-weight: 600;
     }
 
-    .modal-backdrop.show { display: flex; }
-
-    .custom-dialog {
-      width: 100%;
-      background: var(--bg-surface-elevated);
-      border: 1px solid var(--border-glow);
-      border-radius: var(--radius-xl);
-      padding: 24px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.85), 0 0 25px var(--glow-agent);
-      text-align: center;
-      transform: scale(0.95);
-      animation: popUp 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-    }
-
-    @keyframes popUp { to { transform: scale(1); } }
-
-    .dialog-icon-circle {
-      width: 52px;
-      height: 52px;
-      border-radius: 50%;
-      background: rgba(244, 63, 94, 0.18);
-      border: 1px solid rgba(244, 63, 94, 0.35);
-      color: var(--accent-rose);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 16px auto;
-    }
-
-    .dialog-title {
+    .day-pill .d-num {
       font-size: 16px;
       font-weight: 700;
-      color: #fff;
-      margin-bottom: 8px;
+      color: #ffffff;
     }
 
-    .dialog-desc {
-      font-size: 12px;
-      color: var(--text-secondary);
-      line-height: 1.5;
-      margin-bottom: 20px;
+    .day-pill.active {
+      background: var(--accent-azure);
+      border-color: rgba(255, 255, 255, 0.3);
+      box-shadow: 0 4px 12px rgba(0, 120, 212, 0.4);
     }
 
-    .dialog-btn-row { display: flex; gap: 10px; }
+    .day-pill.active .d-name { color: rgba(255, 255, 255, 0.85); }
+    .day-pill.active .d-num { color: #ffffff; }
 
-    .btn-dialog {
-      flex: 1;
-      padding: 12px;
-      border-radius: var(--radius-md);
-      font-size: 13px;
+    .agenda-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      position: relative;
+    }
+
+    .agenda-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 14px;
+      bottom: 14px;
+      width: 3px;
+      border-radius: 4px;
+      background: var(--accent-azure);
+    }
+
+    .agenda-time {
+      font-size: 11.5px;
       font-weight: 700;
-      border: none;
+      color: var(--accent-cyan);
+      margin-bottom: 4px;
+    }
+
+    .agenda-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+
+    .agenda-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+
+    .agenda-actions { display: flex; gap: 8px; }
+
+    .agenda-action-btn {
+      padding: 6px 12px;
+      border-radius: 8px;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
       cursor: pointer;
     }
 
-    .btn-dialog-primary { background: var(--gradient-agent); color: #02040c; }
-    .btn-dialog-secondary { background: rgba(255, 255, 255, 0.08); color: #fff; }
-
-    /* Floating Toast Banner */
-    .fluent-toast {
-      position: absolute;
-      top: 16px;
-      left: 16px;
-      right: 16px;
-      background: var(--bg-surface-elevated);
-      border: 1px solid var(--border-glow);
-      border-radius: var(--radius-lg);
-      padding: 14px;
+    .free-item {
+      padding: 10px 14px;
+      border: 1px dashed var(--border-subtle);
+      border-radius: var(--radius-md);
       display: flex;
       align-items: center;
-      gap: 12px;
-      z-index: 1100;
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7), 0 0 20px var(--glow-agent);
-      transform: translateY(-130%);
-      transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: var(--text-muted);
     }
 
-    .fluent-toast.visible { transform: translateY(0); }
+    .free-item strong { color: var(--accent-cyan); }
+    .free-action { font-size: 11px; color: var(--accent-azure); font-weight: 600; cursor: pointer; }
 
-    .toast-icon-wrap {
-      width: 38px;
-      height: 38px;
+    /* Tab 3: Settings */
+    .settings-group-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 16px 4px 8px;
+    }
+
+    .settings-group {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .settings-row {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .settings-row:last-child { border-bottom: none; }
+
+    .settings-label h4 { font-size: 13px; font-weight: 600; color: #ffffff; }
+    .settings-label p { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    .toggle-switch {
+      width: 44px;
+      height: 24px;
+      background: var(--accent-azure);
+      border-radius: 12px;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: #ffffff;
       border-radius: 50%;
-      background: rgba(0, 242, 254, 0.18);
-      color: var(--ribbon-cyan);
+      top: 2px;
+      right: 2px;
+      transition: all 0.2s;
+    }
+
+    .logout-btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: var(--radius-lg);
+      background: rgba(244, 63, 94, 0.1);
+      border: 1px solid rgba(244, 63, 94, 0.25);
+      color: var(--accent-rose);
+      font-size: 13px;
+      font-weight: 700;
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-shrink: 0;
+      gap: 6px;
+      cursor: pointer;
+      margin-top: 20px;
     }
 
-    .toast-text h5 { font-size: 13px; font-weight: 700; color: #fff; }
-    .toast-text p { font-size: 11px; color: var(--text-secondary); }
+    /* Bottom Navigation */
+    .app-nav {
+      height: var(--bottom-nav-h);
+      padding-bottom: var(--safe-bottom);
+      background: var(--bg-glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      color: var(--text-muted);
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 6px 20px;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+
+    .nav-item.active { color: var(--accent-cyan); }
+    .nav-item.active svg { color: var(--accent-cyan); }
+
+    /* Login Gate */
+    .gate-screen {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-base);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .gate-screen.hidden { display: none; }
+
+    .gate-logo {
+      width: 90px;
+      height: 90px;
+      margin-bottom: 20px;
+      border-radius: 24px;
+      background: rgba(0, 120, 212, 0.1);
+      border: 1px solid rgba(0, 120, 212, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .gate-logo img { width: 75%; height: 75%; object-fit: contain; }
+
+    .gate-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+
+    .gate-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      max-width: 280px;
+      line-height: 1.5;
+      margin-bottom: 32px;
+    }
+
+    .sso-btn {
+      width: 100%;
+      max-width: 320px;
+      height: 48px;
+      border-radius: var(--radius-full);
+      background: linear-gradient(135deg, #0078d4 0%, #00a4ef 100%);
+      border: none;
+      color: #ffffff;
+      font-size: 13.5px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0, 120, 212, 0.4);
+    }
   </style>
 </head>
 <body>
 
   <div class="app-viewport">
-
-    <!-- ==========================================
-         CUSTOM MODAL DIALOG (No system alerts)
-         ========================================== -->
-    <div class="modal-backdrop" id="customModal">
-      <div class="custom-dialog">
-        <div class="dialog-icon-circle" id="modalIcon">
-          <svg class="icon icon-lg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-        </div>
-        <h3 class="dialog-title" id="modalTitle">แจ้งเตือนสถานะบัญชี</h3>
-        <p class="dialog-desc" id="modalDesc">บัญชีของคุณจำเป็นต้องยืนยันตัวตนใหม่กับ Microsoft 365</p>
-        <div class="dialog-btn-row">
-          <button class="btn-dialog btn-dialog-primary" onclick="closeModal()">ตกลง</button>
+    
+    <header class="app-header">
+      <div class="header-user">
+        <div class="user-avatar">เอก</div>
+        <div class="user-details">
+          <h3>คุณวีระศักดิ์</h3>
+          <p><span class="online-dot"></span> M365 เชื่อมต่อพร้อม</p>
         </div>
       </div>
-    </div>
+      <button class="header-action-btn" onclick="clearChatStream()" title="ล้างข้อความ">
+        <svg class="icon-sm" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </header>
 
-    <!-- ==========================================
-         CUSTOM TOAST NOTIFICATION (No emojis)
-         ========================================== -->
-    <div class="fluent-toast" id="fluentToast">
-      <div class="toast-icon-wrap">
-        <svg class="icon icon-lg" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
-      </div>
-      <div class="toast-text">
-        <h5 id="toastHeading">แจ้งเตือนการประชุม</h5>
-        <p id="toastSub">อีก 15 นาที: Weekly Meeting (ห้อง KTISX ชั้น 3)</p>
-      </div>
-    </div>
+    <main class="app-main">
 
-    <!-- ==========================================
-         1. CINEMATIC HIGH-ENERGY AI INTRO SPLASH
-         ========================================== -->
-    <div class="intro-screen" id="introScreen">
-      <canvas id="particleCanvas"></canvas>
-
-      <div class="orb-stage" onclick="playSciFiCharge()">
-        <div class="sonic-ring"></div>
-        <div class="sonic-ring"></div>
-        <div class="sonic-ring"></div>
-        <div class="gyro-ring"></div>
-        <div class="gyro-ring-inner"></div>
-        <div class="robot-mascot-wrap">
-          <img class="robot-base-img" src="ktisx-reading-video.gif?v=7" onerror="this.src='/ktisx-reading-video.gif?v=7'" alt="KTIS X Mascot">
-          <div class="robot-ground-glow"></div>
-        </div>
-      </div>
-
-      <div class="intro-badge">
-        <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
-        <span>MICROSOFT AGENT 365</span>
-      </div>
-
-      <h1 class="intro-title">KTIS X AI Assistant</h1>
-      <p class="intro-desc">ชั้นการควบคุมสำหรับเอเจนต์อัจฉริยะองค์กร สังเกต ควบคุม และปกป้องอย่างมั่นใจ</p>
-
-      <div class="intro-loader">
-        <div class="intro-loader-bar"></div>
-      </div>
-    </div>
-
-    <!-- ==========================================
-         2. MINIMALIST EXECUTIVE SSO LOGIN SCREEN
-         ========================================== -->
-    <div class="login-screen" id="loginScreen">
-      
-      <!-- Top Brand Capsule -->
-      <div class="sso-brand-header">
-        <div class="sso-brand-capsule">
-          <svg width="14" height="14" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="1" y="1" width="9" height="9" fill="#f25022" rx="1.5"/>
-            <rect x="11" y="1" width="9" height="9" fill="#7fba00" rx="1.5"/>
-            <rect x="1" y="11" width="9" height="9" fill="#00a4ef" rx="1.5"/>
-            <rect x="11" y="11" width="9" height="9" fill="#ffb900" rx="1.5"/>
-          </svg>
-          <span>KTIS GROUP · MICROSOFT 365</span>
-        </div>
-      </div>
-
-      <!-- Hero Mascot Spotlight (Clean & Spacious) -->
-      <div class="sso-hero-stage">
-        <div class="sso-ambient-aurora"></div>
-        <div class="sso-mascot-box">
-          <img class="sso-robot-img" src="ktisx-reading-video.gif?v=8" onerror="this.src='/ktisx-reading-video.gif?v=8'" alt="KTIS X AI Assistant">
-          <div class="sso-pedestal-glow"></div>
-        </div>
-      </div>
-
-      <!-- Heading Block -->
-      <div class="sso-heading-block">
-        <h1 class="sso-title">KTIS X <span class="sso-title-gradient">AI Assistant</span></h1>
-        <p class="sso-subtitle">ผู้ช่วยอัจฉริยะองค์กร สังเกตการณ์ จัดการตารางงาน และควบคุมการประชุมอย่างแม่นยำ</p>
-      </div>
-
-      <!-- Executive Action Card -->
-      <div class="sso-card">
-        <button class="sso-ms-button" onclick="performM365Login()">
-          <div class="sso-btn-content">
-            <svg width="20" height="20" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink: 0;">
-              <rect x="1" y="1" width="9" height="9" fill="#f25022" rx="1.5"/>
-              <rect x="11" y="1" width="9" height="9" fill="#7fba00" rx="1.5"/>
-              <rect x="1" y="11" width="9" height="9" fill="#00a4ef" rx="1.5"/>
-              <rect x="11" y="11" width="9" height="9" fill="#ffb900" rx="1.5"/>
-            </svg>
-            <span>เข้าสู่ระบบด้วย Microsoft 365</span>
-          </div>
-          <div class="sso-ms-arrow">
-            <svg class="icon icon-sm" style="width:15px; height:15px;" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </div>
-        </button>
-
-        <div class="sso-trust-line">
-          <svg class="icon icon-sm" style="width:14px; height:14px; color:var(--accent-emerald);" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-          <span>ความปลอดภัยระดับองค์กร (Entra ID SSO)</span>
-        </div>
-      </div>
-
-      <!-- Footer Version -->
-      <div class="sso-footer-tag">
-        <span>KTIS Enterprise Intelligence · v2.5</span>
-      </div>
-
-    </div>
-
-    <!-- ==========================================
-         3. MAIN APP INTERFACE
-         ========================================== -->
-    <div class="main-app" id="mainApp">
-      
-      <!-- Top Header -->
-      <header class="app-header">
-        <div class="header-profile">
-          <div class="profile-avatar">
-            <div class="avatar-inner">เอก</div>
-          </div>
-          <div class="header-details">
-            <h3>Weerasak (เอก)</h3>
-            <p>
-              <span class="pulse-dot"></span>
-              <span>Agent 365 Connected</span>
-            </p>
-          </div>
-        </div>
-
-        <div style="display:flex; gap:8px;">
-          <button class="icon" style="width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,0.08); border:1px solid var(--border-subtle); color:#fff; cursor:pointer;" onclick="switchTab('meetings')" title="การแจ้งเตือน">
-            <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
-          </button>
-          <button class="icon" style="width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,0.08); border:1px solid var(--border-subtle); color:var(--accent-rose); cursor:pointer;" onclick="handleLogout()" title="ออกจากระบบ">
-            <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
-          </button>
-        </div>
-      </header>
-
-      <!-- Content Pages -->
-      <div class="app-content">
-
-        <!-- TAB 1: HUB / HOME -->
-        <div class="tab-page active" id="tab-home">
+      <!-- TAB 1: ASSISTANT -->
+      <section class="tab-page active" id="tab-assistant">
+        <div class="assistant-container">
           
-          <div class="agent-control-card">
-            <div class="card-banner-bg"></div>
-            <div class="hero-top-badge">
-              <div class="agent-pill">
-                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
-                <span>MICROSOFT 365 CONNECTED</span>
+          <div class="glance-widget" onclick="switchTab('calendar')">
+            <div class="glance-left">
+              <div class="glance-icon">
+                <svg class="icon-sm" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
               </div>
-              <span style="font-size:11px; color:var(--accent-emerald); font-weight:800; display:flex; align-items:center; gap:5px;">
-                <span style="width:6px; height:6px; border-radius:50%; background:currentColor; display:inline-block;"></span>
-                ONLINE
-              </span>
+              <div class="glance-text">
+                <div class="glance-title">09:30 Weekly Meeting</div>
+                <div class="glance-sub">ห้องประชุม KTISX (ชั้น 3) · 4 ท่าน</div>
+              </div>
             </div>
-            <h2>ตารางงานและการประชุมวันนี้</h2>
-            <p>ระบบพร้อมสรุปงานค้าง ตรวจสอบห้องว่าง และประสานงานนัดหมายอัตโนมัติตลอด 24 ชม.</p>
-            <button class="fluent-btn-primary" onclick="quickChat('ตารางวันนี้')">
-              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
-              <span>ดูตารางนัดหมายและงานวันนี้</span>
-            </button>
+            <button class="glance-btn">ดูตาราง</button>
           </div>
 
-          <div class="section-header">
-            <div class="section-title">
-              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM9 4L6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5L9 4z"/></svg>
-              <span>คำสั่งด่วน</span>
-            </div>
-            <span class="section-link" onclick="switchTab('chat')">เปิดห้องแชท</span>
-          </div>
-
-          <div class="action-chip-grid">
-            <div class="fluent-chip" onclick="quickChat('พฤมีห้องว่างไหม')">
-              <svg class="icon icon-sm" style="color:var(--ribbon-cyan);" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
-              <span>พฤมีห้องว่างไหม</span>
-            </div>
-            <div class="fluent-chip" onclick="quickChat('ดูตารางเบส')">
-              <svg class="icon icon-sm" style="color:var(--ribbon-blue);" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-              <span>ดูตารางเบส</span>
-            </div>
-            <div class="fluent-chip" onclick="quickChat('เวลาปัจจุบัน')">
-              <svg class="icon icon-sm" style="color:var(--accent-amber);" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
-              <span>เวลาปัจจุบัน</span>
-            </div>
-            <div class="fluent-chip" onclick="quickChat('ตารางวันนี้')">
-              <svg class="icon icon-sm" style="color:var(--accent-emerald);" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>
-              <span>ตารางวันนี้</span>
-            </div>
-          </div>
-
-          <!-- Schedule Card -->
-          <div class="fluent-card">
-            <div class="live-time-row">
-              <div>
-                <div class="time-val" id="liveClock">--:--:--</div>
-                <div class="date-val" id="liveDate">กำลังซิงค์เวลา...</div>
+          <div class="chat-stream" id="chatStream">
+            <div class="chat-row bot">
+              <div class="bot-avatar">
+                <img src="ktisx-reading-video.gif?v=9" onerror="this.src='/ktisx-reading-video.gif?v=9'" alt="AI">
               </div>
-              <span style="font-size:11px; background:rgba(56, 189, 248, 0.2); color:var(--ribbon-blue); padding:4px 10px; border-radius:20px; font-weight:700;">
-                วันนี้ 1 นัดหมาย
-              </span>
-            </div>
-
-            <div class="meeting-row">
-              <div class="meeting-time-box">
-                <div class="m-start">09:00</div>
-                <div class="m-end">10:00</div>
-              </div>
-              <div class="meeting-info">
-                <h4>Weekly Meeting</h4>
-                <div class="meeting-tags">
-                  <span class="tag-item">
-                    <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
-                    <span>ห้อง KTISX (ชั้น 3)</span>
-                  </span>
-                  <span class="tag-item">
-                    <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
-                    <span>Teams Meeting</span>
-                  </span>
-                </div>
+              <div class="bubble">
+                <span>สวัสดีครับคุณเอก! 👋 สรุปตารางงานวันนี้พร้อมแล้ว สามารถพิมพ์สั่งงานหรือแตะปุ่มลัดด้านล่างได้เลยครับ</span>
+                <span class="bubble-meta">09:00 น.</span>
               </div>
             </div>
           </div>
 
-          <!-- Meeting Room Status -->
-          <div class="section-header">
-            <div class="section-title">
-              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
-              <span>สถานะห้องประชุม</span>
-            </div>
-            <span class="section-link" onclick="quickChat('พฤมีห้องว่างไหม')">จองห้อง</span>
+          <div class="prompt-ribbon">
+            <button class="prompt-chip" onclick="quickChat('ตารางวันนี้')">📅 ตารางวันนี้</button>
+            <button class="prompt-chip" onclick="quickChat('พฤมีห้องว่างไหม')">🚪 เช็คห้องว่าง</button>
+            <button class="prompt-chip" onclick="quickChat('ดูตารางเบส')">👥 ดูตารางเบส</button>
+            <button class="prompt-chip" onclick="quickChat('เวลาปัจจุบัน')">⏰ เวลาปัจจุบัน</button>
           </div>
 
-          <div class="room-box">
-            <div>
-              <h4>ห้องประชุม KTISX (ชั้น 3)</h4>
-              <p>ktisx_room_fl3@ktisgroup.com</p>
-            </div>
-            <div class="status-badge">
-              <span style="width:6px; height:6px; border-radius:50%; background:currentColor;"></span>
-              <span>ว่างพร้อมใช้งาน</span>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- TAB 2: SCHEDULE -->
-        <div class="tab-page" id="tab-schedule">
-          <!-- Header Bar -->
-          <div class="section-header">
-            <div class="section-title">
-              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
-              <span>ปฏิทินงานและการประชุม M365</span>
-            </div>
-            <span class="section-link" onclick="quickChat('ตารางวันนี้')">🔄 ซิงค์สด</span>
-          </div>
-
-          <!-- Dynamic 7-Day Week Strip -->
-          <div class="date-strip-container" id="scheduleDateStrip"></div>
-
-          <!-- Executive Summary Metrics -->
-          <div class="metrics-row">
-            <div class="metric-box">
-              <div class="m-val" id="metricEvents">2 งาน</div>
-              <div class="m-lbl">นัดหมายวันนี้</div>
-            </div>
-            <div class="metric-box">
-              <div class="m-val" id="metricFree">5.5 ชม.</div>
-              <div class="m-lbl">เวลาว่างรวม</div>
-            </div>
-            <div class="metric-box">
-              <div class="m-val" style="color:var(--accent-emerald);">ว่างพร้อม</div>
-              <div class="m-lbl">ห้องประชุม KTISX</div>
-            </div>
-          </div>
-
-          <!-- Timeline Events List -->
-          <div class="timeline-list" id="scheduleTimeline">
-            <!-- Event 1: Morning Brief & AI Sync -->
-            <div class="event-card">
-              <div class="event-top">
-                <span class="event-time-badge">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
-                  09:30 - 10:30 น.
-                </span>
-                <span class="event-status-tag status-upcoming">เร็วๆ นี้</span>
-              </div>
-              <div class="event-title">Weekly Meeting & ติดตามความคืบหน้าระบบ AI</div>
-              <div class="event-meta-row">
-                <span class="meta-tag">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
-                  ห้องประชุม KTISX (ชั้น 3)
-                </span>
-                <span class="meta-tag">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
-                  คุณวีระศักดิ์ (Host) + 4 ท่าน
-                </span>
-              </div>
-              <div class="event-actions-bar">
-                <button class="event-action-btn btn-teams" onclick="quickChat('ขอสรุปนัดหมาย Weekly Meeting')">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
-                  <span>สรุปวาระด้วย AI</span>
-                </button>
-                <button class="event-action-btn" onclick="quickChat('ขอเลื่อนประชุม Weekly Meeting')">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
-                  <span>ขอเลื่อนเวลา</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Free Slot 1 -->
-            <div class="free-slot-card">
-              <div class="free-slot-info">
-                <span>ช่วงว่าง: <strong>10:30 - 13:30 น.</strong> (ว่าง 3 ชม.)</span>
-              </div>
-              <button class="free-slot-btn" onclick="quickChat('นัดหมายช่วง 11 โมง')">+ จองเวลานี้</button>
-            </div>
-
-            <!-- Event 2: Executive Project Review -->
-            <div class="event-card">
-              <div class="event-top">
-                <span class="event-time-badge" style="color:var(--ribbon-blue); background:rgba(56,189,248,0.1); border-color:rgba(56,189,248,0.25);">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
-                  14:00 - 15:30 น.
-                </span>
-                <span class="event-status-tag status-upcoming">ช่วงบ่าย</span>
-              </div>
-              <div class="event-title">Executive Sync & Review การดำเนินงาน KTIS Group</div>
-              <div class="event-meta-row">
-                <span class="meta-tag">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
-                  Microsoft Teams Online
-                </span>
-                <span class="meta-tag">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
-                  ฝ่ายบริหารองค์กร
-                </span>
-              </div>
-              <div class="event-actions-bar">
-                <button class="event-action-btn btn-teams" onclick="quickChat('เปิดห้องประชุม Teams')">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
-                  <span>เข้าร่วม Teams</span>
-                </button>
-                <button class="event-action-btn" onclick="quickChat('ขอสรุปวาระประชุมบ่าย')">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
-                  <span>สรุปข้อมูล</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Free Slot 2 -->
-            <div class="free-slot-card">
-              <div class="free-slot-info">
-                <span>ช่วงว่าง: <strong>15:30 - 18:00 น.</strong> (ว่าง 2.5 ชม.)</span>
-              </div>
-              <button class="free-slot-btn" onclick="quickChat('พฤมีห้องว่างไหม')">+ เช็คห้องว่าง</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB 3: CHAT CONSOLE -->
-        <div class="tab-page" id="tab-chat" style="padding:0;">
-          <div class="chat-container">
-            <!-- Agent Header -->
-            <div class="chat-agent-bar">
-              <div class="chat-agent-info">
-                <div class="chat-robot-avatar">
-                  <img src="ktisx-reading-video.gif?v=8" onerror="this.src='/ktisx-reading-video.gif?v=8'" alt="KTIS X AI" />
-                </div>
-                <div>
-                  <div class="chat-agent-name">KTIS X AI Assistant</div>
-                  <div class="chat-agent-status">
-                    <span class="pulse-dot"></span>
-                    <span>เชื่อมต่อ M365 · พร้อมรับคำสั่ง</span>
-                  </div>
-                </div>
-              </div>
-              <button class="chat-clear-btn" onclick="clearChatStream()" title="ล้างประวัติ">
-                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          <div class="chat-input-bar">
+            <div class="chat-input-capsule">
+              <input type="text" class="chat-input-field" id="chatInputField" placeholder="พิมพ์สั่งงาน เช่น 'พฤมีห้องว่างไหม'..." onkeypress="if(event.key==='Enter') executeSend()">
+              <button class="chat-send-btn" onclick="executeSend()" title="ส่งคำสั่ง">
+                <svg class="icon-sm" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
               </button>
             </div>
+          </div>
 
-            <!-- Messages Stream -->
-            <div class="chat-stream" id="chatStream">
-              <div class="chat-msg-row msg-bot">
-                <div class="msg-avatar">
-                  <img src="ktisx-reading-video.gif?v=8" onerror="this.src='/ktisx-reading-video.gif?v=8'" alt="AI">
-                </div>
-                <div class="bubble bubble-bot">
-                  <div class="bubble-text">สวัสดีครับคุณเอก! 👋 ผมคือผู้ช่วย AI พร้อมช่วยค้นหาตารางงาน เช็คห้องประชุม หรือนัดหมาย Microsoft 365 ได้เลยครับ</div>
-                  <div class="bubble-meta">พร้อมใช้งาน</div>
-                </div>
-              </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: CALENDAR -->
+      <section class="tab-page" id="tab-calendar">
+        
+        <div class="calendar-header">
+          <h2 class="calendar-title">ปฏิทินงาน & ห้องประชุม</h2>
+          <button class="refresh-btn" onclick="quickChat('ตารางวันนี้')">
+            <svg class="icon-xs" viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+            ซิงค์ M365
+          </button>
+        </div>
+
+        <div class="week-strip" id="weekStrip"></div>
+
+        <div id="agendaList">
+          <div class="agenda-card">
+            <div class="agenda-time">09:30 - 10:30 น. · เร็วๆ นี้</div>
+            <div class="agenda-title">Weekly Meeting & ติดตามโครงการ AI</div>
+            <div class="agenda-meta">
+              <span>🏢 ห้อง KTISX (ชั้น 3)</span>
+              <span>👥 คุณวีระศักดิ์ + 4 ท่าน</span>
             </div>
-
-            <!-- Quick Suggestions Bar -->
-            <div class="chat-suggestions-bar">
-              <button class="chat-sug-chip" onclick="quickChat('ตารางวันนี้')">📅 ตารางวันนี้</button>
-              <button class="chat-sug-chip" onclick="quickChat('พฤมีห้องว่างไหม')">🚪 เช็คห้องว่าง</button>
-              <button class="chat-sug-chip" onclick="quickChat('ดูตารางเบส')">👥 ดูตารางเบส</button>
-              <button class="chat-sug-chip" onclick="quickChat('เวลาปัจจุบัน')">⏰ เวลาปัจจุบัน</button>
+            <div class="agenda-actions">
+              <button class="agenda-action-btn" onclick="quickChat('ขอสรุปนัดหมาย Weekly Meeting')">📄 สรุปวาระ</button>
+              <button class="agenda-action-btn" onclick="quickChat('ขอเลื่อนประชุม Weekly Meeting')">⏱️ เลื่อนเวลา</button>
             </div>
+          </div>
 
-            <!-- Input Bar -->
-            <div class="chat-bottom-input">
-              <div class="chat-input-pill">
-                <input type="text" class="fluent-text-input" id="chatInputField" placeholder="พิมพ์สั่งงาน เช่น 'พฤมีห้องว่างไหม'..." onkeypress="if(event.key==='Enter') executeSend()">
-                <button class="send-icon-btn" onclick="executeSend()" title="ส่งข้อความ">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-                </button>
-              </div>
+          <div class="free-item">
+            <span>ช่วงว่าง: <strong>10:30 - 13:30 น.</strong> (3 ชม.)</span>
+            <span class="free-action" onclick="quickChat('นัดหมายช่วง 11 โมง')">+ จองเวลานี้</span>
+          </div>
+
+          <div class="agenda-card">
+            <div class="agenda-time">14:00 - 15:30 น. · ช่วงบ่าย</div>
+            <div class="agenda-title">Executive Sync การดำเนินงาน KTIS Group</div>
+            <div class="agenda-meta">
+              <span>💻 Microsoft Teams Online</span>
+              <span>👥 ฝ่ายบริหารองค์กร</span>
+            </div>
+            <div class="agenda-actions">
+              <button class="agenda-action-btn" onclick="quickChat('เปิดห้องประชุม Teams')">🔗 เข้า Teams</button>
+              <button class="agenda-action-btn" onclick="quickChat('ขอสรุปวาระประชุมบ่าย')">📄 สรุปข้อมูล</button>
             </div>
           </div>
         </div>
 
-        <!-- TAB 4: SETTINGS & POLICIES -->
-        <div class="tab-page" id="tab-settings">
-          <div class="section-header">
-            <div class="section-title">
-              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-              <span>ตั้งค่าระบบแจ้งเตือน</span>
-            </div>
-          </div>
+      </section>
 
-          <div class="fluent-card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-              <div>
-                <div style="font-size:13px; font-weight:700;">แจ้งเตือนก่อนประชุม 15 นาที</div>
-                <div style="font-size:11px; color:var(--text-muted);">ส่งเสียงและเด้งเตือนบนจอมือถือ</div>
-              </div>
-              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--ribbon-cyan); color:var(--ribbon-cyan);">เปิดใช้งาน</div>
+      <!-- TAB 3: SETTINGS -->
+      <section class="tab-page" id="tab-settings">
+        
+        <div class="settings-group-title">บัญชีผู้ใช้</div>
+        <div class="settings-group">
+          <div class="settings-row">
+            <div class="settings-label">
+              <h4>weerasak.pi@ktisgroup.com</h4>
+              <p>Microsoft 365 Cloud Enterprise</p>
             </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-              <div>
-                <div style="font-size:13px; font-weight:700;">เสียงสัญญาณแจ้งเตือนพิเศษ</div>
-                <div style="font-size:11px; color:var(--text-muted);">เสียง Chime ระดับชัดเจน</div>
-              </div>
-              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--ribbon-cyan); color:var(--ribbon-cyan);">เปิดใช้งาน</div>
-            </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <div style="font-size:13px; font-weight:700;">สรุปยามเช้า (Morning Brief)</div>
-                <div style="font-size:11px; color:var(--text-muted);">แจ้งเตือนทุก 07:00 น.</div>
-              </div>
-              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--ribbon-cyan); color:var(--ribbon-cyan);">เปิดใช้งาน</div>
-            </div>
-          </div>
-
-          <div class="fluent-card" style="border-color:rgba(244, 63, 94, 0.25);">
-            <div style="font-size:13px; font-weight:700; color:var(--accent-rose); margin-bottom:6px;">จัดการเซสชัน</div>
-            <p style="font-size:11px; color:var(--text-muted); margin-bottom:14px;">เมื่อถูกระงับสิทธิ์หรือยกเลิกการเข้าสู่ระบบ ระบบจะตัดการเชื่อมต่อทันที</p>
-            <button class="btn-dialog btn-dialog-secondary" style="width:100%; border:1px solid rgba(244,63,94,0.35); color:var(--accent-rose);" onclick="handleLogout()">
-              ออกจากระบบ Microsoft 365
-            </button>
+            <span style="font-size:11px; color:var(--accent-emerald); font-weight:700;">เชื่อมต่อแล้ว</span>
           </div>
         </div>
 
+        <div class="settings-group-title">การแจ้งเตือน</div>
+        <div class="settings-group">
+          <div class="settings-row">
+            <div class="settings-label">
+              <h4>แจ้งเตือนก่อนประชุม 15 นาที</h4>
+              <p>ส่งเสียงเตือนและแจ้งเตือนบนมือถือ</p>
+            </div>
+            <div class="toggle-switch"></div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <h4>สรุปงานเช้าอัตโนมัติ (Morning Brief)</h4>
+              <p>ส่งสรุปตารางงานทุก 08:30 น.</p>
+            </div>
+            <div class="toggle-switch"></div>
+          </div>
+        </div>
+
+        <div class="settings-group-title">เกี่ยวกับระบบ</div>
+        <div class="settings-group">
+          <div class="settings-row">
+            <div class="settings-label">
+              <h4>เวอร์ชันแอปพลิเคชัน</h4>
+              <p>KTIS X Executive Suite</p>
+            </div>
+            <span style="font-size:12px; color:var(--text-muted);">v1.2.5</span>
+          </div>
+        </div>
+
+        <button class="logout-btn" onclick="handleLogout()">
+          <svg class="icon-sm" viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+          ออกจากระบบ Microsoft 365
+        </button>
+
+      </section>
+
+    </main>
+
+    <nav class="app-nav">
+      <div class="nav-item active" id="nav-assistant" onclick="switchTab('assistant')">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+        <span>ผู้ช่วย AI</span>
       </div>
-
-      <!-- Bottom Navigation -->
-      <nav class="fluent-nav">
-        <div class="nav-btn active" id="nav-home" onclick="switchTab('home')">
-          <svg class="icon icon-md" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-          <span>หน้าหลัก</span>
-        </div>
-        <div class="nav-btn" id="nav-schedule" onclick="switchTab('schedule')">
-          <svg class="icon icon-md" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
-          <span>ตารางนัด</span>
-        </div>
-        <div class="nav-btn" id="nav-chat" onclick="switchTab('chat')">
-          <svg class="icon icon-md" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
-          <span>สั่งงาน AI</span>
-        </div>
-        <div class="nav-btn" id="nav-settings" onclick="switchTab('settings')">
-          <svg class="icon icon-md" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-          <span>ตั้งค่า</span>
-        </div>
-      </nav>
-
-    </div>
+      <div class="nav-item" id="nav-calendar" onclick="switchTab('calendar')">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
+        <span>ปฏิทินงาน</span>
+      </div>
+      <div class="nav-item" id="nav-settings" onclick="switchTab('settings')">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        <span>ตั้งค่า</span>
+      </div>
+    </nav>
 
   </div>
 
+  <div class="gate-screen hidden" id="loginScreen">
+    <div class="gate-logo">
+      <img src="ktisx-reading-video.gif?v=9" onerror="this.src='/ktisx-reading-video.gif?v=9'" alt="Logo">
+    </div>
+    <h1 class="gate-title">KTIS X AI Assistant</h1>
+    <p class="gate-desc">ระบบผู้ช่วยอัจฉริยะองค์กร เชื่อมต่อตารางนัดหมายและประสานงานตลอด 24 ชม.</p>
+    <button class="sso-btn" onclick="performLogin()">
+      <svg class="icon-sm" viewBox="0 0 21 21">
+        <rect x="1" y="1" width="9" height="9" fill="#f25022" rx="1.5"/>
+        <rect x="11" y="1" width="9" height="9" fill="#7fba00" rx="1.5"/>
+        <rect x="1" y="11" width="9" height="9" fill="#00a4ef" rx="1.5"/>
+        <rect x="11" y="11" width="9" height="9" fill="#ffb900" rx="1.5"/>
+      </svg>
+      <span>เข้าสู่ระบบด้วย Microsoft 365</span>
+    </button>
+  </div>
+
   <script>
-    const AUTH_KEY = "_ktis_m365_auth";
+    const AUTH_KEY = 'ktisx_m365_auth_state';
 
-    // Sci-Fi Sound Synthesizer Engine
-    function playSciFiCharge() {
-      try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sawtooth';
-        
-        osc.frequency.setValueAtTime(120, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.6);
-        
-        gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.4);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
-        
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.8);
-      } catch (e) {}
-    }
-
-    // Interactive Neural Particle Canvas
-    function initParticles() {
-      const canvas = document.getElementById('particleCanvas');
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      let w = canvas.width = canvas.parentElement.clientWidth;
-      let h = canvas.height = canvas.parentElement.clientHeight;
-
-      window.addEventListener('resize', () => {
-        w = canvas.width = canvas.parentElement.clientWidth;
-        h = canvas.height = canvas.parentElement.clientHeight;
-      });
-
-      const particles = [];
-      const count = 45;
-      for (let i = 0; i < count; i++) {
-        particles.push({
-          x: Math.random() * w,
-          y: Math.random() * h,
-          vx: (Math.random() - 0.5) * 0.8,
-          vy: (Math.random() - 0.5) * 0.8,
-          radius: Math.random() * 2 + 1,
-          color: i % 2 === 0 ? 'rgba(0, 242, 254,' : 'rgba(236, 72, 153,'
-        });
+    document.addEventListener('DOMContentLoaded', () => {
+      initWeekStrip();
+      const isAuth = localStorage.getItem(AUTH_KEY) === 'true';
+      if (!isAuth) {
+        document.getElementById('loginScreen').classList.remove('hidden');
       }
-
-      function render() {
-        ctx.clearRect(0, 0, w, h);
-        
-        // Draw lines
-        for (let i = 0; i < count; i++) {
-          for (let j = i + 1; j < count; j++) {
-            const dx = particles[i].x - particles[j].x;
-            const dy = particles[i].y - particles[j].y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 85) {
-              ctx.beginPath();
-              ctx.moveTo(particles[i].x, particles[i].y);
-              ctx.lineTo(particles[j].x, particles[j].y);
-              ctx.strokeStyle = `rgba(56, 189, 248, ${0.18 * (1 - dist / 85)})`;
-              ctx.lineWidth = 0.8;
-              ctx.stroke();
-            }
-          }
-        }
-
-        // Draw dots
-        particles.forEach(p => {
-          p.x += p.vx;
-          p.y += p.vy;
-          if (p.x < 0 || p.x > w) p.vx *= -1;
-          if (p.y < 0 || p.y > h) p.vy *= -1;
-
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-          ctx.fillStyle = p.color + '0.75)';
-          ctx.shadowBlur = 8;
-          ctx.shadowColor = '#00f2fe';
-          ctx.fill();
-        });
-
-        requestAnimationFrame(render);
-      }
-      render();
-    }
-
-    // 1. Splash & Auth Flow
-    window.addEventListener('DOMContentLoaded', () => {
-      initParticles();
-      initScheduleDateStrip();
-      setTimeout(() => {
-        const isAuth = localStorage.getItem(AUTH_KEY) === "true";
-        document.getElementById('introScreen').classList.add('fade-out');
-        
-        if (isAuth) {
-          showMainApp();
-        } else {
-          showLoginScreen();
-        }
-      }, 2000);
     });
 
-    // Dynamic 7-Day Date Strip & Schedule Switcher
-    function initScheduleDateStrip() {
-      const container = document.getElementById('scheduleDateStrip');
-      if (!container) return;
-
-      const daysOfWeek = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
-      const today = new Date();
-      const currentDayIdx = today.getDay(); // 0-6
-      
-      // Calculate Monday of current week
-      const monday = new Date(today);
-      const diff = today.getDate() - currentDayIdx + (currentDayIdx === 0 ? -6 : 1);
-      monday.setDate(diff);
-
-      let html = '';
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + i);
-
-        const isToday = d.toDateString() === today.toDateString();
-        const dayLabel = daysOfWeek[d.getDay()];
-        const dateNum = d.getDate();
-        const hasEvent = (d.getDay() >= 1 && d.getDay() <= 5); // Mon-Fri has events
-
-        html += `
-          <div class="date-pill ${isToday ? 'active' : ''} ${hasEvent ? 'has-event' : ''}" onclick="selectScheduleDay(this, '${dayLabel}', ${dateNum})">
-            <span class="dp-day">${dayLabel}</span>
-            <span class="dp-num">${dateNum}</span>
-            <span class="dp-dot"></span>
-          </div>
-        `;
-      }
-      container.innerHTML = html;
-    }
-
-    function selectScheduleDay(elem, dayLabel, dateNum) {
-      document.querySelectorAll('.date-pill').forEach(el => el.classList.remove('active'));
-      elem.classList.add('active');
-
-      const isToday = elem.classList.contains('active') && elem.querySelector('.dp-dot').parentElement === elem && elem.querySelector('.dp-day').textContent.trim() === 'ศ.';
-      const timeline = document.getElementById('scheduleTimeline');
-      const metricEvents = document.getElementById('metricEvents');
-      const metricFree = document.getElementById('metricFree');
-
-      if (metricEvents) metricEvents.textContent = isToday ? '2 งาน' : 'ไม่มีนัด';
-      if (metricFree) metricFree.textContent = isToday ? '5.5 ชม.' : '8.0 ชม.';
-
-      if (!isToday) {
-        timeline.innerHTML = `
-          <div class="fluent-card" style="text-align:center; padding:28px 16px;">
-            <div style="font-size:32px; margin-bottom:8px;">🏖️</div>
-            <div style="font-size:14px; font-weight:700; color:#fff; margin-bottom:4px;">ไม่มีนัดหมายในวัน${dayLabel}ที่ ${dateNum}</div>
-            <p style="font-size:12px; color:var(--text-muted); margin-bottom:16px;">ตารางงานว่างตลอดทั้งวัน สามารถให้ AI ช่วยจองเวลานัดหมายได้ครับ</p>
-            <button class="fluent-btn-primary" style="margin:0 auto; max-width:200px;" onclick="quickChat('จองห้องประชุมวัน${dayLabel}')">
-              <span>+ สร้างนัดหมายใหม่</span>
-            </button>
-          </div>
-        `;
-      } else {
-        timeline.innerHTML = `
-          <div class="event-card">
-            <div class="event-top">
-              <span class="event-time-badge">
-                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
-                09:30 - 10:30 น.
-              </span>
-              <span class="event-status-tag status-upcoming">เร็วๆ นี้</span>
-            </div>
-            <div class="event-title">Weekly Meeting & ติดตามความคืบหน้าระบบ AI</div>
-            <div class="event-meta-row">
-              <span class="meta-tag">ห้องประชุม KTISX (ชั้น 3)</span>
-              <span class="meta-tag">คุณวีระศักดิ์ (Host) + 4 ท่าน</span>
-            </div>
-            <div class="event-actions-bar">
-              <button class="event-action-btn btn-teams" onclick="quickChat('ขอสรุปนัดหมาย Weekly Meeting')">
-                <span>สรุปวาระด้วย AI</span>
-              </button>
-              <button class="event-action-btn" onclick="quickChat('ขอเลื่อนประชุม Weekly Meeting')">
-                <span>ขอเลื่อนเวลา</span>
-              </button>
-            </div>
-          </div>
-          <div class="free-slot-card">
-            <div class="free-slot-info">
-              <span>ช่วงว่าง: <strong>10:30 - 13:30 น.</strong> (ว่าง 3 ชม.)</span>
-            </div>
-            <button class="free-slot-btn" onclick="quickChat('นัดหมายช่วง 11 โมง')">+ จองเวลานี้</button>
-          </div>
-          <div class="event-card">
-            <div class="event-top">
-              <span class="event-time-badge" style="color:var(--ribbon-blue); background:rgba(56,189,248,0.1); border-color:rgba(56,189,248,0.25);">
-                14:00 - 15:30 น.
-              </span>
-              <span class="event-status-tag status-upcoming">ช่วงบ่าย</span>
-            </div>
-            <div class="event-title">Executive Sync & Review การดำเนินงาน KTIS Group</div>
-            <div class="event-meta-row">
-              <span class="meta-tag">Microsoft Teams Online</span>
-              <span class="meta-tag">ฝ่ายบริหารองค์กร</span>
-            </div>
-            <div class="event-actions-bar">
-              <button class="event-action-btn btn-teams" onclick="quickChat('เปิดห้องประชุม Teams')">
-                <span>เข้าร่วม Teams</span>
-              </button>
-              <button class="event-action-btn" onclick="quickChat('ขอสรุปวาระประชุมบ่าย')">
-                <span>สรุปข้อมูล</span>
-              </button>
-            </div>
-          </div>
-          <div class="free-slot-card">
-            <div class="free-slot-info">
-              <span>ช่วงว่าง: <strong>15:30 - 18:00 น.</strong> (ว่าง 2.5 ชม.)</span>
-            </div>
-            <button class="free-slot-btn" onclick="quickChat('พฤมีห้องว่างไหม')">+ เช็คห้องว่าง</button>
-          </div>
-        `;
-      }
-    }
-
-    function showLoginScreen() {
-      document.getElementById('loginScreen').classList.add('active');
-      document.getElementById('mainApp').style.display = 'none';
-    }
-
-    function showMainApp() {
-      document.getElementById('loginScreen').classList.remove('active');
-      document.getElementById('mainApp').style.display = 'flex';
-    }
-
-    function performM365Login() {
-      localStorage.setItem(AUTH_KEY, "true");
-      showCustomToast("ยืนยันตัวตนสำเร็จ", "เข้าสู่ระบบด้วย weerasak.pi@ktisgroup.com");
-      showMainApp();
+    function performLogin() {
+      localStorage.setItem(AUTH_KEY, 'true');
+      document.getElementById('loginScreen').classList.add('hidden');
     }
 
     function handleLogout() {
       localStorage.removeItem(AUTH_KEY);
-      showCustomModal("ออกจากระบบเรียบร้อย", "คุณได้ออกจากเซสชัน Microsoft 365 แล้ว");
-      showLoginScreen();
+      document.getElementById('loginScreen').classList.remove('hidden');
     }
 
-    // 2. Custom Dialogs & Modal
-    function showCustomModal(title, desc) {
-      document.getElementById('modalTitle').textContent = title;
-      document.getElementById('modalDesc').textContent = desc;
-      document.getElementById('customModal').classList.add('show');
-    }
-
-    function closeModal() {
-      document.getElementById('customModal').classList.remove('show');
-    }
-
-    // 3. Native & Sound Notification
-    function playNotificationSound() {
-      try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12); // A5
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.6);
-      } catch (e) {}
-    }
-
-    function showCustomToast(heading, sub) {
-      playNotificationSound();
-      document.getElementById('toastHeading').textContent = heading;
-      document.getElementById('toastSub').textContent = sub;
-      const toast = document.getElementById('fluentToast');
-      toast.classList.add('visible');
-      setTimeout(() => {
-        toast.classList.remove('visible');
-      }, 4000);
-    }
-
-    function triggerTestPush() {
-      showCustomToast("แจ้งเตือนประชุมถัดไป", "อีก 15 นาที: Weekly Meeting (ห้อง KTISX ชั้น 3)");
-      if ("Notification" in window) {
-        if (Notification.permission === "granted") {
-          new Notification("แจ้งเตือนประชุม: Weekly Meeting", {
-            body: "เริ่มในอีก 15 นาที ณ ห้อง KTISX (ชั้น 3)",
-            icon: "https://ktis-ai-assistant.vercel.app/favicon.ico"
-          });
-        } else if (Notification.permission !== "denied") {
-          Notification.requestPermission();
-        }
-      }
-    }
-
-    // 4. Live Clock & Calendar
-    function updateClock() {
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2, '0');
-      const mm = String(now.getMinutes()).padStart(2, '0');
-      const ss = String(now.getSeconds()).padStart(2, '0');
-      document.getElementById('liveClock').textContent = `${hh}:${mm}:${ss} น.`;
-
-      const dayNames = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
-      const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-      const dateStr = `${dayNames[now.getDay()]}ที่ ${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear() + 543}`;
-      document.getElementById('liveDate').textContent = dateStr;
-    }
-    setInterval(updateClock, 1000);
-    updateClock();
-
-    // 5. Tabs
     function switchTab(tabId) {
       document.querySelectorAll('.tab-page').forEach(el => el.classList.remove('active'));
-      document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
       
       const target = document.getElementById(`tab-${tabId}`);
       const nav = document.getElementById(`nav-${tabId}`);
@@ -2463,12 +1016,90 @@
     }
 
     function quickChat(text) {
-      switchTab('chat');
+      switchTab('assistant');
       document.getElementById('chatInputField').value = text;
       executeSend();
     }
 
-    // 6. Live Chat Engine
+    function initWeekStrip() {
+      const strip = document.getElementById('weekStrip');
+      if (!strip) return;
+
+      const days = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+      const today = new Date();
+      const currentDay = today.getDay();
+      
+      const monday = new Date(today);
+      const diff = today.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
+      monday.setDate(diff);
+
+      let html = '';
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        const isToday = d.toDateString() === today.toDateString();
+        
+        html += `
+          <div class="day-pill ${isToday ? 'active' : ''}" onclick="selectDay(this, '${days[d.getDay()]}', ${d.getDate()})">
+            <span class="d-name">${days[d.getDay()]}</span>
+            <span class="d-num">${d.getDate()}</span>
+          </div>
+        `;
+      }
+      strip.innerHTML = html;
+    }
+
+    function selectDay(el, dayName, dateNum) {
+      document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
+      el.classList.add('active');
+
+      const isToday = el.querySelector('.d-name').textContent === 'ศ.';
+      const agenda = document.getElementById('agendaList');
+      if (!agenda) return;
+
+      if (!isToday) {
+        agenda.innerHTML = `
+          <div class="agenda-card" style="text-align:center; padding:32px 16px;">
+            <div style="font-size:28px; margin-bottom:8px;">🏖️</div>
+            <div style="font-size:14px; font-weight:700; color:#fff; margin-bottom:4px;">ไม่มีนัดหมายวัน${dayName}ที่ ${dateNum}</div>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">ตารางงานว่างตลอดวัน สามารถสั่ง AI ช่วยจองเวลานัดหมายได้ครับ</p>
+            <button class="agenda-action-btn" style="margin:0 auto;" onclick="quickChat('จองห้องประชุมวัน${dayName}')">+ นัดหมายใหม่</button>
+          </div>
+        `;
+      } else {
+        agenda.innerHTML = `
+          <div class="agenda-card">
+            <div class="agenda-time">09:30 - 10:30 น. · เร็วๆ นี้</div>
+            <div class="agenda-title">Weekly Meeting & ติดตามโครงการ AI</div>
+            <div class="agenda-meta">
+              <span>🏢 ห้อง KTISX (ชั้น 3)</span>
+              <span>👥 คุณวีระศักดิ์ + 4 ท่าน</span>
+            </div>
+            <div class="agenda-actions">
+              <button class="agenda-action-btn" onclick="quickChat('ขอสรุปนัดหมาย Weekly Meeting')">📄 สรุปวาระ</button>
+              <button class="agenda-action-btn" onclick="quickChat('ขอเลื่อนประชุม Weekly Meeting')">⏱️ เลื่อนเวลา</button>
+            </div>
+          </div>
+          <div class="free-item">
+            <span>ช่วงว่าง: <strong>10:30 - 13:30 น.</strong> (3 ชม.)</span>
+            <span class="free-action" onclick="quickChat('นัดหมายช่วง 11 โมง')">+ จองเวลานี้</span>
+          </div>
+          <div class="agenda-card">
+            <div class="agenda-time">14:00 - 15:30 น. · ช่วงบ่าย</div>
+            <div class="agenda-title">Executive Sync การดำเนินงาน KTIS Group</div>
+            <div class="agenda-meta">
+              <span>💻 Microsoft Teams Online</span>
+              <span>👥 ฝ่ายบริหารองค์กร</span>
+            </div>
+            <div class="agenda-actions">
+              <button class="agenda-action-btn" onclick="quickChat('เปิดห้องประชุม Teams')">🔗 เข้า Teams</button>
+              <button class="agenda-action-btn" onclick="quickChat('ขอสรุปวาระประชุมบ่าย')">📄 สรุปข้อมูล</button>
+            </div>
+          </div>
+        `;
+      }
+    }
+
     function formatMarkdown(text) {
       if (!text) return '';
       return text
@@ -2483,13 +1114,13 @@
       const stream = document.getElementById('chatStream');
       if (stream) {
         stream.innerHTML = `
-          <div class="chat-msg-row msg-bot">
-            <div class="msg-avatar">
-              <img src="ktisx-reading-video.gif?v=8" onerror="this.src='/ktisx-reading-video.gif?v=8'" alt="AI">
+          <div class="chat-row bot">
+            <div class="bot-avatar">
+              <img src="ktisx-reading-video.gif?v=9" onerror="this.src='/ktisx-reading-video.gif?v=9'" alt="AI">
             </div>
-            <div class="bubble bubble-bot">
-              ล้างประวัติการสนทนาเรียบร้อยครับ พร้อมเริ่มรับคำสั่งใหม่ครับ ✨
-              <div class="bubble-meta">พร้อมใช้งาน</div>
+            <div class="bubble">
+              <span>ล้างประวัติการสนทนาเรียบร้อยครับ พร้อมเริ่มรับคำสั่งใหม่ครับ ✨</span>
+              <span class="bubble-meta">พร้อมใช้งาน</span>
             </div>
           </div>
         `;
@@ -2506,23 +1137,21 @@
       const now = new Date();
       const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} น.`;
 
-      // User Bubble
       const uRow = document.createElement('div');
-      uRow.className = 'chat-msg-row msg-user';
-      uRow.innerHTML = `<div class="bubble bubble-user"><div class="bubble-text">${formatMarkdown(text)}</div><div class="bubble-meta">${timeStr}</div></div>`;
+      uRow.className = 'chat-row user';
+      uRow.innerHTML = `<div class="bubble"><span>${formatMarkdown(text)}</span><span class="bubble-meta">${timeStr}</span></div>`;
       stream.appendChild(uRow);
       stream.scrollTop = stream.scrollHeight;
 
-      // Bot Loading
       const bRow = document.createElement('div');
-      bRow.className = 'chat-msg-row msg-bot';
+      bRow.className = 'chat-row bot';
       bRow.innerHTML = `
-        <div class="msg-avatar">
-          <img src="ktisx-reading-video.gif?v=8" onerror="this.src='/ktisx-reading-video.gif?v=8'" alt="AI">
+        <div class="bot-avatar">
+          <img src="ktisx-reading-video.gif?v=9" onerror="this.src='/ktisx-reading-video.gif?v=9'" alt="AI">
         </div>
-        <div class="bubble bubble-bot">
-          <div class="bubble-text">กำลังค้นหาข้อมูลสดจาก Microsoft 365... ⏳</div>
-          <div class="bubble-meta">${timeStr}</div>
+        <div class="bubble">
+          <span>กำลังค้นหาข้อมูล Microsoft 365... ⏳</span>
+          <span class="bubble-meta">${timeStr}</span>
         </div>
       `;
       stream.appendChild(bRow);
@@ -2551,39 +1180,37 @@
         } catch (e) {}
       }
 
-      const botBubble = bRow.querySelector('.bubble-bot');
+      const botBubble = bRow.querySelector('.bubble');
 
       if (data && (data.reply || data.text)) {
-        let replyHtml = formatMarkdown(data.reply || data.text);
+        let replyHtml = `<span>${formatMarkdown(data.reply || data.text)}</span>`;
 
-        // Render interactive slots
         if (Array.isArray(data.slots) && data.slots.length) {
           replyHtml += '<div class="interactive-list">';
           data.slots.forEach((s, idx) => {
             const label = s.label || `${s.start}-${s.end}`;
-            replyHtml += `<button class="interactive-btn" onclick="executeSend('${idx + 1}')"><span>${idx + 1}) ${label}</span> <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
+            replyHtml += `<button class="interactive-btn" onclick="executeSend('${idx + 1}')"><span>${idx + 1}) ${label}</span> <svg class="icon-xs" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
           });
-          replyHtml += `<button class="interactive-btn" style="border-color:var(--ribbon-cyan);" onclick="executeSend('ขอดูเพิ่มเติม')"><span>ขอดูเพิ่มเติม</span> <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
+          replyHtml += `<button class="interactive-btn" style="border-color:var(--accent-azure);" onclick="executeSend('ขอดูเพิ่มเติม')"><span>ขอดูเพิ่มเติม</span> <svg class="icon-xs" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
           replyHtml += '</div>';
         }
 
-        // Render interactive choices (Multiple People)
         if (Array.isArray(data.choices) && data.choices.length) {
           replyHtml += '<div class="interactive-list">';
           data.choices.forEach((c, idx) => {
             const name = c.displayName || c.mail || c.label;
-            replyHtml += `<button class="interactive-btn" onclick="executeSend('${idx + 1}')"><span>${idx + 1}) ${name}</span> <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
+            replyHtml += `<button class="interactive-btn" onclick="executeSend('${idx + 1}')"><span>${idx + 1}) ${name}</span> <svg class="icon-xs" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
           });
           replyHtml += '</div>';
         }
 
         if (botBubble) {
-          botBubble.innerHTML = `<div class="bubble-text">${replyHtml}</div><div class="bubble-meta">${timeStr}</div>`;
+          botBubble.innerHTML = `${replyHtml}<span class="bubble-meta">${timeStr}</span>`;
         }
         stream.scrollTop = stream.scrollHeight;
       } else {
         if (botBubble) {
-          botBubble.innerHTML = `<div class="bubble-text">ขออภัยครับ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ</div><div class="bubble-meta">${timeStr}</div>`;
+          botBubble.innerHTML = `<span>ขออภัยครับ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ</span><span class="bubble-meta">${timeStr}</span>`;
         }
       }
     }
