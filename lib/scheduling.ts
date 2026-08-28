@@ -124,6 +124,9 @@ export async function findCommonSlots(
     exactStart: exactStart || undefined,
     durationMin,
   });
+  if (start.getTime() >= end.getTime()) {
+    return { slots: [], busy: {}, ranges: [] };
+  }
   const schedules = [organizerUpn, ...attendeeEmails.filter((a) => a && a !== organizerUpn)];
   const data = await getSchedule(organizerUpn, schedules, wallIso(start), wallIso(end), INTERVAL);
 
@@ -327,6 +330,7 @@ async function availabilityRanges(
   keepFree: boolean,
   includeLunch = false
 ): Promise<Range[]> {
+  if (start.getTime() >= end.getTime()) return [];
   const caller = requesterUpn || targetUpn;
   const data = await getSchedule(caller, [targetUpn], wallIso(start), wallIso(end), INTERVAL);
   const view = data[0]?.availabilityView || "";

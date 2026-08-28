@@ -6,6 +6,7 @@
 import { inflateRawSync } from "zlib";
 import { getUserGraphToken, runAsAppOnly } from "@/lib/graphAuth";
 import { trace } from "@/lib/trace";
+import { parseWall, wallIso } from "@/lib/time";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -1637,6 +1638,14 @@ export async function getSchedule(
   endIso: string,
   interval = 30
 ): Promise<{ scheduleId?: string; availabilityView?: string; scheduleItems?: unknown[]; error?: { message?: string } }[]> {
+  // Ensure valid interval (endTime must be strictly greater than startTime)
+  const sDate = parseWall(startIso) || new Date(startIso);
+  let eDate = parseWall(endIso) || new Date(endIso);
+  if (isNaN(sDate.getTime()) || isNaN(eDate.getTime()) || eDate.getTime() <= sDate.getTime()) {
+    eDate = new Date(sDate.getTime() + Math.max(interval, 60) * 60_000);
+    endIso = wallIso(eDate);
+  }
+
   // Delegated (/me): free/busy follows the signed-in user's Microsoft 365 rights
   // (org free-busy + calendars shared with them). App-only: Application Access Policy.
   const asUser = !!getUserGraphToken();
