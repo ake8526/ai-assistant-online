@@ -87,12 +87,12 @@ function LoginGate() {
             className="w-full flex items-center justify-between px-4 sm:px-5 py-3.5 rounded-[15px] bg-gradient-to-r from-[#005ea6] via-[#0078d4] via-[#0099e6] to-[#00c8f8] hover:from-[#006ec4] hover:via-[#0086eb] hover:to-[#22d3ee] text-white font-bold text-[14.5px] border border-white/35 shadow-[0_10px_25px_rgba(0,120,212,0.45),0_0_20px_rgba(0,242,254,0.35),inset_0_1px_2px_rgba(255,255,255,0.45)] hover:shadow-[0_15px_35px_rgba(0,120,212,0.6),0_0_30px_rgba(0,242,254,0.55)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer group"
           >
             <div className="flex items-center gap-3">
-              <div className="grid grid-cols-2 gap-1 w-4 h-4 shrink-0">
-                <span className="w-2 h-2 bg-[#f25022] rounded-[1px]" />
-                <span className="w-2 h-2 bg-[#7fba00] rounded-[1px]" />
-                <span className="w-2 h-2 bg-[#00a4ef] rounded-[1px]" />
-                <span className="w-2 h-2 bg-[#ffb900] rounded-[1px]" />
-              </div>
+              <svg width="20" height="20" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                <rect x="1" y="1" width="9" height="9" fill="#f25022" rx="1.5"/>
+                <rect x="11" y="1" width="9" height="9" fill="#7fba00" rx="1.5"/>
+                <rect x="1" y="11" width="9" height="9" fill="#00a4ef" rx="1.5"/>
+                <rect x="11" y="11" width="9" height="9" fill="#ffb900" rx="1.5"/>
+              </svg>
               <span className="tracking-tight">เข้าสู่ระบบด้วย Microsoft 365</span>
             </div>
             <div className="w-7 h-7 rounded-full bg-white/20 border border-white/35 text-white flex items-center justify-center shadow-inner group-hover:bg-white/35 group-hover:translate-x-1 transition-all duration-200">
