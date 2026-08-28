@@ -207,8 +207,8 @@
     /* Large Expressive Mascot Container (Using Genuine 3D Video Transparent Loop) */
     .robot-mascot-wrap {
       position: relative;
-      width: 200px;
-      height: 225px;
+      width: 175px;
+      height: 255px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -219,12 +219,14 @@
     }
 
     .robot-base-img {
+      position: relative;
       width: 100%;
       height: 100%;
       object-fit: contain;
       filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 20px rgba(0, 242, 254, 0.45));
       transform: translateZ(0);
       backface-visibility: hidden;
+      z-index: 2;
     }
 
     @keyframes robotHoverFloat {
@@ -235,14 +237,15 @@
     .robot-ground-glow {
       position: absolute;
       bottom: -6px;
-      width: 130px;
-      height: 25px;
+      width: 140px;
+      height: 24px;
       border-radius: 50%;
       background: radial-gradient(ellipse, rgba(0, 242, 254, 0.8) 0%, rgba(168, 85, 247, 0.4) 50%, transparent 80%);
       filter: blur(8px);
-      z-index: 4;
+      z-index: 1;
       animation: shadowPulse 4s ease-in-out infinite alternate;
       will-change: transform, opacity;
+      pointer-events: none;
     }
 
     @keyframes shadowPulse {
@@ -427,11 +430,11 @@
     /* Center Robot Mascot on Hologram Pedestal */
     .deck-mascot-center {
       position: absolute;
-      top: 52%;
+      top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 145px;
-      height: 145px;
+      width: 155px;
+      height: 215px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -440,6 +443,7 @@
 
     .deck-robot-img,
     .deck-mascot-center .robot-base-img {
+      position: relative;
       width: 100%;
       height: 100%;
       object-fit: contain;
@@ -448,6 +452,7 @@
       will-change: transform;
       transform: translate3d(0, 0, 0);
       backface-visibility: hidden;
+      z-index: 2;
     }
 
     @keyframes deckRobotHover {
@@ -457,14 +462,16 @@
 
     .deck-pedestal-ring {
       position: absolute;
-      bottom: -6px;
-      width: 100px;
+      bottom: -4px;
+      width: 110px;
       height: 28px;
       border-radius: 50%;
       border: 2px solid rgba(0, 242, 254, 0.8);
       box-shadow: 0 0 25px rgba(0, 242, 254, 0.7), inset 0 0 15px rgba(168, 85, 247, 0.6);
       background: radial-gradient(ellipse, rgba(0, 242, 254, 0.4) 0%, rgba(168, 85, 247, 0.2) 60%, transparent 80%);
       animation: pedestalPulse 3s ease-in-out infinite alternate;
+      z-index: 1;
+      pointer-events: none;
     }
 
     @keyframes pedestalPulse {
@@ -1354,7 +1361,7 @@
         </div>
 
         <!-- Center Mascot on Hologram Pedestal -->
-        <div class="deck-mascot-center" style="width: 175px; height: 195px;">
+        <div class="deck-mascot-center">
           <img class="robot-base-img" src="ktisx-reading-video.webp" onerror="this.src='/ktisx-reading-video.webp'" alt="KTIS X AI Agent">
           <div class="deck-pedestal-ring"></div>
         </div>
