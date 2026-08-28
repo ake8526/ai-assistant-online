@@ -27,15 +27,29 @@ export const KNOWN_MEETING_ROOMS: MeetingRoom[] = [
   },
 ];
 
-/** Check if text contains a reference to a known meeting room. */
-export function findRoomByText(text: string): MeetingRoom | null {
+/** Search all matching rooms for a given query text. */
+export function findMatchingRooms(text: string): MeetingRoom[] {
   const t = (text || "").toLowerCase().trim();
+  if (!t) return [];
+  const matches: MeetingRoom[] = [];
   for (const r of KNOWN_MEETING_ROOMS) {
-    if (r.aliases.some((a) => t.includes(a.toLowerCase()))) {
-      return r;
+    if (
+      r.aliases.some((a) => t.includes(a.toLowerCase()) || a.toLowerCase().includes(t)) ||
+      r.email.toLowerCase().includes(t) ||
+      r.name.toLowerCase().includes(t)
+    ) {
+      if (!matches.some((m) => m.email.toLowerCase() === r.email.toLowerCase())) {
+        matches.push(r);
+      }
     }
   }
-  return null;
+  return matches;
+}
+
+/** Check if text contains a reference to a known meeting room (returns single match, or null if ambiguous). */
+export function findRoomByText(text: string): MeetingRoom | null {
+  const matches = findMatchingRooms(text);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 /** Check if an email belongs to a known meeting room. */

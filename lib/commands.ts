@@ -108,7 +108,7 @@ import {
   utcIsoToWall,
   wallIso,
 } from "@/lib/time";
-import { findRoomByText, isMeetingRoomEmail, getRoomDisplayName } from "@/lib/meetingRooms";
+import { findMatchingRooms, findRoomByText, isMeetingRoomEmail, getRoomDisplayName } from "@/lib/meetingRooms";
 
 const WORK_START_HOUR = Number(process.env.WORK_START_HOUR || 9);
 const WORK_END_HOUR = Number(process.env.WORK_END_HOUR || 17);
@@ -917,9 +917,23 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
       }
 
       // Room / Location extraction (e.g. ที่ห้องktisx, ห้องประชุม 1)
-      const matchedRoom = findRoomByText(t);
-      const roomM = !matchedRoom ? t.match(/(?:ที่)?(ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+)/i) : null;
-      const room = matchedRoom ? matchedRoom.name : (roomM ? roomM[1].trim() : undefined);
+      const matchingRooms = findMatchingRooms(t);
+      let room: string | undefined = undefined;
+      const attendees = [...people];
+      if (matchingRooms.length === 1) {
+        room = matchingRooms[0].name;
+        if (!attendees.some((a) => a.toLowerCase() === matchingRooms[0].email.toLowerCase())) {
+          attendees.push(matchingRooms[0].email);
+        }
+      } else if (matchingRooms.length > 1) {
+        // Ambiguous room name! Add room query to attendees so user gets a choice card
+        const roomM = t.match(/(?:ที่)?(ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+)/i);
+        const roomQ = roomM ? roomM[1].trim() : "ห้องประชุม";
+        attendees.push(roomQ);
+      } else {
+        const roomM = t.match(/(?:ที่)?(ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+)/i);
+        room = roomM ? roomM[1].trim() : undefined;
+      }
 
       let note: string | undefined = undefined;
       const noteM = t.match(/เรื่อง\s*(.+)$/);
@@ -927,11 +941,6 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
         note = noteM[1].replace(/(?:ที่)?ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+/gi, "").trim();
       } else {
         note = "ประชุม";
-      }
-
-      const attendees = [...people];
-      if (matchedRoom && !attendees.some((a) => a.toLowerCase() === matchedRoom.email.toLowerCase())) {
-        attendees.push(matchedRoom.email);
       }
 
       const params: Record<string, unknown> = { attendees };
@@ -7606,9 +7615,18 @@ async function handleParsed(
     }
 
     // If text mentions a known meeting room, add the room email to attendees
-    const recognizedRoom = findRoomByText(text);
-    if (recognizedRoom && !attendeeTokens.some((tok) => tok.toLowerCase() === recognizedRoom.email.toLowerCase())) {
-      attendeeTokens.push(recognizedRoom.email);
+    const matchingRooms = findMatchingRooms(text);
+    if (matchingRooms.length === 1) {
+      if (!attendeeTokens.some((tok) => tok.toLowerCase() === matchingRooms[0].email.toLowerCase())) {
+        attendeeTokens.push(matchingRooms[0].email);
+      }
+    } else if (matchingRooms.length > 1) {
+      // Ambiguous room! Put room query in attendeeTokens so user can pick from the choice card
+      const roomM = text.match(/(?:ที่)?(ห้อง\s*(?:ประชุม)?\s*[0-9A-Za-zก-๙_-]+)/i);
+      const roomQ = roomM ? roomM[1].trim() : "ห้องประชุม";
+      if (!attendeeTokens.some((tok) => matchingRooms.some((r) => r.email.toLowerCase() === tok.toLowerCase()))) {
+        attendeeTokens.push(roomQ);
+      }
     }
 
     const attendees: MtAttendee[] = attendeeTokens.map((token) =>

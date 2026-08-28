@@ -7,7 +7,7 @@ import { inflateRawSync } from "zlib";
 import { getUserGraphToken, runAsAppOnly } from "@/lib/graphAuth";
 import { trace } from "@/lib/trace";
 import { parseWall, wallIso } from "@/lib/time";
-import { findRoomByText, isMeetingRoomEmail, getRoomDisplayName } from "@/lib/meetingRooms";
+import { findMatchingRooms, findRoomByText, isMeetingRoomEmail, getRoomDisplayName } from "@/lib/meetingRooms";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -1077,6 +1077,16 @@ export async function searchUsers(nameOrEmail: string, top = 10): Promise<UserIn
 
   let results: UserInfo[] = [];
   const sel = "mail,userPrincipalName,displayName,jobTitle,department,mobilePhone,businessPhones";
+
+  // Check matching meeting rooms
+  const matchingRooms = findMatchingRooms(q);
+  for (const rm of matchingRooms) {
+    results.push({
+      mail: rm.email,
+      displayName: `🏢 ${rm.name}`,
+      department: "ห้องประชุม",
+    });
+  }
 
   // Execute primary searches in parallel to avoid LINE webhook 5s timeout
   const searchPromises: Promise<any[]>[] = [];
