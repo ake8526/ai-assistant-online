@@ -81,30 +81,26 @@ function LoginGate() {
         </div>
 
         {/* Action Card */}
-        <div className="p-4 sm:p-5 rounded-3xl bg-white/[0.03] border border-white/10 backdrop-blur-xl shadow-2xl shadow-black/60 space-y-3">
-          <div
+        <div className="p-4 sm:p-5 rounded-3xl bg-[#0a1230]/70 border border-sky-400/25 backdrop-blur-xl shadow-2xl shadow-black/70 space-y-3">
+          <button
             onClick={() => login()}
-            className="relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-sky-400 via-indigo-500 to-fuchsia-500 shadow-[0_10px_25px_rgba(0,0,0,0.5),0_0_25px_rgba(0,242,254,0.35)] hover:shadow-[0_16px_35px_rgba(0,0,0,0.6),0_0_35px_rgba(0,242,254,0.55)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 cursor-pointer group"
+            className="w-full flex items-center justify-between px-4 sm:px-5 py-3.5 rounded-[15px] bg-gradient-to-r from-[#005ea6] via-[#0078d4] via-[#0099e6] to-[#00c8f8] hover:from-[#006ec4] hover:via-[#0086eb] hover:to-[#22d3ee] text-white font-bold text-[14.5px] border border-white/35 shadow-[0_10px_25px_rgba(0,120,212,0.45),0_0_20px_rgba(0,242,254,0.35),inset_0_1px_2px_rgba(255,255,255,0.45)] hover:shadow-[0_15px_35px_rgba(0,120,212,0.6),0_0_30px_rgba(0,242,254,0.55)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer group"
           >
-            <button
-              className="w-full flex items-center justify-between px-4 sm:px-5 py-3.5 rounded-[14px] bg-gradient-to-r from-white via-slate-50 to-slate-100 text-slate-950 font-extrabold text-[14.5px] border-none shadow-[inset_0_1px_1px_#ffffff]"
-            >
-              <div className="flex items-center gap-3">
-                <div className="grid grid-cols-2 gap-1 p-1.5 rounded-lg bg-slate-900/5 shadow-inner">
-                  <span className="w-2 h-2 bg-[#f25022] rounded-[1px] shadow-[0_0_8px_rgba(242,80,34,0.6)]" />
-                  <span className="w-2 h-2 bg-[#7fba00] rounded-[1px] shadow-[0_0_8px_rgba(127,186,0,0.6)]" />
-                  <span className="w-2 h-2 bg-[#00a4ef] rounded-[1px] shadow-[0_0_8px_rgba(0,164,239,0.6)]" />
-                  <span className="w-2 h-2 bg-[#ffb900] rounded-[1px] shadow-[0_0_8px_rgba(255,185,0,0.6)]" />
-                </div>
-                <span>เข้าสู่ระบบด้วย Microsoft 365</span>
+            <div className="flex items-center gap-3">
+              <div className="grid grid-cols-2 gap-1 p-1.5 rounded-lg bg-white/95 shadow-md">
+                <span className="w-2 h-2 bg-[#f25022] rounded-[1px]" />
+                <span className="w-2 h-2 bg-[#7fba00] rounded-[1px]" />
+                <span className="w-2 h-2 bg-[#00a4ef] rounded-[1px]" />
+                <span className="w-2 h-2 bg-[#ffb900] rounded-[1px]" />
               </div>
-              <div className="w-7 h-7 rounded-full bg-slate-950 text-cyan-400 flex items-center justify-center shadow-md group-hover:bg-sky-600 group-hover:text-white group-hover:translate-x-1 transition-all duration-200">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                </svg>
-              </div>
-            </button>
-          </div>
+              <span className="tracking-tight">เข้าสู่ระบบด้วย Microsoft 365</span>
+            </div>
+            <div className="w-7 h-7 rounded-full bg-white/20 border border-white/35 text-white flex items-center justify-center shadow-inner group-hover:bg-white/35 group-hover:translate-x-1 transition-all duration-200">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </div>
+          </button>
           <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-medium">
             <span className="text-emerald-400">🛡️</span>
             <span>ความปลอดภัยระดับองค์กร (Microsoft Entra ID SSO)</span>
