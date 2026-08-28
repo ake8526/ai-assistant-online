@@ -5483,6 +5483,24 @@ async function handleParsed(
       .filter((a) => a && !isCalendarTalk(a) && !looksLikeSentence(a));
     if (cleaned.length) params.attendees = cleaned;
     else delete params.attendees;
+  } else if (typeof params.attendees === "string" && params.attendees.trim()) {
+    const a = nameFromCandidate(stripGluedWhen(params.attendees));
+    if (a && !isCalendarTalk(a) && !looksLikeSentence(a)) params.attendees = [a];
+    else delete params.attendees;
+  }
+
+  if (intent === "find_meeting_time" && !params.attendees) {
+    if (typeof params.person === "string" && params.person.trim()) {
+      const p = nameFromCandidate(stripGluedWhen(params.person));
+      if (p && !isCalendarTalk(p) && !looksLikeSentence(p)) {
+        params.attendees = [p];
+      }
+    }
+  }
+
+  if (intent === "find_meeting_time" && !params.attendees) {
+    const extracted = peopleFromText(text);
+    if (extracted.length) params.attendees = extracted;
   }
 
   if (intent === "clear_memory") {
@@ -7387,7 +7405,19 @@ async function handleParsed(
       trace("parse", "★ AI:NONE · intent=book_self_calendar (กู้จาก find_meeting_time ไม่เรียก API)");
       return runSelfBookCalendar(userUpn, text, selfBook.params);
     }
-    const attendeesRaw = (params.attendees as string[]) || [];
+    let attendeesRaw: string[] = [];
+    if (Array.isArray(params.attendees)) {
+      attendeesRaw = params.attendees.map(String).filter(Boolean);
+    } else if (typeof params.attendees === "string" && params.attendees.trim()) {
+      attendeesRaw = [params.attendees.trim()];
+    }
+    if (!attendeesRaw.length && typeof params.person === "string" && params.person.trim()) {
+      attendeesRaw = [params.person.trim()];
+    }
+    if (!attendeesRaw.length && !isDayFollowUp(text) && !isTimeFollowUp(text) && !isDayBandFollowUp(text)) {
+      const fromText = peopleFromText(text);
+      if (fromText.length) attendeesRaw = fromText;
+    }
     // Don't reuse last booking's 10 นาที for a fresh “ดูตาราง…” ask
     const duration = Number(
       params.duration_min ||
