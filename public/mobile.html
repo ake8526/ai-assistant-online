@@ -316,125 +316,78 @@
     }
 
     /* ==========================================================================
-       2. 100% PURE CODE 3D HOLOGRAPHIC RIBBON STAGE (NO EXTERNAL IMAGES)
+       2. 3D HOLOGRAPHIC AGENT COMMAND DECK & CYBERNETIC LOGIN SCREEN
        ========================================================================== */
     .login-screen {
       position: absolute;
       inset: 0;
-      background: radial-gradient(circle at 50% 0%, #1e3a8a 0%, #0a0f24 55%, #02040c 100%);
+      background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #070d24 50%, #02040c 100%);
       z-index: 900;
       display: none;
       flex-direction: column;
       justify-content: space-between;
-      padding: 24px 20px 20px 20px;
+      padding: 22px 18px 18px 18px;
       animation: fadeIn 0.4s ease-out forwards;
       overflow-y: auto;
     }
 
     .login-screen.active { display: flex; }
 
-    /* Pure Code 3D Ribbon Stage */
-    .native-3d-stage {
+    /* 3D Holographic Command Deck */
+    .holo-command-deck {
       position: relative;
       width: 100%;
-      height: 250px;
+      height: 270px;
       border-radius: var(--radius-xl);
       overflow: hidden;
       margin-bottom: 16px;
-      background: radial-gradient(circle at 70% 30%, #2563eb 0%, #1e1b4b 60%, #050818 100%);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      box-shadow: 0 25px 50px -10px rgba(0, 0, 0, 0.9), inset 0 0 30px rgba(56, 189, 248, 0.2);
+      background: radial-gradient(circle at 50% 20%, #1e3a8a 0%, #0c1435 60%, #030614 100%);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      box-shadow: 0 25px 50px -10px rgba(0, 0, 0, 0.95), 0 0 35px rgba(0, 242, 254, 0.25), inset 0 0 40px rgba(30, 58, 138, 0.5);
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      padding: 16px;
+      padding: 14px;
     }
 
-    /* Animated 3D Flowing SVG Ribbons */
-    .ribbon-svg-canvas {
+    /* 3D Perspective Grid Floor */
+    .deck-grid-floor {
       position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-    }
-
-    .ribbon-wave-1 {
-      animation: waveMove1 8s ease-in-out infinite alternate;
-      transform-origin: center;
-    }
-    .ribbon-wave-2 {
-      animation: waveMove2 10s ease-in-out infinite alternate;
-      transform-origin: center;
-    }
-    .ribbon-wave-3 {
-      animation: waveMove3 6s ease-in-out infinite alternate;
-      transform-origin: center;
-    }
-
-    @keyframes waveMove1 {
-      0% { transform: translateY(0px) rotate(0deg) scale(1); }
-      100% { transform: translateY(-12px) rotate(3deg) scale(1.05); }
-    }
-    @keyframes waveMove2 {
-      0% { transform: translateY(0px) rotate(0deg) scale(1); }
-      100% { transform: translateY(14px) rotate(-4deg) scale(1.08); }
-    }
-    @keyframes waveMove3 {
-      0% { transform: scale(0.98); opacity: 0.7; }
-      100% { transform: scale(1.06); opacity: 1; }
-    }
-
-    /* Micro-Mesh Grid Texture Overlay */
-    .mesh-grid-texture {
-      position: absolute;
-      inset: 0;
-      background-size: 8px 8px;
+      bottom: -40px;
+      left: -20%;
+      width: 140%;
+      height: 160px;
       background-image: 
-        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+        linear-gradient(to right, rgba(0, 242, 254, 0.15) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(168, 85, 247, 0.15) 1px, transparent 1px);
+      background-size: 20px 20px;
+      transform: perspective(300px) rotateX(60deg);
       pointer-events: none;
-      opacity: 0.6;
+      mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 1) 0%, transparent 75%);
+      -webkit-mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 1) 0%, transparent 75%);
     }
 
-    /* Floating Center Agent Badge */
-    .agent-center-emblem {
+    /* Hologram Energy Beams */
+    .deck-energy-beam {
       position: absolute;
-      top: 50%;
+      top: 0;
       left: 50%;
-      transform: translate(-50%, -50%);
-      width: 86px;
-      height: 86px;
-      border-radius: 26px;
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 245, 255, 0.85) 100%);
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 35px var(--ribbon-cyan);
-      border: 1px solid #ffffff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10;
-      animation: floatBadge 4s ease-in-out infinite alternate;
+      transform: translateX(-50%);
+      width: 180px;
+      height: 100%;
+      background: linear-gradient(180deg, rgba(0, 242, 254, 0.2) 0%, rgba(168, 85, 247, 0.1) 60%, transparent 100%);
+      filter: blur(20px);
+      pointer-events: none;
+      animation: beamSweep 5s ease-in-out infinite alternate;
     }
 
-    @keyframes floatBadge {
-      0% { transform: translate(-50%, -50%) translateY(-4px); }
-      100% { transform: translate(-50%, -50%) translateY(4px); }
+    @keyframes beamSweep {
+      0% { transform: translateX(-60%) scaleX(0.9); opacity: 0.6; }
+      100% { transform: translateX(-40%) scaleX(1.1); opacity: 1; }
     }
 
-    .emblem-icon-art {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, #0078d4 0%, #7f00ff 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      box-shadow: 0 4px 12px rgba(0, 120, 212, 0.5);
-    }
-
-    /* Floating Glass Pills on Top & Bottom */
-    .stage-top-bar {
+    /* Deck Top Bar */
+    .deck-top-bar {
       position: relative;
       z-index: 20;
       display: flex;
@@ -442,7 +395,7 @@
       justify-content: space-between;
     }
 
-    .stage-pill {
+    .deck-agent-badge {
       display: inline-flex;
       align-items: center;
       gap: 8px;
@@ -454,107 +407,167 @@
       box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
     }
 
-    .ms-grid-4 {
-      display: grid;
-      grid-template-columns: repeat(2, 6px);
-      gap: 2px;
+    .deck-status-pill {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid rgba(16, 185, 129, 0.5);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--accent-emerald);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      backdrop-filter: blur(10px);
     }
-    .ms-grid-4 .t-red { width: 6px; height: 6px; background: #f25022; }
-    .ms-grid-4 .t-green { width: 6px; height: 6px; background: #7fba00; }
-    .ms-grid-4 .t-blue { width: 6px; height: 6px; background: #00a4ef; }
-    .ms-grid-4 .t-yellow { width: 6px; height: 6px; background: #ffb900; }
 
-    .stage-bottom-bar {
+    /* Center Robot Mascot on Hologram Pedestal */
+    .deck-mascot-center {
+      position: absolute;
+      top: 52%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 145px;
+      height: 145px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .deck-robot-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      filter: drop-shadow(0 15px 25px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 20px rgba(0, 242, 254, 0.6));
+      animation: deckRobotHover 4s ease-in-out infinite alternate;
+    }
+
+    @keyframes deckRobotHover {
+      0% { transform: translateY(-5px) scale(0.98); }
+      100% { transform: translateY(6px) scale(1.02); }
+    }
+
+    .deck-pedestal-ring {
+      position: absolute;
+      bottom: -6px;
+      width: 100px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 242, 254, 0.8);
+      box-shadow: 0 0 25px rgba(0, 242, 254, 0.7), inset 0 0 15px rgba(168, 85, 247, 0.6);
+      background: radial-gradient(ellipse, rgba(0, 242, 254, 0.4) 0%, rgba(168, 85, 247, 0.2) 60%, transparent 80%);
+      animation: pedestalPulse 3s ease-in-out infinite alternate;
+    }
+
+    @keyframes pedestalPulse {
+      0% { transform: scale(0.92); opacity: 0.7; box-shadow: 0 0 15px rgba(0, 242, 254, 0.5); }
+      100% { transform: scale(1.08); opacity: 1; box-shadow: 0 0 30px rgba(0, 242, 254, 0.9); }
+    }
+
+    /* Orbiting Holographic HUD Nodes */
+    .deck-hud-left {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      backdrop-filter: blur(16px);
+      border-radius: 12px;
+      padding: 6px 10px;
+      z-index: 15;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+      animation: floatNodeL 4s ease-in-out infinite alternate;
+    }
+
+    .deck-hud-right {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(236, 72, 153, 0.4);
+      backdrop-filter: blur(16px);
+      border-radius: 12px;
+      padding: 6px 10px;
+      z-index: 15;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+      animation: floatNodeR 4s ease-in-out infinite alternate;
+    }
+
+    @keyframes floatNodeL {
+      0% { transform: translateY(-50%) translateY(-4px); }
+      100% { transform: translateY(-50%) translateY(4px); }
+    }
+    @keyframes floatNodeR {
+      0% { transform: translateY(-50%) translateY(4px); }
+      100% { transform: translateY(-50%) translateY(-4px); }
+    }
+
+    .hud-title { font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; }
+    .hud-val { font-size: 11px; color: #fff; font-weight: 800; display: flex; align-items: center; gap: 4px; }
+
+    /* Deck Bottom Tags */
+    .deck-bottom-bar {
       position: relative;
       z-index: 20;
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
+      align-items: center;
     }
 
-    .float-node-pill {
-      background: rgba(255, 255, 255, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      backdrop-filter: blur(16px);
+    .deck-micro-chip {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      backdrop-filter: blur(14px);
       border-radius: 20px;
-      padding: 5px 12px;
+      padding: 4px 10px;
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 700;
       color: #fff;
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
     }
 
-    .login-content-box { margin-bottom: 16px; }
-
-    .login-title {
-      font-size: 25px;
-      font-weight: 900;
-      line-height: 1.2;
-      letter-spacing: -0.5px;
-      color: #ffffff;
-      margin-bottom: 6px;
+    /* ==========================================================================
+       CYBERNETIC LUMINOUS ACTION HUB (LOGIN BUTTON)
+       ========================================================================== */
+    .cyber-login-container {
+      position: relative;
+      width: 100%;
+      border-radius: var(--radius-xl);
+      padding: 2px;
+      background: linear-gradient(90deg, #00f2fe, #3b82f6, #ec4899, #a855f7, #00f2fe);
+      background-size: 300% 300%;
+      animation: borderGlowFlow 4s linear infinite;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 242, 254, 0.4);
+      margin-bottom: 12px;
     }
 
-    .login-desc {
-      font-size: 12px;
-      color: var(--text-secondary);
-      line-height: 1.5;
-      margin-bottom: 16px;
+    @keyframes borderGlowFlow {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
     }
 
-    /* 3-Pill Control Plane Capabilities */
-    .agent-control-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      margin-bottom: 18px;
-    }
-
-    .control-tile {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-md);
-      padding: 10px 6px;
-      text-align: center;
+    .cyber-login-inner {
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(7, 13, 36, 0.98) 100%);
+      backdrop-filter: blur(25px);
+      border-radius: calc(var(--radius-xl) - 2px);
+      padding: 14px 16px;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      gap: 4px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      gap: 10px;
     }
 
-    .control-tile h6 {
-      font-size: 11px;
-      font-weight: 700;
-      color: #fff;
-    }
-
-    .control-tile span {
-      font-size: 9px;
-      font-weight: 600;
-      color: var(--ribbon-cyan);
-    }
-
-    /* Action Card */
-    .login-action-card {
-      background: var(--bg-surface-elevated);
-      border: 1px solid var(--border-glow);
-      backdrop-filter: blur(25px);
-      border-radius: var(--radius-xl);
-      padding: 18px;
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7), 0 0 25px var(--glow-agent);
-      margin-bottom: 14px;
-    }
-
-    .fluent-login-btn {
+    .cyber-fluent-btn {
       width: 100%;
-      padding: 15px 20px;
+      padding: 14px 18px;
       border-radius: var(--radius-md);
-      background: #ffffff;
-      color: #0f172a;
+      background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
+      color: #090e24;
       font-weight: 900;
       font-size: 14px;
       border: none;
@@ -563,13 +576,50 @@
       justify-content: center;
       gap: 12px;
       cursor: pointer;
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5), inset 0 1px 1px #ffffff;
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
     }
 
-    .fluent-login-btn:active {
+    .cyber-fluent-btn::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 60%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+      transform: skewX(-20deg);
+      animation: btnShimmer 3.5s infinite;
+    }
+
+    @keyframes btnShimmer {
+      0% { left: -100%; }
+      30% { left: 140%; }
+      100% { left: 140%; }
+    }
+
+    .cyber-fluent-btn:active {
       transform: scale(0.97);
-      background: #f1f5f9;
+      background: #e2e8f0;
+    }
+
+    .cyber-sub-status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--text-muted);
+      padding: 0 4px;
+    }
+
+    .cyber-sub-status span {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--ribbon-cyan);
+      font-weight: 600;
     }
 
     .login-security-tag {
@@ -1273,47 +1323,14 @@
          ========================================== -->
     <div class="login-screen" id="loginScreen">
       
-      <!-- Native 3D Flowing Ribbon Stage -->
-      <div class="native-3d-stage">
-        
-        <!-- Animated 3D Waves rendered via Pure SVG -->
-        <svg class="ribbon-svg-canvas" viewBox="0 0 400 260" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="gradWave1" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.9"/>
-              <stop offset="50%" stop-color="#3b82f6" stop-opacity="0.8"/>
-              <stop offset="100%" stop-color="#a855f7" stop-opacity="0.9"/>
-            </linearGradient>
-            <linearGradient id="gradWave2" x1="100%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="#a855f7" stop-opacity="0.85"/>
-              <stop offset="60%" stop-color="#ec4899" stop-opacity="0.75"/>
-              <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.85"/>
-            </linearGradient>
-            <linearGradient id="gradWave3" x1="0%" y1="100%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.6"/>
-              <stop offset="100%" stop-color="#c084fc" stop-opacity="0.8"/>
-            </linearGradient>
-          </defs>
+      <!-- 3D Holographic AI Agent Command Deck -->
+      <div class="holo-command-deck">
+        <div class="deck-grid-floor"></div>
+        <div class="deck-energy-beam"></div>
 
-          <!-- Flowing 3D Ribbon Layers -->
-          <path class="ribbon-wave-2" fill="url(#gradWave2)" d="M-20,180 C80,80 180,240 280,120 C340,60 420,140 440,80 L440,280 L-20,280 Z" />
-          <path class="ribbon-wave-1" fill="url(#gradWave1)" d="M-20,120 C60,200 160,60 260,160 C320,220 400,100 440,140 L440,280 L-20,280 Z" />
-          <path class="ribbon-wave-3" fill="url(#gradWave3)" d="M-20,60 C100,160 200,20 300,100 C360,140 420,40 440,80 L440,280 L-20,280 Z" />
-        </svg>
-
-        <!-- Micro Mesh Grid Overlay -->
-        <div class="mesh-grid-texture"></div>
-
-        <!-- 3D Center Agent Emblem -->
-        <div class="agent-center-emblem">
-          <div class="emblem-icon-art">
-            <svg class="icon icon-lg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5zm4 4h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
-          </div>
-        </div>
-
-        <!-- Top Header inside 3D stage -->
-        <div class="stage-top-bar">
-          <div class="stage-pill">
+        <!-- Top Bar inside Deck -->
+        <div class="deck-top-bar">
+          <div class="deck-agent-badge">
             <div class="ms-grid-4">
               <div class="t-red"></div>
               <div class="t-green"></div>
@@ -1323,23 +1340,44 @@
             <span style="font-size:11px; font-weight:800; color:#fff;">Microsoft Agent 365</span>
           </div>
 
-          <div style="background:rgba(16,185,129,0.25); border:1px solid rgba(16,185,129,0.5); padding:4px 10px; border-radius:20px; font-size:10px; font-weight:800; color:var(--accent-emerald);">
-            Active Control
+          <div class="deck-status-pill">
+            <span style="width:6px; height:6px; border-radius:50%; background:currentColor;"></span>
+            <span>Active Control</span>
           </div>
         </div>
 
-        <!-- Bottom Tags inside 3D stage -->
-        <div class="stage-bottom-bar">
-          <div class="float-node-pill">
+        <!-- Center Mascot on Hologram Pedestal -->
+        <div class="deck-mascot-center">
+          <img class="deck-robot-img" src="ktisx-robot.png" onerror="this.src='/ktisx-robot.png'" alt="KTIS X AI Agent">
+          <div class="deck-pedestal-ring"></div>
+        </div>
+
+        <!-- Orbiting Holographic HUD Nodes -->
+        <div class="deck-hud-left">
+          <div class="hud-title">Graph Telemetry</div>
+          <div class="hud-val">
+            <span style="color:var(--ribbon-cyan);">⚡</span> 60 fps Live
+          </div>
+        </div>
+
+        <div class="deck-hud-right">
+          <div class="hud-title">Entra ID Guard</div>
+          <div class="hud-val">
+            <span style="color:var(--accent-emerald);">🛡️</span> Verified
+          </div>
+        </div>
+
+        <!-- Bottom Bar inside Deck -->
+        <div class="deck-bottom-bar">
+          <div class="deck-micro-chip">
             <svg class="icon icon-sm" style="color:var(--ribbon-cyan);" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
-            <span>Agent ID</span>
+            <span>Agent ID Sync</span>
           </div>
-          <div class="float-node-pill">
+          <div class="deck-micro-chip">
             <svg class="icon icon-sm" style="color:var(--ribbon-magenta);" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
-            <span>Auto Booking</span>
+            <span>Auto Schedule</span>
           </div>
         </div>
-
       </div>
 
       <!-- Login Content & Capabilities -->
@@ -1367,17 +1405,27 @@
         </div>
       </div>
 
-      <!-- Action Card -->
-      <div class="login-action-card">
-        <button class="fluent-login-btn" onclick="performM365Login()">
-          <div class="ms-grid-4" style="grid-template-columns: repeat(2, 9px); gap: 3px;">
-            <div class="t-red" style="width:9px; height:9px;"></div>
-            <div class="t-green" style="width:9px; height:9px;"></div>
-            <div class="t-blue" style="width:9px; height:9px;"></div>
-            <div class="t-yellow" style="width:9px; height:9px;"></div>
+      <!-- Cybernetic Luminous Action Hub -->
+      <div class="cyber-login-container">
+        <div class="cyber-login-inner">
+          <button class="cyber-fluent-btn" onclick="performM365Login()">
+            <div class="ms-grid-4" style="grid-template-columns: repeat(2, 9px); gap: 3px;">
+              <div class="t-red" style="width:9px; height:9px;"></div>
+              <div class="t-green" style="width:9px; height:9px;"></div>
+              <div class="t-blue" style="width:9px; height:9px;"></div>
+              <div class="t-yellow" style="width:9px; height:9px;"></div>
+            </div>
+            <span>Sign in with Microsoft 365</span>
+          </button>
+          
+          <div class="cyber-sub-status">
+            <span>
+              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+              Enterprise Entra ID SSO
+            </span>
+            <span style="color:var(--text-muted);">แตะเพื่อเชื่อมต่อทันที</span>
           </div>
-          <span>Sign in with Microsoft 365</span>
-        </button>
+        </div>
       </div>
 
       <div class="login-security-tag">
