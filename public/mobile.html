@@ -3,34 +3,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>KTIS X AI Assistant — Mobile App</title>
+  <title>KTIS X Copilot — AI Assistant</title>
   <!-- Google Fonts: Inter & Prompt -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <meta name="theme-color" content="#0a0d14">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#0b0f19">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
     :root {
-      --bg-primary: #0a0d14;
-      --bg-surface: #121824;
-      --bg-glass: rgba(18, 24, 36, 0.88);
-      --border: rgba(255, 255, 255, 0.08);
-      --border-accent: rgba(0, 230, 153, 0.3);
-      --text-primary: #f0f6fc;
-      --text-secondary: #8b949e;
-      --accent-green: #00e699;
-      --accent-green-glow: rgba(0, 230, 153, 0.25);
-      --accent-blue: #38bdf8;
-      --accent-purple: #a855f7;
+      --bg-canvas: #060911;
+      --bg-primary: #0b0f19;
+      --bg-surface: #131b2e;
+      --bg-surface-elevated: #1a243d;
+      --bg-glass: rgba(19, 27, 46, 0.82);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(99, 102, 241, 0.5);
+      --border-copilot: rgba(56, 189, 248, 0.4);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      
+      /* Microsoft 365 & Copilot Palette */
+      --ms-blue: #0078d4;
+      --copilot-cyan: #00f2fe;
+      --copilot-blue: #4facfe;
+      --copilot-purple: #7f00ff;
+      --copilot-magenta: #e100ff;
+      --accent-emerald: #10b981;
       --accent-amber: #f59e0b;
-      --accent-red: #ef4444;
-      --radius-lg: 20px;
-      --radius-md: 14px;
-      --radius-sm: 10px;
-      --bottom-nav-h: 74px;
-      --top-nav-h: 64px;
+      --accent-rose: #f43f5e;
+      
+      --gradient-copilot: linear-gradient(135deg, #00f2fe 0%, #4facfe 35%, #7f00ff 70%, #e100ff 100%);
+      --gradient-card: linear-gradient(145deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
+      --glow-copilot: rgba(79, 172, 254, 0.35);
+
+      --radius-xl: 24px;
+      --radius-lg: 16px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+      --top-nav-h: 68px;
+      --bottom-nav-h: 76px;
     }
 
     * {
@@ -39,21 +53,38 @@
       padding: 0;
       font-family: 'Prompt', 'Inter', -apple-system, sans-serif;
       -webkit-tap-highlight-color: transparent;
+      outline: none;
+    }
+
+    /* Custom Microsoft Fluent Minimal Scrollbars (NO default scrollbar) */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
     }
 
     body {
-      background-color: #030712;
+      background-color: var(--bg-canvas);
       color: var(--text-primary);
       min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
       padding: 0;
-      overflow-x: hidden;
+      overflow: hidden;
     }
 
-    /* Mobile Phone Wrapper Frame */
-    .phone-container {
+    /* Mobile Container Frame */
+    .app-viewport {
       width: 100%;
       max-width: 430px;
       height: 100vh;
@@ -63,17 +94,309 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1);
+      box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.12);
     }
 
     @media (min-width: 480px) {
-      .phone-container {
+      .app-viewport {
         height: 880px;
-        border-radius: 40px;
+        border-radius: 44px;
       }
     }
 
-    /* Header Bar */
+    /* SVG Icon System (No Emojis) */
+    .icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+      flex-shrink: 0;
+    }
+
+    .icon-sm { width: 16px; height: 16px; }
+    .icon-lg { width: 24px; height: 24px; }
+    .icon-xl { width: 32px; height: 32px; }
+
+    /* ==========================================================================
+       1. CINEMATIC INTRO SPLASH
+       ========================================================================== */
+    .intro-screen {
+      position: absolute;
+      inset: 0;
+      background: #040711;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      text-align: center;
+      transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .intro-screen.fade-out {
+      opacity: 0;
+      transform: scale(1.08);
+      pointer-events: none;
+    }
+
+    .copilot-orb-container {
+      position: relative;
+      width: 140px;
+      height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 36px;
+    }
+
+    .orb-ambient {
+      position: absolute;
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(127, 0, 255, 0.4) 0%, rgba(0, 242, 254, 0.2) 40%, transparent 70%);
+      filter: blur(25px);
+      animation: pulseAmbient 4s ease-in-out infinite alternate;
+    }
+
+    .copilot-orb {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: conic-gradient(from 180deg at 50% 50%, #00f2fe 0deg, #4facfe 90deg, #7f00ff 180deg, #e100ff 270deg, #00f2fe 360deg);
+      box-shadow: 0 0 50px var(--glow-copilot), inset 0 0 20px rgba(255, 255, 255, 0.6);
+      animation: spinOrb 6s linear infinite;
+      position: relative;
+    }
+
+    .copilot-orb::after {
+      content: '';
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.8) 0%, rgba(11, 15, 25, 0.9) 70%);
+      backdrop-filter: blur(8px);
+    }
+
+    @keyframes spinOrb {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulseAmbient {
+      0% { transform: scale(0.9); opacity: 0.6; }
+      100% { transform: scale(1.25); opacity: 1; }
+    }
+
+    .intro-title {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+
+    .intro-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 14px;
+      border-radius: 30px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-subtle);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--copilot-cyan);
+      margin-bottom: 24px;
+    }
+
+    .intro-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      max-width: 300px;
+    }
+
+    .intro-loader {
+      width: 160px;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 36px;
+      position: relative;
+    }
+
+    .intro-loader-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 0%;
+      background: var(--gradient-copilot);
+      border-radius: 10px;
+      animation: loadProgress 1.6s ease-in-out forwards;
+    }
+
+    @keyframes loadProgress {
+      0% { width: 0%; }
+      60% { width: 75%; }
+      100% { width: 100%; }
+    }
+
+    /* ==========================================================================
+       2. MICROSOFT 365 LOGIN VIEW
+       ========================================================================== */
+    .login-screen {
+      position: absolute;
+      inset: 0;
+      background: var(--bg-primary);
+      z-index: 900;
+      display: none;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 40px 24px 32px 24px;
+      animation: fadeIn 0.4s ease-out forwards;
+    }
+
+    .login-screen.active {
+      display: flex;
+    }
+
+    .ms-brand-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 40px;
+    }
+
+    .ms-grid-logo {
+      display: grid;
+      grid-template-columns: repeat(2, 10px);
+      gap: 3px;
+    }
+
+    .ms-tile { width: 10px; height: 10px; }
+    .ms-tile-red { background: #f25022; }
+    .ms-tile-green { background: #7fba00; }
+    .ms-tile-blue { background: #00a4ef; }
+    .ms-tile-yellow { background: #ffb900; }
+
+    .ms-brand-text {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.2px;
+    }
+
+    .login-hero h1 {
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1.25;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    .login-hero p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.55;
+    }
+
+    .login-action-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+    }
+
+    .ms-login-btn {
+      width: 100%;
+      padding: 14px 18px;
+      border-radius: var(--radius-md);
+      background: #ffffff;
+      color: #0f172a;
+      font-weight: 700;
+      font-size: 14px;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      cursor: pointer;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .ms-login-btn:active {
+      transform: scale(0.97);
+      background: #f1f5f9;
+    }
+
+    .remember-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 18px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Custom Toggle Switch (NO browser checkbox) */
+    .switch-ui {
+      width: 44px;
+      height: 24px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 30px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .switch-ui.on {
+      background: var(--ms-blue);
+    }
+
+    .switch-handle {
+      width: 18px;
+      height: 18px;
+      background: #fff;
+      border-radius: 50%;
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .switch-ui.on .switch-handle {
+      transform: translateX(20px);
+    }
+
+    .login-footer-info {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    /* ==========================================================================
+       3. MAIN APP INTERFACE
+       ========================================================================== */
+    .main-app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      position: relative;
+    }
+
     .app-header {
       height: var(--top-nav-h);
       padding: 12px 18px;
@@ -82,93 +405,58 @@
       justify-content: space-between;
       background: var(--bg-glass);
       backdrop-filter: blur(20px);
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-subtle);
       position: sticky;
       top: 0;
       z-index: 100;
     }
 
-    .header-user {
+    .header-profile {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
     }
 
-    .avatar-wrapper {
+    .profile-avatar {
       position: relative;
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #00e699, #0284c7);
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: var(--gradient-copilot);
+      padding: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .avatar-inner {
+      width: 100%;
+      height: 100%;
+      background: var(--bg-surface);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 700;
-      font-size: 16px;
-      color: #000;
-      box-shadow: 0 0 15px var(--accent-green-glow);
-    }
-
-    .online-badge {
-      position: absolute;
-      bottom: 0;
-      right: 0;
-      width: 11px;
-      height: 11px;
-      border-radius: 50%;
-      background: #22c55e;
-      border: 2px solid var(--bg-primary);
-    }
-
-    .user-info h2 {
       font-size: 14px;
-      font-weight: 600;
+      color: #fff;
+    }
+
+    .header-details h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
       line-height: 1.2;
     }
 
-    .user-info p {
+    .header-details p {
       font-size: 11px;
-      color: var(--accent-green);
-    }
-
-    .header-actions {
+      color: var(--copilot-cyan);
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 4px;
     }
 
-    .icon-btn {
-      width: 38px;
-      height: 38px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border);
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      position: relative;
-      transition: all 0.2s ease;
-    }
-
-    .icon-btn:active {
-      transform: scale(0.92);
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    .badge-dot {
-      position: absolute;
-      top: 6px;
-      right: 6px;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent-red);
-      box-shadow: 0 0 8px var(--accent-red);
-    }
-
-    /* Content Area */
     .app-content {
       flex: 1;
       overflow-y: auto;
@@ -177,15 +465,10 @@
       position: relative;
     }
 
-    .app-content::-webkit-scrollbar {
-      display: none;
-    }
-
-    /* Tab Page Views */
     .tab-page {
       display: none;
-      padding: 16px;
-      animation: fadeIn 0.25s ease-out forwards;
+      padding: 18px 16px;
+      animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
     .tab-page.active {
@@ -193,72 +476,72 @@
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
+      from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Hero Banner: Unlimited Push Alert Box */
-    .hero-banner {
-      background: linear-gradient(135deg, rgba(0, 230, 153, 0.15), rgba(56, 189, 248, 0.08));
-      border: 1px solid var(--border-accent);
-      border-radius: var(--radius-lg);
-      padding: 18px;
-      margin-bottom: 18px;
+    /* Copilot Showcase Hero Card */
+    .copilot-hero {
+      background: radial-gradient(circle at 100% 0%, rgba(127, 0, 255, 0.25) 0%, transparent 60%),
+                  radial-gradient(circle at 0% 100%, rgba(0, 242, 254, 0.2) 0%, transparent 60%),
+                  var(--bg-surface);
+      border: 1px solid var(--border-copilot);
+      border-radius: var(--radius-xl);
+      padding: 20px;
+      margin-bottom: 20px;
       position: relative;
-      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     }
 
-    .hero-banner::after {
-      content: '';
-      position: absolute;
-      top: -30px;
-      right: -30px;
-      width: 100px;
-      height: 100px;
-      background: radial-gradient(circle, var(--accent-green-glow) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .hero-header {
+    .hero-top-badge {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 8px;
-    }
-
-    .hero-title {
-      font-size: 15px;
-      font-weight: 700;
-      color: #fff;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .pulse-tag {
-      font-size: 10px;
-      padding: 2px 8px;
-      border-radius: 12px;
-      background: rgba(0, 230, 153, 0.2);
-      color: var(--accent-green);
-      font-weight: 600;
-      border: 1px solid rgba(0, 230, 153, 0.4);
-    }
-
-    .hero-desc {
-      font-size: 12px;
-      color: var(--text-secondary);
-      line-height: 1.4;
       margin-bottom: 12px;
     }
 
-    .hero-btn {
+    .copilot-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--copilot-cyan);
+      box-shadow: 0 0 10px var(--copilot-cyan);
+    }
+
+    .copilot-hero h2 {
+      font-size: 18px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 6px;
+      letter-spacing: -0.3px;
+    }
+
+    .copilot-hero p {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+
+    .fluent-btn-primary {
       width: 100%;
-      padding: 10px 14px;
-      border-radius: var(--radius-sm);
-      background: var(--accent-green);
+      padding: 12px 18px;
+      border-radius: var(--radius-md);
+      background: var(--gradient-copilot);
       color: #000;
-      font-weight: 600;
+      font-weight: 700;
       font-size: 13px;
       border: none;
       display: flex;
@@ -266,236 +549,211 @@
       justify-content: center;
       gap: 8px;
       cursor: pointer;
-      box-shadow: 0 4px 14px var(--accent-green-glow);
-      transition: all 0.2s;
+      box-shadow: 0 6px 20px var(--glow-copilot);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .hero-btn:active {
+    .fluent-btn-primary:active {
       transform: scale(0.97);
+      filter: brightness(1.1);
     }
 
     /* Section Headers */
-    .section-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 10px;
+    .section-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      margin-bottom: 12px;
     }
 
-    .section-title span {
-      color: var(--accent-blue);
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .section-link {
       font-size: 12px;
-      font-weight: 500;
-      text-transform: none;
+      color: var(--copilot-blue);
+      font-weight: 600;
       cursor: pointer;
     }
 
-    /* Schedule Card */
-    .schedule-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 16px;
-      margin-bottom: 18px;
+    /* Quick Action Chips */
+    .action-chip-grid {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      margin-bottom: 20px;
     }
 
-    .clock-display {
+    .fluent-chip {
+      flex-shrink: 0;
+      padding: 9px 14px;
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .fluent-chip:active {
+      background: var(--bg-surface-elevated);
+      border-color: var(--copilot-cyan);
+      transform: scale(0.96);
+    }
+
+    /* Fluent Card */
+    .fluent-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      padding: 18px;
+      margin-bottom: 20px;
+    }
+
+    .live-time-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 12px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border-subtle);
       margin-bottom: 14px;
     }
 
-    .live-time {
-      font-size: 24px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
+    .time-val {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
       color: #fff;
     }
 
-    .live-date {
+    .date-val {
       font-size: 12px;
-      color: var(--accent-green);
-      font-weight: 500;
+      color: var(--copilot-cyan);
+      font-weight: 600;
     }
 
-    .meeting-item {
+    /* Meeting Item */
+    .meeting-row {
       display: flex;
       align-items: flex-start;
       gap: 12px;
       padding: 12px;
-      background: rgba(255, 255, 255, 0.03);
+      background: rgba(255, 255, 255, 0.02);
       border-radius: var(--radius-md);
-      margin-bottom: 10px;
-      border-left: 4px solid var(--accent-green);
-      transition: background 0.2s;
+      border-left: 4px solid var(--copilot-blue);
+      margin-bottom: 8px;
     }
 
-    .meeting-item:last-child {
-      margin-bottom: 0;
+    .meeting-time-box {
+      text-align: center;
+      min-width: 52px;
     }
 
-    .meeting-time {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-width: 50px;
-    }
-
-    .meeting-time .start {
+    .meeting-time-box .m-start {
       font-size: 13px;
       font-weight: 700;
       color: #fff;
     }
 
-    .meeting-time .end {
+    .meeting-time-box .m-end {
       font-size: 10px;
-      color: var(--text-secondary);
+      color: var(--text-muted);
     }
 
-    .meeting-details {
-      flex: 1;
-    }
-
-    .meeting-title {
+    .meeting-info h4 {
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       color: #fff;
       margin-bottom: 4px;
     }
 
-    .meeting-meta {
-      font-size: 11px;
-      color: var(--text-secondary);
+    .meeting-tags {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
+      font-size: 11px;
+      color: var(--text-secondary);
     }
 
-    .meta-tag {
+    .tag-item {
       display: inline-flex;
       align-items: center;
       gap: 4px;
     }
 
-    /* Room Status Card */
-    .room-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 10px;
-      margin-bottom: 18px;
-    }
-
-    .room-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      padding: 14px;
+    /* Room Availability Card */
+    .room-box {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
     }
 
-    .room-info h4 {
+    .room-box h4 {
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       color: #fff;
+      margin-bottom: 2px;
     }
 
-    .room-info p {
+    .room-box p {
       font-size: 11px;
-      color: var(--text-secondary);
+      color: var(--text-muted);
     }
 
-    .room-status {
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .status-available {
-      background: rgba(0, 230, 153, 0.15);
-      color: var(--accent-green);
-      border: 1px solid rgba(0, 230, 153, 0.3);
-    }
-
-    .status-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-
-    /* Quick Action Chips */
-    .quick-actions {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding-bottom: 6px;
-      margin-bottom: 18px;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    .quick-actions::-webkit-scrollbar {
-      display: none;
-    }
-
-    .action-chip {
-      flex-shrink: 0;
-      padding: 8px 14px;
-      border-radius: 30px;
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-primary);
-      display: flex;
+    .status-badge {
+      display: inline-flex;
       align-items: center;
       gap: 6px;
-      cursor: pointer;
-      transition: all 0.2s;
+      padding: 5px 12px;
+      border-radius: 20px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--accent-emerald);
+      font-size: 11px;
+      font-weight: 700;
     }
 
-    .action-chip:active {
-      transform: scale(0.94);
-      border-color: var(--accent-green);
-      background: rgba(0, 230, 153, 0.1);
-    }
-
-    /* Chat Tab View */
-    .chat-view {
+    /* Chat Tab */
+    .chat-container {
       display: flex;
       flex-direction: column;
       height: calc(100vh - var(--top-nav-h) - var(--bottom-nav-h));
-      max-height: 740px;
+      max-height: 730px;
     }
 
-    .chat-messages {
+    .chat-stream {
       flex: 1;
       overflow-y: auto;
-      padding: 12px;
+      padding: 14px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
     }
 
-    .chat-bubble {
-      max-width: 90%;
-      padding: 12px 14px;
+    .bubble {
+      max-width: 88%;
+      padding: 14px 16px;
       border-radius: var(--radius-lg);
       font-size: 13px;
-      line-height: 1.5;
+      line-height: 1.55;
       position: relative;
       word-break: break-word;
       white-space: pre-wrap;
@@ -503,106 +761,104 @@
 
     .bubble-user {
       align-self: flex-end;
-      background: linear-gradient(135deg, #0284c7, #0369a1);
-      color: #fff;
+      background: var(--gradient-copilot);
+      color: #060911;
+      font-weight: 500;
       border-bottom-right-radius: 4px;
+      box-shadow: 0 4px 16px var(--glow-copilot);
     }
 
     .bubble-bot {
       align-self: flex-start;
       background: var(--bg-surface);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-subtle);
       color: var(--text-primary);
       border-bottom-left-radius: 4px;
     }
 
-    .bubble-time {
+    .bubble-meta {
       font-size: 9px;
-      color: rgba(255, 255, 255, 0.5);
+      opacity: 0.6;
       margin-top: 6px;
       text-align: right;
     }
 
-    /* Interactive Slot Buttons inside Chat */
-    .slot-buttons-container {
-      margin-top: 10px;
+    .interactive-list {
+      margin-top: 12px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
     }
 
-    .slot-btn {
-      background: rgba(0, 230, 153, 0.1);
-      border: 1px solid rgba(0, 230, 153, 0.3);
+    .interactive-btn {
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-copilot);
       color: #fff;
-      padding: 8px 12px;
-      border-radius: 8px;
       font-size: 12px;
-      font-weight: 500;
-      text-align: left;
-      cursor: pointer;
+      font-weight: 600;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      cursor: pointer;
       transition: all 0.2s;
     }
 
-    .slot-btn:active {
-      background: var(--accent-green);
+    .interactive-btn:active {
+      background: var(--copilot-blue);
       color: #000;
-      font-weight: 600;
       transform: scale(0.98);
     }
 
-    .chat-input-bar {
-      padding: 10px 12px;
+    .chat-bottom-input {
+      padding: 12px 14px;
       background: var(--bg-glass);
-      backdrop-filter: blur(15px);
-      border-top: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border-subtle);
       display: flex;
       align-items: center;
       gap: 8px;
     }
 
-    .chat-input {
+    .fluent-text-input {
       flex: 1;
-      height: 42px;
+      height: 44px;
       background: rgba(255, 255, 255, 0.06);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-subtle);
       border-radius: 24px;
-      padding: 0 16px;
+      padding: 0 18px;
       font-size: 13px;
       color: #fff;
-      outline: none;
-      transition: border-color 0.2s;
+      transition: all 0.2s;
     }
 
-    .chat-input:focus {
-      border-color: var(--accent-green);
+    .fluent-text-input:focus {
+      border-color: var(--copilot-cyan);
+      background: rgba(255, 255, 255, 0.09);
     }
 
-    .send-btn {
-      width: 42px;
-      height: 42px;
+    .send-icon-btn {
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
-      background: var(--accent-green);
+      background: var(--gradient-copilot);
       border: none;
       color: #000;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      font-size: 16px;
-      font-weight: 700;
       flex-shrink: 0;
+      box-shadow: 0 4px 14px var(--glow-copilot);
     }
 
-    /* Bottom Navigation Bar */
-    .bottom-nav {
+    /* Bottom Navigation Bar (No Emojis) */
+    .fluent-nav {
       height: var(--bottom-nav-h);
       background: var(--bg-glass);
       backdrop-filter: blur(25px);
-      border-top: 1px solid var(--border);
+      border-top: 1px solid var(--border-subtle);
       position: absolute;
       bottom: 0;
       left: 0;
@@ -610,304 +866,624 @@
       display: flex;
       align-items: center;
       justify-content: space-around;
-      padding: 0 10px;
+      padding: 0 8px;
       z-index: 100;
     }
 
-    .nav-item {
+    .nav-btn {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 4px;
-      color: var(--text-secondary);
-      text-decoration: none;
+      color: var(--text-muted);
       font-size: 10px;
-      font-weight: 500;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: var(--radius-md);
       cursor: pointer;
-      padding: 6px 12px;
-      border-radius: var(--radius-sm);
       transition: all 0.2s;
     }
 
-    .nav-item.active {
-      color: var(--accent-green);
+    .nav-btn.active {
+      color: var(--copilot-cyan);
     }
 
-    .nav-icon {
-      font-size: 20px;
-      line-height: 1;
+    .nav-btn.active .icon {
+      filter: drop-shadow(0 0 8px var(--copilot-cyan));
     }
 
-    /* Toast Notification Floating Banner */
-    .floating-toast {
+    /* ==========================================================================
+       4. CUSTOM DIALOGS & POPUPS (NO browser alerts)
+       ========================================================================== */
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+      z-index: 999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      animation: fadeIn 0.2s ease-out forwards;
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+    }
+
+    .custom-dialog {
+      width: 100%;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+      text-align: center;
+      transform: scale(0.95);
+      animation: popUp 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    @keyframes popUp {
+      to { transform: scale(1); }
+    }
+
+    .dialog-icon-circle {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: rgba(244, 63, 94, 0.15);
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      color: var(--accent-rose);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px auto;
+    }
+
+    .dialog-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .dialog-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+
+    .dialog-btn-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-dialog {
+      flex: 1;
+      padding: 12px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+    }
+
+    .btn-dialog-primary {
+      background: var(--gradient-copilot);
+      color: #000;
+    }
+
+    .btn-dialog-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
+    /* Floating Toast Banner */
+    .fluent-toast {
       position: absolute;
       top: 16px;
       left: 16px;
       right: 16px;
-      background: rgba(18, 24, 36, 0.95);
-      border: 1px solid var(--accent-green);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 20px var(--accent-green-glow);
-      border-radius: var(--radius-md);
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-copilot);
+      border-radius: var(--radius-lg);
       padding: 14px;
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       gap: 12px;
-      z-index: 999;
-      transform: translateY(-120%);
-      transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 1100;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7), 0 0 20px var(--glow-copilot);
+      transform: translateY(-130%);
+      transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
 
-    .floating-toast.show {
+    .fluent-toast.visible {
       transform: translateY(0);
     }
 
-    .toast-icon {
-      width: 36px;
-      height: 36px;
+    .toast-icon-wrap {
+      width: 38px;
+      height: 38px;
       border-radius: 50%;
-      background: var(--accent-green-glow);
-      color: var(--accent-green);
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--copilot-cyan);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 18px;
       flex-shrink: 0;
     }
 
-    .toast-body h4 {
+    .toast-text h5 {
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       color: #fff;
-      margin-bottom: 2px;
     }
 
-    .toast-body p {
+    .toast-text p {
       font-size: 11px;
       color: var(--text-secondary);
-      line-height: 1.35;
     }
   </style>
 </head>
 <body>
 
-  <div class="phone-container">
-    
-    <!-- Floating Push Toast Alert (Simulated Native Push) -->
-    <div class="floating-toast" id="floatingToast">
-      <div class="toast-icon">🔔</div>
-      <div class="toast-body">
-        <h4 id="toastTitle">แจ้งเตือนประชุมถัดไป</h4>
-        <p id="toastBody">อีก 15 นาที: Weekly Meeting (09:00 - 10:00 น.) ณ ห้อง KTISX ชั้น 3</p>
+  <div class="app-viewport">
+
+    <!-- ==========================================
+         CUSTOM MODAL DIALOG (No system alerts)
+         ========================================== -->
+    <div class="modal-backdrop" id="customModal">
+      <div class="custom-dialog">
+        <div class="dialog-icon-circle" id="modalIcon">
+          <svg class="icon icon-lg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+        </div>
+        <h3 class="dialog-title" id="modalTitle">แจ้งเตือนสถานะบัญชี</h3>
+        <p class="dialog-desc" id="modalDesc">บัญชีของคุณจำเป็นต้องยืนยันตัวตนใหม่กับ Microsoft 365</p>
+        <div class="dialog-btn-row">
+          <button class="btn-dialog btn-dialog-primary" onclick="closeModal()">ตกลง</button>
+        </div>
       </div>
     </div>
 
-    <!-- App Header -->
-    <header class="app-header">
-      <div class="header-user">
-        <div class="avatar-wrapper">
-          เอก
-          <div class="online-badge"></div>
-        </div>
-        <div class="user-info">
-          <h2>Weerasak (เอก)</h2>
-          <p>● ออนไลน์ (Microsoft 365 Live)</p>
-        </div>
+    <!-- ==========================================
+         CUSTOM TOAST NOTIFICATION (No emojis)
+         ========================================== -->
+    <div class="fluent-toast" id="fluentToast">
+      <div class="toast-icon-wrap">
+        <svg class="icon icon-lg" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
       </div>
-      <div class="header-actions">
-        <button class="icon-btn" onclick="testInstantNotification()" title="ทดสอบ Push Notification">
-          🔔
-          <div class="badge-dot"></div>
-        </button>
-        <button class="icon-btn" onclick="switchTab('settings')" title="ตั้งค่า">
-          ⚙️
-        </button>
+      <div class="toast-text">
+        <h5 id="toastHeading">แจ้งเตือนการประชุม</h5>
+        <p id="toastSub">อีก 15 นาที: Weekly Meeting (ห้อง KTISX ชั้น 3)</p>
       </div>
-    </header>
+    </div>
 
-    <!-- App Content Pages -->
-    <main class="app-content">
+    <!-- ==========================================
+         1. CINEMATIC COPILOT INTRO SPLASH
+         ========================================== -->
+    <div class="intro-screen" id="introScreen">
+      <div class="copilot-orb-container">
+        <div class="orb-ambient"></div>
+        <div class="copilot-orb"></div>
+      </div>
+      <div class="intro-badge">
+        <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
+        <span>ENTERPRISE AI ASSISTANT</span>
+      </div>
+      <h1 class="intro-title">KTIS X Copilot</h1>
+      <p class="intro-desc">ระบบผู้ช่วยอัจฉริยะองค์กร ขับเคลื่อนด้วย Microsoft 365 & Real-time Graph Intelligence</p>
+      <div class="intro-loader">
+        <div class="intro-loader-bar"></div>
+      </div>
+    </div>
 
-      <!-- TAB 1: HOME / DASHBOARD -->
-      <div class="tab-page active" id="tab-home">
-        
-        <!-- Hero: Web Push Solution Banner -->
-        <div class="hero-banner">
-          <div class="hero-header">
-            <div class="hero-title">⚡ ระบบแจ้งเตือนอิสระ (ไม่พึ่งโควตา LINE)</div>
-            <div class="pulse-tag">ฟรี ไม่จำกัด</div>
+    <!-- ==========================================
+         2. MICROSOFT 365 LOGIN VIEW
+         ========================================== -->
+    <div class="login-screen" id="loginScreen">
+      <div>
+        <div class="ms-brand-header">
+          <div class="ms-grid-logo">
+            <div class="ms-tile ms-tile-red"></div>
+            <div class="ms-tile ms-tile-green"></div>
+            <div class="ms-tile ms-tile-blue"></div>
+            <div class="ms-tile ms-tile-yellow"></div>
           </div>
-          <p class="hero-desc">
-            รับเสียงเตือนล่วงหน้า 15 นาทีก่อนเริ่มประชุม พร้อมเด้ง Notification บนจอมือถือทันที แม้ปิดหน้าจออยู่
-          </p>
-          <button class="hero-btn" onclick="testInstantNotification()">
-            <span>🔔 ทดสอบยิง Push Notification + เสียงเตือน</span>
+          <span class="ms-brand-text">Microsoft 365 Enterprise</span>
+        </div>
+
+        <div class="login-hero">
+          <h1>เข้าสู่ระบบ<br>ด้วยบัญชีองค์กร</h1>
+          <p>เข้าถึงตารางนัดหมาย ห้องประชุม และการจัดการเอกสารผ่านระบบความปลอดภัย Entra ID</p>
+        </div>
+      </div>
+
+      <div class="login-action-box">
+        <button class="ms-login-btn" onclick="performM365Login()">
+          <div class="ms-grid-logo">
+            <div class="ms-tile ms-tile-red"></div>
+            <div class="ms-tile ms-tile-green"></div>
+            <div class="ms-tile ms-tile-blue"></div>
+            <div class="ms-tile ms-tile-yellow"></div>
+          </div>
+          <span>Sign in with Microsoft</span>
+        </button>
+
+        <div class="remember-toggle">
+          <span>จดจำการเข้าสู่ระบบในอุปกรณ์นี้</span>
+          <div class="switch-ui on" id="rememberToggle" onclick="toggleSwitch(this)">
+            <div class="switch-handle"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="login-footer-info">
+        <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        <span>KTIS Group Single Sign-On Security</span>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         3. MAIN APP INTERFACE
+         ========================================== -->
+    <div class="main-app" id="mainApp">
+      
+      <!-- Top Header -->
+      <header class="app-header">
+        <div class="header-profile">
+          <div class="profile-avatar">
+            <div class="avatar-inner">เอก</div>
+          </div>
+          <div class="header-details">
+            <h3>Weerasak (เอก)</h3>
+            <p>
+              <span class="pulse-dot"></span>
+              <span>Microsoft 365 Connected</span>
+            </p>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:8px;">
+          <button class="icon" style="width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle); color:#fff; cursor:pointer;" onclick="triggerTestPush()" title="ทดสอบ Push">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+          </button>
+          <button class="icon" style="width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle); color:var(--accent-rose); cursor:pointer;" onclick="handleLogout()" title="ออกจากระบบ">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
           </button>
         </div>
+      </header>
 
-        <!-- Quick AI Command Chips -->
-        <div class="section-title">
-          <span>คำสั่งด่วน AI</span>
-          <span onclick="switchTab('chat')">เปิดแชทเต็ม ➜</span>
-        </div>
-        <div class="quick-actions">
-          <div class="action-chip" onclick="quickSend('พฤมีห้องว่างไหม')">🏢 พฤมีห้องว่างไหม</div>
-          <div class="action-chip" onclick="quickSend('เวลาปัจจุบัน')">⏰ เวลาปัจจุบัน</div>
-          <div class="action-chip" onclick="quickSend('ตารางวันนี้')">📅 ตารางวันนี้</div>
-          <div class="action-chip" onclick="quickSend('ข่าววันนี้')">📰 ข่าววันนี้</div>
-          <div class="action-chip" onclick="quickSend('ขอดูเพิ่มเติม')">🔍 ขอดูเพิ่มเติม</div>
-        </div>
+      <!-- Content Pages -->
+      <div class="app-content">
 
-        <!-- Schedule Today -->
-        <div class="schedule-card">
-          <div class="clock-display">
-            <div>
-              <div class="live-time" id="liveClock">--:--:--</div>
-              <div class="live-date" id="liveDate">กำลังโหลดวันที่...</div>
+        <!-- TAB 1: HUB / HOME -->
+        <div class="tab-page active" id="tab-home">
+          
+          <div class="copilot-hero">
+            <div class="hero-top-badge">
+              <div class="copilot-pill">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
+                <span>M365 COPILOT ENGINE</span>
+              </div>
+              <span style="font-size:11px; color:var(--copilot-cyan); font-weight:700;">LIVE GRAPH SYNC</span>
             </div>
-            <div style="text-align: right;">
-              <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: var(--accent-blue); padding: 4px 8px; border-radius: 12px; font-weight: 600;">
-                วันนี้ 1 รายการ
-              </span>
+            <h2>ระบบแจ้งเตือนแบบไร้ขีดจำกัด</h2>
+            <p>รับเสียงเตือนล่วงหน้า 15 นาทีก่อนเริ่มประชุม พร้อมแจ้งเตือนตรงเข้าจอมือถือโดยไม่ต้องพึ่งพาโควตาของ LINE</p>
+            <button class="fluent-btn-primary" onclick="triggerTestPush()">
+              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+              <span>ทดสอบยิง Push Notification + เสียงสัญญาณ</span>
+            </button>
+          </div>
+
+          <div class="section-header">
+            <div class="section-title">
+              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM9 4L6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5L9 4z"/></svg>
+              <span>คำสั่งด่วน</span>
+            </div>
+            <span class="section-link" onclick="switchTab('chat')">เปิดห้องแชท</span>
+          </div>
+
+          <div class="action-chip-grid">
+            <div class="fluent-chip" onclick="quickChat('พฤมีห้องว่างไหม')">
+              <svg class="icon icon-sm" style="color:var(--copilot-cyan);" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
+              <span>พฤมีห้องว่างไหม</span>
+            </div>
+            <div class="fluent-chip" onclick="quickChat('ดูตารางเบส')">
+              <svg class="icon icon-sm" style="color:var(--copilot-blue);" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+              <span>ดูตารางเบส</span>
+            </div>
+            <div class="fluent-chip" onclick="quickChat('เวลาปัจจุบัน')">
+              <svg class="icon icon-sm" style="color:var(--accent-amber);" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+              <span>เวลาปัจจุบัน</span>
+            </div>
+            <div class="fluent-chip" onclick="quickChat('ตารางวันนี้')">
+              <svg class="icon icon-sm" style="color:var(--accent-emerald);" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>
+              <span>ตารางวันนี้</span>
             </div>
           </div>
 
-          <div class="meeting-item">
-            <div class="meeting-time">
-              <span class="start">09:00</span>
-              <span class="end">10:00</span>
+          <!-- Schedule Card -->
+          <div class="fluent-card">
+            <div class="live-time-row">
+              <div>
+                <div class="time-val" id="liveClock">--:--:--</div>
+                <div class="date-val" id="liveDate">กำลังซิงค์เวลา...</div>
+              </div>
+              <span style="font-size:11px; background:rgba(56, 189, 248, 0.15); color:var(--copilot-blue); padding:4px 10px; border-radius:20px; font-weight:700;">
+                วันนี้ 1 นัดหมาย
+              </span>
             </div>
-            <div class="meeting-details">
-              <div class="meeting-title">Weekly Meeting</div>
-              <div class="meeting-meta">
-                <span class="meta-tag">🏢 ห้อง KTISX (ชั้น 3)</span>
-                <span class="meta-tag">💻 Teams Meeting</span>
+
+            <div class="meeting-row">
+              <div class="meeting-time-box">
+                <div class="m-start">09:00</div>
+                <div class="m-end">10:00</div>
+              </div>
+              <div class="meeting-info">
+                <h4>Weekly Meeting</h4>
+                <div class="meeting-tags">
+                  <span class="tag-item">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
+                    <span>ห้อง KTISX (ชั้น 3)</span>
+                  </span>
+                  <span class="tag-item">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
+                    <span>Teams Meeting</span>
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Meeting Room Availability -->
-        <div class="section-title">
-          <span>ห้องประชุม KTISX</span>
-          <span onclick="quickSend('พฤมีห้องว่างไหม')">เช็กคิวว่าง ➜</span>
-        </div>
-        <div class="room-grid">
-          <div class="room-card">
-            <div class="room-info">
+          <!-- Meeting Room Status -->
+          <div class="section-header">
+            <div class="section-title">
+              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
+              <span>สถานะห้องประชุม</span>
+            </div>
+            <span class="section-link" onclick="quickChat('พฤมีห้องว่างไหม')">จองห้อง</span>
+          </div>
+
+          <div class="room-box">
+            <div>
               <h4>ห้องประชุม KTISX (ชั้น 3)</h4>
               <p>ktisx_room_fl3@ktisgroup.com</p>
             </div>
-            <div class="room-status status-available">
-              <div class="status-dot"></div>
-              <span>พร้อมใช้งาน</span>
+            <div class="status-badge">
+              <span style="width:6px; height:6px; border-radius:50%; background:currentColor;"></span>
+              <span>ว่างพร้อมใช้งาน</span>
             </div>
           </div>
+
         </div>
 
-      </div>
-
-      <!-- TAB 2: SCHEDULE -->
-      <div class="tab-page" id="tab-schedule">
-        <div class="section-title">
-          <span>ปฏิทินนัดหมายทั้งหมด</span>
-        </div>
-        <div class="schedule-card" style="margin-bottom: 12px;">
-          <h3 style="font-size: 14px; margin-bottom: 10px; color: var(--accent-green);">📅 02/10/2026 (ตุลาคม 2569)</h3>
-          <div class="meeting-item">
-            <div class="meeting-time">
-              <span class="start">09:00</span>
-              <span class="end">10:00</span>
+        <!-- TAB 2: SCHEDULE -->
+        <div class="tab-page" id="tab-schedule">
+          <div class="section-header">
+            <div class="section-title">
+              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
+              <span>ปฏิทิน Microsoft 365</span>
             </div>
-            <div class="meeting-details">
-              <div class="meeting-title">Weekly Meeting</div>
-              <div class="meeting-meta">
-                <span class="meta-tag">🏢 ห้อง KTISX (ชั้น 3)</span>
+          </div>
+
+          <div class="fluent-card" style="margin-bottom:12px;">
+            <div style="font-size:13px; font-weight:700; color:var(--copilot-cyan); margin-bottom:10px;">
+              02/10/2026 (ตุลาคม 2569)
+            </div>
+            <div class="meeting-row">
+              <div class="meeting-time-box">
+                <div class="m-start">09:00</div>
+                <div class="m-end">10:00</div>
+              </div>
+              <div class="meeting-info">
+                <h4>Weekly Meeting</h4>
+                <div class="meeting-tags">
+                  <span class="tag-item">ห้อง KTISX (ชั้น 3)</span>
+                </div>
               </div>
             </div>
           </div>
+
+          <div class="fluent-card">
+            <div style="font-size:13px; font-weight:700; color:var(--copilot-blue); margin-bottom:10px;">
+              03/09/2026 (พฤหัสบดี)
+            </div>
+            <p style="font-size:12px; color:var(--text-secondary); line-height:1.6;">
+              ไม่มีนัดประชุม — ว่างตลอดทั้งวัน (09:00 - 17:00 น.)
+            </p>
+          </div>
         </div>
 
-        <div class="schedule-card">
-          <h3 style="font-size: 14px; margin-bottom: 10px; color: var(--accent-blue);">📅 03/09/2026 (พฤหัสบดี)</h3>
-          <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
-            ว่างตลอดทั้งวัน: 09:00 - 17:00 น.
+        <!-- TAB 3: CHAT CONSOLE -->
+        <div class="tab-page" id="tab-chat" style="padding:0;">
+          <div class="chat-container">
+            <div class="chat-stream" id="chatStream">
+              <div class="bubble bubble-bot">
+                สวัสดีครับคุณเอก! เชื่อมต่อระบบ Live Assistant เรียบร้อยครับ พิมพ์สั่งงานหรือถามตารางนัดหมาย ห้องประชุมได้เลยครับ
+                <div class="bubble-meta">16:30 น.</div>
+              </div>
+            </div>
+
+            <div class="chat-bottom-input">
+              <input type="text" class="fluent-text-input" id="chatInputField" placeholder="พิมพ์สั่งงาน เช่น 'พฤมีห้องว่างไหม'..." onkeypress="if(event.key==='Enter') executeSend()">
+              <button class="send-icon-btn" onclick="executeSend()">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- TAB 3: AI CHAT CONSOLE -->
-      <div class="tab-page" id="tab-chat" style="padding: 0;">
-        <div class="chat-view">
-          <div class="chat-messages" id="chatMessages">
-            <div class="chat-bubble bubble-bot">
-              สวัสดีครับคุณเอก! เชื่อมต่อระบบ Live Assistant เรียบร้อยครับ พิมพ์สั่งงานหรือถามตารางนัดหมาย ห้องประชุมได้เลยครับ 😊
-              <div class="bubble-time">15:40 น.</div>
+        <!-- TAB 4: SETTINGS & POLICIES -->
+        <div class="tab-page" id="tab-settings">
+          <div class="section-header">
+            <div class="section-title">
+              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+              <span>ตั้งค่าระบบแจ้งเตือน</span>
             </div>
           </div>
-          <div class="chat-input-bar">
-            <input type="text" class="chat-input" id="chatInput" placeholder="พิมพ์สั่งงาน เช่น 'พฤมีห้องว่างไหม'..." onkeypress="handleKey(event)">
-            <button class="send-btn" onclick="sendMessage()">➤</button>
+
+          <div class="fluent-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+              <div>
+                <div style="font-size:13px; font-weight:700;">แจ้งเตือนก่อนประชุม 15 นาที</div>
+                <div style="font-size:11px; color:var(--text-muted);">ส่งเสียงและเด้งเตือนบนจอมือถือ</div>
+              </div>
+              <div class="switch-ui on" onclick="toggleSwitch(this)"><div class="switch-handle"></div></div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+              <div>
+                <div style="font-size:13px; font-weight:700;">เสียงสัญญาณแจ้งเตือนพิเศษ</div>
+                <div style="font-size:11px; color:var(--text-muted);">เสียง Chime ระดับชัดเจน</div>
+              </div>
+              <div class="switch-ui on" onclick="toggleSwitch(this)"><div class="switch-handle"></div></div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-size:13px; font-weight:700;">สรุปยามเช้า (Morning Brief)</div>
+                <div style="font-size:11px; color:var(--text-muted);">แจ้งเตือนทุก 07:00 น.</div>
+              </div>
+              <div class="switch-ui on" onclick="toggleSwitch(this)"><div class="switch-handle"></div></div>
+            </div>
+          </div>
+
+          <div class="fluent-card" style="border-color:rgba(244, 63, 94, 0.2);">
+            <div style="font-size:13px; font-weight:700; color:var(--accent-rose); margin-bottom:6px;">จัดการเซสชัน</div>
+            <p style="font-size:11px; color:var(--text-muted); margin-bottom:14px;">เมื่อถูกระงับสิทธิ์หรือยกเลิกการเข้าสู่ระบบ ระบบจะตัดการเชื่อมต่อทันที</p>
+            <button class="btn-dialog btn-dialog-secondary" style="width:100%; border:1px solid rgba(244,63,94,0.3); color:var(--accent-rose);" onclick="handleLogout()">
+              ออกจากระบบ Microsoft 365
+            </button>
           </div>
         </div>
+
       </div>
 
-      <!-- TAB 4: SETTINGS & NOTIFICATIONS -->
-      <div class="tab-page" id="tab-settings">
-        <div class="section-title"><span>ตั้งค่าการแจ้งเตือน</span></div>
-        <div class="schedule-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <div>
-              <div style="font-size:13px; font-weight:600;">🔔 แจ้งเตือนล่วงหน้า 15 นาที</div>
-              <div style="font-size:11px; color:var(--text-secondary);">ส่งแจ้งเตือนเข้าจอมือถือทันที</div>
-            </div>
-            <input type="checkbox" checked style="accent-color: var(--accent-green); width: 20px; height: 20px;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <div>
-              <div style="font-size:13px; font-weight:600;">🔊 เสียงเตือนแบบชัดเจน</div>
-              <div style="font-size:11px; color:var(--text-secondary);">มีเสียงแจ้งเตือนสำหรับประชุมด่วน</div>
-            </div>
-            <input type="checkbox" checked style="accent-color: var(--accent-green); width: 20px; height: 20px;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <div style="font-size:13px; font-weight:600;">☀️ สรุปยามเช้า (Morning Brief)</div>
-              <div style="font-size:11px; color:var(--text-secondary);">ส่งเวลา 07:00 น. ทุกวันทำงาน</div>
-            </div>
-            <input type="checkbox" checked style="accent-color: var(--accent-green); width: 20px; height: 20px;">
-          </div>
+      <!-- Bottom Navigation -->
+      <nav class="fluent-nav">
+        <div class="nav-btn active" id="nav-home" onclick="switchTab('home')">
+          <svg class="icon icon-md" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+          <span>หน้าหลัก</span>
         </div>
-      </div>
+        <div class="nav-btn" id="nav-schedule" onclick="switchTab('schedule')">
+          <svg class="icon icon-md" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
+          <span>ตารางนัด</span>
+        </div>
+        <div class="nav-btn" id="nav-chat" onclick="switchTab('chat')">
+          <svg class="icon icon-md" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
+          <span>สั่งงาน AI</span>
+        </div>
+        <div class="nav-btn" id="nav-settings" onclick="switchTab('settings')">
+          <svg class="icon icon-md" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+          <span>ตั้งค่า</span>
+        </div>
+      </nav>
 
-    </main>
-
-    <!-- Bottom Navigation Bar -->
-    <nav class="bottom-nav">
-      <div class="nav-item active" onclick="switchTab('home')" id="nav-home">
-        <div class="nav-icon">🏠</div>
-        <span>หน้าหลัก</span>
-      </div>
-      <div class="nav-item" onclick="switchTab('schedule')" id="nav-schedule">
-        <div class="nav-icon">📅</div>
-        <span>ตารางนัด</span>
-      </div>
-      <div class="nav-item" onclick="switchTab('chat')" id="nav-chat">
-        <div class="nav-icon">🤖</div>
-        <span>สั่งงาน AI</span>
-      </div>
-      <div class="nav-item" onclick="switchTab('settings')" id="nav-settings">
-        <div class="nav-icon">⚙️</div>
-        <span>ตั้งค่า</span>
-      </div>
-    </nav>
+    </div>
 
   </div>
 
   <script>
-    let chatContext = {};
+    const AUTH_KEY = "_ktis_m365_auth";
 
-    // Live Clock & Date
+    // 1. Splash & Auth Flow
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        const isAuth = localStorage.getItem(AUTH_KEY) === "true";
+        document.getElementById('introScreen').classList.add('fade-out');
+        
+        if (isAuth) {
+          showMainApp();
+        } else {
+          showLoginScreen();
+        }
+      }, 1600);
+    });
+
+    function showLoginScreen() {
+      document.getElementById('loginScreen').classList.add('active');
+      document.getElementById('mainApp').style.display = 'none';
+    }
+
+    function showMainApp() {
+      document.getElementById('loginScreen').classList.remove('active');
+      document.getElementById('mainApp').style.display = 'flex';
+    }
+
+    function performM365Login() {
+      localStorage.setItem(AUTH_KEY, "true");
+      showCustomToast("ยืนยันตัวตนสำเร็จ", "เข้าสู่ระบบด้วย weerasak.pi@ktisgroup.com");
+      showMainApp();
+    }
+
+    function handleLogout() {
+      localStorage.removeItem(AUTH_KEY);
+      showCustomModal("ออกจากระบบเรียบร้อย", "คุณได้ออกจากเซสชัน Microsoft 365 แล้ว");
+      showLoginScreen();
+    }
+
+    function toggleSwitch(el) {
+      el.classList.toggle('on');
+    }
+
+    // 2. Custom Dialogs & Modal
+    function showCustomModal(title, desc) {
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalDesc').textContent = desc;
+      document.getElementById('customModal').classList.add('show');
+    }
+
+    function closeModal() {
+      document.getElementById('customModal').classList.remove('show');
+    }
+
+    // 3. Native & Sound Notification
+    function playNotificationSound() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12); // A5
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.6);
+      } catch (e) {}
+    }
+
+    function showCustomToast(heading, sub) {
+      playNotificationSound();
+      document.getElementById('toastHeading').textContent = heading;
+      document.getElementById('toastSub').textContent = sub;
+      const toast = document.getElementById('fluentToast');
+      toast.classList.add('visible');
+      setTimeout(() => {
+        toast.classList.remove('visible');
+      }, 4000);
+    }
+
+    function triggerTestPush() {
+      showCustomToast("แจ้งเตือนประชุมถัดไป", "อีก 15 นาที: Weekly Meeting (ห้อง KTISX ชั้น 3)");
+      if ("Notification" in window) {
+        if (Notification.permission === "granted") {
+          new Notification("🔔 ประชุมถัดไป: Weekly Meeting", {
+            body: "เริ่มในอีก 15 นาที ณ ห้อง KTISX (ชั้น 3)",
+            icon: "https://ktis-ai-assistant.vercel.app/favicon.ico"
+          });
+        } else if (Notification.permission !== "denied") {
+          Notification.requestPermission();
+        }
+      }
+    }
+
+    // 4. Live Clock & Calendar
     function updateClock() {
       const now = new Date();
       const hh = String(now.getHours()).padStart(2, '0');
@@ -923,77 +1499,24 @@
     setInterval(updateClock, 1000);
     updateClock();
 
-    // Tab Navigation
+    // 5. Tabs
     function switchTab(tabId) {
       document.querySelectorAll('.tab-page').forEach(el => el.classList.remove('active'));
-      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
       
-      const targetPage = document.getElementById(`tab-${tabId}`);
-      const targetNav = document.getElementById(`nav-${tabId}`);
-      if (targetPage) targetPage.classList.add('active');
-      if (targetNav) targetNav.classList.add('active');
+      const target = document.getElementById(`tab-${tabId}`);
+      const nav = document.getElementById(`nav-${tabId}`);
+      if (target) target.classList.add('active');
+      if (nav) nav.classList.add('active');
     }
 
-    // Audio Notification Synthesizer (Chime Sound)
-    function playNotificationSound() {
-      try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12); // A5
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.6);
-      } catch (e) {
-        console.log("Audio not allowed yet:", e);
-      }
-    }
-
-    // Native & Floating Push Notification Trigger
-    function testInstantNotification() {
-      playNotificationSound();
-
-      const toast = document.getElementById('floatingToast');
-      toast.classList.add('show');
-      setTimeout(() => {
-        toast.classList.remove('show');
-      }, 4000);
-
-      if ("Notification" in window) {
-        if (Notification.permission === "granted") {
-          new Notification("🔔 ประชุมถัดไป: Weekly Meeting", {
-            body: "เริ่มในอีก 15 นาที ณ ห้อง KTISX (ชั้น 3)",
-            icon: "https://ktis-ai-assistant.vercel.app/favicon.ico"
-          });
-        } else if (Notification.permission !== "denied") {
-          Notification.requestPermission().then(permission => {
-            if (permission === "granted") {
-              new Notification("🔔 ประชุมถัดไป: Weekly Meeting", {
-                body: "เริ่มในอีก 15 นาที ณ ห้อง KTISX (ชั้น 3)"
-              });
-            }
-          });
-        }
-      }
-    }
-
-    // Quick Command Helper
-    function quickSend(cmdText) {
+    function quickChat(text) {
       switchTab('chat');
-      const input = document.getElementById('chatInput');
-      input.value = cmdText;
-      sendMessage();
+      document.getElementById('chatInputField').value = text;
+      executeSend();
     }
 
-    function handleKey(e) {
-      if (e.key === 'Enter') sendMessage();
-    }
-
+    // 6. Live Chat Engine
     function formatMarkdown(text) {
       if (!text) return '';
       return text
@@ -1004,91 +1527,81 @@
         .replace(/\n/g, '<br>');
     }
 
-    async function sendMessage(overrideText) {
-      const input = document.getElementById('chatInput');
+    async function executeSend(overrideText) {
+      const input = document.getElementById('chatInputField');
       const text = (overrideText || input.value).trim();
       if (!text) return;
       if (!overrideText) input.value = '';
 
-      const container = document.getElementById('chatMessages');
+      const stream = document.getElementById('chatStream');
       const now = new Date();
       const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} น.`;
 
-      // Append User Bubble
-      const userBubble = document.createElement('div');
-      userBubble.className = 'chat-bubble bubble-user';
-      userBubble.innerHTML = `${formatMarkdown(text)}<div class="bubble-time">${timeStr}</div>`;
-      container.appendChild(userBubble);
-      container.scrollTop = container.scrollHeight;
+      // User Bubble
+      const uBubble = document.createElement('div');
+      uBubble.className = 'bubble bubble-user';
+      uBubble.innerHTML = `${formatMarkdown(text)}<div class="bubble-meta">${timeStr}</div>`;
+      stream.appendChild(uBubble);
+      stream.scrollTop = stream.scrollHeight;
 
-      // Bot Loading Bubble
-      const botBubble = document.createElement('div');
-      botBubble.className = 'chat-bubble bubble-bot';
-      botBubble.innerHTML = `กำลังค้นหาข้อมูลจาก Microsoft 365... ⏳<div class="bubble-time">${timeStr}</div>`;
-      container.appendChild(botBubble);
-      container.scrollTop = container.scrollHeight;
+      // Bot Loading
+      const bBubble = document.createElement('div');
+      bBubble.className = 'bubble bubble-bot';
+      bBubble.innerHTML = `กำลังค้นหาข้อมูลสดจาก Microsoft 365... ⏳<div class="bubble-meta">${timeStr}</div>`;
+      stream.appendChild(bBubble);
+      stream.scrollTop = stream.scrollHeight;
 
-      const apiEndpoints = [
+      const endpoints = [
         '/api/command',
         'https://ktis-ai-assistant.vercel.app/api/command'
       ];
 
       let data = null;
-      for (const endpoint of apiEndpoints) {
+      for (const ep of endpoints) {
         try {
-          const res = await fetch(endpoint, {
+          const res = await fetch(ep, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               text,
-              userUpn: 'weerasak.pi@ktisgroup.com',
-              context: chatContext
+              userUpn: 'weerasak.pi@ktisgroup.com'
             })
           });
           if (res.ok) {
             data = await res.json();
             break;
           }
-        } catch (e) {
-          // try next endpoint
-        }
+        } catch (e) {}
       }
 
       if (data && (data.reply || data.text)) {
         let replyHtml = formatMarkdown(data.reply || data.text);
 
-        // Render interactive slot buttons if slots returned
+        // Render interactive slots
         if (Array.isArray(data.slots) && data.slots.length) {
-          replyHtml += '<div class="slot-buttons-container">';
+          replyHtml += '<div class="interactive-list">';
           data.slots.forEach((s, idx) => {
-            const slotLabel = s.label || `${s.start}-${s.end}`;
-            replyHtml += `<button class="slot-btn" onclick="sendMessage('${idx + 1}')"><span>${idx + 1}) ${slotLabel}</span> <span>➜</span></button>`;
+            const label = s.label || `${s.start}-${s.end}`;
+            replyHtml += `<button class="interactive-btn" onclick="executeSend('${idx + 1}')"><span>${idx + 1}) ${label}</span> <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
           });
-          replyHtml += `<button class="slot-btn" style="border-color:var(--accent-blue);" onclick="sendMessage('ขอดูเพิ่มเติม')"><span>🔍 ขอดูเพิ่มเติม</span> <span>➜</span></button>`;
+          replyHtml += `<button class="interactive-btn" style="border-color:var(--copilot-cyan);" onclick="executeSend('ขอดูเพิ่มเติม')"><span>ขอดูเพิ่มเติม</span> <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
           replyHtml += '</div>';
         }
 
-        // Render choices if multiple people returned
+        // Render interactive choices (Multiple People)
         if (Array.isArray(data.choices) && data.choices.length) {
-          replyHtml += '<div class="slot-buttons-container">';
+          replyHtml += '<div class="interactive-list">';
           data.choices.forEach((c, idx) => {
             const name = c.displayName || c.mail || c.label;
-            replyHtml += `<button class="slot-btn" onclick="sendMessage('${idx + 1}')"><span>${idx + 1}) ${name}</span> <span>➜</span></button>`;
+            replyHtml += `<button class="interactive-btn" onclick="executeSend('${idx + 1}')"><span>${idx + 1}) ${name}</span> <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
           });
           replyHtml += '</div>';
         }
 
-        botBubble.innerHTML = `${replyHtml}<div class="bubble-time">${timeStr}</div>`;
-        container.scrollTop = container.scrollHeight;
-
-        // Save context
-        chatContext = {
-          last_intent: data.intent,
-          last_meeting: data.meeting,
-          pending_mt_pick: data.pending_mt_pick
-        };
+        bBubble.innerHTML = `${replyHtml}<div class="bubble-meta">${timeStr}</div>`;
+        stream.scrollTop = stream.scrollHeight;
       } else {
-        botBubble.innerHTML = `ขออภัยครับ ไม่สามารถเชื่อมต่อ API ได้ในขณะนี้ ลองใหม่อีกครั้งครับ<div class="bubble-time">${timeStr}</div>`;
+        bBubble.innerHTML = `ขออภัยครับ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ<div class="bubble-meta">${timeStr}</div>`;
       }
     }
   </script>
