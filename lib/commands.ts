@@ -347,6 +347,11 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "ประชุมสัปดาห์หน้า" -> {"intent":"list_meetings","params":{"period":"next_week"}}
 "ประชุมสัปดาห์นี้" -> {"intent":"list_meetings","params":{"period":"week"}}
 "มีประชุมอะไรไหม" -> {"intent":"list_meetings","params":{"period":"upcoming"}}
+"วันไหน" -> {"intent":"list_meetings","params":{"period":"upcoming"}}
+"วันไหนมีประชุม" -> {"intent":"list_meetings","params":{"period":"upcoming"}}
+"มีวันไหนบ้าง" -> {"intent":"list_meetings","params":{"period":"upcoming"}}
+"วันไหนว่าง" -> {"intent":"my_availability","params":{"period":"upcoming"}}
+"ว่างวันไหน" -> {"intent":"my_availability","params":{"period":"upcoming"}}
 "วันที่ 31 มีอะไร" -> {"intent":"list_meetings","params":{"date":"31"}}
 "วันที่ 31 หลัง 09:30 มีอะไร" -> {"intent":"list_meetings","params":{"date":"31","after":"09:30"}}
 "พรุ่งนี้ช่วงบ่ายมีประชุมอะไร" -> {"intent":"list_meetings","params":{"period":"tomorrow","after":"12:00"}}
@@ -1083,6 +1088,13 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
       };
     }
     return { intent: "list_meetings", params: { period: "today" } };
+  }
+
+  if (/^(?:มี)?(?:นัด|ประชุม)?\s*วันไหน(?:บ้าง)?$/i.test(t) || /^วันไหนมี(?:นัด|ประชุม)/i.test(t) || /^(?:มี)?วันไหน(?:บ้าง)$/i.test(t) || /^วันไหน$/i.test(t)) {
+    return { intent: "list_meetings", params: { period: "upcoming" } };
+  }
+  if (/^(?:มี)?(?:เวลา)?ว่างวันไหน(?:บ้าง)?$/i.test(t) || /^วันไหน(?:มีเวลา)?ว่าง(?:บ้าง)?$/i.test(t)) {
+    return { intent: "my_availability", params: { period: "upcoming" } };
   }
 
   if (/สรุปตาราง|ตารางเช้า|ตารางวันนี้|นัดวันนี้มีอะไร/i.test(t) && !/ข่าว/.test(t)) {
