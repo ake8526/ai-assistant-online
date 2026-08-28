@@ -8,14 +8,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <meta name="theme-color" content="#0d1117">
+  <meta name="theme-color" content="#0a0d14">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
     :root {
       --bg-primary: #0a0d14;
       --bg-surface: #121824;
-      --bg-glass: rgba(18, 24, 36, 0.85);
+      --bg-glass: rgba(18, 24, 36, 0.88);
       --border: rgba(255, 255, 255, 0.08);
       --border-accent: rgba(0, 230, 153, 0.3);
       --text-primary: #f0f6fc;
@@ -39,7 +39,6 @@
       padding: 0;
       font-family: 'Prompt', 'Inter', -apple-system, sans-serif;
       -webkit-tap-highlight-color: transparent;
-      user-select: none;
     }
 
     body {
@@ -53,7 +52,7 @@
       overflow-x: hidden;
     }
 
-    /* Mobile Frame Wrapper */
+    /* Mobile Phone Wrapper Frame */
     .phone-container {
       width: 100%;
       max-width: 430px;
@@ -64,7 +63,7 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.1);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1);
     }
 
     @media (min-width: 480px) {
@@ -492,13 +491,14 @@
     }
 
     .chat-bubble {
-      max-width: 85%;
+      max-width: 90%;
       padding: 12px 14px;
       border-radius: var(--radius-lg);
       font-size: 13px;
-      line-height: 1.45;
+      line-height: 1.5;
       position: relative;
       word-break: break-word;
+      white-space: pre-wrap;
     }
 
     .bubble-user {
@@ -519,8 +519,39 @@
     .bubble-time {
       font-size: 9px;
       color: rgba(255, 255, 255, 0.5);
-      margin-top: 4px;
+      margin-top: 6px;
       text-align: right;
+    }
+
+    /* Interactive Slot Buttons inside Chat */
+    .slot-buttons-container {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .slot-btn {
+      background: rgba(0, 230, 153, 0.1);
+      border: 1px solid rgba(0, 230, 153, 0.3);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.2s;
+    }
+
+    .slot-btn:active {
+      background: var(--accent-green);
+      color: #000;
+      font-weight: 600;
+      transform: scale(0.98);
     }
 
     .chat-input-bar {
@@ -680,7 +711,7 @@
         </div>
         <div class="user-info">
           <h2>Weerasak (เอก)</h2>
-          <p>● ออนไลน์ (Outlook Live)</p>
+          <p>● ออนไลน์ (Microsoft 365 Live)</p>
         </div>
       </div>
       <div class="header-actions">
@@ -810,7 +841,7 @@
         <div class="chat-view">
           <div class="chat-messages" id="chatMessages">
             <div class="chat-bubble bubble-bot">
-              สวัสดีครับคุณเอก! มีอะไรให้ผมช่วยจัดการตารางนัดหมาย ห้องประชุม หรือสรุปงานวันนี้ไหมครับ? 😊
+              สวัสดีครับคุณเอก! เชื่อมต่อระบบ Live Assistant เรียบร้อยครับ พิมพ์สั่งงานหรือถามตารางนัดหมาย ห้องประชุมได้เลยครับ 😊
               <div class="bubble-time">15:40 น.</div>
             </div>
           </div>
@@ -874,6 +905,8 @@
   </div>
 
   <script>
+    let chatContext = {};
+
     // Live Clock & Date
     function updateClock() {
       const now = new Date();
@@ -925,20 +958,17 @@
     function testInstantNotification() {
       playNotificationSound();
 
-      // Show in-app floating banner
       const toast = document.getElementById('floatingToast');
       toast.classList.add('show');
       setTimeout(() => {
         toast.classList.remove('show');
       }, 4000);
 
-      // Trigger Browser/Mobile System Notification if permitted
       if ("Notification" in window) {
         if (Notification.permission === "granted") {
           new Notification("🔔 ประชุมถัดไป: Weekly Meeting", {
             body: "เริ่มในอีก 15 นาที ณ ห้อง KTISX (ชั้น 3)",
-            icon: "https://ktis-ai-assistant.vercel.app/favicon.ico",
-            badge: "https://ktis-ai-assistant.vercel.app/favicon.ico"
+            icon: "https://ktis-ai-assistant.vercel.app/favicon.ico"
           });
         } else if (Notification.permission !== "denied") {
           Notification.requestPermission().then(permission => {
@@ -960,16 +990,25 @@
       sendMessage();
     }
 
-    // Chat Message Handling
     function handleKey(e) {
       if (e.key === 'Enter') sendMessage();
     }
 
-    async function sendMessage() {
+    function formatMarkdown(text) {
+      if (!text) return '';
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+    }
+
+    async function sendMessage(overrideText) {
       const input = document.getElementById('chatInput');
-      const text = input.value.trim();
+      const text = (overrideText || input.value).trim();
       if (!text) return;
-      input.value = '';
+      if (!overrideText) input.value = '';
 
       const container = document.getElementById('chatMessages');
       const now = new Date();
@@ -978,44 +1017,78 @@
       // Append User Bubble
       const userBubble = document.createElement('div');
       userBubble.className = 'chat-bubble bubble-user';
-      userBubble.innerHTML = `${text}<div class="bubble-time">${timeStr}</div>`;
+      userBubble.innerHTML = `${formatMarkdown(text)}<div class="bubble-time">${timeStr}</div>`;
       container.appendChild(userBubble);
       container.scrollTop = container.scrollHeight;
 
-      // Bot Bubble with Live Response
+      // Bot Loading Bubble
       const botBubble = document.createElement('div');
       botBubble.className = 'chat-bubble bubble-bot';
-      botBubble.innerHTML = `กำลังตรวจสอบข้อมูล...<div class="bubble-time">${timeStr}</div>`;
+      botBubble.innerHTML = `กำลังค้นหาข้อมูลจาก Microsoft 365... ⏳<div class="bubble-time">${timeStr}</div>`;
       container.appendChild(botBubble);
       container.scrollTop = container.scrollHeight;
 
-      // Call Backend API or Instant Simulator
-      try {
-        const res = await fetch('https://ktis-ai-assistant.vercel.app/api/command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, userUpn: 'weerasak.p@ktisgroup.com' })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          botBubble.innerHTML = `${data.reply || data.text || 'รับทราบครับ'}<div class="bubble-time">${timeStr}</div>`;
-          container.scrollTop = container.scrollHeight;
-          return;
+      const apiEndpoints = [
+        '/api/command',
+        'https://ktis-ai-assistant.vercel.app/api/command'
+      ];
+
+      let data = null;
+      for (const endpoint of apiEndpoints) {
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text,
+              userUpn: 'weerasak.pi@ktisgroup.com',
+              context: chatContext
+            })
+          });
+          if (res.ok) {
+            data = await res.json();
+            break;
+          }
+        } catch (e) {
+          // try next endpoint
         }
-      } catch (err) {
-        // Local Smart Fallback if offline / CORS
-        let mockReply = "รับทราบครับ";
-        if (text.includes("พฤ") || text.includes("ห้อง")) {
-          mockReply = "🏢 **เจอเวลาที่ห้อง KTISX ว่างตรงกัน (03/09/2026)**:\n1) 09:00-09:30\n2) 09:30-10:00\n3) 10:00-10:30\n4) 10:30-11:00\n\nแตะเลือกเวลาที่ต้องการจองได้เลยครับ 👍";
-        } else if (text.includes("เวลา")) {
-          mockReply = `🕐 **วันและเวลาปัจจุบัน**:\nวันศุกร์ที่ 28 สิงหาคม 2569\nเวลา ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')} น.`;
-        } else if (text.includes("ตาราง")) {
-          mockReply = "📅 **ตารางวันนี้ (28/08/2569)**:\n- 09:00-10:00 Weekly Meeting (ห้อง KTISX)";
-        } else if (text.includes("เพิ่มเติม")) {
-          mockReply = "🔍 **ช่วงว่างวันถัดไป (04/09/2026 เป็นต้นไป)**:\n1) 04/09 09:00-09:30\n2) 04/09 10:00-10:30\n3) 04/09 13:30-14:00";
+      }
+
+      if (data && (data.reply || data.text)) {
+        let replyHtml = formatMarkdown(data.reply || data.text);
+
+        // Render interactive slot buttons if slots returned
+        if (Array.isArray(data.slots) && data.slots.length) {
+          replyHtml += '<div class="slot-buttons-container">';
+          data.slots.forEach((s, idx) => {
+            const slotLabel = s.label || `${s.start}-${s.end}`;
+            replyHtml += `<button class="slot-btn" onclick="sendMessage('${idx + 1}')"><span>${idx + 1}) ${slotLabel}</span> <span>➜</span></button>`;
+          });
+          replyHtml += `<button class="slot-btn" style="border-color:var(--accent-blue);" onclick="sendMessage('ขอดูเพิ่มเติม')"><span>🔍 ขอดูเพิ่มเติม</span> <span>➜</span></button>`;
+          replyHtml += '</div>';
         }
-        botBubble.innerHTML = `${mockReply}<div class="bubble-time">${timeStr}</div>`;
+
+        // Render choices if multiple people returned
+        if (Array.isArray(data.choices) && data.choices.length) {
+          replyHtml += '<div class="slot-buttons-container">';
+          data.choices.forEach((c, idx) => {
+            const name = c.displayName || c.mail || c.label;
+            replyHtml += `<button class="slot-btn" onclick="sendMessage('${idx + 1}')"><span>${idx + 1}) ${name}</span> <span>➜</span></button>`;
+          });
+          replyHtml += '</div>';
+        }
+
+        botBubble.innerHTML = `${replyHtml}<div class="bubble-time">${timeStr}</div>`;
         container.scrollTop = container.scrollHeight;
+
+        // Save context
+        chatContext = {
+          last_intent: data.intent,
+          last_meeting: data.meeting,
+          pending_mt_pick: data.pending_mt_pick
+        };
+      } else {
+        botBubble.innerHTML = `ขออภัยครับ ไม่สามารถเชื่อมต่อ API ได้ในขณะนี้ ลองใหม่อีกครั้งครับ<div class="bubble-time">${timeStr}</div>`;
       }
     }
   </script>
