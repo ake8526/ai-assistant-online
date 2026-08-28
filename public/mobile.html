@@ -7,36 +7,36 @@
   <!-- Google Fonts: Inter & Prompt -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <meta name="theme-color" content="#0a0f24">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Prompt:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#030718">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
     :root {
-      --bg-canvas: #050816;
-      --bg-primary: #0a0f24;
-      --bg-surface: rgba(22, 30, 60, 0.7);
-      --bg-surface-elevated: rgba(30, 42, 82, 0.85);
-      --bg-glass: rgba(14, 20, 44, 0.75);
+      --bg-canvas: #02040c;
+      --bg-primary: #04081c;
+      --bg-surface: rgba(18, 28, 64, 0.7);
+      --bg-surface-elevated: rgba(28, 44, 98, 0.85);
+      --bg-glass: rgba(10, 18, 48, 0.78);
       --border-subtle: rgba(255, 255, 255, 0.12);
-      --border-glow: rgba(96, 165, 250, 0.45);
+      --border-glow: rgba(56, 189, 248, 0.45);
+      --border-agent: rgba(168, 85, 247, 0.5);
       --text-primary: #ffffff;
       --text-secondary: #cbd5e1;
       --text-muted: #94a3b8;
       
-      /* Microsoft 365 Copilot Vibrant 3D Palette */
-      --ms-blue: #0078d4;
-      --copilot-cyan: #38bdf8;
-      --copilot-blue: #60a5fa;
-      --copilot-purple: #818cf8;
-      --copilot-magenta: #c084fc;
-      --accent-emerald: #34d399;
-      --accent-amber: #fbbf24;
-      --accent-rose: #f87171;
+      /* Pure Code 3D Holographic Ribbon Palette */
+      --ribbon-cyan: #00f2fe;
+      --ribbon-blue: #3b82f6;
+      --ribbon-indigo: #6366f1;
+      --ribbon-purple: #a855f7;
+      --ribbon-magenta: #ec4899;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
       
-      --gradient-copilot: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
-      --gradient-card: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%);
-      --glow-copilot: rgba(96, 165, 250, 0.4);
+      --gradient-agent: linear-gradient(135deg, #00f2fe 0%, #38bdf8 30%, #a855f7 70%, #ec4899 100%);
+      --glow-agent: rgba(56, 189, 248, 0.45);
 
       --radius-xl: 26px;
       --radius-lg: 18px;
@@ -62,7 +62,7 @@
     ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
 
     body {
-      background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #050816 70%);
+      background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #02040c 75%);
       color: var(--text-primary);
       min-height: 100vh;
       display: flex;
@@ -72,18 +72,18 @@
       overflow: hidden;
     }
 
-    /* Mobile Container Frame */
+    /* Mobile Viewport Frame */
     .app-viewport {
       width: 100%;
       max-width: 430px;
       height: 100vh;
       max-height: 932px;
-      background: radial-gradient(ellipse at 80% 0%, #1e3a8a 0%, #0f172a 40%, #050816 100%);
+      background: radial-gradient(ellipse at 80% -10%, #1d4ed8 0%, #0f172a 45%, #02040c 100%);
       position: relative;
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 30px 80px -10px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.15);
+      box-shadow: 0 30px 80px -10px rgba(0, 0, 0, 0.98), 0 0 0 1px rgba(255, 255, 255, 0.18);
     }
 
     @media (min-width: 480px) {
@@ -113,7 +113,7 @@
     .intro-screen {
       position: absolute;
       inset: 0;
-      background: radial-gradient(circle at 50% 40%, #1e293b 0%, #050816 85%);
+      background: radial-gradient(circle at 50% 40%, #172554 0%, #02040c 85%);
       z-index: 1000;
       display: flex;
       flex-direction: column;
@@ -157,12 +157,12 @@
       width: 130px;
       height: 130px;
       border-radius: 50%;
-      border: 1.5px solid rgba(56, 189, 248, 0.6);
+      border: 1.5px solid rgba(0, 242, 254, 0.6);
       animation: sonicPulse 3s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
       pointer-events: none;
     }
-    .sonic-ring:nth-child(2) { animation-delay: 1s; border-color: rgba(129, 140, 248, 0.6); }
-    .sonic-ring:nth-child(3) { animation-delay: 2s; border-color: rgba(192, 132, 252, 0.5); }
+    .sonic-ring:nth-child(2) { animation-delay: 1s; border-color: rgba(168, 85, 247, 0.6); }
+    .sonic-ring:nth-child(3) { animation-delay: 2s; border-color: rgba(236, 72, 153, 0.5); }
 
     @keyframes sonicPulse {
       0% { transform: scale(0.8); opacity: 0.9; }
@@ -174,8 +174,8 @@
       width: 180px;
       height: 180px;
       border-radius: 50%;
-      border: 1px dashed rgba(96, 165, 250, 0.5);
-      box-shadow: 0 0 25px rgba(56, 189, 248, 0.25);
+      border: 1px dashed rgba(56, 189, 248, 0.5);
+      box-shadow: 0 0 25px rgba(0, 242, 254, 0.25);
       animation: rotateRing 12s linear infinite;
     }
 
@@ -185,8 +185,8 @@
       height: 150px;
       border-radius: 50%;
       border: 2px solid transparent;
-      border-top-color: var(--copilot-magenta);
-      border-bottom-color: var(--copilot-cyan);
+      border-top-color: var(--ribbon-magenta);
+      border-bottom-color: var(--ribbon-cyan);
       animation: rotateRingRev 6s linear infinite;
     }
 
@@ -205,8 +205,8 @@
       width: 110px;
       height: 110px;
       border-radius: 50%;
-      background: conic-gradient(from 180deg at 50% 50%, #38bdf8 0deg, #60a5fa 70deg, #818cf8 140deg, #c084fc 220deg, #38bdf8 360deg);
-      box-shadow: 0 0 60px var(--copilot-cyan), 0 0 100px var(--copilot-purple), inset 0 0 25px rgba(255, 255, 255, 0.8);
+      background: conic-gradient(from 180deg at 50% 50%, #00f2fe 0deg, #38bdf8 70deg, #a855f7 140deg, #ec4899 220deg, #00f2fe 360deg);
+      box-shadow: 0 0 60px var(--ribbon-cyan), 0 0 100px var(--ribbon-purple), inset 0 0 25px rgba(255, 255, 255, 0.85);
       animation: orbMorph 4s ease-in-out infinite alternate, spinCore 8s linear infinite;
       position: relative;
       z-index: 3;
@@ -217,7 +217,7 @@
       position: absolute;
       inset: 8px;
       border-radius: 50%;
-      background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.95) 0%, rgba(15, 23, 42, 0.85) 60%, rgba(5, 8, 22, 0.95) 100%);
+      background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.95) 0%, rgba(15, 23, 42, 0.85) 60%, rgba(2, 4, 12, 0.95) 100%);
       backdrop-filter: blur(8px);
     }
 
@@ -237,12 +237,12 @@
       gap: 8px;
       padding: 6px 16px;
       border-radius: 30px;
-      background: rgba(56, 189, 248, 0.12);
-      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(0, 242, 254, 0.12);
+      border: 1px solid rgba(0, 242, 254, 0.4);
       font-size: 11px;
       font-weight: 700;
-      color: var(--copilot-cyan);
-      box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
+      color: var(--ribbon-cyan);
+      box-shadow: 0 0 20px rgba(0, 242, 254, 0.25);
       margin-bottom: 16px;
       z-index: 2;
       letter-spacing: 1px;
@@ -252,7 +252,7 @@
       font-size: 30px;
       font-weight: 900;
       letter-spacing: -0.5px;
-      background: linear-gradient(90deg, #ffffff 0%, #38bdf8 30%, #c084fc 60%, #ffffff 100%);
+      background: linear-gradient(90deg, #ffffff 0%, #00f2fe 30%, #ec4899 60%, #ffffff 100%);
       background-size: 200% auto;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
@@ -261,9 +261,7 @@
       z-index: 2;
     }
 
-    @keyframes shimmerText {
-      to { background-position: 200% center; }
-    }
+    @keyframes shimmerText { to { background-position: 200% center; } }
 
     .intro-desc {
       font-size: 13px;
@@ -290,7 +288,7 @@
       left: 0;
       height: 100%;
       width: 0%;
-      background: var(--gradient-copilot);
+      background: var(--gradient-agent);
       border-radius: 10px;
       animation: loadProgress 2s ease-in-out forwards;
     }
@@ -302,153 +300,246 @@
     }
 
     /* ==========================================================================
-       2. MICROSOFT 365 3D FLUENT LOGIN SCREEN (M365 Agents Style)
+       2. 100% PURE CODE 3D HOLOGRAPHIC RIBBON STAGE (NO EXTERNAL IMAGES)
        ========================================================================== */
     .login-screen {
       position: absolute;
       inset: 0;
-      background: radial-gradient(circle at 50% 0%, #1e3a8a 0%, #0a0f24 60%, #03060d 100%);
+      background: radial-gradient(circle at 50% 0%, #1e3a8a 0%, #0a0f24 55%, #02040c 100%);
       z-index: 900;
       display: none;
       flex-direction: column;
       justify-content: space-between;
-      padding: 32px 20px 24px 20px;
+      padding: 24px 20px 20px 20px;
       animation: fadeIn 0.4s ease-out forwards;
       overflow-y: auto;
     }
 
     .login-screen.active { display: flex; }
 
-    /* 3D Ribbon Hero Header Showcase */
-    .m365-ribbon-hero {
+    /* Pure Code 3D Ribbon Stage */
+    .native-3d-stage {
       position: relative;
       width: 100%;
-      height: 220px;
+      height: 250px;
       border-radius: var(--radius-xl);
       overflow: hidden;
-      margin-bottom: 20px;
-      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.15);
-      background: #0284c7;
+      margin-bottom: 16px;
+      background: radial-gradient(circle at 70% 30%, #2563eb 0%, #1e1b4b 60%, #050818 100%);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 25px 50px -10px rgba(0, 0, 0, 0.9), inset 0 0 30px rgba(56, 189, 248, 0.2);
       display: flex;
-      align-items: flex-end;
-      padding: 18px;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 16px;
     }
 
-    .hero-img-bg {
+    /* Animated 3D Flowing SVG Ribbons */
+    .ribbon-svg-canvas {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;
-      filter: contrast(1.08) brightness(0.95);
-      transform: scale(1.02);
-      transition: transform 0.8s ease;
+      pointer-events: none;
     }
 
-    .m365-ribbon-hero:hover .hero-img-bg {
-      transform: scale(1.06);
+    .ribbon-wave-1 {
+      animation: waveMove1 8s ease-in-out infinite alternate;
+      transform-origin: center;
+    }
+    .ribbon-wave-2 {
+      animation: waveMove2 10s ease-in-out infinite alternate;
+      transform-origin: center;
+    }
+    .ribbon-wave-3 {
+      animation: waveMove3 6s ease-in-out infinite alternate;
+      transform-origin: center;
     }
 
-    .hero-glass-overlay {
+    @keyframes waveMove1 {
+      0% { transform: translateY(0px) rotate(0deg) scale(1); }
+      100% { transform: translateY(-12px) rotate(3deg) scale(1.05); }
+    }
+    @keyframes waveMove2 {
+      0% { transform: translateY(0px) rotate(0deg) scale(1); }
+      100% { transform: translateY(14px) rotate(-4deg) scale(1.08); }
+    }
+    @keyframes waveMove3 {
+      0% { transform: scale(0.98); opacity: 0.7; }
+      100% { transform: scale(1.06); opacity: 1; }
+    }
+
+    /* Micro-Mesh Grid Texture Overlay */
+    .mesh-grid-texture {
       position: absolute;
       inset: 0;
-      background: linear-gradient(180deg, rgba(10, 15, 36, 0.1) 0%, rgba(10, 15, 36, 0.75) 100%);
+      background-size: 8px 8px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+      pointer-events: none;
+      opacity: 0.6;
     }
 
-    .hero-floating-badge {
-      position: relative;
-      z-index: 2;
+    /* Floating Center Agent Badge */
+    .agent-center-emblem {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 86px;
+      height: 86px;
+      border-radius: 26px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 245, 255, 0.85) 100%);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 35px var(--ribbon-cyan);
+      border: 1px solid #ffffff;
       display: flex;
       align-items: center;
-      gap: 10px;
-      background: rgba(15, 23, 42, 0.8);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      padding: 8px 14px;
-      border-radius: 30px;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      justify-content: center;
+      z-index: 10;
+      animation: floatBadge 4s ease-in-out infinite alternate;
     }
 
-    .hero-badge-logo {
+    @keyframes floatBadge {
+      0% { transform: translate(-50%, -50%) translateY(-4px); }
+      100% { transform: translate(-50%, -50%) translateY(4px); }
+    }
+
+    .emblem-icon-art {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #0078d4 0%, #7f00ff 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(0, 120, 212, 0.5);
+    }
+
+    /* Floating Glass Pills on Top & Bottom */
+    .stage-top-bar {
+      position: relative;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stage-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(10, 18, 48, 0.85);
+      backdrop-filter: blur(25px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      padding: 6px 14px;
+      border-radius: 30px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+    }
+
+    .ms-grid-4 {
       display: grid;
-      grid-template-columns: repeat(2, 7px);
+      grid-template-columns: repeat(2, 6px);
       gap: 2px;
     }
-    .hero-badge-logo .t-red { width: 7px; height: 7px; background: #f25022; }
-    .hero-badge-logo .t-green { width: 7px; height: 7px; background: #7fba00; }
-    .hero-badge-logo .t-blue { width: 7px; height: 7px; background: #00a4ef; }
-    .hero-badge-logo .t-yellow { width: 7px; height: 7px; background: #ffb900; }
+    .ms-grid-4 .t-red { width: 6px; height: 6px; background: #f25022; }
+    .ms-grid-4 .t-green { width: 6px; height: 6px; background: #7fba00; }
+    .ms-grid-4 .t-blue { width: 6px; height: 6px; background: #00a4ef; }
+    .ms-grid-4 .t-yellow { width: 6px; height: 6px; background: #ffb900; }
 
-    .hero-badge-text {
+    .stage-bottom-bar {
+      position: relative;
+      z-index: 20;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+
+    .float-node-pill {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      backdrop-filter: blur(16px);
+      border-radius: 20px;
+      padding: 5px 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
       font-size: 11px;
       font-weight: 700;
       color: #fff;
-      letter-spacing: 0.3px;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
     }
 
-    .login-content-box {
-      margin-bottom: 20px;
-    }
+    .login-content-box { margin-bottom: 16px; }
 
     .login-title {
-      font-size: 26px;
+      font-size: 25px;
       font-weight: 900;
       line-height: 1.2;
       letter-spacing: -0.5px;
       color: #ffffff;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .login-desc {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-secondary);
-      line-height: 1.55;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+
+    /* 3-Pill Control Plane Capabilities */
+    .agent-control-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
       margin-bottom: 18px;
     }
 
-    /* Feature Highlights in Login */
-    .login-feature-row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 20px;
-    }
-
-    .feature-pill {
-      flex: 1;
+    .control-tile {
       background: var(--bg-surface);
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-md);
-      padding: 10px 8px;
+      padding: 10px 6px;
       text-align: center;
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 4px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
     }
 
-    .feature-pill span {
-      font-size: 10px;
+    .control-tile h6 {
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .control-tile span {
+      font-size: 9px;
       font-weight: 600;
-      color: var(--copilot-cyan);
+      color: var(--ribbon-cyan);
     }
 
+    /* Action Card */
     .login-action-card {
       background: var(--bg-surface-elevated);
       border: 1px solid var(--border-glow);
       backdrop-filter: blur(25px);
       border-radius: var(--radius-xl);
-      padding: 20px;
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 0 25px var(--glow-copilot);
-      margin-bottom: 16px;
+      padding: 18px;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7), 0 0 25px var(--glow-agent);
+      margin-bottom: 14px;
     }
 
     .fluent-login-btn {
       width: 100%;
-      padding: 16px 20px;
+      padding: 15px 20px;
       border-radius: var(--radius-md);
       background: #ffffff;
       color: #0f172a;
-      font-weight: 800;
+      font-weight: 900;
       font-size: 14px;
       border: none;
       display: flex;
@@ -456,7 +547,7 @@
       justify-content: center;
       gap: 12px;
       cursor: pointer;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
@@ -510,12 +601,12 @@
       width: 44px;
       height: 44px;
       border-radius: 14px;
-      background: var(--gradient-copilot);
+      background: var(--gradient-agent);
       padding: 2px;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 15px var(--glow-copilot);
+      box-shadow: 0 4px 15px var(--glow-agent);
     }
 
     .avatar-inner {
@@ -540,7 +631,7 @@
 
     .header-details p {
       font-size: 11px;
-      color: var(--copilot-cyan);
+      color: var(--ribbon-cyan);
       display: flex;
       align-items: center;
       gap: 5px;
@@ -550,8 +641,8 @@
       width: 7px;
       height: 7px;
       border-radius: 50%;
-      background: var(--copilot-cyan);
-      box-shadow: 0 0 10px var(--copilot-cyan);
+      background: var(--ribbon-cyan);
+      box-shadow: 0 0 10px var(--ribbon-cyan);
     }
 
     .app-content {
@@ -575,16 +666,16 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* 3D Acrylic Copilot Showcase Hero */
-    .copilot-3d-card {
+    /* 3D Agent 365 Control Plane Card */
+    .agent-control-card {
       position: relative;
       border-radius: var(--radius-xl);
       padding: 22px;
       margin-bottom: 20px;
       overflow: hidden;
-      background: linear-gradient(135deg, rgba(30, 58, 138, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
+      background: linear-gradient(135deg, rgba(30, 58, 138, 0.6) 0%, rgba(15, 23, 42, 0.85) 100%);
       border: 1px solid var(--border-glow);
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 0 25px var(--glow-copilot);
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 0 25px var(--glow-agent);
     }
 
     .card-banner-bg {
@@ -594,7 +685,7 @@
       width: 220px;
       height: 220px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(96, 165, 250, 0.35) 0%, rgba(192, 132, 252, 0.2) 40%, transparent 70%);
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.35) 0%, rgba(168, 85, 247, 0.2) 40%, transparent 70%);
       filter: blur(25px);
       pointer-events: none;
     }
@@ -608,7 +699,7 @@
       z-index: 2;
     }
 
-    .copilot-pill {
+    .agent-pill {
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -621,7 +712,7 @@
       color: #fff;
     }
 
-    .copilot-3d-card h2 {
+    .agent-control-card h2 {
       font-size: 19px;
       font-weight: 800;
       color: #fff;
@@ -631,7 +722,7 @@
       z-index: 2;
     }
 
-    .copilot-3d-card p {
+    .agent-control-card p {
       font-size: 12px;
       color: var(--text-secondary);
       line-height: 1.55;
@@ -644,8 +735,8 @@
       width: 100%;
       padding: 13px 18px;
       border-radius: var(--radius-md);
-      background: var(--gradient-copilot);
-      color: #050816;
+      background: var(--gradient-agent);
+      color: #02040c;
       font-weight: 800;
       font-size: 13px;
       border: none;
@@ -654,7 +745,7 @@
       justify-content: center;
       gap: 8px;
       cursor: pointer;
-      box-shadow: 0 6px 20px var(--glow-copilot);
+      box-shadow: 0 6px 20px var(--glow-agent);
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
       position: relative;
       z-index: 2;
@@ -686,7 +777,7 @@
 
     .section-link {
       font-size: 12px;
-      color: var(--copilot-blue);
+      color: var(--ribbon-blue);
       font-weight: 600;
       cursor: pointer;
     }
@@ -718,7 +809,7 @@
 
     .fluent-chip:active {
       background: var(--bg-surface-elevated);
-      border-color: var(--copilot-cyan);
+      border-color: var(--ribbon-cyan);
       transform: scale(0.96);
     }
 
@@ -751,7 +842,7 @@
 
     .date-val {
       font-size: 12px;
-      color: var(--copilot-cyan);
+      color: var(--ribbon-cyan);
       font-weight: 600;
     }
 
@@ -763,7 +854,7 @@
       padding: 12px;
       background: rgba(255, 255, 255, 0.04);
       border-radius: var(--radius-md);
-      border-left: 4px solid var(--copilot-blue);
+      border-left: 4px solid var(--ribbon-blue);
       margin-bottom: 8px;
     }
 
@@ -822,8 +913,8 @@
       gap: 6px;
       padding: 5px 12px;
       border-radius: 20px;
-      background: rgba(52, 211, 153, 0.18);
-      border: 1px solid rgba(52, 211, 153, 0.35);
+      background: rgba(16, 185, 129, 0.18);
+      border: 1px solid rgba(16, 185, 129, 0.35);
       color: var(--accent-emerald);
       font-size: 11px;
       font-weight: 700;
@@ -859,11 +950,11 @@
 
     .bubble-user {
       align-self: flex-end;
-      background: var(--gradient-copilot);
-      color: #050816;
+      background: var(--gradient-agent);
+      color: #02040c;
       font-weight: 600;
       border-bottom-right-radius: 4px;
-      box-shadow: 0 4px 16px var(--glow-copilot);
+      box-shadow: 0 4px 16px var(--glow-agent);
     }
 
     .bubble-bot {
@@ -904,8 +995,8 @@
     }
 
     .interactive-btn:active {
-      background: var(--copilot-blue);
-      color: #050816;
+      background: var(--ribbon-blue);
+      color: #02040c;
       transform: scale(0.98);
     }
 
@@ -932,7 +1023,7 @@
     }
 
     .fluent-text-input:focus {
-      border-color: var(--copilot-cyan);
+      border-color: var(--ribbon-cyan);
       background: rgba(255, 255, 255, 0.12);
     }
 
@@ -940,15 +1031,15 @@
       width: 44px;
       height: 44px;
       border-radius: 50%;
-      background: var(--gradient-copilot);
+      background: var(--gradient-agent);
       border: none;
-      color: #050816;
+      color: #02040c;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       flex-shrink: 0;
-      box-shadow: 0 4px 14px var(--glow-copilot);
+      box-shadow: 0 4px 14px var(--glow-agent);
     }
 
     /* Bottom Navigation Bar (No Emojis) */
@@ -983,13 +1074,8 @@
       transition: all 0.2s;
     }
 
-    .nav-btn.active {
-      color: var(--copilot-cyan);
-    }
-
-    .nav-btn.active .icon {
-      filter: drop-shadow(0 0 8px var(--copilot-cyan));
-    }
+    .nav-btn.active { color: var(--ribbon-cyan); }
+    .nav-btn.active .icon { filter: drop-shadow(0 0 8px var(--ribbon-cyan)); }
 
     /* ==========================================================================
        4. CUSTOM DIALOGS & POPUPS (NO browser alerts)
@@ -1015,7 +1101,7 @@
       border: 1px solid var(--border-glow);
       border-radius: var(--radius-xl);
       padding: 24px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.85), 0 0 25px var(--glow-copilot);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.85), 0 0 25px var(--glow-agent);
       text-align: center;
       transform: scale(0.95);
       animation: popUp 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
@@ -1027,8 +1113,8 @@
       width: 52px;
       height: 52px;
       border-radius: 50%;
-      background: rgba(248, 113, 113, 0.18);
-      border: 1px solid rgba(248, 113, 113, 0.35);
+      background: rgba(244, 63, 94, 0.18);
+      border: 1px solid rgba(244, 63, 94, 0.35);
       color: var(--accent-rose);
       display: flex;
       align-items: center;
@@ -1062,7 +1148,7 @@
       cursor: pointer;
     }
 
-    .btn-dialog-primary { background: var(--gradient-copilot); color: #050816; }
+    .btn-dialog-primary { background: var(--gradient-agent); color: #02040c; }
     .btn-dialog-secondary { background: rgba(255, 255, 255, 0.08); color: #fff; }
 
     /* Floating Toast Banner */
@@ -1079,7 +1165,7 @@
       align-items: center;
       gap: 12px;
       z-index: 1100;
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7), 0 0 20px var(--glow-copilot);
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7), 0 0 20px var(--glow-agent);
       transform: translateY(-130%);
       transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
@@ -1090,8 +1176,8 @@
       width: 38px;
       height: 38px;
       border-radius: 50%;
-      background: rgba(56, 189, 248, 0.18);
-      color: var(--copilot-cyan);
+      background: rgba(0, 242, 254, 0.18);
+      color: var(--ribbon-cyan);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1152,11 +1238,11 @@
 
       <div class="intro-badge">
         <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
-        <span>ENTERPRISE AI ASSISTANT</span>
+        <span>MICROSOFT AGENT 365</span>
       </div>
 
       <h1 class="intro-title">KTIS X AI Assistant</h1>
-      <p class="intro-desc">ระบบผู้ช่วยอัจฉริยะองค์กร ขับเคลื่อนด้วย Microsoft 365 & Real-time Graph Intelligence</p>
+      <p class="intro-desc">ชั้นการควบคุมสำหรับเอเจนต์อัจฉริยะองค์กร สังเกต ควบคุม และปกป้องอย่างมั่นใจ</p>
 
       <div class="intro-loader">
         <div class="intro-loader-bar"></div>
@@ -1164,63 +1250,120 @@
     </div>
 
     <!-- ==========================================
-         2. MICROSOFT 365 3D FLUENT LOGIN SCREEN
+         2. PURE CODE 3D HOLOGRAPHIC RIBBON LOGIN SCREEN
          ========================================== -->
     <div class="login-screen" id="loginScreen">
       
-      <!-- Top 3D Fluent Ribbon Showcase -->
-      <div class="m365-ribbon-hero">
-        <img class="hero-img-bg" src="m365-hero.jpg" onerror="this.src='/m365-hero.jpg'" alt="Microsoft 365 Copilot">
-        <div class="hero-glass-overlay"></div>
-        <div class="hero-floating-badge">
-          <div class="hero-badge-logo">
-            <div class="t-red"></div>
-            <div class="t-green"></div>
-            <div class="t-blue"></div>
-            <div class="t-yellow"></div>
+      <!-- Native 3D Flowing Ribbon Stage -->
+      <div class="native-3d-stage">
+        
+        <!-- Animated 3D Waves rendered via Pure SVG -->
+        <svg class="ribbon-svg-canvas" viewBox="0 0 400 260" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="gradWave1" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.9"/>
+              <stop offset="50%" stop-color="#3b82f6" stop-opacity="0.8"/>
+              <stop offset="100%" stop-color="#a855f7" stop-opacity="0.9"/>
+            </linearGradient>
+            <linearGradient id="gradWave2" x1="100%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#a855f7" stop-opacity="0.85"/>
+              <stop offset="60%" stop-color="#ec4899" stop-opacity="0.75"/>
+              <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.85"/>
+            </linearGradient>
+            <linearGradient id="gradWave3" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#c084fc" stop-opacity="0.8"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Flowing 3D Ribbon Layers -->
+          <path class="ribbon-wave-2" fill="url(#gradWave2)" d="M-20,180 C80,80 180,240 280,120 C340,60 420,140 440,80 L440,280 L-20,280 Z" />
+          <path class="ribbon-wave-1" fill="url(#gradWave1)" d="M-20,120 C60,200 160,60 260,160 C320,220 400,100 440,140 L440,280 L-20,280 Z" />
+          <path class="ribbon-wave-3" fill="url(#gradWave3)" d="M-20,60 C100,160 200,20 300,100 C360,140 420,40 440,80 L440,280 L-20,280 Z" />
+        </svg>
+
+        <!-- Micro Mesh Grid Overlay -->
+        <div class="mesh-grid-texture"></div>
+
+        <!-- 3D Center Agent Emblem -->
+        <div class="agent-center-emblem">
+          <div class="emblem-icon-art">
+            <svg class="icon icon-lg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5zm4 4h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
           </div>
-          <span class="hero-badge-text">Microsoft 365 Copilot Agents</span>
         </div>
+
+        <!-- Top Header inside 3D stage -->
+        <div class="stage-top-bar">
+          <div class="stage-pill">
+            <div class="ms-grid-4">
+              <div class="t-red"></div>
+              <div class="t-green"></div>
+              <div class="t-blue"></div>
+              <div class="t-yellow"></div>
+            </div>
+            <span style="font-size:11px; font-weight:800; color:#fff;">Microsoft Agent 365</span>
+          </div>
+
+          <div style="background:rgba(16,185,129,0.25); border:1px solid rgba(16,185,129,0.5); padding:4px 10px; border-radius:20px; font-size:10px; font-weight:800; color:var(--accent-emerald);">
+            Active Control
+          </div>
+        </div>
+
+        <!-- Bottom Tags inside 3D stage -->
+        <div class="stage-bottom-bar">
+          <div class="float-node-pill">
+            <svg class="icon icon-sm" style="color:var(--ribbon-cyan);" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+            <span>Agent ID</span>
+          </div>
+          <div class="float-node-pill">
+            <svg class="icon icon-sm" style="color:var(--ribbon-magenta);" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
+            <span>Auto Booking</span>
+          </div>
+        </div>
+
       </div>
 
-      <!-- Login Hero Titles -->
+      <!-- Login Content & Capabilities -->
       <div class="login-content-box">
-        <h1 class="login-title">เข้าสู่ระบบ<br>ด้วยบัญชีองค์กร</h1>
-        <p class="login-desc">เข้าถึงระบบปฏิทินอัจฉริยะ จองห้องประชุม และจัดการเอกสารอัตโนมัติด้วยมาตรฐานความปลอดภัย Entra ID</p>
+        <h1 class="login-title">KTIS X AI Assistant<br><span style="background:var(--gradient-agent); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">Agentic Control Plane</span></h1>
+        <p class="login-desc">เชื่อมต่อระบบบริหารจัดการเอเจนต์ AI องค์กร สังเกตการณ์นัดหมาย ควบคุมห้องประชุม และความปลอดภัย Entra ID</p>
 
-        <!-- Feature Pills -->
-        <div class="login-feature-row">
-          <div class="feature-pill">
-            <svg class="icon icon-sm" style="color:var(--copilot-cyan);" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5zm4 4h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
-            <span>Live Graph Sync</span>
+        <!-- 3-Pill Control Plane Capabilities -->
+        <div class="agent-control-grid">
+          <div class="control-tile">
+            <svg class="icon icon-sm" style="color:var(--ribbon-cyan);" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+            <h6>สังเกตการณ์</h6>
+            <span>Graph Telemetry</span>
           </div>
-          <div class="feature-pill">
+          <div class="control-tile">
+            <svg class="icon icon-sm" style="color:var(--ribbon-purple);" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+            <h6>ควบคุมคำสั่ง</h6>
+            <span>AI Autonomous</span>
+          </div>
+          <div class="control-tile">
             <svg class="icon icon-sm" style="color:var(--accent-emerald);" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-            <span>Entra ID SSO</span>
-          </div>
-          <div class="feature-pill">
-            <svg class="icon icon-sm" style="color:var(--copilot-magenta);" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
-            <span>Direct Push</span>
+            <h6>ปกป้องข้อมูล</h6>
+            <span>Zero Data Leak</span>
           </div>
         </div>
       </div>
 
-      <!-- Action Box -->
+      <!-- Action Card -->
       <div class="login-action-card">
         <button class="fluent-login-btn" onclick="performM365Login()">
-          <div class="hero-badge-logo" style="grid-template-columns: repeat(2, 9px); gap: 3px;">
+          <div class="ms-grid-4" style="grid-template-columns: repeat(2, 9px); gap: 3px;">
             <div class="t-red" style="width:9px; height:9px;"></div>
             <div class="t-green" style="width:9px; height:9px;"></div>
             <div class="t-blue" style="width:9px; height:9px;"></div>
             <div class="t-yellow" style="width:9px; height:9px;"></div>
           </div>
-          <span>Sign in with Microsoft</span>
+          <span>Sign in with Microsoft 365</span>
         </button>
       </div>
 
       <div class="login-security-tag">
         <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-        <span>KTIS Group Enterprise Single Sign-On</span>
+        <span>KTIS Group Enterprise Single Sign-On • Entra ID Guard</span>
       </div>
 
     </div>
@@ -1240,7 +1383,7 @@
             <h3>Weerasak (เอก)</h3>
             <p>
               <span class="pulse-dot"></span>
-              <span>Microsoft 365 Connected</span>
+              <span>Agent 365 Connected</span>
             </p>
           </div>
         </div>
@@ -1261,14 +1404,14 @@
         <!-- TAB 1: HUB / HOME -->
         <div class="tab-page active" id="tab-home">
           
-          <div class="copilot-3d-card">
+          <div class="agent-control-card">
             <div class="card-banner-bg"></div>
             <div class="hero-top-badge">
-              <div class="copilot-pill">
+              <div class="agent-pill">
                 <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
-                <span>M365 COPILOT ENGINE</span>
+                <span>AGENT 365 CONTROL PLANE</span>
               </div>
-              <span style="font-size:11px; color:var(--copilot-cyan); font-weight:700;">LIVE GRAPH SYNC</span>
+              <span style="font-size:11px; color:var(--ribbon-cyan); font-weight:800;">AUTONOMOUS LIVE</span>
             </div>
             <h2>ระบบแจ้งเตือนแบบไร้ขีดจำกัด</h2>
             <p>รับเสียงเตือนล่วงหน้า 15 นาทีก่อนเริ่มประชุม พร้อมแจ้งเตือนตรงเข้าจอมือถือโดยไม่ต้องพึ่งพาโควตาของ LINE</p>
@@ -1288,11 +1431,11 @@
 
           <div class="action-chip-grid">
             <div class="fluent-chip" onclick="quickChat('พฤมีห้องว่างไหม')">
-              <svg class="icon icon-sm" style="color:var(--copilot-cyan);" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
+              <svg class="icon icon-sm" style="color:var(--ribbon-cyan);" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
               <span>พฤมีห้องว่างไหม</span>
             </div>
             <div class="fluent-chip" onclick="quickChat('ดูตารางเบส')">
-              <svg class="icon icon-sm" style="color:var(--copilot-blue);" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+              <svg class="icon icon-sm" style="color:var(--ribbon-blue);" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
               <span>ดูตารางเบส</span>
             </div>
             <div class="fluent-chip" onclick="quickChat('เวลาปัจจุบัน')">
@@ -1312,7 +1455,7 @@
                 <div class="time-val" id="liveClock">--:--:--</div>
                 <div class="date-val" id="liveDate">กำลังซิงค์เวลา...</div>
               </div>
-              <span style="font-size:11px; background:rgba(56, 189, 248, 0.2); color:var(--copilot-blue); padding:4px 10px; border-radius:20px; font-weight:700;">
+              <span style="font-size:11px; background:rgba(56, 189, 248, 0.2); color:var(--ribbon-blue); padding:4px 10px; border-radius:20px; font-weight:700;">
                 วันนี้ 1 นัดหมาย
               </span>
             </div>
@@ -1370,7 +1513,7 @@
           </div>
 
           <div class="fluent-card" style="margin-bottom:12px;">
-            <div style="font-size:13px; font-weight:700; color:var(--copilot-cyan); margin-bottom:10px;">
+            <div style="font-size:13px; font-weight:700; color:var(--ribbon-cyan); margin-bottom:10px;">
               02/10/2026 (ตุลาคม 2569)
             </div>
             <div class="meeting-row">
@@ -1388,7 +1531,7 @@
           </div>
 
           <div class="fluent-card">
-            <div style="font-size:13px; font-weight:700; color:var(--copilot-blue); margin-bottom:10px;">
+            <div style="font-size:13px; font-weight:700; color:var(--ribbon-blue); margin-bottom:10px;">
               03/09/2026 (พฤหัสบดี)
             </div>
             <p style="font-size:12px; color:var(--text-secondary); line-height:1.6;">
@@ -1431,7 +1574,7 @@
                 <div style="font-size:13px; font-weight:700;">แจ้งเตือนก่อนประชุม 15 นาที</div>
                 <div style="font-size:11px; color:var(--text-muted);">ส่งเสียงและเด้งเตือนบนจอมือถือ</div>
               </div>
-              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--copilot-cyan); color:var(--copilot-cyan);">เปิดใช้งาน</div>
+              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--ribbon-cyan); color:var(--ribbon-cyan);">เปิดใช้งาน</div>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -1439,7 +1582,7 @@
                 <div style="font-size:13px; font-weight:700;">เสียงสัญญาณแจ้งเตือนพิเศษ</div>
                 <div style="font-size:11px; color:var(--text-muted);">เสียง Chime ระดับชัดเจน</div>
               </div>
-              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--copilot-cyan); color:var(--copilot-cyan);">เปิดใช้งาน</div>
+              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--ribbon-cyan); color:var(--ribbon-cyan);">เปิดใช้งาน</div>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1447,14 +1590,14 @@
                 <div style="font-size:13px; font-weight:700;">สรุปยามเช้า (Morning Brief)</div>
                 <div style="font-size:11px; color:var(--text-muted);">แจ้งเตือนทุก 07:00 น.</div>
               </div>
-              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--copilot-cyan); color:var(--copilot-cyan);">เปิดใช้งาน</div>
+              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--ribbon-cyan); color:var(--ribbon-cyan);">เปิดใช้งาน</div>
             </div>
           </div>
 
-          <div class="fluent-card" style="border-color:rgba(248, 113, 113, 0.25);">
+          <div class="fluent-card" style="border-color:rgba(244, 63, 94, 0.25);">
             <div style="font-size:13px; font-weight:700; color:var(--accent-rose); margin-bottom:6px;">จัดการเซสชัน</div>
             <p style="font-size:11px; color:var(--text-muted); margin-bottom:14px;">เมื่อถูกระงับสิทธิ์หรือยกเลิกการเข้าสู่ระบบ ระบบจะตัดการเชื่อมต่อทันที</p>
-            <button class="btn-dialog btn-dialog-secondary" style="width:100%; border:1px solid rgba(248,113,113,0.35); color:var(--accent-rose);" onclick="handleLogout()">
+            <button class="btn-dialog btn-dialog-secondary" style="width:100%; border:1px solid rgba(244,63,94,0.35); color:var(--accent-rose);" onclick="handleLogout()">
               ออกจากระบบ Microsoft 365
             </button>
           </div>
@@ -1533,7 +1676,7 @@
           vx: (Math.random() - 0.5) * 0.8,
           vy: (Math.random() - 0.5) * 0.8,
           radius: Math.random() * 2 + 1,
-          color: i % 2 === 0 ? 'rgba(56, 189, 248,' : 'rgba(192, 132, 252,'
+          color: i % 2 === 0 ? 'rgba(0, 242, 254,' : 'rgba(236, 72, 153,'
         });
       }
 
@@ -1550,7 +1693,7 @@
               ctx.beginPath();
               ctx.moveTo(particles[i].x, particles[i].y);
               ctx.lineTo(particles[j].x, particles[j].y);
-              ctx.strokeStyle = `rgba(96, 165, 250, ${0.18 * (1 - dist / 85)})`;
+              ctx.strokeStyle = `rgba(56, 189, 248, ${0.18 * (1 - dist / 85)})`;
               ctx.lineWidth = 0.8;
               ctx.stroke();
             }
@@ -1568,7 +1711,7 @@
           ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
           ctx.fillStyle = p.color + '0.75)';
           ctx.shadowBlur = 8;
-          ctx.shadowColor = '#38bdf8';
+          ctx.shadowColor = '#00f2fe';
           ctx.fill();
         });
 
@@ -1769,7 +1912,7 @@
             const label = s.label || `${s.start}-${s.end}`;
             replyHtml += `<button class="interactive-btn" onclick="executeSend('${idx + 1}')"><span>${idx + 1}) ${label}</span> <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
           });
-          replyHtml += `<button class="interactive-btn" style="border-color:var(--copilot-cyan);" onclick="executeSend('ขอดูเพิ่มเติม')"><span>ขอดูเพิ่มเติม</span> <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
+          replyHtml += `<button class="interactive-btn" style="border-color:var(--ribbon-cyan);" onclick="executeSend('ขอดูเพิ่มเติม')"><span>ขอดูเพิ่มเติม</span> <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-8.29-1.42 1.42L16.86 11H5v2z"/></svg></button>`;
           replyHtml += '</div>';
         }
 
