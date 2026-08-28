@@ -8,41 +8,41 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <meta name="theme-color" content="#060911">
+  <meta name="theme-color" content="#0a0f24">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
     :root {
-      --bg-canvas: #03060d;
-      --bg-primary: #070b14;
-      --bg-surface: #101728;
-      --bg-surface-elevated: #162038;
-      --bg-glass: rgba(16, 23, 40, 0.85);
-      --border-subtle: rgba(255, 255, 255, 0.08);
-      --border-glow: rgba(56, 189, 248, 0.4);
-      --text-primary: #f8fafc;
-      --text-secondary: #94a3b8;
-      --text-muted: #64748b;
+      --bg-canvas: #050816;
+      --bg-primary: #0a0f24;
+      --bg-surface: rgba(22, 30, 60, 0.7);
+      --bg-surface-elevated: rgba(30, 42, 82, 0.85);
+      --bg-glass: rgba(14, 20, 44, 0.75);
+      --border-subtle: rgba(255, 255, 255, 0.12);
+      --border-glow: rgba(96, 165, 250, 0.45);
+      --text-primary: #ffffff;
+      --text-secondary: #cbd5e1;
+      --text-muted: #94a3b8;
       
-      /* Microsoft 365 & Copilot Holographic Palette */
+      /* Microsoft 365 Copilot Vibrant 3D Palette */
       --ms-blue: #0078d4;
-      --copilot-cyan: #00f2fe;
-      --copilot-blue: #4facfe;
-      --copilot-purple: #7f00ff;
-      --copilot-magenta: #e100ff;
-      --accent-emerald: #10b981;
-      --accent-amber: #f59e0b;
-      --accent-rose: #f43f5e;
+      --copilot-cyan: #38bdf8;
+      --copilot-blue: #60a5fa;
+      --copilot-purple: #818cf8;
+      --copilot-magenta: #c084fc;
+      --accent-emerald: #34d399;
+      --accent-amber: #fbbf24;
+      --accent-rose: #f87171;
       
-      --gradient-copilot: linear-gradient(135deg, #00f2fe 0%, #4facfe 35%, #7f00ff 70%, #e100ff 100%);
-      --glow-copilot: rgba(79, 172, 254, 0.45);
-      --glow-purple: rgba(127, 0, 255, 0.4);
+      --gradient-copilot: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+      --gradient-card: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%);
+      --glow-copilot: rgba(96, 165, 250, 0.4);
 
-      --radius-xl: 24px;
-      --radius-lg: 16px;
-      --radius-md: 12px;
-      --radius-sm: 8px;
-      --top-nav-h: 68px;
+      --radius-xl: 26px;
+      --radius-lg: 18px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --top-nav-h: 70px;
       --bottom-nav-h: 76px;
     }
 
@@ -58,11 +58,11 @@
     /* Custom Fluent Minimal Scrollbars (NO default scrollbar) */
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 10px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
 
     body {
-      background-color: var(--bg-canvas);
+      background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #050816 70%);
       color: var(--text-primary);
       min-height: 100vh;
       display: flex;
@@ -78,12 +78,12 @@
       max-width: 430px;
       height: 100vh;
       max-height: 932px;
-      background: var(--bg-primary);
+      background: radial-gradient(ellipse at 80% 0%, #1e3a8a 0%, #0f172a 40%, #050816 100%);
       position: relative;
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 30px 70px -12px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.12);
+      box-shadow: 0 30px 80px -10px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.15);
     }
 
     @media (min-width: 480px) {
@@ -113,7 +113,7 @@
     .intro-screen {
       position: absolute;
       inset: 0;
-      background: radial-gradient(circle at 50% 40%, #0d162a 0%, #03060d 80%);
+      background: radial-gradient(circle at 50% 40%, #1e293b 0%, #050816 85%);
       z-index: 1000;
       display: flex;
       flex-direction: column;
@@ -131,7 +131,6 @@
       pointer-events: none;
     }
 
-    /* Neural Particle Canvas */
     #particleCanvas {
       position: absolute;
       inset: 0;
@@ -141,7 +140,6 @@
       z-index: 1;
     }
 
-    /* Holographic AI Quantum Core */
     .orb-stage {
       position: relative;
       width: 240px;
@@ -154,38 +152,30 @@
       cursor: pointer;
     }
 
-    /* Shockwave Sonar Rings */
     .sonic-ring {
       position: absolute;
       width: 130px;
       height: 130px;
       border-radius: 50%;
-      border: 1.5px solid rgba(0, 242, 254, 0.6);
+      border: 1.5px solid rgba(56, 189, 248, 0.6);
       animation: sonicPulse 3s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
       pointer-events: none;
     }
-    .sonic-ring:nth-child(2) {
-      animation-delay: 1s;
-      border-color: rgba(127, 0, 255, 0.6);
-    }
-    .sonic-ring:nth-child(3) {
-      animation-delay: 2s;
-      border-color: rgba(225, 0, 255, 0.5);
-    }
+    .sonic-ring:nth-child(2) { animation-delay: 1s; border-color: rgba(129, 140, 248, 0.6); }
+    .sonic-ring:nth-child(3) { animation-delay: 2s; border-color: rgba(192, 132, 252, 0.5); }
 
     @keyframes sonicPulse {
       0% { transform: scale(0.8); opacity: 0.9; }
       100% { transform: scale(2.2); opacity: 0; }
     }
 
-    /* Outer Gyro Ring */
     .gyro-ring {
       position: absolute;
       width: 180px;
       height: 180px;
       border-radius: 50%;
-      border: 1px dashed rgba(56, 189, 248, 0.5);
-      box-shadow: 0 0 25px rgba(0, 242, 254, 0.2);
+      border: 1px dashed rgba(96, 165, 250, 0.5);
+      box-shadow: 0 0 25px rgba(56, 189, 248, 0.25);
       animation: rotateRing 12s linear infinite;
     }
 
@@ -211,12 +201,11 @@
       to { transform: rotate(0deg); }
     }
 
-    /* Core AI Orb with Holographic Plasma */
     .copilot-orb {
       width: 110px;
       height: 110px;
       border-radius: 50%;
-      background: conic-gradient(from 180deg at 50% 50%, #00f2fe 0deg, #4facfe 70deg, #7f00ff 140deg, #e100ff 220deg, #00f2fe 360deg);
+      background: conic-gradient(from 180deg at 50% 50%, #38bdf8 0deg, #60a5fa 70deg, #818cf8 140deg, #c084fc 220deg, #38bdf8 360deg);
       box-shadow: 0 0 60px var(--copilot-cyan), 0 0 100px var(--copilot-purple), inset 0 0 25px rgba(255, 255, 255, 0.8);
       animation: orbMorph 4s ease-in-out infinite alternate, spinCore 8s linear infinite;
       position: relative;
@@ -228,7 +217,7 @@
       position: absolute;
       inset: 8px;
       border-radius: 50%;
-      background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.95) 0%, rgba(10, 15, 30, 0.85) 60%, rgba(3, 6, 15, 0.95) 100%);
+      background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.95) 0%, rgba(15, 23, 42, 0.85) 60%, rgba(5, 8, 22, 0.95) 100%);
       backdrop-filter: blur(8px);
     }
 
@@ -248,30 +237,28 @@
       gap: 8px;
       padding: 6px 16px;
       border-radius: 30px;
-      background: rgba(0, 242, 254, 0.1);
-      border: 1px solid rgba(0, 242, 254, 0.3);
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.35);
       font-size: 11px;
       font-weight: 700;
       color: var(--copilot-cyan);
-      box-shadow: 0 0 20px rgba(0, 242, 254, 0.25);
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
       margin-bottom: 16px;
       z-index: 2;
       letter-spacing: 1px;
     }
 
-    /* Holographic Shimmering Title */
     .intro-title {
       font-size: 30px;
       font-weight: 900;
       letter-spacing: -0.5px;
-      background: linear-gradient(90deg, #ffffff 0%, #00f2fe 30%, #e100ff 60%, #ffffff 100%);
+      background: linear-gradient(90deg, #ffffff 0%, #38bdf8 30%, #c084fc 60%, #ffffff 100%);
       background-size: 200% auto;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       animation: shimmerText 3s linear infinite;
       margin-bottom: 10px;
       z-index: 2;
-      text-shadow: 0 0 30px rgba(0, 242, 254, 0.3);
     }
 
     @keyframes shimmerText {
@@ -295,7 +282,6 @@
       overflow: hidden;
       position: relative;
       z-index: 2;
-      box-shadow: 0 0 15px rgba(0, 242, 254, 0.3);
     }
 
     .intro-loader-bar {
@@ -316,76 +302,153 @@
     }
 
     /* ==========================================================================
-       2. MICROSOFT 365 LOGIN VIEW
+       2. MICROSOFT 365 3D FLUENT LOGIN SCREEN (M365 Agents Style)
        ========================================================================== */
     .login-screen {
       position: absolute;
       inset: 0;
-      background: var(--bg-primary);
+      background: radial-gradient(circle at 50% 0%, #1e3a8a 0%, #0a0f24 60%, #03060d 100%);
       z-index: 900;
       display: none;
       flex-direction: column;
       justify-content: space-between;
-      padding: 44px 24px 32px 24px;
+      padding: 32px 20px 24px 20px;
       animation: fadeIn 0.4s ease-out forwards;
+      overflow-y: auto;
     }
 
     .login-screen.active { display: flex; }
 
-    .ms-brand-header {
+    /* 3D Ribbon Hero Header Showcase */
+    .m365-ribbon-hero {
+      position: relative;
+      width: 100%;
+      height: 220px;
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      margin-bottom: 20px;
+      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.15);
+      background: #0284c7;
+      display: flex;
+      align-items: flex-end;
+      padding: 18px;
+    }
+
+    .hero-img-bg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: contrast(1.08) brightness(0.95);
+      transform: scale(1.02);
+      transition: transform 0.8s ease;
+    }
+
+    .m365-ribbon-hero:hover .hero-img-bg {
+      transform: scale(1.06);
+    }
+
+    .hero-glass-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(10, 15, 36, 0.1) 0%, rgba(10, 15, 36, 0.75) 100%);
+    }
+
+    .hero-floating-badge {
+      position: relative;
+      z-index: 2;
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 40px;
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 8px 14px;
+      border-radius: 30px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
     }
 
-    .ms-grid-logo {
+    .hero-badge-logo {
       display: grid;
-      grid-template-columns: repeat(2, 10px);
-      gap: 3px;
+      grid-template-columns: repeat(2, 7px);
+      gap: 2px;
     }
-    .ms-tile { width: 10px; height: 10px; }
-    .ms-tile-red { background: #f25022; }
-    .ms-tile-green { background: #7fba00; }
-    .ms-tile-blue { background: #00a4ef; }
-    .ms-tile-yellow { background: #ffb900; }
+    .hero-badge-logo .t-red { width: 7px; height: 7px; background: #f25022; }
+    .hero-badge-logo .t-green { width: 7px; height: 7px; background: #7fba00; }
+    .hero-badge-logo .t-blue { width: 7px; height: 7px; background: #00a4ef; }
+    .hero-badge-logo .t-yellow { width: 7px; height: 7px; background: #ffb900; }
 
-    .ms-brand-text {
-      font-size: 16px;
+    .hero-badge-text {
+      font-size: 11px;
       font-weight: 700;
       color: #fff;
-      letter-spacing: -0.2px;
+      letter-spacing: 0.3px;
     }
 
-    .login-hero h1 {
-      font-size: 28px;
-      font-weight: 800;
-      line-height: 1.25;
-      margin-bottom: 12px;
+    .login-content-box {
+      margin-bottom: 20px;
+    }
+
+    .login-title {
+      font-size: 26px;
+      font-weight: 900;
+      line-height: 1.2;
       letter-spacing: -0.5px;
+      color: #ffffff;
+      margin-bottom: 8px;
     }
 
-    .login-hero p {
+    .login-desc {
       font-size: 13px;
       color: var(--text-secondary);
       line-height: 1.55;
+      margin-bottom: 18px;
     }
 
-    .login-action-box {
+    /* Feature Highlights in Login */
+    .login-feature-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .feature-pill {
+      flex: 1;
       background: var(--bg-surface);
       border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-xl);
-      padding: 24px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      border-radius: var(--radius-md);
+      padding: 10px 8px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
     }
 
-    .ms-login-btn {
+    .feature-pill span {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--copilot-cyan);
+    }
+
+    .login-action-card {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-glow);
+      backdrop-filter: blur(25px);
+      border-radius: var(--radius-xl);
+      padding: 20px;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 0 25px var(--glow-copilot);
+      margin-bottom: 16px;
+    }
+
+    .fluent-login-btn {
       width: 100%;
-      padding: 15px 18px;
+      padding: 16px 20px;
       border-radius: var(--radius-md);
       background: #ffffff;
       color: #0f172a;
-      font-weight: 700;
+      font-weight: 800;
       font-size: 14px;
       border: none;
       display: flex;
@@ -393,16 +456,16 @@
       justify-content: center;
       gap: 12px;
       cursor: pointer;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .ms-login-btn:active {
+    .fluent-login-btn:active {
       transform: scale(0.97);
       background: #f1f5f9;
     }
 
-    .login-footer-info {
+    .login-security-tag {
       font-size: 11px;
       color: var(--text-muted);
       text-align: center;
@@ -429,7 +492,7 @@
       align-items: center;
       justify-content: space-between;
       background: var(--bg-glass);
-      backdrop-filter: blur(20px);
+      backdrop-filter: blur(25px);
       border-bottom: 1px solid var(--border-subtle);
       position: sticky;
       top: 0;
@@ -444,25 +507,26 @@
 
     .profile-avatar {
       position: relative;
-      width: 42px;
-      height: 42px;
-      border-radius: 12px;
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
       background: var(--gradient-copilot);
       padding: 2px;
       display: flex;
       align-items: center;
       justify-content: center;
+      box-shadow: 0 4px 15px var(--glow-copilot);
     }
 
     .avatar-inner {
       width: 100%;
       height: 100%;
-      background: var(--bg-surface);
-      border-radius: 10px;
+      background: var(--bg-primary);
+      border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 700;
+      font-weight: 800;
       font-size: 14px;
       color: #fff;
     }
@@ -479,7 +543,7 @@
       color: var(--copilot-cyan);
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
     }
 
     .pulse-dot {
@@ -511,17 +575,28 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Copilot Showcase Hero Card */
-    .copilot-hero {
-      background: radial-gradient(circle at 100% 0%, rgba(127, 0, 255, 0.25) 0%, transparent 60%),
-                  radial-gradient(circle at 0% 100%, rgba(0, 242, 254, 0.2) 0%, transparent 60%),
-                  var(--bg-surface);
-      border: 1px solid var(--border-glow);
-      border-radius: var(--radius-xl);
-      padding: 20px;
-      margin-bottom: 20px;
+    /* 3D Acrylic Copilot Showcase Hero */
+    .copilot-3d-card {
       position: relative;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      border-radius: var(--radius-xl);
+      padding: 22px;
+      margin-bottom: 20px;
+      overflow: hidden;
+      background: linear-gradient(135deg, rgba(30, 58, 138, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
+      border: 1px solid var(--border-glow);
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 0 25px var(--glow-copilot);
+    }
+
+    .card-banner-bg {
+      position: absolute;
+      top: -40px;
+      right: -40px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(96, 165, 250, 0.35) 0%, rgba(192, 132, 252, 0.2) 40%, transparent 70%);
+      filter: blur(25px);
+      pointer-events: none;
     }
 
     .hero-top-badge {
@@ -529,42 +604,49 @@
       align-items: center;
       justify-content: space-between;
       margin-bottom: 12px;
+      position: relative;
+      z-index: 2;
     }
 
     .copilot-pill {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 4px 10px;
+      padding: 5px 12px;
       border-radius: 20px;
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
       font-size: 11px;
       font-weight: 700;
       color: #fff;
     }
 
-    .copilot-hero h2 {
-      font-size: 18px;
+    .copilot-3d-card h2 {
+      font-size: 19px;
       font-weight: 800;
       color: #fff;
       margin-bottom: 6px;
       letter-spacing: -0.3px;
+      position: relative;
+      z-index: 2;
     }
 
-    .copilot-hero p {
+    .copilot-3d-card p {
       font-size: 12px;
       color: var(--text-secondary);
-      line-height: 1.5;
+      line-height: 1.55;
       margin-bottom: 16px;
+      position: relative;
+      z-index: 2;
     }
 
     .fluent-btn-primary {
       width: 100%;
-      padding: 12px 18px;
+      padding: 13px 18px;
       border-radius: var(--radius-md);
       background: var(--gradient-copilot);
-      color: #000;
-      font-weight: 700;
+      color: #050816;
+      font-weight: 800;
       font-size: 13px;
       border: none;
       display: flex;
@@ -574,6 +656,8 @@
       cursor: pointer;
       box-shadow: 0 6px 20px var(--glow-copilot);
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      z-index: 2;
     }
 
     .fluent-btn-primary:active {
@@ -618,7 +702,7 @@
 
     .fluent-chip {
       flex-shrink: 0;
-      padding: 9px 14px;
+      padding: 10px 15px;
       border-radius: var(--radius-md);
       background: var(--bg-surface);
       border: 1px solid var(--border-subtle);
@@ -642,9 +726,11 @@
     .fluent-card {
       background: var(--bg-surface);
       border: 1px solid var(--border-subtle);
+      backdrop-filter: blur(20px);
       border-radius: var(--radius-xl);
       padding: 18px;
       margin-bottom: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
     }
 
     .live-time-row {
@@ -675,7 +761,7 @@
       align-items: flex-start;
       gap: 12px;
       padding: 12px;
-      background: rgba(255, 255, 255, 0.02);
+      background: rgba(255, 255, 255, 0.04);
       border-radius: var(--radius-md);
       border-left: 4px solid var(--copilot-blue);
       margin-bottom: 8px;
@@ -716,7 +802,7 @@
       align-items: center;
       justify-content: space-between;
       padding: 14px;
-      background: rgba(255, 255, 255, 0.02);
+      background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-lg);
     }
@@ -736,8 +822,8 @@
       gap: 6px;
       padding: 5px 12px;
       border-radius: 20px;
-      background: rgba(16, 185, 129, 0.15);
-      border: 1px solid rgba(16, 185, 129, 0.3);
+      background: rgba(52, 211, 153, 0.18);
+      border: 1px solid rgba(52, 211, 153, 0.35);
       color: var(--accent-emerald);
       font-size: 11px;
       font-weight: 700;
@@ -774,15 +860,15 @@
     .bubble-user {
       align-self: flex-end;
       background: var(--gradient-copilot);
-      color: #060911;
-      font-weight: 500;
+      color: #050816;
+      font-weight: 600;
       border-bottom-right-radius: 4px;
       box-shadow: 0 4px 16px var(--glow-copilot);
     }
 
     .bubble-bot {
       align-self: flex-start;
-      background: var(--bg-surface);
+      background: var(--bg-surface-elevated);
       border: 1px solid var(--border-subtle);
       color: var(--text-primary);
       border-bottom-left-radius: 4px;
@@ -805,7 +891,7 @@
     .interactive-btn {
       padding: 10px 14px;
       border-radius: var(--radius-md);
-      background: rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.06);
       border: 1px solid var(--border-glow);
       color: #fff;
       font-size: 12px;
@@ -819,14 +905,14 @@
 
     .interactive-btn:active {
       background: var(--copilot-blue);
-      color: #000;
+      color: #050816;
       transform: scale(0.98);
     }
 
     .chat-bottom-input {
       padding: 12px 14px;
       background: var(--bg-glass);
-      backdrop-filter: blur(20px);
+      backdrop-filter: blur(25px);
       border-top: 1px solid var(--border-subtle);
       display: flex;
       align-items: center;
@@ -836,7 +922,7 @@
     .fluent-text-input {
       flex: 1;
       height: 44px;
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.08);
       border: 1px solid var(--border-subtle);
       border-radius: 24px;
       padding: 0 18px;
@@ -847,7 +933,7 @@
 
     .fluent-text-input:focus {
       border-color: var(--copilot-cyan);
-      background: rgba(255, 255, 255, 0.09);
+      background: rgba(255, 255, 255, 0.12);
     }
 
     .send-icon-btn {
@@ -856,7 +942,7 @@
       border-radius: 50%;
       background: var(--gradient-copilot);
       border: none;
-      color: #000;
+      color: #050816;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -911,8 +997,8 @@
     .modal-backdrop {
       position: absolute;
       inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(10px);
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(12px);
       z-index: 999;
       display: none;
       align-items: center;
@@ -926,10 +1012,10 @@
     .custom-dialog {
       width: 100%;
       background: var(--bg-surface-elevated);
-      border: 1px solid var(--border-subtle);
+      border: 1px solid var(--border-glow);
       border-radius: var(--radius-xl);
       padding: 24px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.85), 0 0 25px var(--glow-copilot);
       text-align: center;
       transform: scale(0.95);
       animation: popUp 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
@@ -941,8 +1027,8 @@
       width: 52px;
       height: 52px;
       border-radius: 50%;
-      background: rgba(244, 63, 94, 0.15);
-      border: 1px solid rgba(244, 63, 94, 0.3);
+      background: rgba(248, 113, 113, 0.18);
+      border: 1px solid rgba(248, 113, 113, 0.35);
       color: var(--accent-rose);
       display: flex;
       align-items: center;
@@ -976,7 +1062,7 @@
       cursor: pointer;
     }
 
-    .btn-dialog-primary { background: var(--gradient-copilot); color: #000; }
+    .btn-dialog-primary { background: var(--gradient-copilot); color: #050816; }
     .btn-dialog-secondary { background: rgba(255, 255, 255, 0.08); color: #fff; }
 
     /* Floating Toast Banner */
@@ -1004,7 +1090,7 @@
       width: 38px;
       height: 38px;
       border-radius: 50%;
-      background: rgba(56, 189, 248, 0.15);
+      background: rgba(56, 189, 248, 0.18);
       color: var(--copilot-cyan);
       display: flex;
       align-items: center;
@@ -1053,7 +1139,6 @@
          1. CINEMATIC HIGH-ENERGY AI INTRO SPLASH
          ========================================== -->
     <div class="intro-screen" id="introScreen">
-      <!-- Neural Particle Canvas -->
       <canvas id="particleCanvas"></canvas>
 
       <div class="orb-stage" onclick="playSciFiCharge()">
@@ -1079,42 +1164,65 @@
     </div>
 
     <!-- ==========================================
-         2. MICROSOFT 365 LOGIN VIEW
+         2. MICROSOFT 365 3D FLUENT LOGIN SCREEN
          ========================================== -->
     <div class="login-screen" id="loginScreen">
-      <div>
-        <div class="ms-brand-header">
-          <div class="ms-grid-logo">
-            <div class="ms-tile ms-tile-red"></div>
-            <div class="ms-tile ms-tile-green"></div>
-            <div class="ms-tile ms-tile-blue"></div>
-            <div class="ms-tile ms-tile-yellow"></div>
+      
+      <!-- Top 3D Fluent Ribbon Showcase -->
+      <div class="m365-ribbon-hero">
+        <img class="hero-img-bg" src="m365-hero.jpg" onerror="this.src='/m365-hero.jpg'" alt="Microsoft 365 Copilot">
+        <div class="hero-glass-overlay"></div>
+        <div class="hero-floating-badge">
+          <div class="hero-badge-logo">
+            <div class="t-red"></div>
+            <div class="t-green"></div>
+            <div class="t-blue"></div>
+            <div class="t-yellow"></div>
           </div>
-          <span class="ms-brand-text">Microsoft 365 Enterprise</span>
-        </div>
-
-        <div class="login-hero">
-          <h1>เข้าสู่ระบบ<br>ด้วยบัญชีองค์กร</h1>
-          <p>เข้าถึงตารางนัดหมาย ห้องประชุม และการจัดการเอกสารผ่านระบบความปลอดภัย Entra ID</p>
+          <span class="hero-badge-text">Microsoft 365 Copilot Agents</span>
         </div>
       </div>
 
-      <div class="login-action-box">
-        <button class="ms-login-btn" onclick="performM365Login()">
-          <div class="ms-grid-logo">
-            <div class="ms-tile ms-tile-red"></div>
-            <div class="ms-tile ms-tile-green"></div>
-            <div class="ms-tile ms-tile-blue"></div>
-            <div class="ms-tile ms-tile-yellow"></div>
+      <!-- Login Hero Titles -->
+      <div class="login-content-box">
+        <h1 class="login-title">เข้าสู่ระบบ<br>ด้วยบัญชีองค์กร</h1>
+        <p class="login-desc">เข้าถึงระบบปฏิทินอัจฉริยะ จองห้องประชุม และจัดการเอกสารอัตโนมัติด้วยมาตรฐานความปลอดภัย Entra ID</p>
+
+        <!-- Feature Pills -->
+        <div class="login-feature-row">
+          <div class="feature-pill">
+            <svg class="icon icon-sm" style="color:var(--copilot-cyan);" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5zm4 4h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
+            <span>Live Graph Sync</span>
+          </div>
+          <div class="feature-pill">
+            <svg class="icon icon-sm" style="color:var(--accent-emerald);" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+            <span>Entra ID SSO</span>
+          </div>
+          <div class="feature-pill">
+            <svg class="icon icon-sm" style="color:var(--copilot-magenta);" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+            <span>Direct Push</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Box -->
+      <div class="login-action-card">
+        <button class="fluent-login-btn" onclick="performM365Login()">
+          <div class="hero-badge-logo" style="grid-template-columns: repeat(2, 9px); gap: 3px;">
+            <div class="t-red" style="width:9px; height:9px;"></div>
+            <div class="t-green" style="width:9px; height:9px;"></div>
+            <div class="t-blue" style="width:9px; height:9px;"></div>
+            <div class="t-yellow" style="width:9px; height:9px;"></div>
           </div>
           <span>Sign in with Microsoft</span>
         </button>
       </div>
 
-      <div class="login-footer-info">
+      <div class="login-security-tag">
         <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-        <span>KTIS Group Single Sign-On Security</span>
+        <span>KTIS Group Enterprise Single Sign-On</span>
       </div>
+
     </div>
 
     <!-- ==========================================
@@ -1138,10 +1246,10 @@
         </div>
 
         <div style="display:flex; gap:8px;">
-          <button class="icon" style="width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle); color:#fff; cursor:pointer;" onclick="triggerTestPush()" title="ทดสอบ Push">
+          <button class="icon" style="width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,0.08); border:1px solid var(--border-subtle); color:#fff; cursor:pointer;" onclick="triggerTestPush()" title="ทดสอบ Push">
             <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
           </button>
-          <button class="icon" style="width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle); color:var(--accent-rose); cursor:pointer;" onclick="handleLogout()" title="ออกจากระบบ">
+          <button class="icon" style="width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,0.08); border:1px solid var(--border-subtle); color:var(--accent-rose); cursor:pointer;" onclick="handleLogout()" title="ออกจากระบบ">
             <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
           </button>
         </div>
@@ -1153,7 +1261,8 @@
         <!-- TAB 1: HUB / HOME -->
         <div class="tab-page active" id="tab-home">
           
-          <div class="copilot-hero">
+          <div class="copilot-3d-card">
+            <div class="card-banner-bg"></div>
             <div class="hero-top-badge">
               <div class="copilot-pill">
                 <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
@@ -1203,7 +1312,7 @@
                 <div class="time-val" id="liveClock">--:--:--</div>
                 <div class="date-val" id="liveDate">กำลังซิงค์เวลา...</div>
               </div>
-              <span style="font-size:11px; background:rgba(56, 189, 248, 0.15); color:var(--copilot-blue); padding:4px 10px; border-radius:20px; font-weight:700;">
+              <span style="font-size:11px; background:rgba(56, 189, 248, 0.2); color:var(--copilot-blue); padding:4px 10px; border-radius:20px; font-weight:700;">
                 วันนี้ 1 นัดหมาย
               </span>
             </div>
@@ -1322,7 +1431,7 @@
                 <div style="font-size:13px; font-weight:700;">แจ้งเตือนก่อนประชุม 15 นาที</div>
                 <div style="font-size:11px; color:var(--text-muted);">ส่งเสียงและเด้งเตือนบนจอมือถือ</div>
               </div>
-              <div class="status-badge" style="background:rgba(0,242,254,0.15); border-color:var(--copilot-cyan); color:var(--copilot-cyan);">เปิดใช้งาน</div>
+              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--copilot-cyan); color:var(--copilot-cyan);">เปิดใช้งาน</div>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -1330,7 +1439,7 @@
                 <div style="font-size:13px; font-weight:700;">เสียงสัญญาณแจ้งเตือนพิเศษ</div>
                 <div style="font-size:11px; color:var(--text-muted);">เสียง Chime ระดับชัดเจน</div>
               </div>
-              <div class="status-badge" style="background:rgba(0,242,254,0.15); border-color:var(--copilot-cyan); color:var(--copilot-cyan);">เปิดใช้งาน</div>
+              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--copilot-cyan); color:var(--copilot-cyan);">เปิดใช้งาน</div>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1338,14 +1447,14 @@
                 <div style="font-size:13px; font-weight:700;">สรุปยามเช้า (Morning Brief)</div>
                 <div style="font-size:11px; color:var(--text-muted);">แจ้งเตือนทุก 07:00 น.</div>
               </div>
-              <div class="status-badge" style="background:rgba(0,242,254,0.15); border-color:var(--copilot-cyan); color:var(--copilot-cyan);">เปิดใช้งาน</div>
+              <div class="status-badge" style="background:rgba(56,189,248,0.18); border-color:var(--copilot-cyan); color:var(--copilot-cyan);">เปิดใช้งาน</div>
             </div>
           </div>
 
-          <div class="fluent-card" style="border-color:rgba(244, 63, 94, 0.2);">
+          <div class="fluent-card" style="border-color:rgba(248, 113, 113, 0.25);">
             <div style="font-size:13px; font-weight:700; color:var(--accent-rose); margin-bottom:6px;">จัดการเซสชัน</div>
             <p style="font-size:11px; color:var(--text-muted); margin-bottom:14px;">เมื่อถูกระงับสิทธิ์หรือยกเลิกการเข้าสู่ระบบ ระบบจะตัดการเชื่อมต่อทันที</p>
-            <button class="btn-dialog btn-dialog-secondary" style="width:100%; border:1px solid rgba(244,63,94,0.3); color:var(--accent-rose);" onclick="handleLogout()">
+            <button class="btn-dialog btn-dialog-secondary" style="width:100%; border:1px solid rgba(248,113,113,0.35); color:var(--accent-rose);" onclick="handleLogout()">
               ออกจากระบบ Microsoft 365
             </button>
           </div>
@@ -1388,7 +1497,6 @@
         const gain = audioCtx.createGain();
         osc.type = 'sawtooth';
         
-        // Ascending frequency sweep
         osc.frequency.setValueAtTime(120, audioCtx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.6);
         
@@ -1425,7 +1533,7 @@
           vx: (Math.random() - 0.5) * 0.8,
           vy: (Math.random() - 0.5) * 0.8,
           radius: Math.random() * 2 + 1,
-          color: i % 2 === 0 ? 'rgba(0, 242, 254,' : 'rgba(225, 0, 255,'
+          color: i % 2 === 0 ? 'rgba(56, 189, 248,' : 'rgba(192, 132, 252,'
         });
       }
 
@@ -1442,7 +1550,7 @@
               ctx.beginPath();
               ctx.moveTo(particles[i].x, particles[i].y);
               ctx.lineTo(particles[j].x, particles[j].y);
-              ctx.strokeStyle = `rgba(56, 189, 248, ${0.15 * (1 - dist / 85)})`;
+              ctx.strokeStyle = `rgba(96, 165, 250, ${0.18 * (1 - dist / 85)})`;
               ctx.lineWidth = 0.8;
               ctx.stroke();
             }
@@ -1458,9 +1566,9 @@
 
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-          ctx.fillStyle = p.color + '0.7)';
+          ctx.fillStyle = p.color + '0.75)';
           ctx.shadowBlur = 8;
-          ctx.shadowColor = '#00f2fe';
+          ctx.shadowColor = '#38bdf8';
           ctx.fill();
         });
 
