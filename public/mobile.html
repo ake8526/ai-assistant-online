@@ -1359,7 +1359,7 @@
         </div>
 
         <div style="display:flex; gap:8px;">
-          <button class="icon" style="width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,0.08); border:1px solid var(--border-subtle); color:#fff; cursor:pointer;" onclick="triggerTestPush()" title="ทดสอบ Push">
+          <button class="icon" style="width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,0.08); border:1px solid var(--border-subtle); color:#fff; cursor:pointer;" onclick="switchTab('meetings')" title="การแจ้งเตือน">
             <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
           </button>
           <button class="icon" style="width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,0.08); border:1px solid var(--border-subtle); color:var(--accent-rose); cursor:pointer;" onclick="handleLogout()" title="ออกจากระบบ">
@@ -1379,15 +1379,18 @@
             <div class="hero-top-badge">
               <div class="agent-pill">
                 <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5z"/></svg>
-                <span>AGENT 365 CONTROL PLANE</span>
+                <span>MICROSOFT 365 CONNECTED</span>
               </div>
-              <span style="font-size:11px; color:var(--ribbon-cyan); font-weight:800;">AUTONOMOUS LIVE</span>
+              <span style="font-size:11px; color:var(--accent-emerald); font-weight:800; display:flex; align-items:center; gap:5px;">
+                <span style="width:6px; height:6px; border-radius:50%; background:currentColor; display:inline-block;"></span>
+                ONLINE
+              </span>
             </div>
-            <h2>ระบบแจ้งเตือนแบบไร้ขีดจำกัด</h2>
-            <p>รับเสียงเตือนล่วงหน้า 15 นาทีก่อนเริ่มประชุม พร้อมแจ้งเตือนตรงเข้าจอมือถือโดยไม่ต้องพึ่งพาโควตาของ LINE</p>
-            <button class="fluent-btn-primary" onclick="triggerTestPush()">
-              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
-              <span>ทดสอบยิง Push Notification + เสียงสัญญาณ</span>
+            <h2>ตารางงานและการประชุมวันนี้</h2>
+            <p>ระบบพร้อมสรุปงานค้าง ตรวจสอบห้องว่าง และประสานงานนัดหมายอัตโนมัติตลอด 24 ชม.</p>
+            <button class="fluent-btn-primary" onclick="quickChat('ตารางวันนี้')">
+              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
+              <span>ดูตารางนัดหมายและงานวันนี้</span>
             </button>
           </div>
 
