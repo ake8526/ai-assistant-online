@@ -1477,7 +1477,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
 
     // Slash commands always win over booking drafts / onboarding text input
     if (isSlashMenu(text)) {
-      await replyLineMessages(ev.replyToken, [slashMenuMessage()]);
+      await replyAndLog(upn, ev.replyToken, slashMenuMessage(), { intent: "slash_menu" });
       return;
     }
 
@@ -1495,13 +1495,16 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     if (slashBody) {
       const cmd = matchSlashCommand(slashBody);
       if (!cmd) {
-        await replyLineMessages(ev.replyToken, [
+        await replyAndLog(
+          upn,
+          ev.replyToken,
           {
             type: "text",
             text: `ไม่รู้จักคำสั่ง /${slashBody} ครับ\nพิมพ์ / เพื่อดูรายการคำสั่ง`,
             quickReply: (slashMenuMessage() as { quickReply: object }).quickReply,
           },
-        ]);
+          { intent: "unknown_slash" }
+        );
         return;
       }
       if (cmd.cmd === "ล้างความจำ") {
@@ -1514,30 +1517,41 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         try {
           await clearMeetingPhotoContext(upn);
         } catch { /* ignore */ }
-        await replyLineMessages(ev.replyToken, [
+        await replyAndLog(
+          upn,
+          ev.replyToken,
           {
             type: "text",
             text: "ล้างความจำการสนทนาแล้วครับ — เริ่มเรื่องใหม่ได้เลย 🧹\n(ยกเลิกงานจองนัดที่ค้างไว้ด้วย)",
             quickReply: (slashMenuMessage() as { quickReply: object }).quickReply,
           },
-        ]);
+          { intent: "clear_memory" }
+        );
         return;
       }
       if (cmd.cmd === "ยกเลิก") {
         const pending = await getPendingRsvp(upn);
         if (pending) {
           const rsvp = await respondMeetingInvite(upn, pending.organizerUpn, pending.inviteId, false);
-          await replyLineMessages(ev.replyToken, [
+          await replyAndLog(
+            upn,
+            ev.replyToken,
             {
               type: "text",
               text: rsvp.reply,
               ...(rsvp.quickReply ? { quickReply: rsvp.quickReply } : {}),
             },
-          ]);
+            { intent: "cancel_rsvp" }
+          );
           return;
         }
         await clearDraft(upn);
-        await replyLine(ev.replyToken, "ยกเลิกงานที่ค้างไว้แล้วครับ — พิมพ์คำสั่งใหม่หรือพิมพ์ / เพื่อเลือกคำสั่ง");
+        await replyAndLog(
+          upn,
+          ev.replyToken,
+          "ยกเลิกงานที่ค้างไว้แล้วครับ — พิมพ์คำสั่งใหม่หรือพิมพ์ / เพื่อเลือกคำสั่ง",
+          { intent: "cancel_draft" }
+        );
         return;
       }
       if (cmd.cmd === "ตั้งค่าข่าว") {

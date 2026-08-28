@@ -895,7 +895,7 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
   ) {
     const monthRange = resolveThaiMonthRange(t);
     if (monthRange) {
-      return { intent: "get_schedule", params: { period: "month" } };
+      return { intent: "list_meetings", params: { period: "month" } };
     }
   }
 
