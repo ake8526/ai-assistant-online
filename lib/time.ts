@@ -198,15 +198,25 @@ export function addMinutes(d: Date, min: number): Date {
 export function periodRange(period: string): { start: Date; end: Date; label: string } {
   const now = nowWall();
   const today = startOfDay(now);
+  const names = [
+    "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม",
+  ];
   if (period === "tomorrow") {
     const d = addDays(today, 1);
     return { start: d, end: endOfDay(d), label: "พรุ่งนี้" };
   }
-  if (period === "week") return { start: today, end: addDays(today, 7), label: "7 วันข้างหน้า" };
-  if (period === "month") {
+  if (period === "week" || period === "this_week") return { start: today, end: addDays(today, 7), label: "7 วันข้างหน้า" };
+  if (period === "next_week") return { start: addDays(today, 7), end: addDays(today, 14), label: "สัปดาห์หน้า" };
+  if (period === "month" || period === "this_month") {
     const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
     const next = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1));
-    return { start: first, end: next, label: "เดือนนี้" };
+    return { start: first, end: next, label: `เดือนนี้ (${names[today.getUTCMonth()]} ${today.getUTCFullYear() + 543})` };
+  }
+  if (period === "next_month") {
+    const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1));
+    const next = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 2, 1));
+    return { start: first, end: next, label: `เดือนหน้า (${names[first.getUTCMonth()]} ${first.getUTCFullYear() + 543})` };
   }
   if (period === "upcoming") return { start: today, end: addDays(today, 14), label: "ช่วง 2 สัปดาห์ข้างหน้า" };
   return { start: today, end: endOfDay(today), label: "วันนี้" };
@@ -293,6 +303,7 @@ const THAI_MONTH_ONLY =
 
 /**
  * "เดือนกรกฎาคม", "ส.ค. 2569", "ธันวาคมปีที่แล้ว" → that whole month.
+ * Also handles relative months like "เดือนหน้า", "เดือนนี้", "เดือนที่แล้ว".
  *
  * Naming a month used to fall through to period=month, which always means the
  * CURRENT month: asking in August for กรกฎาคม answered with August. A month
@@ -311,12 +322,35 @@ export function resolveThaiMonthRange(
   if (/\d{1,2}\s*(?:ม\.?ค|ก\.?พ|มี\.?ค|เม\.?ย|พ\.?ค|มิ\.?ย|ก\.?ค|ส\.?ค|ก\.?ย|ต\.?ค|พ\.?ย|ธ\.?ค|มกรา|กุมภา|มีนา|เมษา|พฤษภา|มิถุนา|กรกฎา|สิงหา|กันยา|ตุลา|พฤศจิ|ธันวา)/u.test(t)) {
     return null;
   }
+  const now = nowWall();
+  const names = [
+    "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม",
+  ];
+
+  if (/เดือนหน้า/u.test(t)) {
+    const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 1));
+    return { start: first, end: next, label: `เดือนหน้า (${names[first.getUTCMonth()]} ${first.getUTCFullYear() + 543})` };
+  }
+
+  if (/เดือนนี้/u.test(t)) {
+    const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    return { start: first, end: next, label: `เดือนนี้ (${names[first.getUTCMonth()]} ${first.getUTCFullYear() + 543})` };
+  }
+
+  if (/เดือนที่แล้ว|เดือนก่อน/u.test(t)) {
+    const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    return { start: first, end: next, label: `เดือนที่แล้ว (${names[first.getUTCMonth()]} ${first.getUTCFullYear() + 543})` };
+  }
+
   const m = THAI_MONTH_ONLY.exec(t);
   if (!m) return null;
   const mo = thaiMonthNum(m[1]!);
   if (!mo) return null;
 
-  const now = nowWall();
   let year = now.getUTCFullYear();
   if (m[2]) {
     let y = Number(m[2]);
@@ -332,10 +366,6 @@ export function resolveThaiMonthRange(
 
   const start = new Date(Date.UTC(year, mo - 1, 1));
   const end = new Date(Date.UTC(year, mo, 1));
-  const names = [
-    "มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
-    "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม",
-  ];
   return { start, end, label: `${names[mo - 1]} ${year + 543}` };
 }
 

@@ -19,6 +19,7 @@ import { runWithTrace, trace } from "@/lib/trace";
 import { after } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { normalizeDue, resolveResponsible, ingestActionItems } from "@/lib/followup";
+import { normalizeThaiTypo, detectWrongKeyboard } from "@/lib/keyboard";
 import { createHash } from "crypto";
 import {
   GraphEvent,
@@ -298,7 +299,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 อย่าเดาวันที่ถ้าผู้ใช้ไม่ได้พูดถึงวัน — ปล่อยว่างไว้
 
 รายละเอียด params:
-- list_meetings: { "period": "today|tomorrow|week|month|upcoming", "date": "วันที่เจาะจง เช่น 31 หรือ 2026-07-31 (ถ้าผู้ใช้ระบุวัน)", "weekday": "ชื่อวันในสัปดาห์เป็น mon|tue|wed|thu|fri|sat|sun (ถ้าผู้ใช้พูดชื่อวัน เช่น วันจันทร์/เสาร์นี้/อาทิตย์หน้า)", "after": "HH:MM (ถ้าบอก เช่น หลัง 9 โมงครึ่ง)", "before": "HH:MM (ถ้าบอก เช่น ก่อนเที่ยง)", "at": "HH:MM (ถ้าถามเจาะจงเวลา 'จุดเดียว' เช่น '10 โมงติดอะไร', 'ตอนบ่ายสองว่างไหม', 'ตอน 9 โมงติดไหม')", "person": "ชื่อ/อีเมลคนอื่น ถ้าถามว่าคนนั้น 'ติด/ไม่ว่าง/มีนัด' ช่วงไหน (ถ้าไม่ระบุ = ตัวเอง)" }
+- list_meetings: { "period": "today|tomorrow|week|next_week|month|next_month|upcoming", "date": "วันที่เจาะจง เช่น 31 หรือ 2026-07-31 (ถ้าผู้ใช้ระบุวัน)", "weekday": "ชื่อวันในสัปดาห์เป็น mon|tue|wed|thu|fri|sat|sun (ถ้าผู้ใช้พูดชื่อวัน เช่น วันจันทร์/เสาร์นี้/อาทิตย์หน้า)", "after": "HH:MM (ถ้าบอก เช่น หลัง 9 โมงครึ่ง)", "before": "HH:MM (ถ้าบอก เช่น ก่อนเที่ยง)", "at": "HH:MM (ถ้าถามเจาะจงเวลา 'จุดเดียว' เช่น '10 โมงติดอะไร', 'ตอนบ่ายสองว่างไหม', 'ตอน 9 โมงติดไหม')", "person": "ชื่อ/อีเมลคนอื่น ถ้าถามว่าคนนั้น 'ติด/ไม่ว่าง/มีนัด' ช่วงไหน (ถ้าไม่ระบุ = ตัวเอง)" }
 - summarize_file: { "file_index": 0 }
 - my_availability: { "period": "today|tomorrow|week", "weekday": "mon|tue|wed|thu|fri|sat|sun (ถ้าพูดชื่อวัน เช่น เสาร์นี้ว่างไหม)", "person": "ชื่อ/อีเมลคนที่อยากดูตาราง (ถ้าไม่ระบุ = ตัวเอง)" }
 - ถ้าประวัติ/บริบทรอบก่อนพูดถึงวันใดวันหนึ่ง (เช่น พรุ่งนี้ / last_period) แล้วผู้ใช้ถามต่อแบบไม่ระบุวัน เช่น "ขอตารางว่าง", "ว่างกี่โมง", "แล้วว่างไหม" → คง period/วันเดิมจากบริบท (ห้ามดีฟอลต์เป็นวันนี้)
@@ -339,8 +340,11 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 "เปลี่ยนลิงก์แหล่ง 2 เป็น https://example.com/feed" -> {"intent":"edit_feed","params":{"feed_index":2,"url":"https://example.com/feed"}}
 "มีอันไหนประชุมออนไลน์" -> {"intent":"list_meetings","params":{"period":"upcoming"}}
 "มีประชุมออนไลน์อะไรบ้าง" -> {"intent":"list_meetings","params":{"period":"upcoming"}}
+"ตารางเดือนหน้า" -> {"intent":"list_meetings","params":{"period":"next_month"}}
+"เดือนหน้ามีประชุมอะไรบ้าง" -> {"intent":"list_meetings","params":{"period":"next_month"}}
 "เดือนนี้มีประชุมอะไรบ้าง" -> {"intent":"list_meetings","params":{"period":"month"}}
 "วันนี้มีนัดอะไร" -> {"intent":"list_meetings","params":{"period":"today"}}
+"ประชุมสัปดาห์หน้า" -> {"intent":"list_meetings","params":{"period":"next_week"}}
 "ประชุมสัปดาห์นี้" -> {"intent":"list_meetings","params":{"period":"week"}}
 "มีประชุมอะไรไหม" -> {"intent":"list_meetings","params":{"period":"upcoming"}}
 "วันที่ 31 มีอะไร" -> {"intent":"list_meetings","params":{"date":"31"}}
@@ -465,7 +469,7 @@ function peelSchedulePhrases(text: string): string {
  * types, what is left over is the part that could be a name.
  */
 const CALENDAR_TALK =
-  /(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ต้อง|ให้|ว่าง|ว่า|ของ|เอง|ตรวจ|ช่วย|บอก|ทราบ|อยาก|ได้|ทั้ง|หมด|เอา|สรุป|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม|และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|ไหน|ที่ไหน|สถานที่|ห้อง|วันหยุด|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ่ง|มะรืน|เมื่อวาน|เช้านี้|บ่ายนี้|เย็นนี้|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ปฏิทิน|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|ออนไลน์|online|อัน|อันไหน|\d+|[:.,\s/-])/gi;
+  /(?:ผม|ฉัน|ดิฉัน|กระผม|หนู|เรา|ตัวเอง|ต้อง|ให้|ว่าง|ว่า|ของ|เอง|ตรวจ|ช่วย|บอก|ทราบ|อยาก|ได้|ทั้ง|หมด|เอา|สรุป|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม|และ|แล้ว|ส่วน|ล่ะ|หล่ะ|ละ|ก็|นี้|หน้า|ที่แล้ว|ถัดไป|ต่อไป|วันไหน|ไหน|ที่ไหน|สถานที่|ห้อง|วันหยุด|วัน|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|สัปดาห์|เดือน|พรุ่งนี้|พรุ้งนี้|พรุ้ง|พุ่งนี้|วันพรุ้งนี้|วันพุ่งนี้|พรุ่ง|มะรืน|มะรืนนี|เมื่อวาน|เช้านี้|บ่ายนี้|เย็นนี้|เช้า|สาย|บ่าย|เย็น|ค่ำ|กลางวัน|เที่ยง|ตอน|ช่วง|เวลา|โมง|ทุ่ม|นาฬิกา|ครึ่ง|นาที|ชั่วโมง|ชม\.?|ตาราง|ปฏิทิน|ประชุม|นัด|คิว|ว่าง|ติด|ไหม|มั้ย|บ้าง|อะไร|ไร|ยัง|หรือ|รึ|เปล่า|กี่|มี|ขอ|ดู|เช็ค|เช็ก|หน่อย|ครับ|ค่ะ|คะ|นะ|อื่น|อีก|เดิม|นั้น|โน้น|งั้น|ต่อ|ก่อนหน้า|ที่ผ่านมา|ย้อนหลัง|อะ|อ่ะ|ดิ|สิ|ฮะ|จ๊ะ|ออนไลน์|online|อัน|อันไหน|\d+|[:.,\s/-])/gi;
 
 /**
  * Day and time expressions that get typed straight onto a name, because Thai
@@ -475,7 +479,7 @@ const CALENDAR_TALK =
  * ศุกร์ยังคงหาเจอ.
  */
 const GLUED_WHEN =
-  /(?:พรุ่งนี้|วันนี้|มะรืนนี้|มะรืน|เมื่อวานนี้|เมื่อวาน|คืนนี้|เช้านี้|บ่ายนี้|เย็นนี้|สัปดาห์นี้|สัปดาห์หน้า|อาทิตย์นี้|อาทิตย์หน้า|เดือนนี้|เดือนหน้า|วันจันทร์|วันอังคาร|วันพุธ|วันพฤหัสบดี|วันพฤหัส|วันศุกร์|วันเสาร์|วันอาทิตย์|จันทร์นี้|อังคารนี้|พุธนี้|พฤหัสนี้|ศุกร์นี้|เสาร์นี้|อาทิตย์นี้|ตอนเช้า|ตอนบ่าย|ตอนเย็น|ทั้งวัน|กี่โมง)/gu;
+  /(?:พรุ่งนี้|พรุ้งนี้|พุ่งนี้|วันพรุ้งนี้|วันนี้|มะรืนนี้|มะรืน|มะรืนนี|เมื่อวานนี้|เมื่อวาน|คืนนี้|เช้านี้|บ่ายนี้|เย็นนี้|สัปดาห์นี้|สัปดาห์หน้า|อาทิตย์นี้|อาทิตย์หน้า|เดือนนี้|เดือนหน้า|วันจันทร์|วันอังคาร|วันพุธ|วันพฤหัสบดี|วันพฤหัส|วันศุกร์|วันเสาร์|วันอาทิตย์|จันทร์นี้|อังคารนี้|พุธนี้|พฤหัสนี้|ศุกร์นี้|เสาร์นี้|อาทิตย์นี้|ตอนเช้า|ตอนบ่าย|ตอนเย็น|ทั้งวัน|กี่โมง)/gu;
 
 /** Pull the day/time phrase off a name that was typed against it. */
 function stripGluedWhen(raw: string): string {
@@ -613,7 +617,7 @@ function withCalendarNext(res: CommandResult, kind: "meetings" | "free"): Comman
 
 function hasDayHint(text: string): boolean {
   // "วัน" is optional — people write "เสาร์นี้" as often as "วันเสาร์นี้".
-  return /วันนี้|พรุ่งนี้|มะรืน|เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้|สัปดาห์นี้|อาทิตย์นี้|เดือนนี้|(?:วัน)?(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)|วันที่\s*\d|\d{1,2}\/\d{1,2}/.test(
+  return /วันนี้|พรุ่งนี้|มะรืน|เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้|สัปดาห์นี้|สัปดาห์หน้า|อาทิตย์นี้|อาทิตย์หน้า|เดือนนี้|เดือนหน้า|(?:วัน)?(?:จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)|วันที่\s*\d|\d{1,2}\/\d{1,2}/.test(
     text || ""
   );
 }
@@ -630,6 +634,10 @@ function resolvePeriodParam(
   // Do NOT let last_period="week" override it just because the text lacks "วันนี้".
   if (params.period) return String(params.period);
   if (!hasDayHint(text) && context?.last_period) return context.last_period;
+  if (/เดือนหน้า/.test(text || "")) return "next_month";
+  if (/เดือนนี้/.test(text || "")) return "month";
+  if (/สัปดาห์หน้า|อาทิตย์หน้า/.test(text || "")) return "next_week";
+  if (/สัปดาห์นี้|อาทิตย์นี้/.test(text || "")) return "week";
   if (/พรุ่งนี้/.test(text || "")) return "tomorrow";
   if (/เช้านี้|บ่ายนี้|เย็นนี้|ค่ำนี้|วันนี้|ดูประชุมเช้า|นัดเช้า/.test(text || "")) return "today";
   return fallback;
@@ -994,7 +1002,7 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
     }
   }
   if (
-    /^(ดู|ขอดู|เช็ค|เช็ก)?(นัด|ประชุม)/.test(t) &&
+    /^(ดู|ขอดู|เช็ค|เช็ก)?(นัด|ประชุม|ตาราง)/.test(t) &&
     !/^(?:นัด|จอง|ส่งนัด)/.test(t) &&
     !/^(นัด|ประชุม|ตาราง)(วัน)?(วันนี้|พรุ่งนี้)$/i.test(t)
   ) {
@@ -1004,11 +1012,44 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
         ? "tomorrow"
         : /วันนี้/.test(t)
           ? "today"
-          : /สัปดาห์|อาทิตย์/.test(t)
-            ? "week"
-            : "upcoming";
+          : /เดือนหน้า/.test(t)
+            ? "next_month"
+            : /เดือนนี้|เดือน/.test(t)
+              ? "month"
+              : /สัปดาห์หน้า|อาทิตย์หน้า/.test(t)
+                ? "next_week"
+                : /สัปดาห์|อาทิตย์/.test(t)
+                  ? "week"
+                  : "upcoming";
       return { intent: "list_meetings", params: { person: who, period } };
     }
+  }
+
+  if (
+    /^(ดู|ขอดู|เช็ค|เช็ก|สรุป)?\s*(นัด|ประชุม|ตาราง|คิว)(ช่วง)?(เดือนหน้า)$/i.test(t) ||
+    /^(?:ช่วง)?เดือนหน้ามี(นัด|ประชุม|อะไร)/i.test(t) ||
+    /^(ดู)?ตารางเดือนหน้า$/i.test(t)
+  ) {
+    return { intent: "list_meetings", params: { period: "next_month" } };
+  }
+  if (
+    /^(ดู|ขอดู|เช็ค|เช็ก|สรุป)?\s*(นัด|ประชุม|ตาราง|คิว)(ช่วง)?(เดือนนี้)$/i.test(t) ||
+    /^(?:ช่วง)?เดือนนี้มี(นัด|ประชุม|อะไร)/i.test(t) ||
+    /^(ดู)?ตารางเดือนนี้$/i.test(t)
+  ) {
+    return { intent: "list_meetings", params: { period: "month" } };
+  }
+  if (
+    /^(ดู|ขอดู|เช็ค|เช็ก|สรุป)?\s*(นัด|ประชุม|ตาราง|คิว)(ช่วง)?(สัปดาห์หน้า|อาทิตย์หน้า)$/i.test(t) ||
+    /^(?:ช่วง)?(สัปดาห์หน้า|อาทิตย์หน้า)มี(นัด|ประชุม|อะไร)/i.test(t)
+  ) {
+    return { intent: "list_meetings", params: { period: "next_week" } };
+  }
+  if (
+    /^(ดู|ขอดู|เช็ค|เช็ก|สรุป)?\s*(นัด|ประชุม|ตาราง|คิว)(ช่วง)?(สัปดาห์นี้|อาทิตย์นี้)$/i.test(t) ||
+    /^(?:ช่วง)?(สัปดาห์นี้|อาทิตย์นี้)มี(นัด|ประชุม|อะไร)/i.test(t)
+  ) {
+    return { intent: "list_meetings", params: { period: "week" } };
   }
 
   if (/^(นัด|ประชุม|ตาราง)(วัน)?พรุ่งนี้$/i.test(t) || /^พรุ่งนี้มี(นัด|ประชุม)/i.test(t)) {
@@ -2524,6 +2565,8 @@ function dayHintFromText(text: string): MtWindow | null {
     const d = addDays(startOfDay(nowWall()), 2);
     return { start: d, end: endOfDay(d), label: "มะรืนนี้" };
   }
+  if (/สัปดาห์หน้า|อาทิตย์หน้า/.test(text || "")) return periodRange("next_week");
+  if (/สัปดาห์นี้|อาทิตย์นี้/.test(text || "")) return periodRange("week");
   const m = text.match(/วัน?(จันทร์|อังคาร|พุธ|พฤหัสบดี?|ศุกร์|เสาร์|อาทิตย์)\s*(นี้|หน้า)?/);
   if (m) return resolveWeekday(m[1] + (m[2] || ""));
   const thaiDate = resolveThaiDateInText(text);
@@ -2541,7 +2584,7 @@ function resolveFindWindow(params: Record<string, unknown>, text: string): MtWin
   if (namedMonth) return namedMonth;
   if (params.weekday) return resolveWeekday(String(params.weekday));
   if (params.date) return resolveDay(String(params.date));
-  if (params.period && ["today", "tomorrow"].includes(String(params.period))) {
+  if (params.period && ["today", "tomorrow", "week", "next_week", "month", "next_month"].includes(String(params.period))) {
     return periodRange(String(params.period));
   }
   return dayHintFromText(text);
@@ -4390,6 +4433,27 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     .replace(/\s+/g, " ")
     .trim();
 
+  // Detect wrong keyboard layout (e.g. English gibberish typed instead of Thai)
+  const wrongKbd = detectWrongKeyboard(text);
+  if (wrongKbd && !context?.pending_mt_pick && !context?.pending_avail_pick && !context?.pending_self_book) {
+    if (wrongKbd.isSlashCommand) {
+      text = wrongKbd.converted;
+    } else {
+      trace("parse", `★ detectWrongKeyboard: "${text}" -> "${wrongKbd.converted}"`);
+      return {
+        intent: "confirm_keyboard_layout",
+        reply: `คุณอาจจะลืมเปลี่ยนแป้นภาษา ⌨️\n\nต้องการสั่งว่า “${wrongKbd.converted}” ใช่ไหมครับ?`,
+        suggestions: [
+          { label: `✅ ใช่ (${wrongKbd.converted.slice(0, 16)})`, text: wrongKbd.converted },
+          { label: "❌ ไม่ใช่", text: "ไม่ใช่" },
+        ],
+      };
+    }
+  }
+
+  // Normalize common Thai typos / spelling mistakes (e.g. พรุ้งนี้ -> พรุ่งนี้)
+  text = normalizeThaiTypo(text);
+
   // Quick task closure confirmation handling: "ยืนยันปิดงาน", "ยืนยัน", "ปิดเลย"
   if (/^(?:ยืนยันปิดงาน|ยืนยัน|ตกลง|ปิดเลย|ใช่|ปิด|confirm|ok|yes)$/i.test(text)) {
     try {
@@ -5370,14 +5434,18 @@ async function handleParsed(
         // A month named outright ("เดือนกรกฎาคม") resolves to that month later;
         // "เดือนนี้" and the rest still need a period.
         params.period = resolveThaiMonthRange(text)
-          ? "month"
-          : /(?:เดือน|ทั้งเดือน)/u.test(text)
-            ? "month"
-            : /(?:สัปดาห์|อาทิตย์)/u.test(text)
-              ? "week"
-              : /พรุ่งนี้/u.test(text)
-                ? "tomorrow"
-                : "today";
+          ? (/เดือนหน้า/u.test(text) ? "next_month" : "month")
+          : /เดือนหน้า/u.test(text)
+            ? "next_month"
+            : /(?:เดือน|ทั้งเดือน|เดือนนี้)/u.test(text)
+              ? "month"
+              : /(?:สัปดาห์หน้า|อาทิตย์หน้า)/u.test(text)
+                ? "next_week"
+                : /(?:สัปดาห์|อาทิตย์)/u.test(text)
+                  ? "week"
+                  : /พรุ่งนี้/u.test(text)
+                    ? "tomorrow"
+                    : "today";
       }
       trace("parse", `★ ปรับเป็น list_meetings (${who ? "มีชื่อคน" : "ช่วงกว้างกว่าวันนี้"})`);
     }
