@@ -44,20 +44,63 @@ const SUGGESTIONS = [
 function LoginGate() {
   const { login } = useM365Auth();
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6 font-sans">
-      <div className="max-w-sm w-full text-center space-y-5">
-        <div className="text-3xl font-bold tracking-tight">AI Assistant</div>
-        <p className="text-sm text-slate-400 leading-relaxed">
-          เข้าสู่ระบบด้วยบัญชี Microsoft 365 ขององค์กรก่อนใช้งานแชทสั่งงาน
-        </p>
-        <button
-          onClick={() => login()}
-          className="w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-sky-600 hover:bg-sky-500 font-semibold text-sm transition"
-        >
-          <LogIn className="w-5 h-5" />
-          เข้าสู่ระบบ Microsoft 365
-        </button>
-        <p className="text-[11px] text-slate-600">SSO องค์กร · ข้อมูลถูกใช้เฉพาะที่คุณอนุญาต</p>
+    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black text-slate-100 flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
+      {/* Ambient background glow */}
+      <div className="absolute top-1/4 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+      
+      <div className="max-w-md w-full text-center space-y-6 relative z-10">
+        {/* Brand Capsule */}
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-slate-300 backdrop-blur-md shadow-lg shadow-black/20">
+          <div className="grid grid-cols-2 gap-0.5 w-3 h-3">
+            <span className="bg-red-500 rounded-[0.5px]" />
+            <span className="bg-emerald-500 rounded-[0.5px]" />
+            <span className="bg-sky-500 rounded-[0.5px]" />
+            <span className="bg-amber-400 rounded-[0.5px]" />
+          </div>
+          <span>KTIS GROUP · MICROSOFT 365</span>
+        </div>
+
+        {/* Mascot Center */}
+        <div className="relative w-44 h-48 mx-auto flex items-center justify-center">
+          <div className="absolute inset-0 bg-sky-400/20 rounded-full blur-2xl" />
+          <img
+            src="/ktisx-reading-video.gif?v=8"
+            alt="KTIS X AI Assistant"
+            className="w-full h-full object-contain relative z-10 drop-shadow-[0_12px_24px_rgba(0,0,0,0.8)]"
+          />
+        </div>
+
+        {/* Heading */}
+        <div className="space-y-2">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+            KTIS X <span className="bg-gradient-to-r from-sky-400 via-cyan-300 to-indigo-400 bg-clip-text text-transparent">AI Assistant</span>
+          </h1>
+          <p className="text-sm text-slate-400 leading-relaxed max-w-sm mx-auto">
+            ผู้ช่วย AI อัจฉริยะองค์กร สังเกตการณ์ จัดการตารางงาน และควบคุมการประชุมอย่างแม่นยำ
+          </p>
+        </div>
+
+        {/* Action Card */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10 backdrop-blur-xl shadow-2xl shadow-black/60 space-y-3">
+          <button
+            onClick={() => login()}
+            className="w-full inline-flex items-center justify-center gap-3 px-5 py-3.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-sm transition-all duration-200 shadow-lg hover:shadow-sky-500/20 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+          >
+            <div className="grid grid-cols-2 gap-1 w-4 h-4">
+              <span className="bg-[#f25022] rounded-[1px]" />
+              <span className="bg-[#7fba00] rounded-[1px]" />
+              <span className="bg-[#00a4ef] rounded-[1px]" />
+              <span className="bg-[#ffb900] rounded-[1px]" />
+            </div>
+            เข้าสู่ระบบด้วย Microsoft 365
+          </button>
+          <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-medium">
+            <span className="text-emerald-400">🛡️</span>
+            <span>ความปลอดภัยระดับองค์กร (Microsoft Entra ID SSO)</span>
+          </div>
+        </div>
+
+        <p className="text-[10px] text-slate-600 tracking-wider">KTIS ENTERPRISE INTELLIGENCE · V2.5</p>
       </div>
     </div>
   );

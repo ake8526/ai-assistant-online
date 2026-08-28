@@ -337,313 +337,204 @@
       overflow-y: auto;
     }
 
-    .login-screen.active { display: flex; }
-
-    /* 3D Holographic Command Deck */
-    .holo-command-deck {
-      position: relative;
+    /* ==========================================================================
+       2. MINIMALIST EXECUTIVE SSO LOGIN SCREEN
+       ========================================================================== */
+    .login-screen {
+      position: absolute;
+      inset: 0;
       width: 100%;
-      height: 270px;
-      border-radius: var(--radius-xl);
-      overflow: hidden;
-      margin-bottom: 16px;
-      background: radial-gradient(circle at 50% 20%, #1e3a8a 0%, #0c1435 60%, #030614 100%);
-      border: 1px solid rgba(56, 189, 248, 0.4);
-      box-shadow: 0 25px 50px -10px rgba(0, 0, 0, 0.95), 0 0 35px rgba(0, 242, 254, 0.25), inset 0 0 40px rgba(30, 58, 138, 0.5);
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 14px;
-    }
-
-    /* 3D Perspective Grid Floor */
-    .deck-grid-floor {
-      position: absolute;
-      bottom: -40px;
-      left: -20%;
-      width: 140%;
-      height: 160px;
-      background-image: 
-        linear-gradient(to right, rgba(0, 242, 254, 0.15) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(168, 85, 247, 0.15) 1px, transparent 1px);
-      background-size: 20px 20px;
-      transform: perspective(300px) rotateX(60deg);
-      pointer-events: none;
-      mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 1) 0%, transparent 75%);
-      -webkit-mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 1) 0%, transparent 75%);
-    }
-
-    /* Hologram Energy Beams */
-    .deck-energy-beam {
-      position: absolute;
-      top: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 180px;
       height: 100%;
-      background: linear-gradient(180deg, rgba(0, 242, 254, 0.2) 0%, rgba(168, 85, 247, 0.1) 60%, transparent 100%);
-      filter: blur(20px);
-      pointer-events: none;
-      animation: beamSweep 5s ease-in-out infinite alternate;
-    }
-
-    @keyframes beamSweep {
-      0% { transform: translateX(-60%) scaleX(0.9); opacity: 0.6; }
-      100% { transform: translateX(-40%) scaleX(1.1); opacity: 1; }
-    }
-
-    /* Deck Top Bar */
-    .deck-top-bar {
-      position: relative;
-      z-index: 20;
-      display: flex;
+      z-index: 100;
+      background: radial-gradient(circle at 50% 12%, #12224d 0%, #08102b 50%, #030612 100%);
+      display: none;
+      flex-direction: column;
       align-items: center;
       justify-content: space-between;
+      padding: 38px 24px 28px;
+      box-sizing: border-box;
+      overflow-y: auto;
+    }
+    .login-screen.active { display: flex; }
+
+    .sso-brand-header {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      margin-bottom: 4px;
     }
 
-    .deck-agent-badge {
+    .sso-brand-capsule {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: rgba(10, 18, 48, 0.85);
-      backdrop-filter: blur(25px);
-      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      backdrop-filter: blur(20px);
       padding: 6px 14px;
-      border-radius: 30px;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      color: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     }
 
-    .deck-status-pill {
-      background: rgba(16, 185, 129, 0.2);
-      border: 1px solid rgba(16, 185, 129, 0.5);
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 10px;
-      font-weight: 800;
-      color: var(--accent-emerald);
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      backdrop-filter: blur(10px);
-    }
-
-    /* Center Robot Mascot on Hologram Pedestal */
-    .deck-mascot-center {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 155px;
-      height: 215px;
+    /* Hero Mascot Spotlight */
+    .sso-hero-stage {
+      position: relative;
+      width: 100%;
+      height: 250px;
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 10;
+      margin: 8px 0;
     }
 
-    .deck-robot-img,
-    .deck-mascot-center .robot-base-img {
+    .sso-ambient-aurora {
+      position: absolute;
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0, 242, 254, 0.28) 0%, rgba(99, 102, 241, 0.18) 50%, transparent 70%);
+      filter: blur(35px);
+      pointer-events: none;
+      animation: ssoAuroraPulse 5s ease-in-out infinite alternate;
+    }
+
+    @keyframes ssoAuroraPulse {
+      0% { transform: scale(0.88); opacity: 0.55; }
+      100% { transform: scale(1.15); opacity: 0.95; }
+    }
+
+    .sso-mascot-box {
+      position: relative;
+      width: 185px;
+      height: 240px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+      animation: ssoMascotFloat 4s ease-in-out infinite alternate;
+    }
+
+    .sso-robot-img {
       position: relative;
       width: 100%;
       height: 100%;
       object-fit: contain;
-      filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 18px rgba(0, 242, 254, 0.5));
-      animation: deckRobotHover 4s ease-in-out infinite alternate;
-      will-change: transform;
-      transform: translate3d(0, 0, 0);
-      backface-visibility: hidden;
+      filter: drop-shadow(0 16px 30px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 24px rgba(0, 242, 254, 0.45));
       z-index: 2;
     }
 
-    @keyframes deckRobotHover {
-      0% { transform: translateY(-4px) scale(0.99); }
-      100% { transform: translateY(5px) scale(1.01); }
+    @keyframes ssoMascotFloat {
+      0% { transform: translateY(-4px); }
+      100% { transform: translateY(6px); }
     }
 
-    .deck-pedestal-ring {
+    .sso-pedestal-glow {
       position: absolute;
-      bottom: -4px;
-      width: 110px;
-      height: 28px;
+      bottom: 0;
+      width: 140px;
+      height: 24px;
       border-radius: 50%;
-      border: 2px solid rgba(0, 242, 254, 0.8);
-      box-shadow: 0 0 25px rgba(0, 242, 254, 0.7), inset 0 0 15px rgba(168, 85, 247, 0.6);
-      background: radial-gradient(ellipse, rgba(0, 242, 254, 0.4) 0%, rgba(168, 85, 247, 0.2) 60%, transparent 80%);
-      animation: pedestalPulse 3s ease-in-out infinite alternate;
+      background: radial-gradient(ellipse, rgba(0, 242, 254, 0.65) 0%, rgba(168, 85, 247, 0.25) 60%, transparent 80%);
+      box-shadow: 0 0 25px rgba(0, 242, 254, 0.8);
       z-index: 1;
       pointer-events: none;
     }
 
-    @keyframes pedestalPulse {
-      0% { transform: scale(0.92); opacity: 0.7; box-shadow: 0 0 15px rgba(0, 242, 254, 0.5); }
-      100% { transform: scale(1.08); opacity: 1; box-shadow: 0 0 30px rgba(0, 242, 254, 0.9); }
+    /* Heading Block */
+    .sso-heading-block {
+      text-align: center;
+      margin-bottom: 20px;
+      padding: 0 10px;
     }
 
-    /* Orbiting Holographic HUD Nodes */
-    .deck-hud-left {
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: rgba(15, 23, 42, 0.8);
-      border: 1px solid rgba(56, 189, 248, 0.4);
-      backdrop-filter: blur(16px);
-      border-radius: 12px;
-      padding: 6px 10px;
-      z-index: 15;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
-      animation: floatNodeL 4s ease-in-out infinite alternate;
+    .sso-title {
+      font-size: 25px;
+      font-weight: 800;
+      color: #ffffff;
+      margin: 0 0 8px;
+      letter-spacing: -0.5px;
     }
 
-    .deck-hud-right {
-      position: absolute;
-      right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: rgba(15, 23, 42, 0.8);
-      border: 1px solid rgba(236, 72, 153, 0.4);
-      backdrop-filter: blur(16px);
-      border-radius: 12px;
-      padding: 6px 10px;
-      z-index: 15;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
-      animation: floatNodeR 4s ease-in-out infinite alternate;
+    .sso-title-gradient {
+      background: linear-gradient(135deg, #00f2fe 0%, #38bdf8 40%, #a855f7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
 
-    @keyframes floatNodeL {
-      0% { transform: translateY(-50%) translateY(-4px); }
-      100% { transform: translateY(-50%) translateY(4px); }
-    }
-    @keyframes floatNodeR {
-      0% { transform: translateY(-50%) translateY(4px); }
-      100% { transform: translateY(-50%) translateY(-4px); }
-    }
-
-    .hud-title { font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; }
-    .hud-val { font-size: 11px; color: #fff; font-weight: 800; display: flex; align-items: center; gap: 4px; }
-
-    /* Deck Bottom Tags */
-    .deck-bottom-bar {
-      position: relative;
-      z-index: 20;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+    .sso-subtitle {
+      font-size: 13px;
+      line-height: 1.55;
+      color: rgba(255, 255, 255, 0.65);
+      margin: 0;
+      font-weight: 400;
     }
 
-    .deck-micro-chip {
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      backdrop-filter: blur(14px);
-      border-radius: 20px;
-      padding: 4px 10px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 10px;
-      font-weight: 700;
-      color: #fff;
-    }
-
-    /* ==========================================================================
-       CYBERNETIC LUMINOUS ACTION HUB (LOGIN BUTTON)
-       ========================================================================== */
-    .cyber-login-container {
-      position: relative;
+    /* Executive Action Card */
+    .sso-card {
       width: 100%;
-      border-radius: var(--radius-xl);
-      padding: 2px;
-      background: linear-gradient(90deg, #00f2fe, #3b82f6, #ec4899, #a855f7, #00f2fe);
-      background-size: 300% 300%;
-      animation: borderGlowFlow 4s linear infinite;
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 242, 254, 0.4);
-      margin-bottom: 12px;
-    }
-
-    @keyframes borderGlowFlow {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-
-    .cyber-login-inner {
-      background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(7, 13, 36, 0.98) 100%);
+      max-width: 360px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       backdrop-filter: blur(25px);
-      border-radius: calc(var(--radius-xl) - 2px);
-      padding: 14px 16px;
+      border-radius: 20px;
+      padding: 16px 18px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.15);
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
     }
 
-    .cyber-fluent-btn {
+    .sso-ms-button {
       width: 100%;
-      padding: 14px 18px;
-      border-radius: var(--radius-md);
-      background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
-      color: #090e24;
-      font-weight: 900;
+      padding: 15px 20px;
+      border-radius: 14px;
+      background: #ffffff;
+      color: #0f172a;
       font-size: 14px;
+      font-weight: 700;
       border: none;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 12px;
       cursor: pointer;
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5), inset 0 1px 1px #ffffff;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.2);
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
       position: relative;
       overflow: hidden;
     }
 
-    .cyber-fluent-btn::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 60%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
-      transform: skewX(-20deg);
-      animation: btnShimmer 3.5s infinite;
+    .sso-ms-button:hover {
+      background: #f8fafc;
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(56, 189, 248, 0.35);
     }
 
-    @keyframes btnShimmer {
-      0% { left: -100%; }
-      30% { left: 140%; }
-      100% { left: 140%; }
-    }
-
-    .cyber-fluent-btn:active {
-      transform: scale(0.97);
+    .sso-ms-button:active {
+      transform: scale(0.98);
       background: #e2e8f0;
     }
 
-    .cyber-sub-status {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 10px;
-      color: var(--text-muted);
-      padding: 0 4px;
-    }
-
-    .cyber-sub-status span {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      color: var(--ribbon-cyan);
-      font-weight: 600;
-    }
-
-    .login-security-tag {
-      font-size: 11px;
-      color: var(--text-muted);
-      text-align: center;
+    .sso-trust-line {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.55);
+      font-weight: 500;
+    }
+
+    .sso-footer-tag {
+      margin-top: 14px;
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.35);
+      font-weight: 500;
+      letter-spacing: 0.4px;
     }
 
     /* ==========================================================================
@@ -1333,118 +1224,59 @@
     </div>
 
     <!-- ==========================================
-         2. PURE CODE 3D HOLOGRAPHIC RIBBON LOGIN SCREEN
+         2. MINIMALIST EXECUTIVE SSO LOGIN SCREEN
          ========================================== -->
     <div class="login-screen" id="loginScreen">
       
-      <!-- 3D Holographic AI Agent Command Deck -->
-      <div class="holo-command-deck">
-        <div class="deck-grid-floor"></div>
-        <div class="deck-energy-beam"></div>
-
-        <!-- Top Bar inside Deck -->
-        <div class="deck-top-bar">
-          <div class="deck-agent-badge">
-            <div class="ms-grid-4">
-              <div class="t-red"></div>
-              <div class="t-green"></div>
-              <div class="t-blue"></div>
-              <div class="t-yellow"></div>
-            </div>
-            <span style="font-size:11px; font-weight:800; color:#fff;">Microsoft Agent 365</span>
+      <!-- Top Brand Capsule -->
+      <div class="sso-brand-header">
+        <div class="sso-brand-capsule">
+          <div class="ms-grid-4" style="grid-template-columns: repeat(2, 6px); gap: 2px;">
+            <div class="t-red" style="width:6px; height:6px; border-radius:1px;"></div>
+            <div class="t-green" style="width:6px; height:6px; border-radius:1px;"></div>
+            <div class="t-blue" style="width:6px; height:6px; border-radius:1px;"></div>
+            <div class="t-yellow" style="width:6px; height:6px; border-radius:1px;"></div>
           </div>
-
-          <div class="deck-status-pill">
-            <span style="width:6px; height:6px; border-radius:50%; background:currentColor;"></span>
-            <span>Active Control</span>
-          </div>
-        </div>
-
-        <!-- Center Mascot on Hologram Pedestal -->
-        <div class="deck-mascot-center">
-          <img class="robot-base-img" src="ktisx-reading-video.gif?v=7" onerror="this.src='/ktisx-reading-video.gif?v=7'" alt="KTIS X AI Agent">
-          <div class="deck-pedestal-ring"></div>
-        </div>
-
-        <!-- Orbiting Holographic HUD Nodes -->
-        <div class="deck-hud-left">
-          <div class="hud-title">Graph Telemetry</div>
-          <div class="hud-val">
-            <span style="color:var(--ribbon-cyan);">⚡</span> 60 fps Live
-          </div>
-        </div>
-
-        <div class="deck-hud-right">
-          <div class="hud-title">Entra ID Guard</div>
-          <div class="hud-val">
-            <span style="color:var(--accent-emerald);">🛡️</span> Verified
-          </div>
-        </div>
-
-        <!-- Bottom Bar inside Deck -->
-        <div class="deck-bottom-bar">
-          <div class="deck-micro-chip">
-            <svg class="icon icon-sm" style="color:var(--ribbon-cyan);" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
-            <span>Agent ID Sync</span>
-          </div>
-          <div class="deck-micro-chip">
-            <svg class="icon icon-sm" style="color:var(--ribbon-magenta);" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
-            <span>Auto Schedule</span>
-          </div>
+          <span>KTIS GROUP · MICROSOFT 365</span>
         </div>
       </div>
 
-      <!-- Login Content & Capabilities -->
-      <div class="login-content-box">
-        <h1 class="login-title">KTIS X AI Assistant<br><span style="background:var(--gradient-agent); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">Agentic Control Plane</span></h1>
-        <p class="login-desc">เชื่อมต่อระบบบริหารจัดการเอเจนต์ AI องค์กร สังเกตการณ์นัดหมาย ควบคุมห้องประชุม และความปลอดภัย Entra ID</p>
-
-        <!-- 3-Pill Control Plane Capabilities -->
-        <div class="agent-control-grid">
-          <div class="control-tile">
-            <svg class="icon icon-sm" style="color:var(--ribbon-cyan);" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
-            <h6>สังเกตการณ์</h6>
-            <span>Graph Telemetry</span>
-          </div>
-          <div class="control-tile">
-            <svg class="icon icon-sm" style="color:var(--ribbon-purple);" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-            <h6>ควบคุมคำสั่ง</h6>
-            <span>AI Autonomous</span>
-          </div>
-          <div class="control-tile">
-            <svg class="icon icon-sm" style="color:var(--accent-emerald);" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-            <h6>ปกป้องข้อมูล</h6>
-            <span>Zero Data Leak</span>
-          </div>
+      <!-- Hero Mascot Spotlight (Clean & Spacious) -->
+      <div class="sso-hero-stage">
+        <div class="sso-ambient-aurora"></div>
+        <div class="sso-mascot-box">
+          <img class="sso-robot-img" src="ktisx-reading-video.gif?v=8" onerror="this.src='/ktisx-reading-video.gif?v=8'" alt="KTIS X AI Assistant">
+          <div class="sso-pedestal-glow"></div>
         </div>
       </div>
 
-      <!-- Cybernetic Luminous Action Hub -->
-      <div class="cyber-login-container">
-        <div class="cyber-login-inner">
-          <button class="cyber-fluent-btn" onclick="performM365Login()">
-            <div class="ms-grid-4" style="grid-template-columns: repeat(2, 9px); gap: 3px;">
-              <div class="t-red" style="width:9px; height:9px;"></div>
-              <div class="t-green" style="width:9px; height:9px;"></div>
-              <div class="t-blue" style="width:9px; height:9px;"></div>
-              <div class="t-yellow" style="width:9px; height:9px;"></div>
-            </div>
-            <span>Sign in with Microsoft 365</span>
-          </button>
-          
-          <div class="cyber-sub-status">
-            <span>
-              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-              Enterprise Entra ID SSO
-            </span>
-            <span style="color:var(--text-muted);">แตะเพื่อเชื่อมต่อทันที</span>
+      <!-- Heading Block -->
+      <div class="sso-heading-block">
+        <h1 class="sso-title">KTIS X <span class="sso-title-gradient">AI Assistant</span></h1>
+        <p class="sso-subtitle">ผู้ช่วยอัจฉริยะองค์กร สังเกตการณ์ จัดการตารางงาน และควบคุมการประชุมอย่างแม่นยำ</p>
+      </div>
+
+      <!-- Executive Action Card -->
+      <div class="sso-card">
+        <button class="sso-ms-button" onclick="performM365Login()">
+          <div class="ms-grid-4" style="grid-template-columns: repeat(2, 9px); gap: 3px;">
+            <div class="t-red" style="width:9px; height:9px; border-radius:1px;"></div>
+            <div class="t-green" style="width:9px; height:9px; border-radius:1px;"></div>
+            <div class="t-blue" style="width:9px; height:9px; border-radius:1px;"></div>
+            <div class="t-yellow" style="width:9px; height:9px; border-radius:1px;"></div>
           </div>
+          <span>เข้าสู่ระบบด้วย Microsoft 365</span>
+        </button>
+
+        <div class="sso-trust-line">
+          <svg class="icon icon-sm" style="width:14px; height:14px; color:var(--accent-emerald);" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+          <span>ความปลอดภัยระดับองค์กร (Entra ID SSO)</span>
         </div>
       </div>
 
-      <div class="login-security-tag">
-        <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-        <span>KTIS Group Enterprise Single Sign-On • Entra ID Guard</span>
+      <!-- Footer Version -->
+      <div class="sso-footer-tag">
+        <span>KTIS Enterprise Intelligence · v2.5</span>
       </div>
 
     </div>
