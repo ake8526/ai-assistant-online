@@ -337,6 +337,20 @@ function AssistantTab({ seed, onSeedUsed }: { seed?: string; onSeedUsed?: () => 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed]);
 
+  /**
+   * ปุ่มเหนือช่องพิมพ์ — เปลี่ยนตามคำตอบล่าสุดเหมือน quick reply ของ LINE
+   *
+   * เดิมเป็นรายการคำสั่งคงที่ตายตัว ไม่ขยับตามบทสนทนาเลย ปุ่มที่ผู้ช่วยเสนอมา
+   * (เช่น "ยืนยันเพิ่มงาน" หรือ "ดูตารางว่าง") จึงไม่มีที่ให้กด ต้องพิมพ์เอง
+   * ถ้าคำตอบล่าสุดไม่ได้เสนอปุ่มอะไร ก็กลับไปใช้รายการคำสั่งเดิม
+   */
+  // ดูแค่คำตอบล่าสุด ไม่ย้อนไปเอาปุ่มของเรื่องที่จบไปแล้ว
+  // "/" ไว้เปิดรายการคำสั่งทั้งหมด ต้องหาได้ตลอดแม้ตอนมีปุ่มของคำตอบอยู่
+  const lastBot = msgs.filter((m) => m.role === "bot").at(-1);
+  const chips = lastBot?.suggestions?.length
+    ? [{ label: "/", text: "/" }, ...lastBot.suggestions.slice(0, 6)]
+    : SUGGESTIONS.map((sg) => ({ label: sg, text: sg }));
+
   const pickSlot = async (slot: Slot, intent?: string) => {
     if (busy) return;
     const ctx = ctxRef.current;
@@ -504,24 +518,7 @@ function AssistantTab({ seed, onSeedUsed }: { seed?: string; onSeedUsed?: () => 
                   ))}
                 </div>
               )}
-              {/* ปุ่มตอบกลับที่ผู้ช่วยเสนอ เช่น "ยืนยันเพิ่มงาน" — ป้ายปุ่มกับข้อความที่ส่ง
-                  ต้องเป็นคำเดียวกันตามกฎของโปรเจ็กต์ จึงส่ง sg.text ไม่ใช่ sg.label */}
-              {!!m.suggestions?.length && (
-                <div className="mt-2.5 flex flex-wrap gap-2">
-                  {m.suggestions.slice(0, 6).map((sg, j) => (
-                    <button
-                      key={j}
-                      onClick={() => void send(sg.text)}
-                      disabled={busy}
-                      className={`${NOTE_SM} ${PRESS} ${
-                        /^ยืนยัน/.test(sg.label) ? N_GREEN : "bg-[var(--nb-surface)]"
-                      } px-3 py-1.5 text-[13px] font-semibold disabled:opacity-45 cursor-pointer`}
-                    >
-                      {sg.label}
-                    </button>
-                  ))}
-                </div>
-              )}
+
             </div>
           </div>
         ))}
@@ -541,16 +538,18 @@ function AssistantTab({ seed, onSeedUsed }: { seed?: string; onSeedUsed?: () => 
       <footer className="px-3 pt-2 pb-3 border-t-2 border-[var(--nb-ink)] bg-[var(--nb-surface)]">
         <div className="max-w-2xl mx-auto space-y-2.5">
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {SUGGESTIONS.map((sg, i) => (
+            {chips.map((c, i) => (
               <button
-                key={sg}
-                onClick={() => send(sg)}
+                key={`${c.text}-${i}`}
+                onClick={() => send(c.text)}
                 disabled={busy}
-                className={`${NOTE_SM} ${PRESS} ${CHIP_TINTS[i % CHIP_TINTS.length]} shrink-0 px-3 py-1.5 text-[12.5px] disabled:opacity-45 cursor-pointer ${
+                className={`${NOTE_SM} ${PRESS} ${
+                  /^ยืนยัน/.test(c.label) ? N_GREEN : CHIP_TINTS[i % CHIP_TINTS.length]
+                } shrink-0 px-3 py-1.5 text-[12.5px] disabled:opacity-45 cursor-pointer ${
                   i % 2 ? "rotate-1" : "-rotate-1"
                 }`}
               >
-                {sg}
+                {c.label}
               </button>
             ))}
           </div>

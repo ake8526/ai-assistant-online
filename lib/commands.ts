@@ -638,6 +638,13 @@ function calendarSuggestions(
   ];
 }
 
+/** ปุ่มต่อจากเรื่องงาน — ใช้ทั้งใน LINE และแถวเหนือช่องพิมพ์ของแอป */
+const TASK_FOLLOW_UPS = [
+  { label: "🗓 ตารางวันนี้", text: "ตารางวันนี้" },
+  { label: "📅 นัดพรุ่งนี้", text: "นัดพรุ่งนี้" },
+  { label: "💬 ช่วยเรื่องอื่น", text: "ช่วยเรื่องอื่น" },
+];
+
 function withAskNext(reply: string): string {
   return reply.trimEnd() + "\n\nต้องการทำอะไรต่อครับ? กดปุ่มด้านล่างได้เลย 👇";
 }
@@ -4280,6 +4287,12 @@ export async function runFindMeeting(
     return {
       intent: "find_meeting_time",
       reply: formatBusy(result.busy) + note + hint + `\n(ค้นของ:\n👤 ${who}${dayNote}${bandNote})`,
+      // คำตอบบอกให้ลองพิมพ์ "พรุ่งนี้" หรือ "ช่วงบ่าย" อยู่แล้ว ทำเป็นปุ่มให้กดเลย
+      suggestions: [
+        { label: "📅 พรุ่งนี้", text: "พรุ่งนี้" },
+        { label: "🕑 ช่วงบ่าย", text: "ช่วงบ่าย" },
+        { label: "💬 ช่วยเรื่องอื่น", text: "ช่วยเรื่องอื่น" },
+      ],
       meeting: meetingBase(),
     };
   }
@@ -7627,7 +7640,7 @@ async function handleParsed(
     const tasks = await listTasks(userUpn);
     const pending = tasks.filter((t) => t.status === "pending" || t.status === "overdue");
     if (!pending.length) {
-      return { intent, reply: "ไม่มีงานติดตามค้างอยู่ครับ 👍" };
+      return { intent, reply: "ไม่มีงานติดตามค้างอยู่ครับ 👍", suggestions: TASK_FOLLOW_UPS };
     }
     const lines = [`📌 งานที่ต้องติดตามค้างอยู่ (${pending.length} รายการ):`, ""];
     pending.forEach((t, i) => {
@@ -7659,9 +7672,18 @@ async function handleParsed(
     });
     if (pending.length > 1) rows.push(messageRow("✅ ปิดงานทั้งหมด", "ปิดงานทั้งหมด"));
     rows.push(noteRow("แตะที่งานแล้วจะถามยืนยันก่อนปิดครับ"));
+    // ปุ่มเหนือช่องพิมพ์ (และ quick reply ของ LINE) — ให้ตรงกับแถวในการ์ด
+    // "ปิดงาน N" ไปเข้าเส้นทางที่ถามยืนยันก่อนเสมอ ไม่ได้ปิดทันที
+    const taskChips: { label: string; text: string }[] = pending
+      .slice(0, 3)
+      .map((t, i) => ({ label: `✅ ปิดงาน ${i + 1}`, text: `ปิดงาน ${i + 1}` }));
+    if (pending.length > 1) taskChips.push({ label: "✅ ปิดงานทั้งหมด", text: "ปิดงานทั้งหมด" });
+    taskChips.push({ label: "🗓 ตารางวันนี้", text: "ตารางวันนี้" });
+
     return {
       intent,
       reply: lines.join("\n"),
+      suggestions: taskChips,
       data: pending,
       flex: pickerCard(
         "✅ งานที่ต้องติดตาม",
