@@ -664,7 +664,7 @@ function AppShell() {
   const theme = useTheme();
   /* มี build ใหม่ขึ้นแล้วโหลดหน้าใหม่เอง — WebView ไม่โหลดใหม่ตอนเปิดจากรายการ
      แอปล่าสุด ทำให้ยังเจอบั๊กฝั่งหน้าจอที่แก้ไปแล้ว */
-  useFreshBuild();
+  const build = useFreshBuild();
   const [leaving, setLeaving] = useState(false);
   const [booted, setBooted] = useState(false);
 
@@ -859,7 +859,7 @@ function AppShell() {
         />
       )}
       {tab === "set" && (
-        <SettingsBoard data={settings} onChange={setSettings} keepAwake={keepAwake} theme={theme} />
+        <SettingsBoard data={settings} onChange={setSettings} keepAwake={keepAwake} theme={theme} build={build} />
       )}
 
       <nav className="sticky bottom-0 z-30 grid grid-cols-4 border-t-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] px-1.5 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] shrink-0">

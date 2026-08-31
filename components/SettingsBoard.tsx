@@ -34,6 +34,7 @@ import {
   PRESS,
 } from "@/components/noteStyles";
 import type { KeepAwake } from "@/components/useKeepAwake";
+import type { BuildInfo } from "@/components/useFreshBuild";
 import { THEME_LABEL, THEME_MODES, type Theme, type ThemeMode } from "@/components/useTheme";
 
 export type Settings = {
@@ -215,11 +216,13 @@ export default function SettingsBoard({
   onChange,
   keepAwake,
   theme,
+  build,
 }: {
   data: SettingsData;
   onChange: (next: SettingsData) => void;
   keepAwake: KeepAwake;
   theme: Theme;
+  build: BuildInfo;
 }) {
   const { account, logout, getToken, getGraphToken } = useM365Auth();
   const [open, setOpen] = useState<CatId | null>(null);
@@ -396,7 +399,7 @@ export default function SettingsBoard({
       lines: [
         "คู่มือคำสั่งทั้งหมด",
         `สถานะระบบ: ${health === null ? "กำลังตรวจ…" : health.label}`,
-        "KTIS X — ฉบับโน้ตแปะกระดาน",
+        `โค้ด: ${build.mine || "—"}${build.stale ? " (มีรุ่นใหม่)" : ""}`,
       ],
     },
   ];
@@ -833,10 +836,31 @@ export default function SettingsBoard({
                     <Row last>
                       <div className="flex-1 min-w-0">
                         <h4 className="text-[13.5px] font-semibold">เวอร์ชัน</h4>
-                        <p className={`text-[11.5px] ${INK_2}`}>KTIS X — ฉบับโน้ตแปะกระดาน</p>
+                        {/* รหัสโค้ดสองฝั่ง — เอาไว้ตอบคำถามว่า "แก้แล้วทำไมยังเป็นเหมือนเดิม"
+                            ถ้าสองค่าไม่ตรงกันคือจอยังรันของเก่า กดโหลดใหม่ได้ตรงนี้ */}
+                        <p className={`text-[11.5px] ${INK_2}`}>
+                          โค้ดในเครื่อง: {build.mine || "—"}
+                          <br />
+                          บนเซิร์ฟเวอร์: {build.live || "กำลังตรวจ…"}
+                        </p>
+                        <p className={`text-[11.5px] ${build.stale ? "font-semibold" : INK_3} mt-0.5`}>
+                          {build.stale
+                            ? "โค้ดในเครื่องเป็นรุ่นเก่า — กดโหลดใหม่เพื่อใช้รุ่นล่าสุด"
+                            : build.live
+                              ? "เป็นรุ่นล่าสุดแล้ว"
+                              : ""}
+                        </p>
                       </div>
-                      <span className={`${NOTE_SM} ${SURFACE} px-2 py-0.5 font-hand text-[15px] font-bold shrink-0`}>
-                        v3.0
+                      <span className="flex flex-col items-end gap-1.5 shrink-0">
+                        <span className={`${NOTE_SM} ${SURFACE} px-2 py-0.5 font-hand text-[15px] font-bold`}>
+                          v3.0
+                        </span>
+                        <button
+                          onClick={build.refresh}
+                          className={`${NOTE_SM} ${PRESS} ${build.stale ? N_PINK : SURFACE} px-2.5 py-1 text-[12.5px] cursor-pointer`}
+                        >
+                          โหลดใหม่
+                        </button>
                       </span>
                     </Row>
                   </>

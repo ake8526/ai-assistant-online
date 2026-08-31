@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const CHECK_MS = 10 * 60_000;
 /** ช่วงต้นอายุของหน้า ถือว่าเพิ่งเปิดแอป — เจอของเก่าให้โหลดใหม่ทันที */
@@ -23,14 +23,27 @@ const RELOAD_AT_KEY = "ktisx_fresh_reload_at";
  * จังหวะโหลดใหม่: เพิ่งเปิดแอป หรือตอนผู้ใช้สลับออกไปแล้วกลับมา — ไม่ตัดจบกลาง
  * ที่กำลังพิมพ์อยู่ ถ้าเจอระหว่างใช้งานก็จดไว้แล้วรอจังหวะนั้น
  */
-export function useFreshBuild(): void {
+/** รหัสโค้ดที่กำลังรันในจอ / ที่เซิร์ฟเวอร์ให้บริการ — เอาไปโชว์ในหน้าตั้งค่า */
+export type BuildInfo = { mine: string; live: string; stale: boolean; refresh: () => void };
+
+export function useFreshBuild(): BuildInfo {
   const staleRef = useRef(false);
+  const [info, setInfo] = useState<{ mine: string; live: string; stale: boolean }>({
+    mine: "",
+    live: "",
+    stale: false,
+  });
+  const refresh = useCallback(() => window.location.reload(), []);
 
   useEffect(() => {
     let alive = true;
     const bornAt = Date.now();
     const mine =
       document.querySelector('meta[name="ktisx-build"]')?.getAttribute("content")?.trim() || "";
+
+    // อ่านจาก <meta> ที่มาพร้อมหน้า ไม่ได้เปลี่ยนอีกตลอดอายุหน้า จึงตั้งครั้งเดียวพอ
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setInfo((p) => (p.mine === mine ? p : { ...p, mine }));
 
     // ไม่รู้ว่าตัวเองเป็น build ไหน ก็เทียบอะไรไม่ได้ อย่าเดาแล้วรีเฟรชมั่ว
     if (!mine) return;
@@ -61,7 +74,9 @@ export function useFreshBuild(): void {
       } catch {
         return; // ออฟไลน์ก็ไม่ต้องทำอะไร ค่อยเช็คใหม่รอบหน้า
       }
-      if (!alive || !live || live === mine) return;
+      if (!alive || !live) return;
+      setInfo({ mine, live, stale: live !== mine });
+      if (live === mine) return;
 
       staleRef.current = true;
       // เพิ่งเปิดแอปมา หรือกำลังไม่ได้ดูอยู่ — โหลดใหม่ได้เลย ไม่มีอะไรให้เสีย
@@ -83,4 +98,6 @@ export function useFreshBuild(): void {
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
+
+  return { ...info, refresh };
 }
