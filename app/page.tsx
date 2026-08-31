@@ -17,7 +17,7 @@ import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } f
 import { SLASH_COMMANDS, isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText } from "@/lib/slashCommands";
 import CalendarTab, { type CalEvent } from "@/components/CalendarTab";
 import RoomsTab, { type Room } from "@/components/RoomsTab";
-import SettingsTab from "@/components/SettingsTab";
+import SettingsTab, { type SettingsData } from "@/components/SettingsTab";
 import SplashScreen, { SPLASH_START, type SplashSteps } from "@/components/SplashScreen";
 import {
   AssistantFace,
@@ -609,6 +609,8 @@ function AppShell() {
   const [steps, setSteps] = useState<SplashSteps>(SPLASH_START);
   const [events, setEvents] = useState<CalEvent[] | null>(null);
   const [rooms, setRooms] = useState<Room[] | null>(null);
+  /* การตั้งค่าเก็บไว้ที่นี่ เปิดแท็บตั้งค่าจึงเห็นค่าเดิมทันทีทุกครั้ง ไม่ต้องโหลดซ้ำ */
+  const [settings, setSettings] = useState<SettingsData>({ settings: null, ms: null });
   const [leaving, setLeaving] = useState(false);
   const [booted, setBooted] = useState(false);
 
@@ -636,14 +638,19 @@ function AppShell() {
       }
 
       try {
-        const res = await authedGet<{ rooms?: Room[]; error?: string }>(
-          "/api/rooms/status",
-          getToken,
-          getGraphToken
-        );
+        const [roomRes, setRes, msRes] = await Promise.all([
+          authedGet<{ rooms?: Room[]; error?: string }>("/api/rooms/status", getToken, getGraphToken),
+          authedGet<SettingsData["settings"]>("/api/settings", getToken, getGraphToken).catch(
+            (e) => ({ error: (e as Error).message })
+          ),
+          authedGet<SettingsData["ms"]>("/api/oauth/microsoft/status", getToken, getGraphToken).catch(
+            (e) => ({ error: (e as Error).message })
+          ),
+        ]);
         if (!alive) return;
-        setRooms(res.rooms || []);
-        setSteps((p) => ({ ...p, rooms: res.error ? "fail" : "done" }));
+        setRooms(roomRes.rooms || []);
+        setSettings({ settings: setRes, ms: msRes });
+        setSteps((p) => ({ ...p, rooms: roomRes.error ? "fail" : "done" }));
       } catch {
         if (!alive) return;
         setSteps((p) => ({ ...p, rooms: "fail" }));
@@ -718,7 +725,7 @@ function AppShell() {
       {tab === "chat" && <AssistantTab seed={seed} />}
       {tab === "cal" && <CalendarTab initial={events} />}
       {tab === "room" && <RoomsTab onAsk={ask} initial={rooms} />}
-      {tab === "set" && <SettingsTab />}
+      {tab === "set" && <SettingsTab data={settings} onChange={setSettings} />}
 
       <nav className="sticky bottom-0 z-30 grid grid-cols-4 border-t-2 border-[#232122] bg-white px-1.5 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] shrink-0">
         {TABS.map(({ key, label, tint, Icon }) => {
