@@ -9,15 +9,15 @@ import {
   Eraser,
   MessageSquare,
   CalendarDays,
-  DoorOpen,
+  ListChecks,
   SlidersHorizontal,
 } from "lucide-react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } from "@/lib/chatMemory";
 import { SLASH_COMMANDS, isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText } from "@/lib/slashCommands";
-import CalendarTab, { type CalEvent } from "@/components/CalendarTab";
-import RoomsTab, { type Room } from "@/components/RoomsTab";
-import SettingsTab, { type SettingsData } from "@/components/SettingsTab";
+import ScheduleTab, { type CalEvent, type Room } from "@/components/ScheduleTab";
+import TasksTab from "@/components/TasksTab";
+import SettingsBoard, { type SettingsData } from "@/components/SettingsBoard";
 import SplashScreen, { SPLASH_START, type SplashSteps } from "@/components/SplashScreen";
 import {
   AssistantFace,
@@ -554,12 +554,12 @@ function AssistantTab({ seed }: { seed?: string }) {
   );
 }
 
-type TabKey = "chat" | "cal" | "room" | "set";
+type TabKey = "chat" | "sched" | "task" | "set";
 
 const TABS: { key: TabKey; label: string; tint: string; Icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "chat", label: "ผู้ช่วย AI", tint: N_BLUE, Icon: MessageSquare },
-  { key: "cal", label: "ปฏิทินงาน", tint: N_PURPLE, Icon: CalendarDays },
-  { key: "room", label: "ห้องประชุม", tint: N_GREEN, Icon: DoorOpen },
+  { key: "sched", label: "ตาราง", tint: N_PURPLE, Icon: CalendarDays },
+  { key: "task", label: "งาน", tint: N_GREEN, Icon: ListChecks },
   { key: "set", label: "ตั้งค่า", tint: N_ORANGE, Icon: SlidersHorizontal },
 ];
 
@@ -702,7 +702,7 @@ function AppShell() {
 
       {tab === "chat" && next && (
         <button
-          onClick={() => setTab("cal")}
+          onClick={() => setTab("sched")}
           className={`${NOTE} ${FOLD} ${N_BLUE} ${PRESS} shrink-0 mx-4 mt-4 px-4 py-3 flex items-center gap-3 text-left -rotate-[0.6deg] cursor-pointer`}
         >
           <span className="shrink-0 text-center">
@@ -723,9 +723,9 @@ function AppShell() {
       )}
 
       {tab === "chat" && <AssistantTab seed={seed} />}
-      {tab === "cal" && <CalendarTab initial={events} />}
-      {tab === "room" && <RoomsTab onAsk={ask} initial={rooms} />}
-      {tab === "set" && <SettingsTab data={settings} onChange={setSettings} />}
+      {tab === "sched" && <ScheduleTab initial={events} initialRooms={rooms} onAsk={ask} />}
+      {tab === "task" && <TasksTab />}
+      {tab === "set" && <SettingsBoard data={settings} onChange={setSettings} />}
 
       <nav className="sticky bottom-0 z-30 grid grid-cols-4 border-t-2 border-[#232122] bg-white px-1.5 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] shrink-0">
         {TABS.map(({ key, label, tint, Icon }) => {
