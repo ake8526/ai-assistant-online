@@ -50,6 +50,8 @@ type ApiResult = {
   reply: string;
   slots?: Slot[];
   choices?: Choice[];
+  /** ปุ่มตอบกลับที่ผู้ช่วยเสนอ เช่น "ยืนยันเพิ่มงาน" (LINE เรียกว่า quick reply) */
+  suggestions?: { label: string; text: string }[];
   files?: FileHit[];
   meeting?: { attendees: string[]; duration: number; subject: string };
   person?: { mail: string; displayName?: string };
@@ -62,6 +64,7 @@ type Msg = {
   text: string;
   slots?: Slot[];
   choices?: Choice[];
+  suggestions?: { label: string; text: string }[];
   files?: FileHit[];
   intent?: string;
   mapUrl?: string | null;
@@ -213,6 +216,7 @@ function AssistantTab({ seed }: { seed?: string }) {
       slots: res.slots,
       choices: res.choices,
       files: res.files,
+      suggestions: res.suggestions,
       intent: res.intent,
       mapUrl: res.map_url,
     });
@@ -490,6 +494,24 @@ function AssistantTab({ seed }: { seed?: string }) {
                   ))}
                 </div>
               )}
+              {/* ปุ่มตอบกลับที่ผู้ช่วยเสนอ เช่น "ยืนยันเพิ่มงาน" — ป้ายปุ่มกับข้อความที่ส่ง
+                  ต้องเป็นคำเดียวกันตามกฎของโปรเจ็กต์ จึงส่ง sg.text ไม่ใช่ sg.label */}
+              {!!m.suggestions?.length && (
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {m.suggestions.slice(0, 6).map((sg, j) => (
+                    <button
+                      key={j}
+                      onClick={() => void send(sg.text)}
+                      disabled={busy}
+                      className={`${NOTE_SM} ${PRESS} ${
+                        /^ยืนยัน/.test(sg.label) ? N_GREEN : "bg-[var(--nb-surface)]"
+                      } px-3 py-1.5 text-[13px] font-semibold disabled:opacity-45 cursor-pointer`}
+                    >
+                      {sg.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -749,6 +771,8 @@ function AppShell() {
       if (document.visibilityState !== "visible") return;
       void loadTasks(true);
     };
+    // ดึงจริงหลัง await เสมอ ไม่ใช่ setState ตรง ๆ ในตัว effect แต่กฎมองไม่เห็นข้ามฟังก์ชัน
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadTasks(true);
     const id = setInterval(tick, 60_000);
     document.addEventListener("visibilitychange", tick);

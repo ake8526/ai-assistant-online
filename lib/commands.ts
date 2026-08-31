@@ -193,6 +193,9 @@ export type PendingAvailPick = {
   at?: number | null;
 };
 
+/** ขึ้นบรรทัดใหม่ — เขียนแบบนี้เพราะสคริปต์ที่แปะโค้ดทำ escape พังมาแล้วสองครั้ง */
+const NEWLINE = String.fromCharCode(10);
+
 export type CommandResult = {
   intent: string;
   reply: string;
@@ -1681,6 +1684,112 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
   if (atMin != null) params.at = fmtHHMM(atMin);
   if (durationMin) params.duration_min = durationMin;
   return { intent: "book_self_calendar", params };
+}
+
+/* ---------------------------------------------------------------------------
+   เพิ่มงาน: ทวนให้ดูก่อน แล้วรอผู้ใช้ยืนยัน
+
+   งานที่แยกออกมาจากข้อความอาจอ่านชื่อ/ผู้รับผิดชอบ/กำหนดส่งเพี้ยนได้ ก่อนหน้านี้
+   ระบบสร้างงานทันทีโดยไม่ถาม ผู้ใช้จึงเจองานหน้าตาผิดในระบบแล้วต้องมาตามลบ
+   ตอนนี้ทวนรายการพร้อมกำหนดส่งที่ตีความได้จริงให้ดูก่อนเสมอ
+
+   คำยืนยันผูกกับคำถามนี้เท่านั้น ตามกฎในโปรเจ็กต์:
+   - ปุ่มส่งคำเฉพาะ "ยืนยันเพิ่มงาน" ป้ายปุ่มกับข้อความที่ส่งตรงกัน
+   - คำสั้น ๆ ("ยืนยัน" / "ตกลง" / "ใช่") รับเฉพาะตอนที่คำถามนี้ค้างอยู่จริง
+     คือ last_intent === "confirm_add_task" เท่านั้น
+   - ฉบับร่างหมดอายุใน 15 นาที ไม่ให้คำยืนยันของเรื่องอื่นมาตกกับงานเก่า
+   --------------------------------------------------------------------------- */
+
+const ADD_TASK_DRAFT_KEY = "_pending_add_tasks";
+const ADD_TASK_DRAFT_TTL_MS = 15 * 60_000;
+
+type AddTaskDraftItem = { title: string; responsible: string; duePhrase: string };
+type AddTaskDraft = { ts: number; items: AddTaskDraftItem[] };
+
+/** กำหนดส่งที่เก็บเป็น UTC — เขียนเป็นเวลาไทยแบบที่ผู้ช่วยใช้ทั้งระบบ */
+function dueLabelTh(iso: string): string {
+  const wall = utcIsoToWall(iso);
+  if (!wall) return iso;
+  let t = fmtTime(wall);
+  if (t === "00:00") t = "06:00";
+  return `${fmtDate(wall)} ${t}`;
+}
+
+async function saveAddTaskDraft(userUpn: string, items: AddTaskDraftItem[]): Promise<void> {
+  await setSetting(userUpn.toLowerCase(), ADD_TASK_DRAFT_KEY, JSON.stringify({ ts: Date.now(), items }));
+}
+
+/** คืนฉบับร่างที่ยังไม่หมดอายุ — ของเก่าถูกทิ้งทันทีที่เจอ */
+async function loadAddTaskDraft(userUpn: string): Promise<AddTaskDraft | null> {
+  try {
+    const raw = await getSetting(userUpn.toLowerCase(), ADD_TASK_DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as AddTaskDraft;
+    if (!d || !Array.isArray(d.items) || !d.items.length) return null;
+    if (Date.now() - Number(d.ts || 0) > ADD_TASK_DRAFT_TTL_MS) {
+      await deleteSetting(userUpn.toLowerCase(), ADD_TASK_DRAFT_KEY);
+      return null;
+    }
+    return d;
+  } catch {
+    return null;
+  }
+}
+
+async function clearAddTaskDraft(userUpn: string): Promise<void> {
+  await deleteSetting(userUpn.toLowerCase(), ADD_TASK_DRAFT_KEY);
+}
+
+/** ข้อความทวนรายการ — โชว์กำหนดส่งที่ตีความแล้ว ผู้ใช้จึงเห็นตอนที่อ่านเพี้ยน */
+function addTaskRecap(items: AddTaskDraftItem[]): string {
+  const lines: string[] = [`ทวนก่อนนะครับ จะเพิ่มงาน ${items.length} รายการ`, ""];
+  items.forEach((it, i) => {
+    const due = normalizeDue(it.duePhrase);
+    lines.push(`${i + 1}) ${it.title}`);
+    lines.push(
+      `   ผู้รับผิดชอบ: ${it.responsible || "ยังไม่ระบุ"} · กำหนดส่ง: ${due ? dueLabelTh(due) : "ยังไม่ระบุ"}`
+    );
+  });
+  lines.push("", "ถูกต้องไหมครับ? กดปุ่ม “ยืนยันเพิ่มงาน” ด้านล่าง");
+  lines.push("ถ้ายังไม่ถูก พิมพ์เพิ่มงานใหม่ทั้งชุดได้เลย ของเดิมจะถูกแทนที่");
+  return lines.join(NEWLINE);
+}
+
+const ADD_TASK_CONFIRM_SUGGESTIONS = [
+  { label: "ยืนยันเพิ่มงาน", text: "ยืนยันเพิ่มงาน" },
+  { label: "ไม่เพิ่มงาน", text: "ไม่เพิ่มงาน" },
+];
+
+/** สร้างงานจริงจากรายการที่ยืนยันแล้ว */
+async function createTasksFromDraft(userUpn: string, items: AddTaskDraftItem[]): Promise<CommandResult> {
+  const added: string[] = [];
+  const failed: string[] = [];
+  for (const it of items) {
+    const due = normalizeDue(it.duePhrase);
+    const tid = await addTask({
+      owner_upn: userUpn,
+      title: it.title,
+      responsible: it.responsible,
+      responsible_upn: await resolveResponsible(it.responsible),
+      due,
+      source: "manual",
+    });
+    if (tid) added.push(`#${tid} ${it.title}${due ? ` — ${dueLabelTh(due)}` : ""}`);
+    else failed.push(it.title);
+  }
+  if (!added.length) return { intent: "add_task", reply: "เพิ่มงานไม่สำเร็จครับ ลองใหม่อีกครั้ง" };
+  return {
+    intent: "add_task",
+    reply:
+      `เพิ่มงานแล้ว ${added.length} รายการครับ${NEWLINE}` +
+      added.map((a) => `• ${a}`).join(NEWLINE) +
+      (failed.length ? `${NEWLINE}${NEWLINE}เพิ่มไม่สำเร็จ ${failed.length} รายการ: ${failed.join(", ")}` : ""),
+    data: { count: added.length },
+    suggestions: [
+      { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+      { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+    ],
+  };
 }
 
 /** Deterministic parse for “นัด/จอง + ชื่อคน (+ วัน/เวลา/เรื่อง)” — avoids LLM mistaking เรื่อง… as add_task. */
@@ -4704,6 +4813,9 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
 
   // Direct negative response / cancellation of previous question / typo prompt
   if (/^(?:ไม่ใช่|ไม่ใช่ครับ|ไม่ใช่ค่ะ|ไม่ใช่จ้า|ไม่เอา|ไม่ใช่อันนี้|ไม่ใช่อันนั้น|ไม่ใช่คนนี้|ผิด|cancel|ยกเลิก)[!?.\s]*$/i.test(text)) {
+    // บล็อกนี้ตอบว่า "ยกเลิกรายการแล้ว" จึงต้องยกเลิกของที่ค้างอยู่จริงด้วย
+    // ไม่ใช่ปล่อยฉบับร่างงานลอยไว้จนหมดอายุแล้วขัดกับคำตอบที่ให้ไป
+    await clearAddTaskDraft(userUpn);
     return {
       intent: "cancel_action",
       reply: "รับทราบครับ ยกเลิกรายการแล้วครับ 👍\nพิมพ์คำสั่งใหม่หรือบอกสิ่งที่ต้องการให้ช่วยได้เลยครับ",
@@ -4713,8 +4825,58 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   // Normalize common Thai typos / spelling mistakes (e.g. พรุ้งนี้ -> พรุ่งนี้)
   text = normalizeThaiTypo(text);
 
+  // ยืนยันเพิ่มงานที่ทวนไว้ — ต้องมาก่อนบล็อกปิดงาน เพราะทั้งสองรับคำสั้นเหมือนกัน
+  // ตัวแยกคือ last_intent: คำสั้น ๆ ตกกับคำถามที่ผู้ช่วยถามล่าสุดเท่านั้น
+  {
+    const draft = await loadAddTaskDraft(userUpn);
+    const specificYes = /^(?:ยืนยันเพิ่มงาน|เพิ่มเลย|เพิ่มงานเลย)$/i.test(text);
+    const specificNo = /^(?:ไม่เพิ่มงาน|ยกเลิกการเพิ่มงาน)$/i.test(text);
+
+    // กดปุ่มยืนยันช้าไปเกิน 15 นาที หรือกดซ้ำหลังยืนยันแล้ว — บอกตรง ๆ
+    // ไม่ปล่อยให้ตกไปถึง LLM ซึ่งจะเอาคำว่า "เพิ่มงาน" ไปตั้งเป็นชื่องานใหม่
+    if (!draft && (specificYes || specificNo)) {
+      return {
+        intent: "add_task_expired",
+        reply: "ไม่มีรายการงานที่ทวนไว้ค้างอยู่ครับ (เก็บให้ 15 นาที) พิมพ์เพิ่มงานใหม่ได้เลย",
+        suggestions: [{ label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" }],
+      };
+    }
+
+    if (draft) {
+      const asked = context?.last_intent === "confirm_add_task";
+      const saidYes =
+        specificYes || (asked && /^(?:ยืนยัน|ตกลง|ใช่|โอเค|ok|okay|yes|confirm|ถูกต้อง|ถูกแล้ว)$/i.test(text));
+      const saidNo =
+        specificNo || (asked && /^(?:ไม่|ไม่ใช่|ไม่ต้อง|ยกเลิก|no|cancel)$/i.test(text));
+
+      if (saidYes) {
+        await clearAddTaskDraft(userUpn);
+        trace("parse", "★ AI:NONE · ยืนยันเพิ่มงาน (กฎตายตัว ไม่เรียก API)");
+        return await createTasksFromDraft(userUpn, draft.items);
+      }
+      if (saidNo) {
+        await clearAddTaskDraft(userUpn);
+        trace("parse", "★ AI:NONE · ยกเลิกการเพิ่มงาน (กฎตายตัว ไม่เรียก API)");
+        return {
+          intent: "add_task_cancelled",
+          reply: "ไม่เพิ่มงานให้นะครับ พิมพ์ใหม่ได้เลยถ้าจะเพิ่ม",
+          suggestions: [{ label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" }],
+        };
+      }
+    }
+  }
+
   // Quick task closure confirmation handling: "ยืนยันปิดงาน", "ยืนยัน", "ปิดเลย"
-  if (/^(?:ยืนยันปิดงาน|ยืนยัน|ตกลง|ปิดเลย|ใช่|ปิด|confirm|ok|yes)$/i.test(text)) {
+  //
+  // เดิมบล็อกนี้รับ "ยืนยัน" ลอย ๆ ทุกครั้งที่มี _pending_close_task_ids ค้างอยู่
+  // ไม่ว่าผู้ช่วยจะถามเรื่องนั้นล่าสุดหรือไม่ ซึ่งเป็นชนิดของบั๊กที่กฎในโปรเจ็กต์
+  // เขียนไว้เตือน (เคยไปตกกับการตอบรับนัดแล้วสร้าง event) คำสั้น ๆ จึงรับเฉพาะ
+  // ตอนที่คำถามปิดงานค้างอยู่จริง ส่วน "ยืนยันปิดงาน" ที่เจาะจงรับได้ตลอด
+  const closeConfirmSpecific = /^(?:ยืนยันปิดงาน|ปิดเลย)$/i.test(text);
+  const closeConfirmShort =
+    context?.last_intent === "confirm_complete_task" &&
+    /^(?:ยืนยัน|ตกลง|ใช่|ปิด|confirm|ok|yes)$/i.test(text);
+  if (closeConfirmSpecific || closeConfirmShort) {
     try {
       const rawStored = await getSetting(userUpn.toLowerCase(), "_pending_close_task_ids");
       if (rawStored) {
@@ -7538,53 +7700,34 @@ async function handleParsed(
   if (intent === "add_task") {
     // ข้อความที่ใส่เลขข้อ/bullet มา = หลายงาน อย่ายัดเป็นชื่องานเดียว
     // (params.title จาก LLM เอาทุกข้อมาต่อกันเป็นชื่อเดียว ซึ่งใช้ติดตามงานไม่ได้)
-    const items = splitAddTaskItems(text);
-    if (items.length > 1) {
-      const NL = String.fromCharCode(10);
-      const added: string[] = [];
-      const failed: string[] = [];
-      for (const it of items) {
-        const tid = await addTask({
-          owner_upn: userUpn,
-          title: it.title,
-          responsible: it.responsible,
-          responsible_upn: await resolveResponsible(it.responsible),
-          due: normalizeDue(it.duePhrase),
-          source: "manual",
-        });
-        if (tid) {
-          const when = it.duePhrase ? ` — ${it.duePhrase}` : "";
-          added.push(`#${tid} ${it.title}${when}`);
-        } else {
-          failed.push(it.title);
-        }
-      }
-      if (!added.length) return { intent, reply: "เพิ่มงานไม่สำเร็จครับ ลองใหม่อีกครั้ง" };
-      return {
-        intent,
-        reply:
-          `เพิ่มงานแล้ว ${added.length} รายการครับ
-` +
-          added.map((a) => `• ${a}`).join(NL) +
-          (failed.length ? `
+    const split = splitAddTaskItems(text);
+    const items: AddTaskDraftItem[] = split.length
+      ? split.map((it) => ({ title: it.title, responsible: it.responsible, duePhrase: it.duePhrase }))
+      : [
+          {
+            title: String(params.title || "").trim(),
+            responsible: String(params.responsible || ""),
+            duePhrase: String(params.due ?? ""),
+          },
+        ];
 
-เพิ่มไม่สำเร็จ ${failed.length} รายการ: ${failed.join(", ")}` : ""),
-        data: { count: added.length },
-      };
+    if (!items.length || !items[0].title) {
+      // "ยืนยัน" ลอย ๆ ที่ไม่มีคำถามค้างอยู่ เคยหลุดมาถึงตรงนี้แล้วตอบว่า
+      // "ไม่พบชื่องานที่จะเพิ่ม" ซึ่งอ่านไม่รู้เรื่อง — ถามกลับตรง ๆ ดีกว่า
+      if (/^(?:ยืนยัน|ตกลง|ใช่|โอเค|ok|okay|yes|confirm)$/i.test(text)) {
+        return { intent: "unknown", reply: "ยืนยันเรื่องไหนครับ? ตอนนี้ไม่มีคำถามค้างอยู่" };
+      }
+      return { intent, reply: "ไม่พบชื่องานที่จะเพิ่ม" };
     }
 
-    const title = String(params.title || "").trim();
-    if (!title) return { intent, reply: "ไม่พบชื่องานที่จะเพิ่ม" };
-    const responsible = String(params.responsible || "");
-    const tid = await addTask({
-      owner_upn: userUpn,
-      title,
-      responsible,
-      responsible_upn: await resolveResponsible(responsible),
-      due: normalizeDue(params.due),
-      source: "manual",
-    });
-    return { intent, reply: `เพิ่มงานแล้ว (#${tid}): ${title}`, data: { id: tid } };
+    // ทวนให้ดูก่อนเสมอ แล้วรอผู้ใช้ยืนยัน — ไม่สร้างงานทันทีอีกแล้ว
+    await saveAddTaskDraft(userUpn, items);
+    return {
+      intent: "confirm_add_task",
+      reply: addTaskRecap(items),
+      suggestions: ADD_TASK_CONFIRM_SUGGESTIONS,
+      data: { count: items.length },
+    };
   }
 
   if (intent === "complete_task") {
