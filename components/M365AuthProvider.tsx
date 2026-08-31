@@ -164,6 +164,12 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
+      // WebView ของแอป / เบราว์เซอร์ใน LINE เปิด popup ไม่ได้ ถ้ายังลอง popup ก่อน
+      // MSAL จะค้างรอจน timeout (~60 วิ) แล้วค่อยไป redirect — ข้ามไป redirect เลย
+      if (isEmbeddedBrowser()) {
+        await msalInstance.loginRedirect(loginRequest);
+        return;
+      }
       try {
         const resp = await msalInstance.loginPopup(loginRequest);
         if (resp?.account) {
