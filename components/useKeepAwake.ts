@@ -13,6 +13,13 @@ const AWAKE_KEY = "ktisx_keep_awake";
 type ScreenBridge = {
   setKeepAwake?: (on: boolean) => void;
   setDarkBars?: (dark: boolean) => void;
+  /**
+   * เปิดห้องประชุมด้วยแอป Teams (ไม่มีแอปจึงไปลิงก์) — มีตั้งแต่ APK 3.3
+   *
+   * ต้องเช็กก่อนเรียกเสมอ เพราะหน้าเว็บอัปเดททันทีแต่ APK ต้องลงด้วยมือ
+   * — เคยส่งลิงก์ intent:// ไปให้แอปรุ่นเก่าที่ดักไม่ได้ กดแล้วขึ้น ERR_UNKNOWN_URL_SCHEME
+   */
+  openMeeting?: (url: string) => void;
 };
 
 export function appBridge(): ScreenBridge | null {

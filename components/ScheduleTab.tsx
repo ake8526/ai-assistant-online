@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, MapPin, RefreshCw, Users, Video } from "lucide-react";
 import { useM365Auth } from "@/components/M365AuthProvider";
 import { appBridge } from "@/components/useKeepAwake";
-import { teamsHref } from "@/lib/teamsLink";
 /** นัดหมายหนึ่งรายการจาก /api/calendar/events */
 export type CalEvent = {
   id: string;
@@ -300,11 +299,17 @@ export default function ScheduleTab({
                     )}
                   </div>
                   {e.joinUrl && (
-                    /* เปิดแอป Teams ถ้ามี ไม่มีก็ไปลิงก์ประชุม — teamsHref จัดการให้
-                       target="_blank" ใช้ไม่ได้กับ intent: (WebView เปิดแท็บใหม่ไม่ได้)
-                       จึงเปิดในหน้าเดิมตอนอยู่ในแอป */
+                    /* หน้าเว็บไม่สร้างลิงก์ intent:// เอง — เรียกสะพานของแอปให้เปิดแอป Teams
+                       และเช็กก่อนเสมอว่ามีเมธอดนี้จริง — หน้าเว็บอัปเดทเองทันที แต่ APK
+                       ต้องลงด้วยมือ การส่ง intent:// ไปให้แอปรุ่นเก่าจึงขึ้น ERR_UNKNOWN_URL_SCHEME */
                     <a
-                      href={teamsHref(e.joinUrl, !!appBridge())}
+                      href={e.joinUrl}
+                      onClick={(ev) => {
+                        const open = appBridge()?.openMeeting;
+                        if (!open) return; // นอกแอป/APK เก่า — ใช้ลิงก์ตามปกติ
+                        ev.preventDefault();
+                        open(e.joinUrl);
+                      }}
                       target={appBridge() ? undefined : "_blank"}
                       rel="noreferrer"
                       className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] self-start inline-flex items-center gap-1.5 px-2.5 py-1 text-[12.5px]`}
