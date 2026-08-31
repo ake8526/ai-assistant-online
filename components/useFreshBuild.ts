@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const CHECK_MS = 10 * 60_000;
+/* เช็คถี่พอที่จะเห็น build ใหม่ในไม่กี่นาทีหลัง deploy — เป็นการยิง JSON สั้น ๆ
+   ครั้งเดียวต่อรอบ ถูกกว่าการที่ผู้ใช้ใช้ของเก่าอยู่โดยไม่รู้ตัว */
+const CHECK_MS = 3 * 60_000;
 /** ช่วงต้นอายุของหน้า ถือว่าเพิ่งเปิดแอป — เจอของเก่าให้โหลดใหม่ทันที */
 const STARTUP_MS = 20_000;
 const RELOAD_AT_KEY = "ktisx_fresh_reload_at";

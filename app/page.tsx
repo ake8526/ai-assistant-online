@@ -2,8 +2,10 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  RefreshCw,
   Send,
   Square,
+  X,
   MapPin,
   FileText,
   Folder,
@@ -720,6 +722,8 @@ function AppShell() {
   const build = useFreshBuild();
   const [leaving, setLeaving] = useState(false);
   const [booted, setBooted] = useState(false);
+  /* ปิดป้ายบอกรุ่นใหม่ได้ แต่ผูกกับรหัส build ที่ปิดไป — deploy รอบหน้าป้ายกลับมาเอง */
+  const [hidUpdateFor, setHidUpdateFor] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -933,6 +937,36 @@ function AppShell() {
           </button>
         )}
       </header>
+
+      {/* มีรุ่นใหม่บนเซิร์ฟเวอร์แล้วต้องบอกตรงนี้ ไม่ใช่ปล่อยให้ไปเจอเองในหน้าตั้งค่า
+          โหลดใหม่เองได้เฉพาะจังหวะที่ปลอดภัย (เพิ่งเปิดแอป หรือสลับกลับเข้ามา)
+          ถ้าผู้ใช้กำลังใช้งานอยู่ก็ตัดจบกลางทางไม่ได้ — ได้แค่บอกแล้วให้กดเอง */}
+      {build.stale && hidUpdateFor !== build.live && (
+        <div
+          role="status"
+          className={`${NOTE_SM} ${N_YELLOW} shrink-0 mx-4 mt-3 px-3 py-2 flex items-center gap-2`}
+        >
+          <RefreshCw className="w-4 h-4 shrink-0" />
+          <span className="flex-1 min-w-0 text-[12.5px] leading-snug">
+            มีรุ่นใหม่ของแอปแล้ว
+          </span>
+          <button
+            type="button"
+            onClick={build.refresh}
+            className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] shrink-0 px-2.5 py-1 font-hand text-[14px] font-bold cursor-pointer`}
+          >
+            โหลดใหม่
+          </button>
+          <button
+            type="button"
+            onClick={() => setHidUpdateFor(build.live)}
+            aria-label="ปิดข้อความนี้"
+            className={`${INK_2} shrink-0 p-1 cursor-pointer`}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {tab === "chat" && next && (
         <button
