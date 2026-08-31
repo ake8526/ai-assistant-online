@@ -54,7 +54,7 @@ import { HELP_TOPICS, findHelpTopic, helpMenuFlex, helpMenuText, helpTopicFlex, 
 import { notYetAnswer } from "@/lib/notYet";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
-import { busyRanges, findCommonSlots, formatBusy, freeRangesReply, outsideWorkHours, wantsLunchIncluded, workHoursLabel } from "@/lib/scheduling";
+import { busyRanges, findCommonSlots, formatBusy, freeRangesReply, isWeekendWindow, outsideWorkHours, wantsLunchIncluded, workHoursLabel, workingHoursRemain } from "@/lib/scheduling";
 import {
   addPlace,
   addTask,
@@ -4285,17 +4285,29 @@ export async function runFindMeeting(
             `\nถ้าต้องนัดนอกเวลานี้จริง สร้างนัดเองที่ Outlook ได้เลย`
           : `\n\nช่วง ${fmtHHMM(resolvedAt)} ผ่านไปแล้วหรือมีคนติดครับ — ลองดูตารางว่าง หรือระบุเวลาใหม่ได้`
         : window
-          ? `\n\n${window.label}ยังไม่มีช่วงว่างตรงกัน ${duration} นาทีครับ — ลองพิมพ์ “พรุ่งนี้” หรือวันอื่นได้ครับ`
+          ? isWeekendWindow(window.start, window.end)
+            ? `\n\n${window.label}เป็นวันหยุดครับ 🌤️ ระบบค้นเวลาว่างเฉพาะวันทำการ — ลองวันจันทร์หรือระบุวันเองได้ครับ`
+            : !workingHoursRemain(window.start, window.end)
+              ? `\n\n${window.label}เลยเวลาทำงาน (${workHoursLabel()}) ไปแล้วครับ ⏰` +
+                `\nจึงไม่เหลือช่วงให้เสนอ ไม่ใช่ว่าคิวแน่น — ลองถามเป็นวันถัดไปดูครับ`
+              : `\n\n${window.label}ยังไม่มีช่วงว่างตรงกัน ${duration} นาทีครับ — ลองพิมพ์ “พรุ่งนี้” หรือวันอื่นได้ครับ`
           : "";
     return {
       intent: "find_meeting_time",
       reply: formatBusy(result.busy) + note + hint + `\n(ค้นของ:\n👤 ${who}${dayNote}${bandNote})`,
-      // คำตอบบอกให้ลองพิมพ์ "พรุ่งนี้" หรือ "ช่วงบ่าย" อยู่แล้ว ทำเป็นปุ่มให้กดเลย
-      suggestions: [
-        { label: "📅 พรุ่งนี้", text: "พรุ่งนี้" },
-        { label: "🕑 ช่วงบ่าย", text: "ช่วงบ่าย" },
-        { label: "💬 ช่วยเรื่องอื่น", text: "ช่วยเรื่องอื่น" },
-      ],
+      // ปุ่มต้องตรงกับเหตุผล — วันที่เลิกงานไปแล้ว "ช่วงบ่าย" ก็ผ่านไปแล้วเหมือนกัน
+      suggestions:
+        window && !isWeekendWindow(window.start, window.end) && !workingHoursRemain(window.start, window.end)
+          ? [
+              { label: "📅 พรุ่งนี้", text: "พรุ่งนี้" },
+              { label: "📅 มะรืนนี้", text: "มะรืนนี้" },
+              { label: "💬 ช่วยเรื่องอื่น", text: "ช่วยเรื่องอื่น" },
+            ]
+          : [
+              { label: "📅 พรุ่งนี้", text: "พรุ่งนี้" },
+              { label: "🕑 ช่วงบ่าย", text: "ช่วงบ่าย" },
+              { label: "💬 ช่วยเรื่องอื่น", text: "ช่วยเรื่องอื่น" },
+            ],
       meeting: meetingBase(),
     };
   }

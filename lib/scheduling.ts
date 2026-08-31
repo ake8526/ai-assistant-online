@@ -400,7 +400,7 @@ export async function busyRanges(
 }
 
 /** Every calendar day this window touches falls on a weekend. */
-function isWeekendWindow(start: Date, end: Date): boolean {
+export function isWeekendWindow(start: Date, end: Date): boolean {
   for (let d = startOfDay(start); d <= end; d = addDays(d, 1)) {
     const dow = d.getUTCDay();
     if (dow >= 1 && dow <= 5) return false;
@@ -424,7 +424,7 @@ function dayLabel(start: Date, end: Date, label: string): string {
 }
 
 /** Any working slot left in this window once the past is dropped. */
-function workingHoursRemain(start: Date, end: Date): boolean {
+export function workingHoursRemain(start: Date, end: Date): boolean {
   const now = nowWall();
   let slot = start < now ? new Date(now) : new Date(start);
   slot.setUTCMinutes(0, 0, 0);
