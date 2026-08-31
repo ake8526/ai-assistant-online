@@ -1,11 +1,44 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { Send, Loader2, MapPin, FileText, Folder, Settings as SettingsIcon, Eraser } from "lucide-react";
+import {
+  Send,
+  Loader2,
+  MapPin,
+  FileText,
+  Folder,
+  Eraser,
+  MessageSquare,
+  CalendarDays,
+  DoorOpen,
+  SlidersHorizontal,
+  ArrowRight,
+} from "lucide-react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } from "@/lib/chatMemory";
 import { SLASH_COMMANDS, isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText } from "@/lib/slashCommands";
+import CalendarTab from "@/components/CalendarTab";
+import RoomsTab from "@/components/RoomsTab";
+import SettingsTab from "@/components/SettingsTab";
+import {
+  AssistantFace,
+  authedGet,
+  BOARD,
+  CHIP_TINTS,
+  FOLD,
+  INK_2,
+  INK_3,
+  MicrosoftMark,
+  N_BLUE,
+  N_GREEN,
+  N_ORANGE,
+  N_PINK,
+  N_PURPLE,
+  N_YELLOW,
+  NOTE,
+  NOTE_SM,
+  PRESS,
+} from "@/components/noteStyles";
 
 type Slot = { start: string; end: string; label: string };
 type Choice = { mail?: string; displayName?: string; period?: string; event_id?: string; label?: string; index?: number };
@@ -40,57 +73,6 @@ const SUGGESTIONS = [
   "/นัดพรุ่งนี้",
   "/ตั้งค่าข่าว",
 ];
-
-/* ---------- ดีไซน์โน้ตแปะกระดาน ----------
-   สีอยู่ใน "แผ่นโน้ต" ขอบกับเงาเป็นหมึกสีเดียวกันหมด เงาแข็งไม่เบลอเหมือนกระดาษซ้อน */
-const BOARD = "bg-[#f1efe9] text-[#232122] font-note";
-const NOTE = "border-2 border-[#232122] rounded-[14px] shadow-[3px_3px_0_#232122]";
-const NOTE_SM = "border-2 border-[#232122] rounded-[11px] shadow-[2px_2px_0_#232122]";
-/* มุมพับขวาบน */
-const FOLD =
-  "relative rounded-tr-none before:content-[''] before:absolute before:-top-0.5 before:-right-0.5 " +
-  "before:w-5 before:h-5 before:bg-[#f1efe9] before:border-l-2 before:border-b-2 " +
-  "before:border-[#232122] before:rounded-bl-[5px]";
-/* กดแล้วยุบลงไปทับเงา เหมือนกดกระดาษจริง */
-const PRESS = "active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-transform";
-
-const N_YELLOW = "bg-[#fef2c0]";
-const N_BLUE = "bg-[#dcebfe]";
-const N_GREEN = "bg-[#d6f5e3]";
-const N_PINK = "bg-[#ffdee7]";
-const N_PURPLE = "bg-[#eae1ff]";
-const N_ORANGE = "bg-[#ffe7ce]";
-
-/* สีโน้ตของปุ่มคำสั่งด่วน ไล่วนไปตามลำดับ */
-const CHIP_TINTS = [N_BLUE, N_GREEN, N_PURPLE, N_PINK, N_ORANGE];
-
-function MicrosoftMark() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 21 21" aria-hidden="true" className="shrink-0">
-      <rect x="1" y="1" width="9" height="9" rx="1" fill="#f25022" />
-      <rect x="11" y="1" width="9" height="9" rx="1" fill="#7fba00" />
-      <rect x="1" y="11" width="9" height="9" rx="1" fill="#00a4ef" />
-      <rect x="11" y="11" width="9" height="9" rx="1" fill="#ffb900" />
-    </svg>
-  );
-}
-
-/* หน้ายิ้มของผู้ช่วย — วาดเส้นเดียวกับไอคอนในแอป */
-function AssistantFace({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 32 32"
-      aria-hidden="true"
-      className={`shrink-0 border-2 border-[#232122] rounded-[10px] ${N_YELLOW} p-0.5 -rotate-3 ${className}`}
-    >
-      <g fill="none" stroke="#232122" strokeWidth="2" strokeLinecap="round">
-        <path d="M11.4 15 L11.4 17" />
-        <path d="M20.6 14.9 L20.6 16.9" />
-        <path d="M12 21.6 C14.4 24.2 18.4 24.2 20.4 21.4" />
-      </g>
-    </svg>
-  );
-}
 
 function LoginGate() {
   const { login } = useM365Auth();
@@ -132,8 +114,8 @@ function LoginGate() {
   );
 }
 
-function ChatContent() {
-  const { account, getToken, getGraphToken } = useM365Auth();
+function AssistantTab({ seed }: { seed?: string }) {
+  const { getToken, getGraphToken } = useM365Auth();
   const [msgs, setMsgs] = useState<Msg[]>([
     { role: "bot", text: "สวัสดีครับ 👋 ผมคือผู้ช่วย AI ของคุณ\nถามเรื่องนัดประชุม งานค้าง เวลาว่าง หรือสั่งนัดประชุมได้เลยครับ" },
   ]);
@@ -156,6 +138,7 @@ function ChatContent() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
+
 
   const addMsg = (m: Msg) => setMsgs((prev) => [...prev, m]);
 
@@ -310,6 +293,17 @@ function ChatContent() {
     setBusy(false);
   };
 
+  /* คำสั่งที่ถูกส่งมาจากแท็บอื่น — ยิงเข้าแชทครั้งเดียวต่อคำสั่ง */
+  const seededRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (seed && seededRef.current !== seed) {
+      seededRef.current = seed;
+      void send(seed);
+    }
+    // send เปลี่ยนทุก render โดยตั้งใจ — ผูกกับ seed อย่างเดียวพอ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed]);
+
   const pickSlot = async (slot: Slot, intent?: string) => {
     if (busy) return;
     const ctx = ctxRef.current;
@@ -410,28 +404,7 @@ function ChatContent() {
   };
 
   return (
-    <div className={`min-h-screen ${BOARD} flex flex-col relative`}>
-      <header className="px-4 py-3 border-b-2 border-[#232122] bg-white flex items-center gap-3">
-        <AssistantFace className="w-9 h-9" />
-        <div className="flex-1 min-w-0">
-          <div className="font-marker text-[16px] leading-tight">ผู้ช่วยงาน KTIS X</div>
-          <div className="font-hand text-[14px] text-[#6a6560] truncate">{account?.username}</div>
-        </div>
-        <Link
-          href="/ai-office"
-          className={`${NOTE_SM} ${PRESS} ${N_GREEN} px-2.5 py-1 font-hand text-[15px] font-bold -rotate-1`}
-        >
-          AI Office
-        </Link>
-        <Link
-          href="/settings"
-          aria-label="ตั้งค่า"
-          className={`${NOTE_SM} ${PRESS} bg-white grid place-items-center w-9 h-9 rotate-1`}
-        >
-          <SettingsIcon className="w-4 h-4" />
-        </Link>
-      </header>
-
+    <div className="flex-1 min-h-0 flex flex-col relative">
       <main className="flex-1 overflow-y-auto p-4 space-y-4 max-w-2xl w-full mx-auto">
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === "me" ? "justify-end" : "justify-start gap-2 items-end"}`}>
@@ -556,7 +529,7 @@ function ChatContent() {
         onClick={clearMemory}
         disabled={busy}
         title="ล้างความจำ AI"
-        className={`${NOTE_SM} ${PRESS} ${N_PINK} fixed bottom-28 right-4 z-20 flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-semibold disabled:opacity-50 -rotate-2 cursor-pointer`}
+        className={`${NOTE_SM} ${PRESS} ${N_PINK} absolute bottom-[112px] right-4 z-20 flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-semibold disabled:opacity-50 -rotate-2 cursor-pointer`}
       >
         <Eraser className="w-4 h-4" /> ล้างความจำ
       </button>
@@ -564,9 +537,244 @@ function ChatContent() {
   );
 }
 
+const INTRO_KEY = "ktisx_intro_seen";
+
+const INTRO_SLIDES = [
+  {
+    tint: N_BLUE,
+    title: "สั่งงานเป็นภาษาคน",
+    body: "พิมพ์อย่างที่คุยกับเลขา — “พฤหัสว่างไหม”, “จองห้องบ่ายสอง”, “สรุปวาระประชุมเช้า” ไม่ต้องจำคำสั่ง",
+  },
+  {
+    tint: N_GREEN,
+    title: "ตารางจริงจาก Microsoft 365",
+    body: "ปฏิทิน เวลาว่าง และสถานะห้องประชุม อ่านจาก Outlook ของคุณโดยตรง เห็นเท่าที่สิทธิ์คุณเห็น",
+  },
+  {
+    tint: N_ORANGE,
+    title: "ทำงานต่อได้ทุกที่",
+    body: "สั่งจากแอป จากเว็บ หรือจาก LINE ก็เรื่องเดียวกัน ผู้ช่วยจำบริบทที่คุยไว้ให้",
+  },
+];
+
+function IntroGate({ onDone }: { onDone: () => void }) {
+  const [i, setI] = useState(0);
+  const last = i === INTRO_SLIDES.length - 1;
+  const slide = INTRO_SLIDES[i];
+
+  return (
+    <div className={`min-h-screen ${BOARD} flex flex-col items-center justify-center p-6`}>
+      <div className="w-full max-w-sm flex flex-col items-center gap-5">
+        <div className={`${NOTE_SM} ${N_PURPLE} px-3 py-0.5 -rotate-2 font-hand text-[15px] font-bold`}>
+          KTIS X ผู้ช่วยงาน
+        </div>
+
+        <div className={`${NOTE} ${FOLD} ${slide.tint} w-full p-6 pt-7 flex flex-col items-center gap-3 -rotate-[0.6deg]`}>
+          <AssistantFace className="w-16 h-16" />
+          <h1 className="font-marker text-[20px] leading-snug text-center">{slide.title}</h1>
+          <p className={`text-[13.5px] ${INK_2} text-center leading-relaxed`}>{slide.body}</p>
+        </div>
+
+        <div className="flex items-center gap-2" role="tablist" aria-label="หน้าแนะนำ">
+          {INTRO_SLIDES.map((_, j) => (
+            <button
+              key={j}
+              onClick={() => setI(j)}
+              aria-label={`หน้าที่ ${j + 1}`}
+              aria-selected={j === i}
+              role="tab"
+              className={`border-2 border-[#232122] cursor-pointer ${
+                j === i ? "w-6 h-3 rounded-[5px] bg-[#232122]" : "w-3 h-3 rounded-full bg-white"
+              }`}
+            />
+          ))}
+        </div>
+
+        <button
+          onClick={() => (last ? onDone() : setI(i + 1))}
+          className={`${NOTE} ${PRESS} ${N_YELLOW} w-full px-5 py-3.5 flex items-center justify-center gap-2 font-semibold text-[14.5px] rotate-[0.5deg] cursor-pointer`}
+        >
+          {last ? "เริ่มใช้งาน" : "ถัดไป"} <ArrowRight className="w-4 h-4" />
+        </button>
+
+        <button
+          onClick={onDone}
+          className={`font-hand text-[16px] ${INK_3} underline decoration-wavy underline-offset-4 cursor-pointer`}
+        >
+          ข้ามไปเลย
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type TabKey = "chat" | "cal" | "room" | "set";
+
+const TABS: { key: TabKey; label: string; tint: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  { key: "chat", label: "ผู้ช่วย AI", tint: N_BLUE, Icon: MessageSquare },
+  { key: "cal", label: "ปฏิทินงาน", tint: N_PURPLE, Icon: CalendarDays },
+  { key: "room", label: "ห้องประชุม", tint: N_GREEN, Icon: DoorOpen },
+  { key: "set", label: "ตั้งค่า", tint: N_ORANGE, Icon: SlidersHorizontal },
+];
+
+type NextUp = {
+  subject: string;
+  start: string;
+  end: string;
+  location: string;
+  attendees: number;
+} | null;
+
+/** "2026-09-01T13:30:00.0000000" — เวลาไทยตรง ๆ ไม่ต้องแปลงโซน */
+function wallDate(iso: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || "");
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+}
+
+/**
+ * นัดคนละวันต้องบอกวันด้วย ไม่งั้นขึ้นแค่ "13:30" แล้วอ่านเหมือนเป็นวันนี้
+ * และนัดที่ "กำลังประชุมอยู่" คือสิ่งที่อยากเห็นที่สุด ไม่ใช่นัดพรุ่งนี้
+ */
+function whenLabel(e: NonNullable<NextUp>): { time: string; note: string } {
+  const start = wallDate(e.start);
+  const end = wallDate(e.end);
+  const time = e.start.slice(11, 16);
+  if (!start) return { time, note: "" };
+
+  const now = new Date();
+  const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const dayDiff = Math.round((midnight(start) - midnight(now)) / 86_400_000);
+
+  if (end && start <= now && now < end) return { time, note: "กำลังประชุมอยู่" };
+  if (dayDiff === 0) return { time, note: "วันนี้" };
+  if (dayDiff === 1) return { time, note: "พรุ่งนี้" };
+  return {
+    time,
+    note: start.toLocaleDateString("th-TH", { weekday: "short", day: "numeric", month: "short" }),
+  };
+}
+
+function AppShell() {
+  const { account, getToken, getGraphToken } = useM365Auth();
+  const [tab, setTab] = useState<TabKey>("chat");
+  const [seed, setSeed] = useState<string | undefined>(undefined);
+  const [next, setNext] = useState<NextUp>(null);
+
+  /* นัดถัดไปของวันนี้ — โน้ตใบบนสุดของแท็บผู้ช่วย */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await authedGet<{ events?: NextUp[] }>(
+          "/api/calendar/events",
+          getToken,
+          getGraphToken
+        );
+        if (!alive) return;
+        // นับนัดที่ยังไม่จบว่ายังน่าสนใจ — ที่กำลังประชุมอยู่ต้องมาก่อนนัดพรุ่งนี้
+        const now = new Date();
+        const upcoming = (res.events || [])
+          .filter((e): e is NonNullable<NextUp> => {
+            const end = e && wallDate(e.end);
+            return !!end && end > now;
+          })
+          .sort((a, b) => a.start.localeCompare(b.start));
+        setNext(upcoming[0] || null);
+      } catch {
+        /* ไม่มีนัดถัดไปก็ไม่ต้องขึ้นโน้ต */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [getToken, getGraphToken]);
+
+  const ask = (text: string) => {
+    setSeed(text);
+    setTab("chat");
+  };
+
+  return (
+    <div className={`min-h-screen ${BOARD} flex flex-col`}>
+      <header className="px-4 py-3 border-b-2 border-[#232122] bg-white flex items-center gap-3 shrink-0">
+        <AssistantFace className="w-9 h-9" />
+        <div className="flex-1 min-w-0">
+          <div className="font-marker text-[16px] leading-tight">ผู้ช่วยงาน KTIS X</div>
+          <div className={`font-hand text-[14px] truncate ${INK_2}`}>{account?.username}</div>
+        </div>
+      </header>
+
+      {tab === "chat" && next && (
+        <button
+          onClick={() => setTab("cal")}
+          className={`${NOTE} ${FOLD} ${N_BLUE} ${PRESS} mx-4 mt-4 px-4 py-3 flex items-center gap-3 text-left -rotate-[0.6deg] cursor-pointer`}
+        >
+          <span className="shrink-0 text-center">
+            <span className="block font-hand text-[20px] font-bold leading-none">
+              {whenLabel(next).time}
+            </span>
+            <span className={`block font-hand text-[14px] ${INK_2}`}>{whenLabel(next).note}</span>
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-semibold text-[14px] leading-snug truncate">{next.subject}</span>
+            <span className={`block text-[12px] truncate ${INK_2}`}>
+              {[next.location, next.attendees ? `${next.attendees} ท่าน` : ""].filter(Boolean).join(" · ") ||
+                "นัดถัดไปของคุณ"}
+            </span>
+          </span>
+          <span className={`font-hand text-[15px] shrink-0 ${INK_3}`}>ดูปฏิทิน →</span>
+        </button>
+      )}
+
+      {tab === "chat" && <AssistantTab seed={seed} />}
+      {tab === "cal" && <CalendarTab />}
+      {tab === "room" && <RoomsTab onAsk={ask} />}
+      {tab === "set" && <SettingsTab />}
+
+      <nav className="grid grid-cols-4 border-t-2 border-[#232122] bg-white px-1.5 pt-2 pb-2.5 shrink-0">
+        {TABS.map(({ key, label, tint, Icon }) => {
+          const on = tab === key;
+          return (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              aria-current={on ? "page" : undefined}
+              className={`flex flex-col items-center gap-1 py-0.5 cursor-pointer ${on ? "" : INK_3}`}
+            >
+              <span
+                className={`grid place-items-center w-11 h-[30px] rounded-[10px] border-2 transition-transform ${
+                  on
+                    ? `${tint} border-[#232122] shadow-[2px_2px_0_#232122] -rotate-3`
+                    : "border-transparent"
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+              </span>
+              <span className={`text-[11px] ${on ? "font-semibold" : ""}`}>{label}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+  );
+}
+
 function HomeGate() {
   const { ready, isAuthenticated } = useM365Auth();
-  if (!ready) {
+  const [introDone, setIntroDone] = useState<boolean | null>(null);
+
+  // localStorage อ่านได้แค่บนเบราว์เซอร์ จะอ่านตอน render ไม่ได้เพราะ SSR จะได้ค่าคนละอย่าง
+  // แล้ว hydrate ไม่ตรงกัน — set ครั้งเดียวตอน mount คือทางที่ถูกต้องของเคสนี้
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIntroDone(localStorage.getItem(INTRO_KEY) === "1");
+    } catch {
+      setIntroDone(true);
+    }
+  }, []);
+
+  if (!ready || introDone === null) {
     return (
       <div className={`min-h-screen ${BOARD} flex items-center justify-center`}>
         <div className={`${NOTE} ${N_YELLOW} px-5 py-3 flex items-center gap-2.5 -rotate-1`}>
@@ -576,8 +784,24 @@ function HomeGate() {
       </div>
     );
   }
+
+  if (!introDone) {
+    return (
+      <IntroGate
+        onDone={() => {
+          try {
+            localStorage.setItem(INTRO_KEY, "1");
+          } catch {
+            /* โหมดส่วนตัวเขียนไม่ได้ ก็แค่เห็น intro ใหม่รอบหน้า */
+          }
+          setIntroDone(true);
+        }}
+      />
+    );
+  }
+
   if (!isAuthenticated) return <LoginGate />;
-  return <ChatContent />;
+  return <AppShell />;
 }
 
 export default function Home() {
