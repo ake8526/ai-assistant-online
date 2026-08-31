@@ -5,29 +5,29 @@
  * สีจึงเยอะได้โดยไม่ตีกัน เงาเป็นเงาแข็งไม่เบลอเหมือนกระดาษซ้อนกันจริง
  */
 
-export const BOARD = "bg-[#f1efe9] text-[#232122] font-note";
-export const NOTE = "border-2 border-[#232122] rounded-[14px] shadow-[3px_3px_0_#232122]";
-export const NOTE_SM = "border-2 border-[#232122] rounded-[11px] shadow-[2px_2px_0_#232122]";
+export const BOARD = "bg-[var(--nb-board)] text-[var(--nb-ink)] font-note";
+export const NOTE = "border-2 border-[var(--nb-ink)] rounded-[14px] shadow-[3px_3px_0_var(--nb-ink)]";
+export const NOTE_SM = "border-2 border-[var(--nb-ink)] rounded-[11px] shadow-[2px_2px_0_var(--nb-ink)]";
 
 /** มุมพับขวาบน — ต้องใช้กับ element ที่พื้นหลังด้านหลังเป็นสีกระดาน */
 export const FOLD =
   "relative rounded-tr-none before:content-[''] before:absolute before:-top-0.5 before:-right-0.5 " +
-  "before:w-5 before:h-5 before:bg-[#f1efe9] before:border-l-2 before:border-b-2 " +
-  "before:border-[#232122] before:rounded-bl-[5px]";
+  "before:w-5 before:h-5 before:bg-[var(--nb-board)] before:border-l-2 before:border-b-2 " +
+  "before:border-[var(--nb-ink)] before:rounded-bl-[5px]";
 
 /** กดแล้วยุบลงไปทับเงา เหมือนกดกระดาษจริง */
 export const PRESS =
   "active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-transform";
 
-export const N_YELLOW = "bg-[#fef2c0]";
-export const N_BLUE = "bg-[#dcebfe]";
-export const N_GREEN = "bg-[#d6f5e3]";
-export const N_PINK = "bg-[#ffdee7]";
-export const N_PURPLE = "bg-[#eae1ff]";
-export const N_ORANGE = "bg-[#ffe7ce]";
+export const N_YELLOW = "bg-[var(--nb-yellow)]";
+export const N_BLUE = "bg-[var(--nb-blue)]";
+export const N_GREEN = "bg-[var(--nb-green)]";
+export const N_PINK = "bg-[var(--nb-pink)]";
+export const N_PURPLE = "bg-[var(--nb-purple)]";
+export const N_ORANGE = "bg-[var(--nb-orange)]";
 
-export const INK_2 = "text-[#6a6560]";
-export const INK_3 = "text-[#9c968e]";
+export const INK_2 = "text-[var(--nb-ink-2)]";
+export const INK_3 = "text-[var(--nb-ink-3)]";
 
 export const CHIP_TINTS = [N_BLUE, N_GREEN, N_PURPLE, N_PINK, N_ORANGE];
 
@@ -48,9 +48,9 @@ export function AssistantFace({ className = "" }: { className?: string }) {
     <svg
       viewBox="0 0 32 32"
       aria-hidden="true"
-      className={`shrink-0 border-2 border-[#232122] rounded-[10px] ${N_YELLOW} p-0.5 -rotate-3 ${className}`}
+      className={`shrink-0 border-2 border-[var(--nb-ink)] rounded-[10px] ${N_YELLOW} p-0.5 -rotate-3 ${className}`}
     >
-      <g fill="none" stroke="#232122" strokeWidth="2" strokeLinecap="round">
+      <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M11.4 15 L11.4 17" />
         <path d="M20.6 14.9 L20.6 16.9" />
         <path d="M12 21.6 C14.4 24.2 18.4 24.2 20.4 21.4" />

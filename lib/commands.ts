@@ -20,6 +20,7 @@ import { after } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { normalizeDue, resolveResponsible, ingestActionItems } from "@/lib/followup";
 import { splitAddTaskItems } from "@/lib/taskSplit";
+import { splitTaskListAside } from "@/lib/askSplit";
 import { normalizeThaiTypo, detectWrongKeyboard, suggestCorrectedNick } from "@/lib/keyboard";
 import { createHash } from "crypto";
 import {
@@ -581,6 +582,8 @@ function nameFromCandidate(raw: string): string {
   const wordy = s.split(/\s+/).filter(Boolean).length > 1 || s.replace(/\s+/g, "").length > 12;
   if (!wordy && !REQUEST_WORDS.test(s)) {
     if (isCalendarTalk(s)) return "";
+  // ไม่มีใครชื่อ "งานที่ ตาม" — เศษของวลีเรื่องงานที่เหลือจากการปอกคำ ไม่ใช่ชื่อคน
+  if (/(?:งาน|ติดตาม|ค้าง|รายการ)/.test(s)) return "";
     return s;
   }
   const residue = s.replace(CALENDAR_TALK, " ").replace(/\s+/g, " ").trim();
@@ -4286,6 +4289,20 @@ export async function handleCommand(
   lite = false
 ): Promise<CommandResult> {
   try {
+    // "ตารางวันนี้ แล้วดูงานที่ต้องติดตามด้วย" — สองคำสั่งในข้อความเดียว
+    // ตัวจับวลีรายการงานผูกกับข้อความทั้งก้อน จึงไม่ match แล้วเรื่องไปตกที่
+    // เส้นทางหาตารางของคน ซึ่งเอา "งานที่ต้องติดตาม" ไปตีเป็นชื่อคน
+    const aside = splitTaskListAside(text);
+    if (aside) {
+      const main = await handle(userUpn, aside.rest, context, lite);
+      const tasks = await handle(userUpn, "ดูงานที่ต้องติดตาม", context, lite);
+      // LINE ส่งได้ข้อความเดียว + การ์ดเดียว ใช้การ์ดของรายการงานเพราะกดปิดงานได้
+      // ส่วนคำตอบเรื่องตารางเป็นข้อความอยู่แล้ว จึงเอามาต่อหัวไว้
+      const NL2 = String.fromCharCode(10, 10);
+      const joined = [main.reply, tasks.reply].filter((r) => r && r.trim()).join(NL2);
+      return { ...main, ...tasks, reply: joined || tasks.reply || main.reply };
+    }
+
     return await handle(userUpn, text, context, lite);
   } catch (e) {
     console.error("[handleCommand]", String(e).slice(0, 300));

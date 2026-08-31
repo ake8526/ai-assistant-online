@@ -208,20 +208,20 @@ export default function ScheduleTab({
               key={d.key}
               onClick={() => setSel(i)}
               aria-pressed={on}
-              className={`border-2 border-[#232122] rounded-[10px] py-1.5 flex flex-col items-center gap-0.5 cursor-pointer ${PRESS} ${
-                on ? `${N_YELLOW} shadow-[2px_2px_0_#232122] -rotate-2` : "bg-white"
+              className={`border-2 border-[var(--nb-ink)] rounded-[10px] py-1.5 flex flex-col items-center gap-0.5 cursor-pointer ${PRESS} ${
+                on ? `${N_YELLOW} shadow-[2px_2px_0_var(--nb-ink)] -rotate-2` : "bg-[var(--nb-surface)]"
               }`}
             >
               <span className={`text-[10.5px] ${on ? "" : INK_2}`}>{d.dow}</span>
               <b className="font-hand text-[17px] leading-none">{d.dom}</b>
-              <i className={`w-[5px] h-[5px] rounded-full ${has ? "bg-[#232122]" : "bg-transparent"}`} />
+              <i className={`w-[5px] h-[5px] rounded-full ${has ? "bg-[var(--nb-ink)]" : "bg-transparent"}`} />
             </button>
           );
         })}
       </div>
 
       {/* สลับดูนัดหมาย / ห้องว่าง ของวันเดียวกัน */}
-      <div className="flex border-2 border-[#232122] rounded-[12px] overflow-hidden shadow-[2px_2px_0_#232122]">
+      <div className="flex border-2 border-[var(--nb-ink)] rounded-[12px] overflow-hidden shadow-[2px_2px_0_var(--nb-ink)]">
         {(
           [
             ["ev", "นัดหมาย", String(dayEvents.length)],
@@ -232,8 +232,8 @@ export default function ScheduleTab({
             key={v}
             onClick={() => setView(v)}
             aria-pressed={view === v}
-            className={`flex-1 py-1.5 text-[12.5px] cursor-pointer ${i === 0 ? "border-r-2 border-[#232122]" : ""} ${
-              view === v ? `${N_BLUE} font-semibold` : "bg-white"
+            className={`flex-1 py-1.5 text-[12.5px] cursor-pointer ${i === 0 ? "border-r-2 border-[var(--nb-ink)]" : ""} ${
+              view === v ? `${N_BLUE} font-semibold` : "bg-[var(--nb-surface)]"
             }`}
           >
             {label} {count && <span className="font-hand">{count}</span>}
@@ -252,7 +252,7 @@ export default function ScheduleTab({
               {errEv}
               <button
                 onClick={reloadEvents}
-                className={`${NOTE_SM} ${PRESS} bg-white mt-3 inline-flex items-center gap-1.5 px-3 py-1 text-[13px] font-note cursor-pointer`}
+                className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] mt-3 inline-flex items-center gap-1.5 px-3 py-1 text-[13px] font-note cursor-pointer`}
               >
                 <RefreshCw className="w-3.5 h-3.5" /> ลองอีกครั้ง
               </button>
@@ -293,7 +293,7 @@ export default function ScheduleTab({
                       href={e.joinUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className={`${NOTE_SM} ${PRESS} bg-white self-start inline-flex items-center gap-1.5 px-2.5 py-1 text-[12.5px]`}
+                      className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] self-start inline-flex items-center gap-1.5 px-2.5 py-1 text-[12.5px]`}
                     >
                       <Video className="w-3.5 h-3.5" /> เข้าประชุม Teams
                     </a>
@@ -319,7 +319,7 @@ export default function ScheduleTab({
                   setLoadedFor("");
                   setErrRm("");
                 }}
-                className={`${NOTE_SM} ${PRESS} bg-white mt-3 inline-flex items-center gap-1.5 px-3 py-1 text-[13px] font-note cursor-pointer`}
+                className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] mt-3 inline-flex items-center gap-1.5 px-3 py-1 text-[13px] font-note cursor-pointer`}
               >
                 <RefreshCw className="w-3.5 h-3.5" /> ลองอีกครั้ง
               </button>
@@ -343,7 +343,7 @@ export default function ScheduleTab({
                     <div className="font-semibold text-[14.5px] leading-snug">{r.name}</div>
                     <div className={`text-[12px] truncate ${INK_2}`}>{r.email}</div>
                   </div>
-                  <span className={`${NOTE_SM} bg-white px-2 py-0.5 font-hand text-[15px] font-bold shrink-0`}>
+                  <span className={`${NOTE_SM} bg-[var(--nb-surface)] px-2 py-0.5 font-hand text-[15px] font-bold shrink-0`}>
                     {r.free ? "ว่าง" : "ไม่ว่าง"}
                   </span>
                 </div>
@@ -355,14 +355,14 @@ export default function ScheduleTab({
                     </span>
                     <span className="font-hand text-[16px] font-bold">{r.loadPct}%</span>
                   </div>
-                  <div className="h-[13px] mt-1.5 border-2 border-[#232122] rounded-[8px] bg-white overflow-hidden">
+                  <div className="h-[13px] mt-1.5 border-2 border-[var(--nb-ink)] rounded-[8px] bg-[var(--nb-surface)] overflow-hidden">
                     <div
                       className="h-full transition-[width] duration-700"
                       style={{
                         width: `${r.loadPct}%`,
-                        borderRight: r.loadPct ? "2px solid #232122" : "none",
+                        borderRight: r.loadPct ? "2px solid var(--nb-ink)" : "none",
                         backgroundImage:
-                          "repeating-linear-gradient(45deg,#232122 0 2px,transparent 2px 7px)",
+                          "repeating-linear-gradient(45deg,var(--nb-ink) 0 2px,transparent 2px 7px)",
                       }}
                     />
                   </div>
@@ -373,7 +373,7 @@ export default function ScheduleTab({
                 ) : (
                   <button
                     onClick={() => onAsk(`จอง${r.name} ${dayLabel}`)}
-                    className={`${NOTE_SM} ${PRESS} bg-white self-start px-3 py-1.5 text-[13px] cursor-pointer`}
+                    className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] self-start px-3 py-1.5 text-[13px] cursor-pointer`}
                   >
                     จองห้องนี้
                   </button>

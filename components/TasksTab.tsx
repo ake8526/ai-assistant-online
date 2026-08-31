@@ -124,7 +124,7 @@ export default function TasksTab() {
         <button
           onClick={reload}
           disabled={busy}
-          className={`${NOTE_SM} ${PRESS} bg-white px-2.5 py-1 font-hand text-[15px] font-bold disabled:opacity-50 cursor-pointer`}
+          className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] px-2.5 py-1 font-hand text-[15px] font-bold disabled:opacity-50 cursor-pointer`}
         >
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "โหลดใหม่"}
         </button>
@@ -144,7 +144,7 @@ export default function TasksTab() {
           {err}
           <button
             onClick={reload}
-            className={`${NOTE_SM} ${PRESS} bg-white mt-3 inline-flex items-center gap-1.5 px-3 py-1 text-[13px] font-note cursor-pointer`}
+            className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] mt-3 inline-flex items-center gap-1.5 px-3 py-1 text-[13px] font-note cursor-pointer`}
           >
             <RefreshCw className="w-3.5 h-3.5" /> ลองอีกครั้ง
           </button>
@@ -161,7 +161,7 @@ export default function TasksTab() {
           return (
             <div
               key={t.id}
-              className={`${NOTE} ${FOLD} ${info.tint || "bg-white"} p-3.5 flex flex-col gap-2.5 ${
+              className={`${NOTE} ${FOLD} ${info.tint || "bg-[var(--nb-surface)]"} p-3.5 flex flex-col gap-2.5 ${
                 i % 2 ? "rotate-[0.4deg]" : "-rotate-[0.4deg]"
               }`}
             >
@@ -173,7 +173,7 @@ export default function TasksTab() {
                     {t.responsible ? ` · ${t.responsible}` : ""}
                   </div>
                 </div>
-                <span className={`${NOTE_SM} bg-white px-2 py-0.5 font-hand text-[14.5px] font-bold shrink-0`}>
+                <span className={`${NOTE_SM} bg-[var(--nb-surface)] px-2 py-0.5 font-hand text-[14.5px] font-bold shrink-0`}>
                   {info.tag}
                 </span>
               </div>
@@ -202,7 +202,7 @@ export default function TasksTab() {
               ) : (
                 <button
                   onClick={() => setConfirming(t.id)}
-                  className={`${NOTE_SM} ${PRESS} bg-white self-start px-3 py-1.5 text-[13px] cursor-pointer`}
+                  className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] self-start px-3 py-1.5 text-[13px] cursor-pointer`}
                 >
                   ปิดงานนี้
                 </button>

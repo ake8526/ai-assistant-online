@@ -17,7 +17,9 @@ import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } f
 import { SLASH_COMMANDS, isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText } from "@/lib/slashCommands";
 import ScheduleTab, { type CalEvent, type Room } from "@/components/ScheduleTab";
 import TasksTab from "@/components/TasksTab";
-import SettingsBoard, { type SettingsData } from "@/components/SettingsBoard";
+import SettingsBoard, { type Health, type NotifyCfg, type SettingsData } from "@/components/SettingsBoard";
+import { useKeepAwake } from "@/components/useKeepAwake";
+import { useTheme } from "@/components/useTheme";
 import SplashScreen, { SPLASH_START, type SplashSteps } from "@/components/SplashScreen";
 import {
   AssistantFace,
@@ -110,18 +112,18 @@ function LoginGate() {
 
         <button
           onClick={() => login()}
-          className={`${N_BLUE} ${PRESS} w-full mt-1.5 px-[18px] py-[15px] flex items-center gap-3 text-left border-2 border-[#232122] rounded-[14px] shadow-[5px_5px_0_#232122] -rotate-[0.5deg] cursor-pointer`}
+          className={`${N_BLUE} ${PRESS} w-full mt-1.5 px-[18px] py-[15px] flex items-center gap-3 text-left border-2 border-[var(--nb-ink)] rounded-[14px] shadow-[5px_5px_0_var(--nb-ink)] -rotate-[0.5deg] cursor-pointer`}
         >
           <MicrosoftMark />
           <span className="flex-1 font-semibold text-[14.5px]">เข้าสู่ระบบด้วย Microsoft 365</span>
-          <span className="grid place-items-center w-7 h-7 border-2 border-[#232122] rounded-full text-[15px] leading-none shrink-0">
+          <span className="grid place-items-center w-7 h-7 border-2 border-[var(--nb-ink)] rounded-full text-[15px] leading-none shrink-0">
             →
           </span>
         </button>
 
         <div className="mt-4 text-center">
           <p className={`flex items-center justify-center gap-1.5 text-[12px] ${INK_3}`}>
-            <span className="w-[7px] h-[7px] rounded-full bg-[#2f7d54] shrink-0" />
+            <span className="w-[7px] h-[7px] rounded-full bg-[var(--nb-ok)] shrink-0" />
             Microsoft Entra ID SSO · ไม่เก็บรหัสไว้ในแอป
           </p>
           <p className={`font-hand text-[15px] ${INK_3} mt-1`}>KTIS X · v2.7</p>
@@ -428,7 +430,7 @@ function AssistantTab({ seed }: { seed?: string }) {
             {m.role === "bot" && <AssistantFace className="w-8 h-8" />}
             <div
               className={`${NOTE} max-w-[82%] px-4 py-3 text-[14px] whitespace-pre-wrap leading-relaxed ${
-                m.role === "me" ? `${N_YELLOW} rotate-[0.4deg]` : `bg-white ${FOLD} -rotate-[0.4deg]`
+                m.role === "me" ? `${N_YELLOW} rotate-[0.4deg]` : `bg-[var(--nb-surface)] ${FOLD} -rotate-[0.4deg]`
               }`}
             >
               {m.text}
@@ -494,17 +496,17 @@ function AssistantTab({ seed }: { seed?: string }) {
         {busy && (
           <div className="flex justify-start gap-2 items-end">
             <AssistantFace className="w-8 h-8" />
-            <div className={`${NOTE} bg-white px-4 py-3.5 flex gap-1.5`}>
-              <i className="w-[7px] h-[7px] rounded-full bg-[#232122] animate-bounce [animation-delay:0ms]" />
-              <i className="w-[7px] h-[7px] rounded-full bg-[#232122] animate-bounce [animation-delay:150ms]" />
-              <i className="w-[7px] h-[7px] rounded-full bg-[#232122] animate-bounce [animation-delay:300ms]" />
+            <div className={`${NOTE} bg-[var(--nb-surface)] px-4 py-3.5 flex gap-1.5`}>
+              <i className="w-[7px] h-[7px] rounded-full bg-[var(--nb-ink)] animate-bounce [animation-delay:0ms]" />
+              <i className="w-[7px] h-[7px] rounded-full bg-[var(--nb-ink)] animate-bounce [animation-delay:150ms]" />
+              <i className="w-[7px] h-[7px] rounded-full bg-[var(--nb-ink)] animate-bounce [animation-delay:300ms]" />
             </div>
           </div>
         )}
         <div ref={bottomRef} />
       </main>
 
-      <footer className="px-3 pt-2 pb-3 border-t-2 border-[#232122] bg-white">
+      <footer className="px-3 pt-2 pb-3 border-t-2 border-[var(--nb-ink)] bg-[var(--nb-surface)]">
         <div className="max-w-2xl mx-auto space-y-2.5">
           <div className="flex gap-2 overflow-x-auto pb-1">
             {SUGGESTIONS.map((sg, i) => (
@@ -527,7 +529,7 @@ function AssistantTab({ seed }: { seed?: string }) {
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
               placeholder="พิมพ์ / เพื่อเลือกคำสั่ง หรือพิมพ์สั่งเอง…"
               disabled={busy}
-              className={`${NOTE} flex-1 min-w-0 bg-white rounded-[26px] px-4 py-2.5 text-[14px] outline-none placeholder:text-[#9c968e] focus:shadow-[3px_3px_0_#232122]`}
+              className={`${NOTE} flex-1 min-w-0 bg-[var(--nb-surface)] rounded-[26px] px-4 py-2.5 text-[14px] outline-none placeholder:text-[var(--nb-ink-3)] focus:shadow-[3px_3px_0_var(--nb-ink)]`}
             />
             <button
               onClick={() => send()}
@@ -610,7 +612,18 @@ function AppShell() {
   const [events, setEvents] = useState<CalEvent[] | null>(null);
   const [rooms, setRooms] = useState<Room[] | null>(null);
   /* การตั้งค่าเก็บไว้ที่นี่ เปิดแท็บตั้งค่าจึงเห็นค่าเดิมทันทีทุกครั้ง ไม่ต้องโหลดซ้ำ */
-  const [settings, setSettings] = useState<SettingsData>({ settings: null, ms: null });
+  const [settings, setSettings] = useState<SettingsData>({
+    settings: null,
+    ms: null,
+    notify: null,
+    health: null,
+  });
+
+  /* กันจอดับกับธีมต้องอยู่ที่นี่ ไม่ใช่ในหน้าตั้งค่า
+     ตอนที่ฮุคอยู่ใน SettingsBoard พอสลับออกจากแท็บตั้งค่า คอมโพเนนต์ถูกถอด
+     cleanup จึงปลดธงกันจอดับทิ้งทันที สวิตช์ขึ้นว่าเปิดแต่จอดับทุกที่นอกหน้านั้น */
+  const keepAwake = useKeepAwake();
+  const theme = useTheme();
   const [leaving, setLeaving] = useState(false);
   const [booted, setBooted] = useState(false);
 
@@ -649,7 +662,7 @@ function AppShell() {
         ]);
         if (!alive) return;
         setRooms(roomRes.rooms || []);
-        setSettings({ settings: setRes, ms: msRes });
+        setSettings((prev) => ({ ...prev, settings: setRes, ms: msRes }));
         setSteps((p) => ({ ...p, rooms: roomRes.error ? "fail" : "done" }));
       } catch {
         if (!alive) return;
@@ -659,6 +672,26 @@ function AppShell() {
       // ดึงเสร็จก่อนเพดานเวลา — ค้างให้เห็นแถบเต็มแวบหนึ่งแล้วยกฉากออก
       setTimeout(() => alive && setLeaving(true), 380);
       setTimeout(() => alive && setBooted(true), 900);
+    })();
+
+    /* ตารางแจ้งเตือนกับสถานะระบบไม่กั้นฉากโหลด แต่ต้องมาถึงก่อนผู้ใช้เปิดแท็บ
+       ตั้งค่า หน้านั้นจึงไม่มีรอบโหลดของตัวเอง (สถานะระบบต้องคุยกับ Entra และ
+       LINE จริง จึงช้ากว่าค่าอื่นอยู่บ้าง) */
+    void (async () => {
+      const [nf, hp] = await Promise.all([
+        authedGet<NotifyCfg>("/api/notify", getToken, getGraphToken).catch((e) => ({
+          error: (e as Error).message,
+        })),
+        authedGet<Health>("/api/health", getToken, getGraphToken).catch((e) => ({
+          error: (e as Error).message,
+        })),
+      ]);
+      if (!alive) return;
+      setSettings((prev) => ({
+        ...prev,
+        notify: "brief" in nf ? (nf as NotifyCfg) : prev.notify,
+        health: "parts" in hp ? (hp as Health) : ({ ...hp, level: "warn", label: "ตรวจไม่ได้", parts: [] } as Health),
+      }));
     })();
 
     // Graph บางครั้งใช้หลายวินาที ไม่กั้นผู้ใช้ไว้ที่ฉากโหลด — ปล่อยเข้าแอปก่อน
@@ -692,7 +725,7 @@ function AppShell() {
 
   return (
     <div className={`h-screen [height:100dvh] overflow-hidden ${BOARD} flex flex-col`}>
-      <header className="sticky top-0 z-30 px-4 py-3 border-b-2 border-[#232122] bg-white flex items-center gap-3 shrink-0">
+      <header className="sticky top-0 z-30 px-4 py-3 border-b-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] flex items-center gap-3 shrink-0">
         <AssistantFace className="w-9 h-9" />
         <div className="flex-1 min-w-0">
           <div className="font-marker text-[16px] leading-tight">ผู้ช่วยงาน KTIS X</div>
@@ -725,9 +758,11 @@ function AppShell() {
       {tab === "chat" && <AssistantTab seed={seed} />}
       {tab === "sched" && <ScheduleTab initial={events} initialRooms={rooms} onAsk={ask} />}
       {tab === "task" && <TasksTab />}
-      {tab === "set" && <SettingsBoard data={settings} onChange={setSettings} />}
+      {tab === "set" && (
+        <SettingsBoard data={settings} onChange={setSettings} keepAwake={keepAwake} theme={theme} />
+      )}
 
-      <nav className="sticky bottom-0 z-30 grid grid-cols-4 border-t-2 border-[#232122] bg-white px-1.5 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] shrink-0">
+      <nav className="sticky bottom-0 z-30 grid grid-cols-4 border-t-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] px-1.5 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] shrink-0">
         {TABS.map(({ key, label, tint, Icon }) => {
           const on = tab === key;
           return (
@@ -740,7 +775,7 @@ function AppShell() {
               <span
                 className={`grid place-items-center w-11 h-[30px] rounded-[10px] border-2 transition-transform ${
                   on
-                    ? `${tint} border-[#232122] shadow-[2px_2px_0_#232122] -rotate-3`
+                    ? `${tint} border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] -rotate-3`
                     : "border-transparent"
                 }`}
               >

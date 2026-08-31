@@ -54,7 +54,7 @@ export default function SplashScreen({ steps, eventCount, leaving = false }: Pro
         KTIS Group · Microsoft 365
       </div>
 
-      <div className={`${NOTE} ${FOLD} bg-white px-6 pt-5 pb-4 flex flex-col items-center gap-1 -rotate-[0.7deg]`}>
+      <div className={`${NOTE} ${FOLD} bg-[var(--nb-surface)] px-6 pt-5 pb-4 flex flex-col items-center gap-1 -rotate-[0.7deg]`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/ktisx-reading-video.gif?v=8"
@@ -65,7 +65,7 @@ export default function SplashScreen({ steps, eventCount, leaving = false }: Pro
       </div>
 
       <div
-        className={`${NOTE_SM} bg-white w-[210px] h-[18px] overflow-hidden`}
+        className={`${NOTE_SM} bg-[var(--nb-surface)] w-[210px] h-[18px] overflow-hidden`}
         role="progressbar"
         aria-valuenow={progress(steps)}
         aria-valuemin={0}
@@ -76,8 +76,8 @@ export default function SplashScreen({ steps, eventCount, leaving = false }: Pro
           className="h-full transition-[width] duration-500 ease-out"
           style={{
             width: `${progress(steps)}%`,
-            borderRight: progress(steps) ? "2px solid #232122" : "none",
-            backgroundImage: "repeating-linear-gradient(45deg,#232122 0 2px,transparent 2px 7px)",
+            borderRight: progress(steps) ? "2px solid var(--nb-ink)" : "none",
+            backgroundImage: "repeating-linear-gradient(45deg,var(--nb-ink) 0 2px,transparent 2px 7px)",
           }}
         />
       </div>

@@ -20,6 +20,68 @@
   --foreground: #171717;
 }
 
+/* ---------------------------------------------------------------------------
+   จานสีของดีไซน์โน้ตแปะกระดาน
+
+   ทุกสีในแอปหน้าแรกอ้างตัวแปรพวกนี้ ไม่ใช่เลขฐานสิบหกตรง ๆ สวิตช์ธีมจึงเปลี่ยน
+   ได้ทั้งแอปด้วยการสลับค่าที่นี่ที่เดียว
+   - light เป็นค่าเริ่มต้นที่ :root เพราะ HTML จากเซิร์ฟเวอร์เป็นธีมสว่างเสมอ
+   - dark สลับหน้าที่ของสี: เส้นหมึกกลายเป็นสีอ่อนบนกระดาษเข้ม ไม่ใช่กลับสีดิบ ๆ
+   - auto ปล่อยให้ระบบปฏิบัติการตัดสิน
+   --------------------------------------------------------------------------- */
+:root {
+  --nb-board: #f1efe9;    /* พื้นกระดาน */
+  --nb-surface: #ffffff;  /* โน้ตสีขาว หัวเรื่อง แถบล่าง */
+  --nb-ink: #232122;      /* เส้นหมึก ขอบ เงา */
+  --nb-ink-2: #6a6560;
+  --nb-ink-3: #9c968e;
+  --nb-dash: #d9d5cc;     /* เส้นประคั่นแถว */
+  --nb-scrim: rgb(35 33 34 / 0.35); /* ม่านหลังแผ่นที่เลื่อนขึ้นมา */
+  --nb-ok: #2f7d54;
+  --nb-yellow: #fef2c0;
+  --nb-blue: #dcebfe;
+  --nb-green: #d6f5e3;
+  --nb-pink: #ffdee7;
+  --nb-purple: #eae1ff;
+  --nb-orange: #ffe7ce;
+}
+
+:root[data-theme="dark"] {
+  --nb-board: #1b1a19;
+  --nb-surface: #2a2725;
+  --nb-ink: #ece7dd;
+  --nb-ink-2: #b3ada3;
+  --nb-ink-3: #89837b;
+  --nb-dash: #4b4640;
+  --nb-scrim: rgb(0 0 0 / 0.55);
+  --nb-ok: #6ddba0;
+  --nb-yellow: #4a4021;
+  --nb-blue: #23384f;
+  --nb-green: #1f4436;
+  --nb-pink: #4c2833;
+  --nb-purple: #372f4e;
+  --nb-orange: #4c3620;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --nb-board: #1b1a19;
+    --nb-surface: #2a2725;
+    --nb-ink: #ece7dd;
+    --nb-ink-2: #b3ada3;
+    --nb-ink-3: #89837b;
+    --nb-dash: #4b4640;
+    --nb-scrim: rgb(0 0 0 / 0.55);
+    --nb-ok: #6ddba0;
+    --nb-yellow: #4a4021;
+    --nb-blue: #23384f;
+    --nb-green: #1f4436;
+    --nb-pink: #4c2833;
+    --nb-purple: #372f4e;
+    --nb-orange: #4c3620;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -31,15 +93,38 @@
   --font-hand: var(--font-caveat);
 }
 
+/* ธีมที่ผู้ใช้เลือกต้องชนะระบบ — เลือก "สว่าง" ไว้แล้วระบบมืดไม่มีสิทธิ์ทำให้พื้นดำ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
+}
+
+:root[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ปุ่มและช่องกรอกไม่สืบทอด font/color มาเอง — ธีมมืดจะเห็นตัวหนังสือสีดำบนพื้นเข้ม */
+button,
+select,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* แถบเลื่อนและช่องกรอกของเบราว์เซอร์ให้ตามธีมที่ผู้ใช้เลือก ไม่ใช่ตามระบบ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
 }
