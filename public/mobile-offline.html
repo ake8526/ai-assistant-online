@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KTIS X — ต่อเซิร์ฟเวอร์ไม่ได้</title>
+<!--
+  หน้าสำรองของแอป โหลดขึ้นมาเมื่อเปิดเว็บจริงไม่ติด
+
+  ของเดิมใช้หน้าตัวอย่าง (mobile-note.html) ซึ่งเป็นแอปปลอมทั้งหน้า — ปุ่มล้าง
+  ประวัติแค่ขึ้น toast ไม่ได้ล้างอะไร และสลับแท็บก็แค่สลับ CSS เนื้อหาที่ฝังไว้
+  จึงกลับมาเหมือนเดิมทุกครั้ง ผู้ใช้เข้าใจว่าแอปพัง แจ้งบั๊กที่แก้เท่าไหร่ก็ไม่หาย
+  เพราะหน้านี้อยู่ในตัว APK ไม่ได้มาจากเซิร์ฟเวอร์
+
+  หน้าสำรองต้องบอกความจริงว่าต่อไม่ได้ และมีทางกลับไปแอปจริงเท่านั้น
+  ห้ามทำหน้าตาเหมือนใช้งานได้อีก
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mali:wght@400;600;700&family=Sriracha&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --board: #f1efe9; --surface: #ffffff; --ink: #232122;
+    --ink-2: #6a6560; --ink-3: #9c968e; --pink: #ffdee7; --blue: #dcebfe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --board: #1b1a19; --surface: #2a2725; --ink: #ece7dd;
+      --ink-2: #b3ada3; --ink-3: #89837b; --pink: #4c2833; --blue: #23384f;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; min-height: 100dvh; background: var(--board); color: var(--ink);
+    font-family: "Mali", system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 28px 22px; gap: 4px; text-align: center;
+  }
+  .note {
+    background: var(--surface); border: 2px solid var(--ink); border-radius: 14px;
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .card { padding: 22px 20px; max-width: 340px; width: 100%; transform: rotate(-0.6deg); }
+  h1 { font-family: "Sriracha", cursive; font-size: 21px; margin: 12px 0 6px; font-weight: 400; }
+  p { font-size: 13.5px; line-height: 1.65; color: var(--ink-2); margin: 0 0 4px; }
+  ul { text-align: left; font-size: 13px; color: var(--ink-2); margin: 12px 0 0; padding-left: 18px; line-height: 1.8; }
+  .retry {
+    display: inline-block; margin-top: 20px; padding: 13px 26px; background: var(--blue);
+    font-size: 15px; font-weight: 600; color: var(--ink); text-decoration: none;
+  }
+  .retry:active { transform: translate(2px, 2px); box-shadow: none; }
+  .face { width: 54px; height: 54px; background: var(--pink); padding: 4px; transform: rotate(-4deg); }
+  small { display: block; margin-top: 16px; font-size: 11.5px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+  <svg class="face note" viewBox="0 0 32 32" aria-hidden="true">
+    <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M11.4 15 L11.4 17"/><path d="M20.6 14.9 L20.6 16.9"/>
+      <path d="M11.8 22.4 C14.2 20 18.4 20 20.6 22.6"/>
+    </g>
+  </svg>
+
+  <div class="note card">
+    <h1>ต่อเซิร์ฟเวอร์ไม่ได้ครับ</h1>
+    <p>แอปนี้ดึงตาราง งาน และคำตอบทั้งหมดจากเซิร์ฟเวอร์ ตอนนี้เปิดไม่ติดจึงยังทำงานไม่ได้</p>
+    <ul>
+      <li>เช็คว่าต่อ WiFi หรือเน็ตมือถืออยู่</li>
+      <li>ถ้าอยู่ในเครือข่ายบริษัท ลองสลับเป็นเน็ตมือถือ</li>
+      <li>แล้วกดปุ่มด้านล่างเพื่อเข้าแอปอีกครั้ง</li>
+    </ul>
+    <a class="note retry" href="https://ktis-ai-assistant.vercel.app/">ลองเข้าแอปอีกครั้ง</a>
+    <small>หน้านี้เป็นหน้าสำรองในตัวแอป — ไม่ใช่หน้าใช้งานจริง<br>ข้อมูลที่เห็นในหน้านี้ไม่มี และสั่งงานจากหน้านี้ไม่ได้</small>
+  </div>
+</body>
+</html>
