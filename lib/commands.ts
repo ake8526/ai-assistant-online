@@ -54,7 +54,7 @@ import { HELP_TOPICS, findHelpTopic, helpMenuFlex, helpMenuText, helpTopicFlex, 
 import { notYetAnswer } from "@/lib/notYet";
 import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
-import { busyRanges, findCommonSlots, formatBusy, freeRangesReply, wantsLunchIncluded } from "@/lib/scheduling";
+import { busyRanges, findCommonSlots, formatBusy, freeRangesReply, outsideWorkHours, wantsLunchIncluded, workHoursLabel } from "@/lib/scheduling";
 import {
   addPlace,
   addTask,
@@ -4280,7 +4280,10 @@ export async function runFindMeeting(
     }
     const hint =
       resolvedAt != null
-        ? `\n\nช่วง ${fmtHHMM(resolvedAt)} อาจผ่านไปแล้วหรือติด — ลองดูตารางว่าง หรือระบุเวลาใหม่ได้ครับ`
+        ? outsideWorkHours(resolvedAt)
+          ? `\n\n${fmtHHMM(resolvedAt)} อยู่นอกช่วงเวลาที่ระบบค้นหาเวลาว่าง (${workHoursLabel()}) จึงไม่มีช่วงให้เสนอครับ` +
+            `\nถ้าต้องนัดนอกเวลานี้จริง สร้างนัดเองที่ Outlook ได้เลย`
+          : `\n\nช่วง ${fmtHHMM(resolvedAt)} ผ่านไปแล้วหรือมีคนติดครับ — ลองดูตารางว่าง หรือระบุเวลาใหม่ได้`
         : window
           ? `\n\n${window.label}ยังไม่มีช่วงว่างตรงกัน ${duration} นาทีครับ — ลองพิมพ์ “พรุ่งนี้” หรือวันอื่นได้ครับ`
           : "";

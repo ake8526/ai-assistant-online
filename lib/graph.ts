@@ -1673,6 +1673,11 @@ export async function getSchedule(
     : `/users/${encodeURIComponent(organizerUpn)}/calendar/getSchedule`;
   const r = await graphFetch(path, {
     method: "POST",
+    // คำขอส่งเวลาเป็นโซนไทอยู่แล้ว แต่ Graph ตอบเวลาของรายการกลับมาเป็น UTC
+    // ถ้าไม่สั่ง Prefer — นัด 13:00–16:00 จึงขึ้นเป็น 06:00–09:00 ในคำตอบ
+    // (เจอจริง 31 ส.ค. 2026) และตัวกรองรายการที่ผ่านไปแล้วก็เพี้ยนไป 7 ชม.
+    // ที่อื่นในไฟล์นี้ส่ง header นี้หมดแล้ว ขาดไปตรงนี้ที่เดียว
+    headers: { Prefer: `outlook.timezone="${TIMEZONE}"` },
     body: {
       schedules,
       startTime: { dateTime: startIso, timeZone: TIMEZONE },

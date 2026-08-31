@@ -10,6 +10,22 @@ const WORK_START_HOUR = Number(process.env.WORK_START_HOUR || 9);
 const WORK_END_HOUR = Number(process.env.WORK_END_HOUR || 17);
 const SCHEDULE_DAYS_AHEAD = Number(process.env.SCHEDULE_DAYS_AHEAD || 7);
 
+/**
+ * ช่วงเวลาที่ระบบค้นช่วงว่างให้ — มาจาก env ไม่ใช่ค่าเวลาทำงานรายคน
+ *
+ * เอาไปบอกผู้ใช้ตอนที่หาเวลาไม่เจอ เพราะ "ไม่ตรงกัน" กับ "นอกเวลาทำงาน" เป็น
+ * สาเหตุต่างกันคนละเรื่อง
+ */
+export function workHoursLabel(): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(WORK_START_HOUR)}:00–${pad(WORK_END_HOUR)}:00`;
+}
+
+/** เวลาที่ขอ (นาทีจากเที่ยงคืน) อยู่นอกช่วงที่ระบบค้นหรือเปล่า */
+export function outsideWorkHours(atMin: number): boolean {
+  return atMin < WORK_START_HOUR * 60 || atMin >= WORK_END_HOUR * 60;
+}
+
 /** Default lunch break to skip when suggesting free times (unless user asks). */
 export const LUNCH_START_MIN = Number(process.env.LUNCH_START_MIN || 12 * 60); // 12:00
 export const LUNCH_END_MIN = Number(process.env.LUNCH_END_MIN || 13 * 60); // 13:00
