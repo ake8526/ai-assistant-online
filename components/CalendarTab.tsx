@@ -116,7 +116,7 @@ export default function CalendarTab({ initial }: { initial?: CalEvent[] | null }
     : "";
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-2xl w-full mx-auto">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 max-w-2xl w-full mx-auto">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-marker text-[19px]">ปฏิทินงานสัปดาห์นี้</h2>
         <button

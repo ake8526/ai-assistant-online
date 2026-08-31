@@ -182,7 +182,7 @@ export default function SettingsTab() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-5 max-w-2xl w-full mx-auto">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-5 max-w-2xl w-full mx-auto">
       <h2 className="font-marker text-[19px]">การตั้งค่า</h2>
 
       {busy && <BlankNote>กำลังโหลดการตั้งค่า…</BlankNote>}

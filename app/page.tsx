@@ -422,7 +422,7 @@ function AssistantTab({ seed }: { seed?: string }) {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col relative">
-      <main className="flex-1 overflow-y-auto p-4 space-y-4 max-w-2xl w-full mx-auto">
+      <main className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 max-w-2xl w-full mx-auto">
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === "me" ? "justify-end" : "justify-start gap-2 items-end"}`}>
             {m.role === "bot" && <AssistantFace className="w-8 h-8" />}
@@ -684,7 +684,7 @@ function AppShell() {
   };
 
   return (
-    <div className={`min-h-screen ${BOARD} flex flex-col`}>
+    <div className={`h-screen [height:100dvh] overflow-hidden ${BOARD} flex flex-col`}>
       <header className="px-4 py-3 border-b-2 border-[#232122] bg-white flex items-center gap-3 shrink-0">
         <AssistantFace className="w-9 h-9" />
         <div className="flex-1 min-w-0">
