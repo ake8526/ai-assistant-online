@@ -59,6 +59,24 @@ function hhmm(iso: string): string {
   return m ? `${m[1]}:${m[2]}` : "--:--";
 }
 
+/** "2026-08-31T13:00:00.0000000" → Date ตามเวลาไทยตรง ๆ ไม่ต้องแปลงโซน */
+function wallDate(iso: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || "");
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+}
+
+/**
+ * นัดที่จบไปแล้ว — เอาไปทำเป็นสีเทาและขีดฆ่า
+ *
+ * ที่กำลังประชุมอยู่ยังไม่นับว่าจบ และนัดทั้งวันนับว่าจบเมื่อหมดวันไปแล้ว
+ * ไม่ใช่ตอนเที่ยงคืนของเวลาเริ่ม
+ */
+function isPast(e: CalEvent, now: number): boolean {
+  if (e.allDay) return dayKeyOf(e.start) < days0Key();
+  const end = wallDate(e.end);
+  return !!end && end.getTime() <= now;
+}
+
 /** สีโน้ตของนัด: ออนไลน์ = ฟ้า, คนเยอะ = ชมพู, มีสถานที่ = เขียว */
 function tintFor(e: CalEvent): string {
   const loc = (e.location || "").toLowerCase();
@@ -177,6 +195,13 @@ export default function ScheduleTab({
     void loadRooms(key);
   }, [view, sel, days, loadedFor, busyRm, loadRooms]);
 
+  // เวลาปัจจุบันเดินทุกนาที นัดที่เพิ่งเลยเวลาจะกลายเป็นเทาเองโดยไม่ต้องกดอะไร
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const dayEvents = events
     .filter((e) => dayKeyOf(e.start) === days[sel]?.key)
     .sort((a, b) => a.start.localeCompare(b.start));
@@ -262,18 +287,28 @@ export default function ScheduleTab({
           {!errEv && !busyEv && !dayEvents.length && <BlankNote>ไม่มีนัดหมาย — ว่างทั้งวันครับ</BlankNote>}
 
           <div className="flex flex-col gap-3.5">
-            {dayEvents.map((e, i) => (
+            {dayEvents.map((e, i) => {
+              const past = isPast(e, now);
+              return (
               <div key={e.id || i} className="flex gap-3 items-stretch">
-                <div className="w-[52px] shrink-0 pt-3 text-right">
-                  <div className="font-hand text-[18px] font-bold leading-none">{hhmm(e.start)}</div>
+                <div className={`w-[52px] shrink-0 pt-3 text-right ${past ? INK_3 : ""}`}>
+                  <div className={`font-hand text-[18px] font-bold leading-none ${past ? "line-through" : ""}`}>
+                    {hhmm(e.start)}
+                  </div>
                   <small className={`font-hand text-[14px] ${INK_3}`}>{hhmm(e.end)}</small>
                 </div>
                 <div
-                  className={`${NOTE} ${FOLD} ${tintFor(e)} flex-1 min-w-0 p-3.5 flex flex-col gap-2 ${
+                  className={`${NOTE} ${FOLD} ${past ? "bg-[var(--nb-surface)] opacity-55" : tintFor(e)} flex-1 min-w-0 p-3.5 flex flex-col gap-2 ${
                     i % 2 ? "rotate-[0.5deg]" : "-rotate-[0.5deg]"
                   }`}
                 >
-                  <div className="font-semibold text-[14.5px] leading-snug">{e.subject}</div>
+                  <div
+                    className={`font-semibold text-[14.5px] leading-snug ${
+                      past ? `line-through decoration-2 ${INK_2}` : ""
+                    }`}
+                  >
+                    {e.subject}
+                  </div>
                   <div className={`flex flex-wrap gap-x-3 gap-y-1 text-[12px] ${INK_2}`}>
                     {e.location && (
                       <span className="flex items-center gap-1 min-w-0">
@@ -300,7 +335,8 @@ export default function ScheduleTab({
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Send,
   MapPin,
@@ -16,7 +16,7 @@ import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } from "@/lib/chatMemory";
 import { SLASH_COMMANDS, isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText } from "@/lib/slashCommands";
 import ScheduleTab, { type CalEvent, type Room } from "@/components/ScheduleTab";
-import TasksTab from "@/components/TasksTab";
+import TasksTab, { type Task } from "@/components/TasksTab";
 import SettingsBoard, { type Health, type NotifyCfg, type SettingsData } from "@/components/SettingsBoard";
 import { useKeepAwake } from "@/components/useKeepAwake";
 import { useTheme } from "@/components/useTheme";
@@ -619,6 +619,12 @@ function AppShell() {
     health: null,
   });
 
+  /* งานที่ต้องติดตามอยู่ที่นี่ ไม่ใช่ในแท็บงาน — เปิดแท็บซ้ำจึงไม่มีรอบโหลดใหม่
+     และตัวตามเก็บเงียบ ๆ ข้างล่างจะเอางานใหม่มาแสดงเองโดยไม่มีตัวหมุน */
+  const [tasks, setTasks] = useState<Task[] | null>(null);
+  const [taskErr, setTaskErr] = useState("");
+  const [taskSync, setTaskSync] = useState(false);
+
   /* กันจอดับกับธีมต้องอยู่ที่นี่ ไม่ใช่ในหน้าตั้งค่า
      ตอนที่ฮุคอยู่ใน SettingsBoard พอสลับออกจากแท็บตั้งค่า คอมโพเนนต์ถูกถอด
      cleanup จึงปลดธงกันจอดับทิ้งทันที สวิตช์ขึ้นว่าเปิดแต่จอดับทุกที่นอกหน้านั้น */
@@ -706,6 +712,52 @@ function AppShell() {
     };
   }, [getToken, getGraphToken]);
 
+  /**
+   * ดึงงานที่ค้าง — `quiet` คือรอบที่ทำเองเบื้องหลัง ไม่ต้องขึ้นตัวหมุนให้ตาลาย
+   *
+   * ตอนที่ state อยู่ในแท็บงาน การสลับแท็บทำให้คอมโพเนนต์ถูกสร้างใหม่ทุกครั้ง
+   * เห็น "กำลังโหลดงาน…" ซ้ำ ๆ ทั้งที่ข้อมูลเดิมยังใช้ได้อยู่
+   */
+  const loadTasks = useCallback(
+    async (quiet = true) => {
+      if (!quiet) setTaskSync(true);
+      try {
+        const res = await authedGet<{ tasks?: Task[]; error?: string }>(
+          "/api/tasks?status=pending",
+          getToken,
+          getGraphToken
+        );
+        if (res.error) setTaskErr(res.error);
+        else {
+          setTaskErr("");
+          setTasks(res.tasks || []);
+        }
+      } catch (e) {
+        setTaskErr((e as Error).message);
+      }
+      if (!quiet) setTaskSync(false);
+    },
+    [getToken, getGraphToken]
+  );
+
+  /* ตามเก็บงานใหม่ทุกนาที และทุกครั้งที่กลับมาเห็นหน้าจอ — เงียบ ๆ ไม่มีตัวหมุน
+     หยุดถามตอนแอปถูกซ่อน จะได้ไม่ยิง Graph/Supabase ทิ้งตอนไม่มีใครดู */
+  useEffect(() => {
+    const tick = () => {
+      // รอบตามเก็บข้ามไปเมื่อไม่มีใครดู แต่รอบแรกต้องดึงเสมอ — WebView รายงานว่า
+      // ถูกซ่อนอยู่ได้ในจังหวะที่แอปเพิ่งเปิด แล้วรายการงานจะค้างว่างไปเลย
+      if (document.visibilityState !== "visible") return;
+      void loadTasks(true);
+    };
+    void loadTasks(true);
+    const id = setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [loadTasks]);
+
   /** นัดที่ยังไม่จบ — ที่กำลังประชุมอยู่ต้องมาก่อนนัดพรุ่งนี้ */
   const next: NextUp = React.useMemo(() => {
     const now = new Date();
@@ -757,7 +809,15 @@ function AppShell() {
 
       {tab === "chat" && <AssistantTab seed={seed} />}
       {tab === "sched" && <ScheduleTab initial={events} initialRooms={rooms} onAsk={ask} />}
-      {tab === "task" && <TasksTab />}
+      {tab === "task" && (
+        <TasksTab
+          tasks={tasks}
+          err={taskErr}
+          syncing={taskSync}
+          onChange={setTasks}
+          onReload={() => void loadTasks(false)}
+        />
+      )}
       {tab === "set" && (
         <SettingsBoard data={settings} onChange={setSettings} keepAwake={keepAwake} theme={theme} />
       )}
@@ -773,13 +833,21 @@ function AppShell() {
               className={`flex flex-col items-center gap-1 py-0.5 cursor-pointer ${on ? "" : INK_3}`}
             >
               <span
-                className={`grid place-items-center w-11 h-[30px] rounded-[10px] border-2 transition-transform ${
+                className={`relative grid place-items-center w-11 h-[30px] rounded-[10px] border-2 transition-transform ${
                   on
                     ? `${tint} border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] -rotate-3`
                     : "border-transparent"
                 }`}
               >
                 <Icon className="w-5 h-5" />
+                {/* จำนวนงานค้าง — บอกว่ามีงานใหม่เข้ามาโดยไม่ต้องเด้งอะไรขึ้นมาขวาง */}
+                {key === "task" && !!tasks?.length && (
+                  <span
+                    className={`absolute -top-1 -right-0.5 min-w-[17px] h-[17px] px-1 grid place-items-center rounded-full border-2 border-[var(--nb-ink)] ${N_PINK} text-[10px] font-bold leading-none text-[var(--nb-ink)]`}
+                  >
+                    {tasks.length > 9 ? "9+" : tasks.length}
+                  </span>
+                )}
               </span>
               <span className={`text-[11px] ${on ? "font-semibold" : ""}`}>{label}</span>
             </button>

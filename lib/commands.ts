@@ -19,7 +19,7 @@ import { runWithTrace, trace } from "@/lib/trace";
 import { after } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { normalizeDue, resolveResponsible, ingestActionItems } from "@/lib/followup";
-import { splitAddTaskItems } from "@/lib/taskSplit";
+import { ADD_TASK_LEAD, splitAddTaskItems } from "@/lib/taskSplit";
 import { splitTaskListAside } from "@/lib/askSplit";
 import { normalizeThaiTypo, detectWrongKeyboard, suggestCorrectedNick } from "@/lib/keyboard";
 import { createHash } from "crypto";
@@ -1970,6 +1970,15 @@ async function parseIntent(
       params: { count },
       source: "quick",
     };
+  }
+
+  // "เพิ่มงาน 1.… 2.… 3.…" — ตัดสินตรงนี้ ไม่ฝากไว้กับ LLM
+  //
+  // handle() ยุบบรรทัดใหม่เป็นช่องว่างก่อนถึงตรงนี้ LLM จึงเห็นเป็นประโยคยาว
+  // ก้อนเดียวแล้วตอบ unknown มาแล้วจริง (chat_logs 31 ส.ค. 2026 16:15 ทาง LINE)
+  // งานสามข้อของผู้ใช้เลยหายไปทั้งหมด กฎตายตัวจึงเชื่อถือได้กว่าในเคสนี้
+  if (ADD_TASK_LEAD.test(textClean) && splitAddTaskItems(textClean).length > 1) {
+    return { intent: "add_task", params: {}, source: "quick" };
   }
 
   const quick = quickFeedIntent(textClean);

@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Check, Loader2, RefreshCw } from "lucide-react";
 import { useM365Auth } from "@/components/M365AuthProvider";
 import {
-  authedGet,
   BlankNote,
   FOLD,
   INK_2,
@@ -45,46 +44,37 @@ function dueInfo(due?: string | null): { tint: string; tag: string; text: string
 }
 
 /**
- * งานที่ต้องติดตาม — ดึงจาก /api/tasks และปิดงานผ่าน PATCH จริง
+ * งานที่ต้องติดตาม
+ *
+ * รายการมาจากเปลือกแอปซึ่งดึงไว้ตอนฉากโหลดและตามเก็บเงียบ ๆ ทุกนาที เปิดแท็บนี้
+ * จึงเห็นของเดิมทันทีทุกครั้ง ไม่มีรอบโหลดใหม่ให้รอ และงานที่เพิ่งเข้ามาจะโผล่
+ * ขึ้นเองโดยไม่มีตัวหมุนหรือหน้าจอกระพริบ
  *
  * การปิดงานต้องกดยืนยันอีกครั้งเสมอ ปุ่มที่ยืนยันเขียนว่า "ยืนยันปิดงาน" ตรง ๆ
  * ไม่ใช่ "ยืนยัน" ลอย ๆ ตามกฎของโปรเจ็กต์ เพราะคำยืนยันลอย ๆ เคยไปตกกับคำสั่ง
  * อื่นที่มีผลออกนอกระบบ
  */
-export default function TasksTab() {
-  const { getToken, getGraphToken } = useM365Auth();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [busy, setBusy] = useState(true);
-  const [err, setErr] = useState("");
+export default function TasksTab({
+  tasks,
+  err,
+  syncing,
+  onChange,
+  onReload,
+}: {
+  tasks: Task[] | null;
+  err: string;
+  syncing: boolean;
+  onChange: (next: Task[]) => void;
+  onReload: () => void;
+}) {
+  const { getToken } = useM365Auth();
   const [confirming, setConfirming] = useState<number | null>(null);
   const [closing, setClosing] = useState<number | null>(null);
+  const [closeErr, setCloseErr] = useState("");
 
-  const load = useCallback(async () => {
-    try {
-      const res = await authedGet<{ tasks?: Task[]; error?: string }>(
-        "/api/tasks?status=pending",
-        getToken,
-        getGraphToken
-      );
-      if (res.error) setErr(res.error);
-      else setTasks(res.tasks || []);
-    } catch (e) {
-      setErr((e as Error).message);
-    }
-    setBusy(false);
-  }, [getToken, getGraphToken]);
-
-  // โหลดงานจริงตอนเปิดแท็บ
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
-
-  const reload = () => {
-    setBusy(true);
-    setErr("");
-    void load();
-  };
+  // อ้างอิงคงที่เมื่อ tasks ไม่เปลี่ยน ไม่ให้ useMemo ข้างล่างคิดใหม่ทุกรอบวาด
+  const list = useMemo(() => tasks || [], [tasks]);
+  const firstLoad = tasks === null && !err;
 
   const closeTask = async (id: number) => {
     setClosing(id);
@@ -96,9 +86,10 @@ export default function TasksTab() {
         body: JSON.stringify({ status: "done" }),
       });
       if (!r.ok) throw new Error(String(r.status));
-      setTasks((prev) => prev.filter((t) => t.id !== id));
+      onChange(list.filter((t) => t.id !== id));
+      setCloseErr("");
     } catch {
-      setErr("ปิดงานไม่สำเร็จ ลองอีกครั้งครับ");
+      setCloseErr("ปิดงานไม่สำเร็จ ลองอีกครั้งครับ");
     }
     setClosing(null);
     setConfirming(null);
@@ -108,42 +99,45 @@ export default function TasksTab() {
     let over = 0,
       today = 0,
       later = 0;
-    for (const t of tasks) {
+    for (const t of list) {
       const info = dueInfo(t.due);
       if (info.tag.startsWith("เกิน")) over++;
       else if (info.tag === "วันนี้") today++;
       else later++;
     }
     return { over, today, later };
-  }, [tasks]);
+  }, [list]);
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 max-w-2xl w-full mx-auto">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-marker text-[19px]">งานที่ต้องติดตาม</h2>
         <button
-          onClick={reload}
-          disabled={busy}
+          onClick={onReload}
+          disabled={syncing}
           className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] px-2.5 py-1 font-hand text-[15px] font-bold disabled:opacity-50 cursor-pointer`}
         >
-          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "โหลดใหม่"}
+          {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "โหลดใหม่"}
         </button>
       </div>
 
-      {!busy && !err && !!tasks.length && (
+      {!!list.length && (
         <div className={`${NOTE_SM} ${counts.over ? N_PINK : N_GREEN} px-3.5 py-2.5 -rotate-[0.4deg]`}>
           <p className="font-hand text-[16px]">
             เกินกำหนด {counts.over} · วันนี้ {counts.today} · หลังจากนี้ {counts.later}
           </p>
-          <p className={`text-[11.5px] ${INK_2}`}>งานมาจากสรุปประชุมและที่สั่งไว้ทาง LINE</p>
+          <p className={`text-[11.5px] ${INK_2}`}>งานใหม่ขึ้นเองทุกนาที ไม่ต้องกดโหลด</p>
         </div>
       )}
 
-      {err && (
+      {(err || closeErr) && (
         <BlankNote tint={N_PINK}>
-          {err}
+          {closeErr || err}
           <button
-            onClick={reload}
+            onClick={() => {
+              setCloseErr("");
+              onReload();
+            }}
             className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] mt-3 inline-flex items-center gap-1.5 px-3 py-1 text-[13px] font-note cursor-pointer`}
           >
             <RefreshCw className="w-3.5 h-3.5" /> ลองอีกครั้ง
@@ -151,11 +145,13 @@ export default function TasksTab() {
         </BlankNote>
       )}
 
-      {!err && busy && <BlankNote>กำลังโหลดงาน…</BlankNote>}
-      {!err && !busy && !tasks.length && <BlankNote tint={N_GREEN}>ไม่มีงานค้างครับ เคลียร์หมดแล้ว</BlankNote>}
+      {firstLoad && <BlankNote>กำลังโหลดงาน…</BlankNote>}
+      {!err && tasks !== null && !list.length && (
+        <BlankNote tint={N_GREEN}>ไม่มีงานค้างครับ เคลียร์หมดแล้ว</BlankNote>
+      )}
 
       <div className="flex flex-col gap-3">
-        {tasks.map((t, i) => {
+        {list.map((t, i) => {
           const info = dueInfo(t.due);
           const asking = confirming === t.id;
           return (
@@ -173,7 +169,9 @@ export default function TasksTab() {
                     {t.responsible ? ` · ${t.responsible}` : ""}
                   </div>
                 </div>
-                <span className={`${NOTE_SM} bg-[var(--nb-surface)] px-2 py-0.5 font-hand text-[14.5px] font-bold shrink-0`}>
+                <span
+                  className={`${NOTE_SM} bg-[var(--nb-surface)] px-2 py-0.5 font-hand text-[14.5px] font-bold shrink-0`}
+                >
                   {info.tag}
                 </span>
               </div>
