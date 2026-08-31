@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Send,
+  Square,
   MapPin,
   FileText,
   Folder,
@@ -141,9 +142,12 @@ function AssistantTab({
   seed,
   onSeedUsed,
   onBooked,
+  clearSignal,
 }: {
   seed?: string;
   onSeedUsed?: () => void;
+  /** นับขึ้นทุกครั้งที่กดปุ่มล้างความจำที่หัวเรื่อง — ปุ่มอยู่บนเปลือกแอป ค่าที่ล้างอยู่ในนี้ */
+  clearSignal?: number;
   /** จองนัดสำเร็จ — ให้เปลือกแอปดึงปฏิทินใหม่ ตารางจะอัปเดตเองไม่ต้องกดซิงค์ */
   onBooked?: () => void;
 }) {
@@ -166,6 +170,8 @@ function AssistantTab({
     history: ChatTurn[];
   }>({ history: [] });
   const bottomRef = useRef<HTMLDivElement>(null);
+  /** คำสั่งที่กำลังวิ่ง — เก็บไว้กดยกเลิกได้ บางคำถามใช้เวลาหลายสิบวินาที */
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -174,6 +180,10 @@ function AssistantTab({
 
   const addMsg = (m: Msg) => setMsgs((prev) => [...prev, m]);
 
+  /** ผู้ใช้กดหยุดเอง — ไม่ใช่ error ไม่ต้องขึ้นข้อความเตือนซ้อนอีกอัน */
+  const isAbort = (e: unknown) =>
+    (e as Error)?.name === "AbortError" || /abort/i.test(String((e as Error)?.message || ""));
+
   const api = async (path: string, body: Record<string, unknown>): Promise<ApiResult> => {
     const token = await getToken();
     if (!token) throw new Error("กรุณาเข้าสู่ระบบ Microsoft 365 ก่อนครับ");
@@ -181,12 +191,16 @@ function AssistantTab({
     // ตอน dev getGraphToken() คืนค่าปลอม ("dev-graph-token") ถ้าส่งไปด้วย ฝั่ง
     // เซิร์ฟเวอร์จะเอาไปยิง Graph แล้วได้ 401 "JWT is not well formed" ทั้งที่มี
     // token จริงเก็บไว้แล้ว — กรองแบบเดียวกับ authedGet ใน noteStyles
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     const rawGraph = (await getGraphToken()) || "";
     const graphToken = rawGraph.includes(".") ? rawGraph : undefined;
     const r = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ ...body, graphToken }),
+      signal: ctrl.signal,
     });
     return r.json();
   };
@@ -325,7 +339,7 @@ function AssistantTab({
       ctx.selected = undefined;
       applyResult(res);
     } catch (e) {
-      addMsg({ role: "bot", text: `⚠️ ${(e as Error).message}` });
+      if (!isAbort(e)) addMsg({ role: "bot", text: `⚠️ ${(e as Error).message}` });
     }
     setBusy(false);
   };
@@ -382,7 +396,7 @@ function AssistantTab({
         // จองสำเร็จแล้วดึงปฏิทินใหม่ทันที — แท็บตารางจะมีนัดขึ้นเอง ไม่ต้องกดซิงค์
         if (!res.error) onBooked?.();
       } catch (e) {
-        addMsg({ role: "bot", text: `⚠️ ${(e as Error).message}` });
+        if (!isAbort(e)) addMsg({ role: "bot", text: `⚠️ ${(e as Error).message}` });
       }
       setBusy(false);
     } else {
@@ -436,10 +450,28 @@ function AssistantTab({
         applyResult(res);
       }
     } catch (e) {
-      addMsg({ role: "bot", text: `⚠️ ${(e as Error).message}` });
+      if (!isAbort(e)) addMsg({ role: "bot", text: `⚠️ ${(e as Error).message}` });
     }
     setBusy(false);
   };
+
+  /** หยุดคำสั่งที่กำลังรอคำตอบ — บางคำถามใช้ 20-30 วินาที ควรเลิกกลางทางได้ */
+  const cancelSend = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setBusy(false);
+    addMsg({ role: "bot", text: "หยุดรอคำตอบแล้วครับ — พิมพ์สั่งใหม่ได้เลย" });
+  };
+
+  /* ปุ่มล้างความจำย้ายไปอยู่บนหัวเรื่องของแอป (มุมขวา) — เปลือกแอปนับเลขขึ้น
+     ทุกครั้งที่กด แท็บแชทที่ถือบทสนทนาอยู่จึงเป็นคนล้างเอง */
+  const clearedRef = useRef(clearSignal || 0);
+  useEffect(() => {
+    if (clearSignal === undefined || clearSignal === clearedRef.current) return;
+    clearedRef.current = clearSignal;
+    clearMemory();
+    // clearMemory ประกาศไว้ล่างกว่านี้ ผูกกับสัญญาณอย่างเดียวพอ
+  }, [clearSignal]);
 
   const clearMemory = () => {
     const ctx = ctxRef.current;
@@ -573,27 +605,31 @@ function AssistantTab({
               disabled={busy}
               className={`${NOTE} flex-1 min-w-0 bg-[var(--nb-surface)] rounded-[26px] px-4 py-2.5 text-[14px] outline-none placeholder:text-[var(--nb-ink-3)] focus:shadow-[3px_3px_0_var(--nb-ink)]`}
             />
-            <button
-              onClick={() => send()}
-              disabled={busy || !input.trim()}
-              aria-label="ส่ง"
-              className={`${NOTE} ${PRESS} ${N_YELLOW} grid place-items-center w-11 h-11 shrink-0 disabled:opacity-40 cursor-pointer`}
-            >
-              <Send className="w-4 h-4" />
-            </button>
+            {busy ? (
+              /* คำสั่งบางอย่างใช้เวลาหลายสิบวินาที (ค้นปฏิทินหลายคน/เรียก AI)
+                 ระหว่างนั้นต้องกดยกเลิกได้ ไม่ใช่รอเฉย ๆ อย่างเดียว */
+              <button
+                onClick={cancelSend}
+                aria-label="ยกเลิกคำสั่ง"
+                className={`${NOTE} ${PRESS} ${N_PINK} grid place-items-center w-11 h-11 shrink-0 cursor-pointer`}
+              >
+                <Square className="w-3.5 h-3.5" fill="currentColor" />
+              </button>
+            ) : (
+              <button
+                onClick={() => send()}
+                disabled={!input.trim()}
+                aria-label="ส่ง"
+                className={`${NOTE} ${PRESS} ${N_YELLOW} grid place-items-center w-11 h-11 shrink-0 disabled:opacity-40 cursor-pointer`}
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </footer>
 
-      <button
-        type="button"
-        onClick={clearMemory}
-        disabled={busy}
-        title="ล้างความจำ AI"
-        className={`${NOTE_SM} ${PRESS} ${N_PINK} absolute bottom-[112px] right-4 z-20 flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-semibold disabled:opacity-50 -rotate-2 cursor-pointer`}
-      >
-        <Eraser className="w-4 h-4" /> ล้างความจำ
-      </button>
+
     </div>
   );
 }
@@ -648,6 +684,8 @@ function AppShell() {
   const { account, getToken, getGraphToken } = useM365Auth();
   const [tab, setTab] = useState<TabKey>("chat");
   const [seed, setSeed] = useState<string | undefined>(undefined);
+  /* นับขึ้นทุกครั้งที่กดล้างความจำที่หัวเรื่อง */
+  const [clearSignal, setClearSignal] = useState(0);
 
   /* ฉากโหลดดึงของจริงไว้แล้ว แท็บจึงรับไปใช้ต่อ ไม่ต้องยิงซ้ำ */
   const [steps, setSteps] = useState<SplashSteps>(SPLASH_START);
@@ -877,6 +915,19 @@ function AppShell() {
           <div className="font-marker text-[16px] leading-tight">ผู้ช่วยงาน KTIS X</div>
           <div className={`font-hand text-[14px] truncate ${INK_2}`}>{account?.username}</div>
         </div>
+        {/* ล้างความจำมาอยู่มุมขวาของหัวเรื่อง — ที่เก่าเป็นปุ่มลอยใหม่ทับแชทอยู่
+            เห็นเฉพาะแท็บแชท เพราะแท็บอื่นไม่มีความจำให้ล้าง */}
+        {tab === "chat" && (
+          <button
+            type="button"
+            onClick={() => setClearSignal((n) => n + 1)}
+            title="ล้างความจำการสนทนา"
+            aria-label="ล้างความจำ"
+            className={`${NOTE_SM} ${PRESS} ${N_PINK} shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold cursor-pointer`}
+          >
+            <Eraser className="w-3.5 h-3.5" /> ล้าง
+          </button>
+        )}
       </header>
 
       {tab === "chat" && next && (
@@ -907,6 +958,7 @@ function AppShell() {
           seed={seed}
           onSeedUsed={() => setSeed(undefined)}
           onBooked={() => void loadEvents(true)}
+          clearSignal={clearSignal}
         />
       </div>
       {tab === "sched" && (
