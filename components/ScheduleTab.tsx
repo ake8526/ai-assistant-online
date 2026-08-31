@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, MapPin, RefreshCw, Users, Video } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, MapPin, RefreshCw, Users, Video } from "lucide-react";
 import { useM365Auth } from "@/components/M365AuthProvider";
 import { appBridge } from "@/components/useKeepAwake";
 /** นัดหมายหนึ่งรายการจาก /api/calendar/events */
@@ -44,10 +44,20 @@ import {
 
 const DOW = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 
+/** ปี/เดือน/วัน (เดือนนับจาก 0 แบบ Date) → "2026-09-01" */
+function keyOf(y: number, m: number, d: number): string {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
 /** คีย์วันของวันนี้ รูปแบบเดียวกับที่ใช้เทียบกับ event */
 function days0Key(): string {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return keyOf(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** คีย์เดือนสำหรับจำว่าดึงนัดของเดือนไหนมาแล้ว */
+function monthKey(y: number, m: number): string {
+  return `${y}-${String(m + 1).padStart(2, "0")}`;
 }
 
 /** "2026-08-31T13:00:00.0000000" — เวลาไทยตรง ๆ ไม่ต้องแปลงโซน */
@@ -88,6 +98,8 @@ function tintFor(e: CalEvent): string {
 }
 
 type View = "ev" | "rm";
+/** ดูเป็นแถบ 7 วัน หรือเป็นตารางรายเดือน */
+type Range = "week" | "month";
 
 /**
  * ปฏิทินกับห้องประชุมอยู่หน้าเดียวกัน
@@ -102,6 +114,7 @@ export default function ScheduleTab({
   err,
   onReload,
   initialRooms,
+  initialRoomsDate,
   onAsk,
 }: {
   /** นัดทั้งหมดมาจากเปลือกแอป — ที่นี่ไม่ดึงเอง จึงอัปเดทเองได้หลังจองเสร็จ */
@@ -109,33 +122,166 @@ export default function ScheduleTab({
   busy: boolean;
   err: string;
   onReload: () => void;
-  /** สถานะห้องของ "วันนี้" ที่ฉากโหลดตอนเปิดแอปดึงมาแล้ว */
+  /** สถานะห้องที่ฉากโหลดตอนเปิดแอปดึงมาแล้ว */
   initialRooms?: Room[] | null;
+  /** วันที่ของ initialRooms ตามที่เซิร์ฟเวอร์ตอบมา ("2026-09-01") */
+  initialRoomsDate?: string;
   onAsk: (t: string) => void;
 }) {
   const { getToken, getGraphToken } = useM365Auth();
-  const [sel, setSel] = useState(0);
+  /** วันที่เลือกเก็บเป็นคีย์วัน ไม่ใช่ดัชนีของแถบ 7 วัน — โหมดเดือนเลือกวันไหนก็ได้ */
+  const [selKey, setSelKey] = useState(days0Key);
+  const [range, setRange] = useState<Range>("week");
   /** ข้อความสั้น ๆ ตอนกดปุ่มประชุมบนแอปรุ่นเก่าที่ยังส่งต่อให้ Teams ไม่ได้ */
   const [joinNote, setJoinNote] = useState("");
   const [view, setView] = useState<View>("ev");
 
-  const days = useMemo(() => {
-    const today = new Date();
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-        d.getDate()
-      ).padStart(2, "0")}`;
-      return { key, dom: d.getDate(), dow: DOW[d.getDay()], date: d };
-    });
+  /* เวลาปัจจุบันเดินทุกนาที นัดที่เพิ่งเลยเวลาจะกลายเป็นเทาเองโดยไม่ต้องกดอะไร
+     และแถบ 7 วันเลื่อนไปวันใหม่เองเมื่อเลยเที่ยงคืน แม้แอปจะเปิดค้างอยู่ */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
   }, []);
+
+  const days = useMemo(() => {
+    const t = new Date(now);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() + i);
+      return {
+        key: keyOf(d.getFullYear(), d.getMonth(), d.getDate()),
+        dom: d.getDate(),
+        dow: DOW[d.getDay()],
+      };
+    });
+  }, [now]);
+
+  // เลยเที่ยงคืนแล้ววันที่เลือกไว้หลุดออกไปข้างหลังแถบ — เลื่อนมาที่วันนี้ให้เอง
+  useEffect(() => {
+    if (range !== "week" || !days[0] || selKey >= days[0].key) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelKey(days[0].key);
+  }, [range, days, selKey]);
+
+  const selDate = useMemo(() => {
+    const [y, m, d] = selKey.split("-").map(Number);
+    return new Date(y, (m || 1) - 1, d || 1);
+  }, [selKey]);
+  const dayLabel = selDate.toLocaleDateString("th-TH", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+
+  /* ---------- ตารางรายเดือน ---------- */
+  const [month, setMonth] = useState(() => {
+    const t = new Date();
+    return { y: t.getFullYear(), m: t.getMonth() };
+  });
+  const [monthEvents, setMonthEvents] = useState<CalEvent[] | null>(null);
+  const [busyMo, setBusyMo] = useState(false);
+  const [errMo, setErrMo] = useState("");
+  const [monthLoaded, setMonthLoaded] = useState("");
+
+  const loadMonth = useCallback(
+    async (y: number, m: number) => {
+      const last = new Date(y, m + 1, 0).getDate();
+      const from = `${keyOf(y, m, 1)}T00:00:00`;
+      const to = `${keyOf(y, m, last)}T23:59:59`;
+      try {
+        const res = await authedGet<{ events?: CalEvent[]; error?: string; reply?: string }>(
+          `/api/calendar/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+          getToken,
+          getGraphToken
+        );
+        if (res.error) {
+          setErrMo(res.reply || res.error);
+        } else {
+          setMonthEvents(res.events || []);
+          setErrMo("");
+        }
+        setMonthLoaded(monthKey(y, m));
+      } catch (e) {
+        setErrMo((e as Error).message);
+      }
+      setBusyMo(false);
+    },
+    [getToken, getGraphToken]
+  );
+
+  // เดือนหนึ่งกินหลายสิบรายการ ดึงเมื่อเปิดดูจริงและเมื่อเปลี่ยนเดือนเท่านั้น
+  useEffect(() => {
+    if (range !== "month" || monthKey(month.y, month.m) === monthLoaded || busyMo) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBusyMo(true);
+    void loadMonth(month.y, month.m);
+  }, [range, month, monthLoaded, busyMo, loadMonth]);
+
+  /* นัดจากเปลือกแอปเป็นของสด (อัปเดทเองทันทีหลังจอง) จึงทับของเดือนที่ดึงมา */
+  const allEvents = useMemo(() => {
+    const byId = new Map<string, CalEvent>();
+    for (const e of monthEvents || []) byId.set(e.id || `${e.start}|${e.subject}`, e);
+    for (const e of events || []) byId.set(e.id || `${e.start}|${e.subject}`, e);
+    return [...byId.values()];
+  }, [events, monthEvents]);
+
+  /** จำนวนนัดต่อวัน — จุดใต้ตัวเลขวันทั้งในแถบ 7 วันและในตารางเดือน */
+  const perDay = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of allEvents) {
+      const k = dayKeyOf(e.start);
+      if (k) m.set(k, (m.get(k) || 0) + 1);
+    }
+    return m;
+  }, [allEvents]);
+
+  /** ช่องของตารางเดือน — ช่องเติมหัวท้ายให้ครบสัปดาห์เป็น null */
+  const cells = useMemo(() => {
+    const lead = new Date(month.y, month.m, 1).getDay();
+    const last = new Date(month.y, month.m + 1, 0).getDate();
+    const out: (number | null)[] = Array.from({ length: lead }, () => null);
+    for (let d = 1; d <= last; d++) out.push(d);
+    while (out.length % 7) out.push(null);
+    return out;
+  }, [month]);
+
+  const monthLabel = new Date(month.y, month.m, 1).toLocaleDateString("th-TH", {
+    month: "long",
+    year: "numeric",
+  });
+
+  /* เปลี่ยนเดือนแล้วเลือกวันแรกของเดือนนั้นให้เลย (วันนี้ถ้ากลับมาเดือนปัจจุบัน)
+     แผงข้างล่างจึงเดินตามเดือนที่กำลังดู ไม่ค้างอยู่ที่วันของเดือนก่อน */
+  const goMonth = (delta: number) => {
+    const d = new Date(month.y, month.m + delta, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const t = new Date(now);
+    setMonth({ y, m });
+    setSelKey(y === t.getFullYear() && m === t.getMonth() ? days0Key() : keyOf(y, m, 1));
+  };
+
+  /* สลับโหมด: เข้าโหมดเดือนให้เปิดที่เดือนของวันที่เลือกอยู่ ออกมาโหมด 7 วัน
+     แล้ววันที่เลือกไม่อยู่ในแถบ ให้กลับมาที่วันนี้ ไม่ใช่ปล่อยให้ไม่มีวันไหนติด */
+  const pickRange = (r: Range) => {
+    setRange(r);
+    if (r === "month") {
+      setMonth({ y: selDate.getFullYear(), m: selDate.getMonth() });
+    } else if (days[0] && days[6] && (selKey < days[0].key || selKey > days[6].key)) {
+      setSelKey(days0Key());
+    }
+  };
 
   /* ---------- ห้องประชุมของวันที่เลือก ---------- */
   const [rooms, setRooms] = useState<Room[]>(initialRooms || []);
   const [busyRm, setBusyRm] = useState(false);
   const [errRm, setErrRm] = useState("");
-  // ห้องที่ฉากโหลดดึงมาเป็นของวันนี้ ถือว่าโหลดวันแรกไว้แล้ว ไม่ต้องยิงซ้ำ
-  const [loadedFor, setLoadedFor] = useState(initialRooms ? days0Key() : "");
+  /* ห้องที่ฉากโหลดดึงมาผูกกับวันที่เซิร์ฟเวอร์ตอบว่าเป็นของวันไหน ไม่ใช่ "วันนี้"
+     ลอย ๆ — เปิดแอปค้างข้ามเที่ยงคืนแล้วกดเข้าแท็บนี้ เคยเห็นสถานะห้องของเมื่อวาน
+     อยู่ใต้หัวเรื่องของวันนี้ (เจอจริง 1 ก.ย. 2026) */
+  const [loadedFor, setLoadedFor] = useState(
+    initialRooms && initialRoomsDate ? initialRoomsDate.slice(0, 10) : ""
+  );
 
   const loadRooms = useCallback(
     async (dayKey: string) => {
@@ -163,35 +309,31 @@ export default function ScheduleTab({
 
   // ดึงสถานะห้องเมื่อเปิดดูจริง และเมื่อเปลี่ยนวัน — ไม่ดึงล่วงหน้าทุกวันโดยเปล่าประโยชน์
   useEffect(() => {
-    const key = days[sel]?.key;
-    if (view !== "rm" || !key || key === loadedFor || busyRm) return;
+    if (view !== "rm" || !selKey || selKey === loadedFor || busyRm) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setBusyRm(true);
-    void loadRooms(key);
-  }, [view, sel, days, loadedFor, busyRm, loadRooms]);
+    void loadRooms(selKey);
+  }, [view, selKey, loadedFor, busyRm, loadRooms]);
 
-  // เวลาปัจจุบันเดินทุกนาที นัดที่เพิ่งเลยเวลาจะกลายเป็นเทาเองโดยไม่ต้องกดอะไร
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const dayEvents = (events || [])
-    .filter((e) => dayKeyOf(e.start) === days[sel]?.key)
+  const dayEvents = allEvents
+    .filter((e) => dayKeyOf(e.start) === selKey)
     .sort((a, b) => a.start.localeCompare(b.start));
 
-  const selDay = days[sel];
-  const dayLabel = selDay
-    ? selDay.date.toLocaleDateString("th-TH", { weekday: "long", day: "numeric", month: "long" })
-    : "";
+  /* โหมดเดือนต้องรอนัดของเดือนมาก่อน ไม่งั้นวันที่มีนัดจะขึ้นว่างทั้งวันอยู่ครู่หนึ่ง */
+  const loadingEv =
+    (events === null && !err) || (range === "month" && monthEvents === null && !errMo);
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 max-w-2xl w-full mx-auto">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-marker text-[19px]">ตารางและห้องประชุม</h2>
         <button
-          onClick={onReload}
+          /* เดิมปุ่มนี้ดึงแต่นัดหมาย สถานะห้องที่ค้างจึงล้างไม่ได้เลยจากหน้านี้ */
+          onClick={() => {
+            setLoadedFor("");
+            setMonthLoaded("");
+            onReload();
+          }}
           disabled={busy}
           className={`${NOTE_SM} ${PRESS} ${N_BLUE} px-2.5 py-1 font-hand text-[15px] font-bold disabled:opacity-50 cursor-pointer`}
         >
@@ -212,26 +354,123 @@ export default function ScheduleTab({
         </div>
       )}
 
-      <div className="grid grid-cols-7 gap-1.5">
-        {days.map((d, i) => {
-          const has = (events || []).some((e) => dayKeyOf(e.start) === d.key);
-          const on = i === sel;
-          return (
+      {/* ดูเป็นแถบ 7 วัน หรือกางเป็นตารางเดือน — วันที่เลือกเดินไปกับทั้งสองโหมด */}
+      <div className="flex items-center gap-2">
+        <div className="flex border-2 border-[var(--nb-ink)] rounded-[10px] overflow-hidden shadow-[2px_2px_0_var(--nb-ink)] shrink-0">
+          {(
+            [
+              ["week", "7 วัน"],
+              ["month", "เดือน"],
+            ] as const
+          ).map(([r, label], i) => (
             <button
-              key={d.key}
-              onClick={() => setSel(i)}
-              aria-pressed={on}
-              className={`border-2 border-[var(--nb-ink)] rounded-[10px] py-1.5 flex flex-col items-center gap-0.5 cursor-pointer ${PRESS} ${
-                on ? `${N_YELLOW} shadow-[2px_2px_0_var(--nb-ink)] -rotate-2` : "bg-[var(--nb-surface)]"
-              }`}
+              key={r}
+              onClick={() => pickRange(r)}
+              aria-pressed={range === r}
+              className={`px-3 py-1 font-hand text-[15px] font-bold cursor-pointer ${PRESS} ${
+                i ? "border-l-2 border-[var(--nb-ink)]" : ""
+              } ${range === r ? N_YELLOW : "bg-[var(--nb-surface)]"}`}
             >
-              <span className={`text-[10.5px] ${on ? "" : INK_2}`}>{d.dow}</span>
-              <b className="font-hand text-[17px] leading-none">{d.dom}</b>
-              <i className={`w-[5px] h-[5px] rounded-full ${has ? "bg-[var(--nb-ink)]" : "bg-transparent"}`} />
+              {label}
             </button>
-          );
-        })}
+          ))}
+        </div>
+
+        {range === "month" && (
+          <div className="flex items-center gap-1 ml-auto">
+            <button
+              onClick={() => goMonth(-1)}
+              aria-label="เดือนก่อน"
+              className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] p-1 cursor-pointer`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="font-hand text-[16px] font-bold text-center min-w-[104px]">
+              {monthLabel}
+            </span>
+            <button
+              onClick={() => goMonth(1)}
+              aria-label="เดือนถัดไป"
+              className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] p-1 cursor-pointer`}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
+
+      {range === "week" ? (
+        <div className="grid grid-cols-7 gap-1.5">
+          {days.map((d) => {
+            const has = !!perDay.get(d.key);
+            const on = d.key === selKey;
+            return (
+              <button
+                key={d.key}
+                onClick={() => setSelKey(d.key)}
+                aria-pressed={on}
+                className={`border-2 border-[var(--nb-ink)] rounded-[10px] py-1.5 flex flex-col items-center gap-0.5 cursor-pointer ${PRESS} ${
+                  on ? `${N_YELLOW} shadow-[2px_2px_0_var(--nb-ink)] -rotate-2` : "bg-[var(--nb-surface)]"
+                }`}
+              >
+                <span className={`text-[10.5px] ${on ? "" : INK_2}`}>{d.dow}</span>
+                <b className="font-hand text-[17px] leading-none">{d.dom}</b>
+                <i className={`w-[5px] h-[5px] rounded-full ${has ? "bg-[var(--nb-ink)]" : "bg-transparent"}`} />
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className={`${NOTE} bg-[var(--nb-surface)] p-2.5`}>
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {DOW.map((n) => (
+              <div key={n} className={`text-center text-[10.5px] ${INK_2}`}>
+                {n}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {cells.map((d, i) => {
+              if (!d) return <div key={`pad${i}`} />;
+              const key = keyOf(month.y, month.m, d);
+              const on = key === selKey;
+              const isToday = key === days0Key();
+              /* จุดบอกว่าวันนั้นมีนัดกี่รายการ เกินสามก็สามจุด — พอให้กวาดตาเห็น */
+              const dots = Math.min(perDay.get(key) || 0, 3);
+              return (
+                <button
+                  key={key}
+                  onClick={() => setSelKey(key)}
+                  aria-pressed={on}
+                  aria-current={isToday ? "date" : undefined}
+                  className={`aspect-square rounded-[9px] border-2 flex flex-col items-center justify-center gap-1 cursor-pointer ${PRESS} ${
+                    on
+                      ? `${N_YELLOW} border-[var(--nb-ink)] shadow-[2px_2px_0_var(--nb-ink)] -rotate-2`
+                      : isToday
+                        ? "bg-[var(--nb-surface)] border-[var(--nb-ink)] border-dashed"
+                        : "bg-[var(--nb-surface)] border-transparent"
+                  }`}
+                >
+                  <b className={`font-hand text-[16px] leading-none ${on || isToday ? "" : INK_2}`}>
+                    {d}
+                  </b>
+                  <span className="flex items-center gap-[3px] h-[4px]">
+                    {Array.from({ length: dots }, (_, k) => (
+                      <i key={k} className="w-[4px] h-[4px] rounded-full bg-[var(--nb-ink)]" />
+                    ))}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {busyMo && (
+            <p className={`mt-2 text-center text-[11.5px] ${INK_2}`}>กำลังดึงนัดของเดือนนี้…</p>
+          )}
+          {!!errMo && (
+            <p className={`mt-2 text-center text-[11.5px] ${INK_2}`}>ดึงนัดของเดือนไม่ได้: {errMo}</p>
+          )}
+        </div>
+      )}
 
       {/* สลับดูนัดหมาย / ห้องว่าง ของวันเดียวกัน */}
       <div className="flex border-2 border-[var(--nb-ink)] rounded-[12px] overflow-hidden shadow-[2px_2px_0_var(--nb-ink)]">
@@ -271,8 +510,8 @@ export default function ScheduleTab({
               </button>
             </BlankNote>
           )}
-          {!err && events === null && <BlankNote>กำลังดึงปฏิทินจาก Microsoft 365…</BlankNote>}
-          {!err && events !== null && !dayEvents.length && (
+          {!err && loadingEv && <BlankNote>กำลังดึงปฏิทินจาก Microsoft 365…</BlankNote>}
+          {!err && !loadingEv && !dayEvents.length && (
             <BlankNote>ไม่มีนัดหมาย — ว่างทั้งวันครับ</BlankNote>
           )}
 

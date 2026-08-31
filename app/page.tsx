@@ -693,6 +693,9 @@ function AppShell() {
   const [calBusy, setCalBusy] = useState(false);
   const [calErr, setCalErr] = useState("");
   const [rooms, setRooms] = useState<Room[] | null>(null);
+  /* ห้องที่ดึงตอนเปิดแอปเป็นของวันไหน — เปิดค้างข้ามเที่ยงคืนแล้วแท็บตารางต้องรู้
+     ว่าของที่มีอยู่เป็นของเมื่อวาน แล้วดึงใหม่เอง ไม่ใช่เอามาแปะใต้วันนี้ */
+  const [roomsDate, setRoomsDate] = useState("");
   /* การตั้งค่าเก็บไว้ที่นี่ เปิดแท็บตั้งค่าจึงเห็นค่าเดิมทันทีทุกครั้ง ไม่ต้องโหลดซ้ำ */
   const [settings, setSettings] = useState<SettingsData>({
     settings: null,
@@ -743,7 +746,7 @@ function AppShell() {
 
       try {
         const [roomRes, setRes, msRes] = await Promise.all([
-          authedGet<{ rooms?: Room[]; error?: string }>("/api/rooms/status", getToken, getGraphToken),
+          authedGet<{ rooms?: Room[]; date?: string; error?: string }>("/api/rooms/status", getToken, getGraphToken),
           authedGet<SettingsData["settings"]>("/api/settings", getToken, getGraphToken).catch(
             (e) => ({ error: (e as Error).message })
           ),
@@ -753,6 +756,7 @@ function AppShell() {
         ]);
         if (!alive) return;
         setRooms(roomRes.rooms || []);
+        setRoomsDate((roomRes.date || "").slice(0, 10));
         setSettings((prev) => ({ ...prev, settings: setRes, ms: msRes }));
         setSteps((p) => ({ ...p, rooms: roomRes.error ? "fail" : "done" }));
       } catch {
@@ -968,6 +972,7 @@ function AppShell() {
           err={calErr}
           onReload={() => void loadEvents(false)}
           initialRooms={rooms}
+          initialRoomsDate={roomsDate}
           onAsk={ask}
         />
       )}
