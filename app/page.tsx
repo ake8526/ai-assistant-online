@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Send,
-  Loader2,
   MapPin,
   FileText,
   Folder,
@@ -12,14 +11,14 @@ import {
   CalendarDays,
   DoorOpen,
   SlidersHorizontal,
-  ArrowRight,
 } from "lucide-react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } from "@/lib/chatMemory";
 import { SLASH_COMMANDS, isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText } from "@/lib/slashCommands";
-import CalendarTab from "@/components/CalendarTab";
-import RoomsTab from "@/components/RoomsTab";
+import CalendarTab, { type CalEvent } from "@/components/CalendarTab";
+import RoomsTab, { type Room } from "@/components/RoomsTab";
 import SettingsTab from "@/components/SettingsTab";
+import SplashScreen, { SPLASH_START, type SplashSteps } from "@/components/SplashScreen";
 import {
   AssistantFace,
   authedGet,
@@ -77,38 +76,56 @@ const SUGGESTIONS = [
 function LoginGate() {
   const { login } = useM365Auth();
   return (
-    <div className={`min-h-screen ${BOARD} flex flex-col items-center justify-center p-6`}>
-      <div className="w-full max-w-sm flex flex-col items-center gap-5">
-        <div className={`${NOTE_SM} ${N_BLUE} px-3 py-0.5 -rotate-2 font-hand text-[15px] font-bold`}>
-          KTIS Group · Microsoft 365
-        </div>
-
-        <div className={`${NOTE} ${FOLD} bg-white w-full p-6 pt-7 flex flex-col items-center gap-3 -rotate-[0.6deg]`}>
+    <div className={`min-h-screen ${BOARD} flex flex-col items-center justify-center p-7`}>
+      <div className="w-full max-w-sm flex flex-col items-center">
+        <div className="flex flex-col items-center gap-1">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/ktisx-reading-video.gif?v=8"
             alt="ผู้ช่วย KTIS X"
-            className="w-32 h-36 object-contain"
+            className="w-[152px] h-[168px] object-contain"
           />
-          <h1 className="font-marker text-[21px] leading-snug text-center">KTIS X ผู้ช่วยงาน</h1>
-          <p className="text-[13.5px] text-[#6a6560] text-center leading-relaxed">
-            ถามตารางงาน เช็คเวลาว่าง จองห้องประชุม สรุปวาระ — พิมพ์สั่งเป็นภาษาคนได้เลยครับ
+          <h1 className="font-marker text-[24px]">สวัสดีครับ</h1>
+          <p className={`text-[13.5px] ${INK_2} text-center max-w-[260px] mt-0.5 leading-relaxed`}>
+            ผมคือผู้ช่วยงานของคุณ เข้าสู่ระบบแล้วผมจะดึงตารางกับงานค้างมาให้ทันที
           </p>
+        </div>
+
+        {/* ลูกศรเขียนมือชี้ลงปุ่ม — หน้านี้มีงานให้ทำอย่างเดียว */}
+        <div className="self-end flex items-end gap-1 mt-3.5 mr-11 -mb-1.5">
+          <span className={`font-hand text-[16px] ${INK_3} -rotate-[4deg]`}>แตะที่นี่</span>
+          <svg
+            viewBox="0 0 46 40"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            aria-hidden="true"
+            className={`w-[46px] h-10 ${INK_3}`}
+          >
+            <path d="M4 4 C20 3 34 9 36 24 36.5 28 35 31.5 33 34" />
+            <path d="M25 29 L33 34.6 L38 27" />
+          </svg>
         </div>
 
         <button
           onClick={() => login()}
-          className={`${NOTE} ${PRESS} ${N_YELLOW} w-full px-5 py-4 flex items-center gap-3 rotate-[0.5deg] cursor-pointer`}
+          className={`${N_BLUE} ${PRESS} w-full mt-1.5 px-[18px] py-[15px] flex items-center gap-3 text-left border-2 border-[#232122] rounded-[14px] shadow-[5px_5px_0_#232122] -rotate-[0.5deg] cursor-pointer`}
         >
           <MicrosoftMark />
-          <span className="flex-1 text-left font-semibold text-[14.5px]">เข้าสู่ระบบด้วย Microsoft 365</span>
-          <span className="grid place-items-center w-7 h-7 border-2 border-[#232122] rounded-full text-[15px] leading-none">
+          <span className="flex-1 font-semibold text-[14.5px]">เข้าสู่ระบบด้วย Microsoft 365</span>
+          <span className="grid place-items-center w-7 h-7 border-2 border-[#232122] rounded-full text-[15px] leading-none shrink-0">
             →
           </span>
         </button>
 
-        <p className="font-hand text-[15px] text-[#9c968e] -rotate-1 text-center">
-          ใช้บัญชี KTIS ของคุณ · ปลอดภัยด้วย Microsoft Entra ID SSO
-        </p>
+        <div className="mt-4 text-center">
+          <p className={`flex items-center justify-center gap-1.5 text-[12px] ${INK_3}`}>
+            <span className="w-[7px] h-[7px] rounded-full bg-[#2f7d54] shrink-0" />
+            Microsoft Entra ID SSO · ไม่เก็บรหัสไว้ในแอป
+          </p>
+          <p className={`font-hand text-[15px] ${INK_3} mt-1`}>KTIS X · v2.7</p>
+        </div>
       </div>
     </div>
   );
@@ -537,77 +554,6 @@ function AssistantTab({ seed }: { seed?: string }) {
   );
 }
 
-const INTRO_KEY = "ktisx_intro_seen";
-
-const INTRO_SLIDES = [
-  {
-    tint: N_BLUE,
-    title: "สั่งงานเป็นภาษาคน",
-    body: "พิมพ์อย่างที่คุยกับเลขา — “พฤหัสว่างไหม”, “จองห้องบ่ายสอง”, “สรุปวาระประชุมเช้า” ไม่ต้องจำคำสั่ง",
-  },
-  {
-    tint: N_GREEN,
-    title: "ตารางจริงจาก Microsoft 365",
-    body: "ปฏิทิน เวลาว่าง และสถานะห้องประชุม อ่านจาก Outlook ของคุณโดยตรง เห็นเท่าที่สิทธิ์คุณเห็น",
-  },
-  {
-    tint: N_ORANGE,
-    title: "ทำงานต่อได้ทุกที่",
-    body: "สั่งจากแอป จากเว็บ หรือจาก LINE ก็เรื่องเดียวกัน ผู้ช่วยจำบริบทที่คุยไว้ให้",
-  },
-];
-
-function IntroGate({ onDone }: { onDone: () => void }) {
-  const [i, setI] = useState(0);
-  const last = i === INTRO_SLIDES.length - 1;
-  const slide = INTRO_SLIDES[i];
-
-  return (
-    <div className={`min-h-screen ${BOARD} flex flex-col items-center justify-center p-6`}>
-      <div className="w-full max-w-sm flex flex-col items-center gap-5">
-        <div className={`${NOTE_SM} ${N_PURPLE} px-3 py-0.5 -rotate-2 font-hand text-[15px] font-bold`}>
-          KTIS X ผู้ช่วยงาน
-        </div>
-
-        <div className={`${NOTE} ${FOLD} ${slide.tint} w-full p-6 pt-7 flex flex-col items-center gap-3 -rotate-[0.6deg]`}>
-          <AssistantFace className="w-16 h-16" />
-          <h1 className="font-marker text-[20px] leading-snug text-center">{slide.title}</h1>
-          <p className={`text-[13.5px] ${INK_2} text-center leading-relaxed`}>{slide.body}</p>
-        </div>
-
-        <div className="flex items-center gap-2" role="tablist" aria-label="หน้าแนะนำ">
-          {INTRO_SLIDES.map((_, j) => (
-            <button
-              key={j}
-              onClick={() => setI(j)}
-              aria-label={`หน้าที่ ${j + 1}`}
-              aria-selected={j === i}
-              role="tab"
-              className={`border-2 border-[#232122] cursor-pointer ${
-                j === i ? "w-6 h-3 rounded-[5px] bg-[#232122]" : "w-3 h-3 rounded-full bg-white"
-              }`}
-            />
-          ))}
-        </div>
-
-        <button
-          onClick={() => (last ? onDone() : setI(i + 1))}
-          className={`${NOTE} ${PRESS} ${N_YELLOW} w-full px-5 py-3.5 flex items-center justify-center gap-2 font-semibold text-[14.5px] rotate-[0.5deg] cursor-pointer`}
-        >
-          {last ? "เริ่มใช้งาน" : "ถัดไป"} <ArrowRight className="w-4 h-4" />
-        </button>
-
-        <button
-          onClick={onDone}
-          className={`font-hand text-[16px] ${INK_3} underline decoration-wavy underline-offset-4 cursor-pointer`}
-        >
-          ข้ามไปเลย
-        </button>
-      </div>
-    </div>
-  );
-}
-
 type TabKey = "chat" | "cal" | "room" | "set";
 
 const TABS: { key: TabKey; label: string; tint: string; Icon: React.ComponentType<{ className?: string }> }[] = [
@@ -658,36 +604,79 @@ function AppShell() {
   const { account, getToken, getGraphToken } = useM365Auth();
   const [tab, setTab] = useState<TabKey>("chat");
   const [seed, setSeed] = useState<string | undefined>(undefined);
-  const [next, setNext] = useState<NextUp>(null);
 
-  /* นัดถัดไปของวันนี้ — โน้ตใบบนสุดของแท็บผู้ช่วย */
+  /* ฉากโหลดดึงของจริงไว้แล้ว แท็บจึงรับไปใช้ต่อ ไม่ต้องยิงซ้ำ */
+  const [steps, setSteps] = useState<SplashSteps>(SPLASH_START);
+  const [events, setEvents] = useState<CalEvent[] | null>(null);
+  const [rooms, setRooms] = useState<Room[] | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const [booted, setBooted] = useState(false);
+
   useEffect(() => {
     let alive = true;
     (async () => {
+      // ถึงตรงนี้ได้แปลว่า MSAL คืน account มาแล้ว งานแรกจึงถือว่าเสร็จ
+      if (!alive) return;
+      setSteps((p) => ({ ...p, connect: "done", calendar: "run" }));
+
+      let evs: CalEvent[] = [];
       try {
-        const res = await authedGet<{ events?: NextUp[] }>(
+        const res = await authedGet<{ events?: CalEvent[]; error?: string }>(
           "/api/calendar/events",
           getToken,
           getGraphToken
         );
+        evs = res.events || [];
         if (!alive) return;
-        // นับนัดที่ยังไม่จบว่ายังน่าสนใจ — ที่กำลังประชุมอยู่ต้องมาก่อนนัดพรุ่งนี้
-        const now = new Date();
-        const upcoming = (res.events || [])
-          .filter((e): e is NonNullable<NextUp> => {
-            const end = e && wallDate(e.end);
-            return !!end && end > now;
-          })
-          .sort((a, b) => a.start.localeCompare(b.start));
-        setNext(upcoming[0] || null);
+        setEvents(evs);
+        setSteps((p) => ({ ...p, calendar: res.error ? "fail" : "done", rooms: "run" }));
       } catch {
-        /* ไม่มีนัดถัดไปก็ไม่ต้องขึ้นโน้ต */
+        if (!alive) return;
+        setSteps((p) => ({ ...p, calendar: "fail", rooms: "run" }));
       }
+
+      try {
+        const res = await authedGet<{ rooms?: Room[]; error?: string }>(
+          "/api/rooms/status",
+          getToken,
+          getGraphToken
+        );
+        if (!alive) return;
+        setRooms(res.rooms || []);
+        setSteps((p) => ({ ...p, rooms: res.error ? "fail" : "done" }));
+      } catch {
+        if (!alive) return;
+        setSteps((p) => ({ ...p, rooms: "fail" }));
+      }
+
+      // ดึงเสร็จก่อนเพดานเวลา — ค้างให้เห็นแถบเต็มแวบหนึ่งแล้วยกฉากออก
+      setTimeout(() => alive && setLeaving(true), 380);
+      setTimeout(() => alive && setBooted(true), 900);
     })();
+
+    // Graph บางครั้งใช้หลายวินาที ไม่กั้นผู้ใช้ไว้ที่ฉากโหลด — ปล่อยเข้าแอปก่อน
+    // ที่เหลือดึงต่อเบื้องหลัง แท็บที่ยังไม่ได้ข้อมูลจะยิงเอง
+    const capLeave = setTimeout(() => alive && setLeaving(true), 2200);
+    const capBoot = setTimeout(() => alive && setBooted(true), 2700);
+
     return () => {
       alive = false;
+      clearTimeout(capLeave);
+      clearTimeout(capBoot);
     };
   }, [getToken, getGraphToken]);
+
+  /** นัดที่ยังไม่จบ — ที่กำลังประชุมอยู่ต้องมาก่อนนัดพรุ่งนี้ */
+  const next: NextUp = React.useMemo(() => {
+    const now = new Date();
+    const upcoming = (events || [])
+      .filter((e) => {
+        const end = wallDate(e.end);
+        return !!end && end > now;
+      })
+      .sort((a, b) => a.start.localeCompare(b.start));
+    return upcoming[0] || null;
+  }, [events]);
 
   const ask = (text: string) => {
     setSeed(text);
@@ -727,8 +716,8 @@ function AppShell() {
       )}
 
       {tab === "chat" && <AssistantTab seed={seed} />}
-      {tab === "cal" && <CalendarTab />}
-      {tab === "room" && <RoomsTab onAsk={ask} />}
+      {tab === "cal" && <CalendarTab initial={events} />}
+      {tab === "room" && <RoomsTab onAsk={ask} initial={rooms} />}
       {tab === "set" && <SettingsTab />}
 
       <nav className="grid grid-cols-4 border-t-2 border-[#232122] bg-white px-1.5 pt-2 pb-2.5 shrink-0">
@@ -755,51 +744,19 @@ function AppShell() {
           );
         })}
       </nav>
+
+      {!booted && (
+        <SplashScreen steps={steps} eventCount={events?.length} leaving={leaving} />
+      )}
     </div>
   );
 }
 
 function HomeGate() {
   const { ready, isAuthenticated } = useM365Auth();
-  const [introDone, setIntroDone] = useState<boolean | null>(null);
 
-  // localStorage อ่านได้แค่บนเบราว์เซอร์ จะอ่านตอน render ไม่ได้เพราะ SSR จะได้ค่าคนละอย่าง
-  // แล้ว hydrate ไม่ตรงกัน — set ครั้งเดียวตอน mount คือทางที่ถูกต้องของเคสนี้
-  useEffect(() => {
-    try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIntroDone(localStorage.getItem(INTRO_KEY) === "1");
-    } catch {
-      setIntroDone(true);
-    }
-  }, []);
-
-  if (!ready || introDone === null) {
-    return (
-      <div className={`min-h-screen ${BOARD} flex items-center justify-center`}>
-        <div className={`${NOTE} ${N_YELLOW} px-5 py-3 flex items-center gap-2.5 -rotate-1`}>
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="font-hand text-[16px] font-bold">กำลังเปิดผู้ช่วย…</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!introDone) {
-    return (
-      <IntroGate
-        onDone={() => {
-          try {
-            localStorage.setItem(INTRO_KEY, "1");
-          } catch {
-            /* โหมดส่วนตัวเขียนไม่ได้ ก็แค่เห็น intro ใหม่รอบหน้า */
-          }
-          setIntroDone(true);
-        }}
-      />
-    );
-  }
-
+  // ระหว่าง MSAL กู้ session — ฉากโหลดค้างที่งานแรก
+  if (!ready) return <SplashScreen steps={SPLASH_START} />;
   if (!isAuthenticated) return <LoginGate />;
   return <AppShell />;
 }

@@ -56,10 +56,10 @@ function tintFor(e: CalEvent) {
   return N_YELLOW;
 }
 
-export default function CalendarTab() {
+export default function CalendarTab({ initial }: { initial?: CalEvent[] | null }) {
   const { getToken, getGraphToken } = useM365Auth();
-  const [events, setEvents] = useState<CalEvent[]>([]);
-  const [busy, setBusy] = useState(true);
+  const [events, setEvents] = useState<CalEvent[]>(initial || []);
+  const [busy, setBusy] = useState(!initial);
   const [err, setErr] = useState("");
   const [sel, setSel] = useState(0);
 
@@ -81,9 +81,11 @@ export default function CalendarTab() {
   // โหลดข้อมูลจริงตอนเปิดแท็บ — กฎนี้ไล่เข้าไปเห็น setState ใน load() แต่ทุกตัว
   // เกิดหลัง await แล้ว ไม่ได้ set ตรงใน effect body (React ยอมรับ fetch แบบนี้)
   useEffect(() => {
+    // ฉากโหลดตอนเปิดแอปดึงมาให้แล้ว ไม่ต้องยิงซ้ำตอนเปิดแท็บ
+    if (initial) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
-  }, [load]);
+  }, [load, initial]);
 
   /* กดปุ่มเอง — ขึ้น spinner ทันทีแล้วค่อยยิง */
   const reload = () => {

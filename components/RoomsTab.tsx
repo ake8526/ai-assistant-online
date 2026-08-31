@@ -17,7 +17,7 @@ import {
   PRESS,
 } from "@/components/noteStyles";
 
-type Room = {
+export type Room = {
   email: string;
   name: string;
   busy: { start: string; end: string; label: string }[];
@@ -28,10 +28,16 @@ type Room = {
 
 type Resp = { rooms?: Room[]; error?: string; reply?: string };
 
-export default function RoomsTab({ onAsk }: { onAsk: (text: string) => void }) {
+export default function RoomsTab({
+  onAsk,
+  initial,
+}: {
+  onAsk: (text: string) => void;
+  initial?: Room[] | null;
+}) {
   const { getToken, getGraphToken } = useM365Auth();
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [busy, setBusy] = useState(true);
+  const [rooms, setRooms] = useState<Room[]>(initial || []);
+  const [busy, setBusy] = useState(!initial);
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
@@ -52,9 +58,11 @@ export default function RoomsTab({ onAsk }: { onAsk: (text: string) => void }) {
   // โหลดข้อมูลจริงตอนเปิดแท็บ — กฎนี้ไล่เข้าไปเห็น setState ใน load() แต่ทุกตัว
   // เกิดหลัง await แล้ว ไม่ได้ set ตรงใน effect body (React ยอมรับ fetch แบบนี้)
   useEffect(() => {
+    // ฉากโหลดตอนเปิดแอปดึงมาให้แล้ว ไม่ต้องยิงซ้ำตอนเปิดแท็บ
+    if (initial) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
-  }, [load]);
+  }, [load, initial]);
 
   /* กดปุ่มเอง — ขึ้น spinner ทันทีแล้วค่อยยิง */
   const reload = () => {
