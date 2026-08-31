@@ -33,7 +33,7 @@ import {
   NOTE_SM,
   PRESS,
 } from "@/components/noteStyles";
-import type { KeepAwake } from "@/components/useKeepAwake";
+import { appBridge, type KeepAwake } from "@/components/useKeepAwake";
 import type { BuildInfo } from "@/components/useFreshBuild";
 import { THEME_LABEL, THEME_MODES, type Theme, type ThemeMode } from "@/components/useTheme";
 
@@ -843,6 +843,18 @@ export default function SettingsBoard({
                           <br />
                           บนเซิร์ฟเวอร์: {build.live || "กำลังตรวจ…"}
                         </p>
+                        {/* เลขเวอร์ชันของ APK อ่านจากหน้าเว็บไม่ได้ แต่เช็กได้ว่ามีความสามารถ
+                            ที่รุ่นใหม่เพิ่มหรือยัง — เอาไว้ตอบคำถามว่า "ต้องลงแอปใหม่หรือยัง" */}
+                        {!!appBridge() && (
+                          <p className={`text-[11.5px] ${INK_2} mt-1`}>
+                            เปิดแอป Teams จากปุ่มเข้าประชุม:{" "}
+                            {appBridge()?.openMeeting ? (
+                              "รองรับแล้ว"
+                            ) : (
+                              <b className="font-semibold">ยังไม่รองรับ — ต้องลงแอปรุ่น 3.4</b>
+                            )}
+                          </p>
+                        )}
                         <p className={`text-[11.5px] ${build.stale ? "font-semibold" : INK_3} mt-0.5`}>
                           {build.stale
                             ? "โค้ดในเครื่องเป็นรุ่นเก่า — กดโหลดใหม่เพื่อใช้รุ่นล่าสุด"

@@ -115,6 +115,8 @@ export default function ScheduleTab({
 }) {
   const { getToken, getGraphToken } = useM365Auth();
   const [sel, setSel] = useState(0);
+  /** ข้อความสั้น ๆ ตอนกดปุ่มประชุมบนแอปรุ่นเก่าที่ยังส่งต่อให้ Teams ไม่ได้ */
+  const [joinNote, setJoinNote] = useState("");
   const [view, setView] = useState<View>("ev");
 
   const days = useMemo(() => {
@@ -196,6 +198,19 @@ export default function ScheduleTab({
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "ซิงค์ M365"}
         </button>
       </div>
+
+      {!!joinNote && (
+        <div className={`${NOTE_SM} ${N_YELLOW} px-3 py-2 text-[12px] flex items-start gap-2`}>
+          <span className="flex-1">
+            {joinNote}
+            <br />
+            <span className={INK_2}>อัปเดตแอปเป็นรุ่น 3.4 แล้วปุ่มนี้จะเปิดแอป Teams ให้เอง</span>
+          </span>
+          <button onClick={() => setJoinNote("")} className="shrink-0 underline cursor-pointer">
+            ปิด
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-7 gap-1.5">
         {days.map((d, i) => {
@@ -305,10 +320,26 @@ export default function ScheduleTab({
                     <a
                       href={e.joinUrl}
                       onClick={(ev) => {
-                        const open = appBridge()?.openMeeting;
-                        if (!open) return; // นอกแอป/APK เก่า — ใช้ลิงก์ตามปกติ
+                        const bridge = appBridge();
+                        if (!bridge) return; // บนเบราว์เซอร์ — ลิงก์ทำงานตามปกติ
                         ev.preventDefault();
-                        open(e.joinUrl);
+                        if (bridge.openMeeting) {
+                          bridge.openMeeting(e.joinUrl);
+                          return;
+                        }
+                        // แอปรุ่นเก่า: หน้า Teams เว็บจะเด้งไป msteams:// เอง ซึ่ง WebView
+                        // อ่านไม่ออก กลายเป็นหน้า error ค้าง — อย่าพาไปเจออีก
+                        // ต้องขึ้นข้อความเสมอ ไม่ว่าคัดลอกได้หรือไม่ — กดแล้วเงียบคืออาการที่แย่สุด
+                        const ok = "คัดลอกลิงก์ประชุมแล้ว — เปิดแอป Teams แล้ววางลิงก์ได้เลย";
+                        const fail = "คัดลอกลิงก์อัตโนมัติไม่ได้ — เปิดนัดนี้จาก Outlook หรือ Teams แทน";
+                        if (navigator.clipboard?.writeText) {
+                          navigator.clipboard
+                            .writeText(e.joinUrl)
+                            .then(() => setJoinNote(ok))
+                            .catch(() => setJoinNote(fail));
+                        } else {
+                          setJoinNote(fail);
+                        }
                       }}
                       target={appBridge() ? undefined : "_blank"}
                       rel="noreferrer"
