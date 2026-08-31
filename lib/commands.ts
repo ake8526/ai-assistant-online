@@ -587,6 +587,9 @@ function nameFromCandidate(raw: string): string {
     if (isCalendarTalk(s)) return "";
   // ไม่มีใครชื่อ "งานที่ ตาม" — เศษของวลีเรื่องงานที่เหลือจากการปอกคำ ไม่ใช่ชื่อคน
   if (/(?:งาน|ติดตาม|ค้าง|รายการ)/.test(s)) return "";
+    // คำตอบรับ/ปฏิเสธลอย ๆ ก็ไม่ใช่ชื่อคน — เคยตอบว่า
+    // “หาคนชื่อ ยืนยัน ไม่เจอ” ตอนที่คำยืนยันหลุดมาตอนที่คำถามหมดอายุแล้ว
+    if (/^(?:ยืนยัน|ตกลง|ใช่|โอเค|ไม่|ไม่ใช่|ยกเลิก|ok|okay|yes|no|confirm|cancel)$/i.test(s)) return "";
     return s;
   }
   const residue = s.replace(CALENDAR_TALK, " ").replace(/\s+/g, " ").trim();
@@ -1706,6 +1709,60 @@ function quickSelfBookIntent(text: string): { intent: string; params: Record<str
      คือ last_intent === "confirm_add_task" เท่านั้น
    - ฉบับร่างหมดอายุใน 15 นาที ไม่ให้คำยืนยันของเรื่องอื่นมาตกกับงานเก่า
    --------------------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------------------
+   นอกเวลาทำงาน: ถามก่อนว่ายังจะจองอีกไหม
+
+   เดิมตอบแค่ว่าอยู่นอกช่วงที่ค้น แล้วจบ คนที่ต้องนัดนอกเวลาจริง ๆ จึงทำอะไร
+   ต่อไม่ได้ — ตอนนี้ถามกลับ ถ้ายืนยันจึงค้นช่วงว่างใหม่โดยไม่จำกัดเวลาทำงาน
+
+   การกดยืนยันตรงนี้เพียงขยายช่วงค้นหา ยังไม่สร้างนัดให้ใคร — การสร้างนัด
+   จริงใน Outlook ยังต้องกดเลือกช่วงเวลาแล้วยืนยันที่การ์ดอีกชั้นตามเดิม
+   --------------------------------------------------------------------------- */
+
+const OFFHOURS_DRAFT_KEY = "_pending_offhours";
+const OFFHOURS_DRAFT_TTL_MS = 15 * 60_000;
+
+type OffHoursDraft = {
+  ts: number;
+  attendees: { mail: string; name?: string }[];
+  duration: number;
+  window: { start: string; end: string; label: string } | null;
+  band: { after: number | null; before: number | null; label?: string } | null;
+  subject: string;
+  atMin: number | null;
+  includeLunch: boolean;
+};
+
+async function saveOffHoursDraft(userUpn: string, d: Omit<OffHoursDraft, "ts">): Promise<void> {
+  await setSetting(userUpn.toLowerCase(), OFFHOURS_DRAFT_KEY, JSON.stringify({ ...d, ts: Date.now() }));
+}
+
+async function loadOffHoursDraft(userUpn: string): Promise<OffHoursDraft | null> {
+  try {
+    const raw = await getSetting(userUpn.toLowerCase(), OFFHOURS_DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as OffHoursDraft;
+    if (!d || !Array.isArray(d.attendees)) return null;
+    if (Date.now() - Number(d.ts || 0) > OFFHOURS_DRAFT_TTL_MS) {
+      await deleteSetting(userUpn.toLowerCase(), OFFHOURS_DRAFT_KEY);
+      return null;
+    }
+    return d;
+  } catch {
+    return null;
+  }
+}
+
+async function clearOffHoursDraft(userUpn: string): Promise<void> {
+  await deleteSetting(userUpn.toLowerCase(), OFFHOURS_DRAFT_KEY);
+}
+
+const OFFHOURS_CONFIRM_SUGGESTIONS = [
+  { label: "ยืนยันจองนอกเวลา", text: "ยืนยันจองนอกเวลา" },
+  { label: "📅 พรุ่งนี้", text: "พรุ่งนี้" },
+  { label: "💬 ช่วยเรื่องอื่น", text: "ช่วยเรื่องอื่น" },
+];
 
 const ADD_TASK_DRAFT_KEY = "_pending_add_tasks";
 const ADD_TASK_DRAFT_TTL_MS = 15 * 60_000;
@@ -3973,6 +4030,8 @@ export async function runFindMeeting(
     showMore?: boolean;
     attachFile?: { id?: string; name?: string; url?: string };
     attachLinePhoto?: boolean;
+    /** ค้นนอกเวลาทำงานด้วย — ตั้งเมื่อผู้ใช้กดยืนยันจองนอกเวลาแล้วเท่านั้น */
+    anyHour?: boolean;
   }
 ): Promise<CommandResult> {
   const denied = needCalendarConsent();
@@ -4202,6 +4261,7 @@ export async function runFindMeeting(
       allStarts: scanAll,
       workEndHour,
       includeLunch,
+      anyHour: opts?.anyHour ?? false,
     }
   );
 
@@ -4278,6 +4338,39 @@ export async function runFindMeeting(
         reply: "แสดงครบทุกช่วงว่างที่ค้นเจอแล้วครับ — เลือกจากรายการก่อนหน้า หรือพิมพ์วัน/เวลาเองได้ครับ",
       };
     }
+    // เหตุที่หาไม่เจออาจเป็นเพราะนอกเวลาทำงาน — จะบอกเหตุแล้วถามกลับ
+    // ไม่ใช่ปิดทางเฉย ๆ เพราะคนที่ต้องนัดนอกเวลาจริง ๆ ก็มี
+    const offHoursAt = resolvedAt != null && outsideWorkHours(resolvedAt);
+    const dayOver =
+      !!window && !isWeekendWindow(window.start, window.end) && !workingHoursRemain(window.start, window.end);
+    const weekend = !!window && isWeekendWindow(window.start, window.end);
+    if (!opts?.anyHour && (offHoursAt || dayOver || weekend)) {
+      await saveOffHoursDraft(userUpn, {
+        attendees: attendees.filter((a) => a.mail).map((a) => ({ mail: a.mail as string, name: a.name })),
+        duration,
+        window: window ? { start: wallIso(window.start), end: wallIso(window.end), label: window.label } : null,
+        band: band ? { after: band.after, before: band.before, label: band.label } : null,
+        subject,
+        atMin: resolvedAt ?? null,
+        includeLunch,
+      });
+      const why = offHoursAt
+        ? `${fmtHHMM(resolvedAt as number)} อยู่นอกเวลาทำงาน (${workHoursLabel()})`
+        : weekend
+          ? `${window?.label ?? ""} เป็นวันหยุด`
+          : `${window?.label ?? ""} เลยเวลาทำงาน (${workHoursLabel()}) ไปแล้ว`;
+      return {
+        intent: "confirm_offhours",
+        reply:
+          `${why} จึงยังไม่มีช่วงให้เสนอครับ ⏰` +
+          `\nตารางของคนที่จะนัดว่างอยู่ ไม่ใช่ว่าคิวแน่น` +
+          `\n\nยังต้องการจองนอกเวลาอยู่ไหมครับ? กด “ยืนยันจองนอกเวลา” แล้วผมจะหาช่วงว่างให้โดยไม่จำกัดเวลาทำงาน` +
+          `\n(ยังไม่สร้างนัดนะครับ จะให้เลือกช่วงเวลาก่อน)`,
+        suggestions: OFFHOURS_CONFIRM_SUGGESTIONS,
+        meeting: meetingBase(),
+      };
+    }
+
     const hint =
       resolvedAt != null
         ? outsideWorkHours(resolvedAt)
@@ -4868,6 +4961,7 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     // บล็อกนี้ตอบว่า "ยกเลิกรายการแล้ว" จึงต้องยกเลิกของที่ค้างอยู่จริงด้วย
     // ไม่ใช่ปล่อยฉบับร่างงานลอยไว้จนหมดอายุแล้วขัดกับคำตอบที่ให้ไป
     await clearAddTaskDraft(userUpn);
+    await clearOffHoursDraft(userUpn);
     return {
       intent: "cancel_action",
       reply: "รับทราบครับ ยกเลิกรายการแล้วครับ 👍\nพิมพ์คำสั่งใหม่หรือบอกสิ่งที่ต้องการให้ช่วยได้เลยครับ",
@@ -4876,6 +4970,59 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
 
   // Normalize common Thai typos / spelling mistakes (e.g. พรุ้งนี้ -> พรุ่งนี้)
   text = normalizeThaiTypo(text);
+
+  // ยืนยันหาช่วงนอกเวลาทำงาน — คำสั้นรับเพาะตอนที่คำถามนี้ค้างอยู่จริง
+  // การกดตรงนี้เพียงขยายช่วงเวลาที่ค้น ยังไม่สร้างนัด — การสร้างนัดจริง
+  // มีด่านการ์ดยืนยันของตัวเองกั้นอีกชั้นตามเดิม
+  {
+    const off = await loadOffHoursDraft(userUpn);
+    const yesSpecific = /^(?:ยืนยันจองนอกเวลา|จองนอกเวลา)$/i.test(text);
+    const noSpecific = /^(?:ไม่จองนอกเวลา|ยกเลิกจองนอกเวลา)$/i.test(text);
+    if (!off && (yesSpecific || noSpecific)) {
+      return {
+        intent: "offhours_expired",
+        reply: "ไม่มีคำขอจองค้างอยู่ครับ (เก็บให้ 15 นาที) พิมพ์ขอจองใหม่ได้เลย",
+      };
+    }
+    if (off) {
+      const asked = context?.last_intent === "confirm_offhours";
+      const yes = yesSpecific || (asked && /^(?:ยืนยัน|ตกลง|ใช่|เอา|โอเค|ok|okay|yes|confirm)$/i.test(text));
+      const no = noSpecific || (asked && /^(?:ไม่|ไม่ใช่|ไม่ต้อง|ยกเลิก|no|cancel)$/i.test(text));
+      if (yes) {
+        await clearOffHoursDraft(userUpn);
+        trace("parse", "★ AI:NONE · ยืนยันหาช่วงนอกเวลาทำงาน (กฎตายตัว ไม่เรียก API)");
+        const win = off.window
+          ? {
+              start: parseWall(off.window.start) as Date,
+              end: parseWall(off.window.end) as Date,
+              label: off.window.label,
+            }
+          : null;
+        return await runFindMeeting(
+          userUpn,
+          off.attendees.map((a) => ({ mail: a.mail, name: a.name })),
+          off.duration,
+          win && win.start && win.end ? win : null,
+          off.band,
+          off.includeLunch,
+          off.subject,
+          off.atMin,
+          { anyHour: true }
+        );
+      }
+      if (no) {
+        await clearOffHoursDraft(userUpn);
+        return {
+          intent: "offhours_cancelled",
+          reply: "ไม่จองนอกเวลานะครับ บอกวันหรือช่วงเวลาใหม่มาได้เลย",
+          suggestions: [
+            { label: "📅 พรุ่งนี้", text: "พรุ่งนี้" },
+            { label: "💬 ช่วยเรื่องอื่น", text: "ช่วยเรื่องอื่น" },
+          ],
+        };
+      }
+    }
+  }
 
   // ยืนยันเพิ่มงานที่ทวนไว้ — ต้องมาก่อนบล็อกปิดงาน เพราะทั้งสองรับคำสั้นเหมือนกัน
   // ตัวแยกคือ last_intent: คำสั้น ๆ ตกกับคำถามที่ผู้ช่วยถามล่าสุดเท่านั้น
@@ -4924,6 +5071,21 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
   // ไม่ว่าผู้ช่วยจะถามเรื่องนั้นล่าสุดหรือไม่ ซึ่งเป็นชนิดของบั๊กที่กฎในโปรเจ็กต์
   // เขียนไว้เตือน (เคยไปตกกับการตอบรับนัดแล้วสร้าง event) คำสั้น ๆ จึงรับเฉพาะ
   // ตอนที่คำถามปิดงานค้างอยู่จริง ส่วน "ยืนยันปิดงาน" ที่เจาะจงรับได้ตลอด
+  // คำยืนยันลอย ๆ ที่ไม่มีคำถามของผู้ช่วยค้างอยู่ ต้องหยุดที่นี่
+  //
+  // กฮของโปรเจกต์: "ยืนยัน" ต้องตอบเฉพาะคำถามที่ผู้ช่วยเพิ่งถามไปเท่านั้น
+  // ห้ามหลุดไปถึงตัวจัดการอะไรเลย — เคยหลุดไปเป็นชื่อคนที่จะนัด และไปตั้งต้นคำถาม
+  // เรื่องจองขึ้นมาเองทั้งที่ผู้ใช้ไม่ได้ขอ
+  if (
+    /^(?:ยืนยัน|ตกลง|ใช่|โอเค|ok|okay|yes|confirm)$/i.test(text) &&
+    !String(context?.last_intent || "").startsWith("confirm_")
+  ) {
+    return {
+      intent: "unknown",
+      reply: "ยืนยันเรื่องไหนครับ? ตอนนี้ไม่มีคำถามค้างอยู่ — พิมพ์สิ่งที่ต้องการมาได้เลย",
+    };
+  }
+
   const closeConfirmSpecific = /^(?:ยืนยันปิดงาน|ปิดเลย)$/i.test(text);
   const closeConfirmShort =
     context?.last_intent === "confirm_complete_task" &&

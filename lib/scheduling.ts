@@ -129,6 +129,11 @@ export async function findCommonSlots(
      * false for open week scans (weekdays only).
      */
     includeWeekend?: boolean;
+    /**
+     * ค้นนอกเวลาทำงานด้วย — ใช้ตอนที่ผู้ใช้ยืนยันว่าจะนัดนอกเวลาจริง ๆ
+     * ไม่เปิดเองโดยปริยาย — คนที่ต้องเข้าประชุมตอนห้าทุ่มคืนคือคนอื่นด้วย
+     */
+    anyHour?: boolean;
   }
 ): Promise<{ slots: Slot[]; busy: BusyMap; ranges: Slot[] }> {
   const atMin = opts?.atMin ?? null;
@@ -202,6 +207,7 @@ export async function findCommonSlots(
   const workEnd = opts?.workEndHour ?? WORK_END_HOUR;
   // Explicit day (วันนี้/พรุ่งนี้/วันที่…) → include that day even if Sat/Sun
   const includeWeekend = opts?.includeWeekend ?? !!window;
+  const anyHour = opts?.anyHour ?? false;
   const cap = allStarts ? Math.max(maxSlots, 48) : maxSlots;
 
   const dayAllowed = (dow: number) => (dow >= 1 && dow <= 5) || (includeWeekend && (dow === 0 || dow === 6));
@@ -264,14 +270,15 @@ export async function findCommonSlots(
     const startMin = slotStart.getUTCHours() * 60 + slotStart.getUTCMinutes();
     const endMin = startMin + durationMin;
     const inHours =
-      dayAllowed(dow) &&
-      slotStart.getUTCHours() >= WORK_START_HOUR &&
-      endMin <= workEnd * 60;
+      anyHour ||
+      (dayAllowed(dow) &&
+        slotStart.getUTCHours() >= WORK_START_HOUR &&
+        endMin <= workEnd * 60);
     const inBand =
       (afterMin === null || startMin >= afterMin) &&
       (beforeMin === null || startMin < beforeMin);
     // Lunch skip is for weekdays; weekends have no office lunch rule
-    const lunchOk = includeLunch || dow === 0 || dow === 6 || !overlapsLunch(startMin, endMin);
+    const lunchOk = anyHour || includeLunch || dow === 0 || dow === 6 || !overlapsLunch(startMin, endMin);
     const allFree = views.every((v) => v.length >= i + need && v.slice(i, i + need) === "0".repeat(need));
     if (inHours && inBand && lunchOk && allFree) {
       const slotEnd = addMinutes(slotStart, durationMin);
