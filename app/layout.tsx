@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Mali, Sriracha, Caveat } from "next/font/google";
 import "./globals.css";
+import { buildId } from "@/lib/buildId";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -57,6 +58,9 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${mali.variable} ${sriracha.variable} ${caveat.variable} h-full antialiased`}
     >
       <head>
+        {/* รหัส build ของโค้ดชุดที่หน้านี้โหลดมา — useFreshBuild เทียบกับ /api/version
+            เพื่อรู้ว่า JavaScript ในจอเป็นของเก่าหรือยัง */}
+        <meta name="ktisx-build" content={buildId()} />
         {/* ธีมที่ผู้ใช้เลือกต้องมีผลก่อนเบราว์เซอร์วาดจอแรก ไม่งั้นจอแวบขาวก่อนแล้วค่อยมืด
             (วิธีตามคู่มือ Next: docs/01-app/02-guides/preventing-flash-before-hydration.md) */}
         <script

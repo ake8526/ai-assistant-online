@@ -20,6 +20,7 @@ import TasksTab, { type Task } from "@/components/TasksTab";
 import SettingsBoard, { type Health, type NotifyCfg, type SettingsData } from "@/components/SettingsBoard";
 import { useKeepAwake } from "@/components/useKeepAwake";
 import { useTheme } from "@/components/useTheme";
+import { useFreshBuild } from "@/components/useFreshBuild";
 import SplashScreen, { SPLASH_START, type SplashSteps } from "@/components/SplashScreen";
 import {
   AssistantFace,
@@ -324,13 +325,14 @@ function AssistantTab({ seed, onSeedUsed }: { seed?: string; onSeedUsed?: () => 
      ตัวกันซ้ำเคยเป็น ref ในคอมโพเนนต์นี้ ซึ่งถูกล้างทุกครั้งที่แท็บถูกถอด
      ผลคือกดล้างความจำ ออกไปแท็บอื่น แล้วกลับมา คำสั่งเดิมถูกยิงใหม่ บทสนทนา
      ที่ล้างไปจึงโผล่กลับมาทั้งชุด — ตอนนี้เปลือกแอปเป็นคนล้างคำสั่งทิ้งหลังใช้ */
-  const seededRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (seed && seededRef.current !== seed) {
-      seededRef.current = seed;
-      void send(seed);
-      onSeedUsed?.();
-    }
+    if (!seed) return;
+    // ไม่เทียบกับค่าเดิมอีกแล้ว: เปลือกแอปล้าง seed ทิ้งทันทีที่ส่งไป ถ้ายังเทียบอยู่
+    // การกดปุ่มห้องเดิมซ้ำครั้งที่สองจะเงียบไปเลยเพราะข้อความเหมือนเดิมเป๊ะ
+    // (send ตั้ง state หลัง await ไม่ใช่ตรง ๆ ในตัว effect แต่กฎมองข้ามฟังก์ชันไม่เห็น)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void send(seed);
+    onSeedUsed?.();
     // send เปลี่ยนทุก render โดยตั้งใจ — ผูกกับ seed อย่างเดียวพอ
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed]);
@@ -660,6 +662,9 @@ function AppShell() {
      cleanup จึงปลดธงกันจอดับทิ้งทันที สวิตช์ขึ้นว่าเปิดแต่จอดับทุกที่นอกหน้านั้น */
   const keepAwake = useKeepAwake();
   const theme = useTheme();
+  /* มี build ใหม่ขึ้นแล้วโหลดหน้าใหม่เอง — WebView ไม่โหลดใหม่ตอนเปิดจากรายการ
+     แอปล่าสุด ทำให้ยังเจอบั๊กฝั่งหน้าจอที่แก้ไปแล้ว */
+  useFreshBuild();
   const [leaving, setLeaving] = useState(false);
   const [booted, setBooted] = useState(false);
 
