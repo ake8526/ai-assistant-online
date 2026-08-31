@@ -34,10 +34,22 @@ export type SettingsData = { settings: Settings | null; ms: MsStatus | null };
 
 const AWAKE_KEY = "ktisx_keep_awake";
 
+/** สะพานที่แอป Android ฉีดเข้ามา — มีเมธอดเดียวคือกันจอดับ */
+type ScreenBridge = { setKeepAwake?: (on: boolean) => void };
+function appBridge(): ScreenBridge | null {
+  if (typeof window === "undefined") return null;
+  const b = (window as unknown as { KtisxApp?: ScreenBridge }).KtisxApp;
+  return b && typeof b.setKeepAwake === "function" ? b : null;
+}
+
 /**
- * จอดับกลางประชุมแล้วต้องปลดล็อกใหม่ทุกครั้งเป็นเรื่องน่ารำคาญเวลาเปิดตาราง
- * ทิ้งไว้บนโต๊ะ — Screen Wake Lock API กันไว้ได้ แต่ระบบยึดคืนเองเมื่อสลับแอป
- * หรือจอดับ จึงต้องขอใหม่ทุกครั้งที่กลับมาเห็นหน้าจอ
+ * กันจอดับ — สองทางเรียงตามความน่าเชื่อถือ
+ *
+ * 1. ในแอป: บอก Android ให้ถือธง FLAG_KEEP_SCREEN_ON เอง ธงอยู่ที่ระดับหน้าต่าง
+ *    ระบบไม่แย่งคืน จอไม่ดับจริง ๆ
+ * 2. บนเบราว์เซอร์: Screen Wake Lock API ซึ่งระบบยึดคืนเงียบ ๆ ได้ (แบตต่ำ /
+ *    โหมดประหยัดพลังงาน) และหลุดทุกครั้งที่หน้าถูกซ่อน จึงต้องขอใหม่เมื่อกลับมา
+ *    — นี่คือเหตุที่ในแอปเคยยังแอบดับเป็นช่วง ๆ
  */
 function useKeepAwake() {
   const [on, setOn] = useState(false);
@@ -48,7 +60,9 @@ function useKeepAwake() {
   // เพราะ SSR จะได้ค่าคนละอย่างแล้ว hydrate ไม่ตรง — set ครั้งเดียวตอน mount
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSupported(typeof navigator !== "undefined" && "wakeLock" in navigator);
+    setSupported(
+      !!appBridge() || (typeof navigator !== "undefined" && "wakeLock" in navigator)
+    );
     try {
       setOn(localStorage.getItem(AWAKE_KEY) === "1");
     } catch {
@@ -57,6 +71,14 @@ function useKeepAwake() {
   }, []);
 
   useEffect(() => {
+    const bridge = appBridge();
+
+    // ในแอป — ธงของ Android เอาอยู่ ไม่ต้องคอยขอใหม่
+    if (bridge) {
+      bridge.setKeepAwake!(on);
+      return () => bridge.setKeepAwake!(false);
+    }
+
     if (!on) {
       void lockRef.current?.release().catch(() => {});
       lockRef.current = null;
@@ -66,6 +88,7 @@ function useKeepAwake() {
     let dead = false;
     const acquire = async () => {
       if (dead || document.visibilityState !== "visible") return;
+      if (!("wakeLock" in navigator)) return;
       try {
         lockRef.current = await navigator.wakeLock.request("screen");
       } catch {
