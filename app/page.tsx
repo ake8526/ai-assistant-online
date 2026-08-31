@@ -685,7 +685,7 @@ function AppShell() {
 
   return (
     <div className={`h-screen [height:100dvh] overflow-hidden ${BOARD} flex flex-col`}>
-      <header className="px-4 py-3 border-b-2 border-[#232122] bg-white flex items-center gap-3 shrink-0">
+      <header className="sticky top-0 z-30 px-4 py-3 border-b-2 border-[#232122] bg-white flex items-center gap-3 shrink-0">
         <AssistantFace className="w-9 h-9" />
         <div className="flex-1 min-w-0">
           <div className="font-marker text-[16px] leading-tight">ผู้ช่วยงาน KTIS X</div>
@@ -696,7 +696,7 @@ function AppShell() {
       {tab === "chat" && next && (
         <button
           onClick={() => setTab("cal")}
-          className={`${NOTE} ${FOLD} ${N_BLUE} ${PRESS} mx-4 mt-4 px-4 py-3 flex items-center gap-3 text-left -rotate-[0.6deg] cursor-pointer`}
+          className={`${NOTE} ${FOLD} ${N_BLUE} ${PRESS} shrink-0 mx-4 mt-4 px-4 py-3 flex items-center gap-3 text-left -rotate-[0.6deg] cursor-pointer`}
         >
           <span className="shrink-0 text-center">
             <span className="block font-hand text-[20px] font-bold leading-none">
@@ -720,7 +720,7 @@ function AppShell() {
       {tab === "room" && <RoomsTab onAsk={ask} initial={rooms} />}
       {tab === "set" && <SettingsTab />}
 
-      <nav className="grid grid-cols-4 border-t-2 border-[#232122] bg-white px-1.5 pt-2 pb-2.5 shrink-0">
+      <nav className="sticky bottom-0 z-30 grid grid-cols-4 border-t-2 border-[#232122] bg-white px-1.5 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] shrink-0">
         {TABS.map(({ key, label, tint, Icon }) => {
           const on = tab === key;
           return (
