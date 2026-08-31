@@ -136,7 +136,7 @@ function LoginGate() {
   );
 }
 
-function AssistantTab({ seed }: { seed?: string }) {
+function AssistantTab({ seed, onSeedUsed }: { seed?: string; onSeedUsed?: () => void }) {
   const { getToken, getGraphToken } = useM365Auth();
   const [msgs, setMsgs] = useState<Msg[]>([
     { role: "bot", text: "สวัสดีครับ 👋 ผมคือผู้ช่วย AI ของคุณ\nถามเรื่องนัดประชุม งานค้าง เวลาว่าง หรือสั่งนัดประชุมได้เลยครับ" },
@@ -168,7 +168,11 @@ function AssistantTab({ seed }: { seed?: string }) {
     const token = await getToken();
     if (!token) throw new Error("กรุณาเข้าสู่ระบบ Microsoft 365 ก่อนครับ");
     // Graph access token (optional) — calendar then follows your M365/Outlook rights.
-    const graphToken = (await getGraphToken()) || undefined;
+    // ตอน dev getGraphToken() คืนค่าปลอม ("dev-graph-token") ถ้าส่งไปด้วย ฝั่ง
+    // เซิร์ฟเวอร์จะเอาไปยิง Graph แล้วได้ 401 "JWT is not well formed" ทั้งที่มี
+    // token จริงเก็บไว้แล้ว — กรองแบบเดียวกับ authedGet ใน noteStyles
+    const rawGraph = (await getGraphToken()) || "";
+    const graphToken = rawGraph.includes(".") ? rawGraph : undefined;
     const r = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -316,12 +320,16 @@ function AssistantTab({ seed }: { seed?: string }) {
     setBusy(false);
   };
 
-  /* คำสั่งที่ถูกส่งมาจากแท็บอื่น — ยิงเข้าแชทครั้งเดียวต่อคำสั่ง */
+  /* คำสั่งที่ถูกส่งมาจากแท็บอื่น — ยิงเข้าแชทครั้งเดียวต่อคำสั่ง
+     ตัวกันซ้ำเคยเป็น ref ในคอมโพเนนต์นี้ ซึ่งถูกล้างทุกครั้งที่แท็บถูกถอด
+     ผลคือกดล้างความจำ ออกไปแท็บอื่น แล้วกลับมา คำสั่งเดิมถูกยิงใหม่ บทสนทนา
+     ที่ล้างไปจึงโผล่กลับมาทั้งชุด — ตอนนี้เปลือกแอปเป็นคนล้างคำสั่งทิ้งหลังใช้ */
   const seededRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (seed && seededRef.current !== seed) {
       seededRef.current = seed;
       void send(seed);
+      onSeedUsed?.();
     }
     // send เปลี่ยนทุก render โดยตั้งใจ — ผูกกับ seed อย่างเดียวพอ
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -831,7 +839,10 @@ function AppShell() {
         </button>
       )}
 
-      {tab === "chat" && <AssistantTab seed={seed} />}
+      {/* แชทไม่ถูกถอดตอนสลับแท็บ แค่ซ่อน — บทสนทนาและสถานะที่ล้างไปจึงอยู่ตามเดิม */}
+      <div className={tab === "chat" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
+        <AssistantTab seed={seed} onSeedUsed={() => setSeed(undefined)} />
+      </div>
       {tab === "sched" && <ScheduleTab initial={events} initialRooms={rooms} onAsk={ask} />}
       {tab === "task" && (
         <TasksTab

@@ -3983,6 +3983,30 @@ export async function runFindMeeting(
     }
   }
 
+  // คน/ห้องเดียวกันที่ถูกพูดถึงหลายรอบในประโยคเดียว — ยุบให้เหลือรายการเดียว
+  //
+  // "จองห้อง KTISX (ชั้น 3) วันจันทร์ที่ 31 สิงหาคม" ตีได้ทั้ง "ห้อง KTISX" และ
+  // "ชั้น 3" ซึ่งเป็นห้องเดียวกัน ผลคือคำตอบขึ้นห้องเดิมซ้ำสามบรรทัด ตอนคิดเวลา
+  // ว่างไม่พลาดเพราะ resolved ทำ Set อยู่แล้ว แต่บรรทัด "ค้นของ" ใช้รายการดิบ
+  // จึงซ้ำให้เห็น — ยุบที่ต้นทางทีเดียว ทุกที่ปลายทางได้ผลตรงกัน
+  {
+    const seenMail = new Set<string>();
+    const seenName = new Set<string>();
+    attendees = attendees.filter((a) => {
+      const mail = String(a.mail || "").toLowerCase().trim();
+      if (mail) {
+        if (seenMail.has(mail)) return false;
+        seenMail.add(mail);
+        return true;
+      }
+      const name = String(a.name || "").toLowerCase().replace(/\s+/g, " ").trim();
+      if (!name) return false;
+      if (seenName.has(name)) return false;
+      seenName.add(name);
+      return true;
+    });
+  }
+
   // Resolve each name; stop and ask when a name matches more than one person.
   for (let i = 0; i < attendees.length; i++) {
     const a = attendees[i];
