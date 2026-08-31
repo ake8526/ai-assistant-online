@@ -137,7 +137,16 @@ function LoginGate() {
   );
 }
 
-function AssistantTab({ seed, onSeedUsed }: { seed?: string; onSeedUsed?: () => void }) {
+function AssistantTab({
+  seed,
+  onSeedUsed,
+  onBooked,
+}: {
+  seed?: string;
+  onSeedUsed?: () => void;
+  /** จองนัดสำเร็จ — ให้เปลือกแอปดึงปฏิทินใหม่ ตารางจะอัปเดตเองไม่ต้องกดซิงค์ */
+  onBooked?: () => void;
+}) {
   const { getToken, getGraphToken } = useM365Auth();
   const [msgs, setMsgs] = useState<Msg[]>([
     { role: "bot", text: "สวัสดีครับ 👋 ผมคือผู้ช่วย AI ของคุณ\nถามเรื่องนัดประชุม งานค้าง เวลาว่าง หรือสั่งนัดประชุมได้เลยครับ" },
@@ -370,6 +379,8 @@ function AssistantTab({ seed, onSeedUsed }: { seed?: string; onSeedUsed?: () => 
             ? `⚠️ จองไม่สำเร็จ: ${res.error}`
             : `✅ ส่งนัดแล้ว!\n📌 ${ctx.meeting.subject}\n🕐 ${slot.label}`,
         });
+        // จองสำเร็จแล้วดึงปฏิทินใหม่ทันที — แท็บตารางจะมีนัดขึ้นเอง ไม่ต้องกดซิงค์
+        if (!res.error) onBooked?.();
       } catch (e) {
         addMsg({ role: "bot", text: `⚠️ ${(e as Error).message}` });
       }
@@ -641,6 +652,8 @@ function AppShell() {
   /* ฉากโหลดดึงของจริงไว้แล้ว แท็บจึงรับไปใช้ต่อ ไม่ต้องยิงซ้ำ */
   const [steps, setSteps] = useState<SplashSteps>(SPLASH_START);
   const [events, setEvents] = useState<CalEvent[] | null>(null);
+  const [calBusy, setCalBusy] = useState(false);
+  const [calErr, setCalErr] = useState("");
   const [rooms, setRooms] = useState<Room[] | null>(null);
   /* การตั้งค่าเก็บไว้ที่นี่ เปิดแท็บตั้งค่าจึงเห็นค่าเดิมทันทีทุกครั้ง ไม่ต้องโหลดซ้ำ */
   const [settings, setSettings] = useState<SettingsData>({
@@ -774,6 +787,51 @@ function AppShell() {
     [getToken, getGraphToken]
   );
 
+  /**
+   * ดึงนัดจากปฏิทิน — `quiet` คือรอบเบื้องหลัง ไม่ต้องขึ้นตัวหมุน
+   *
+   * จองห้องเสร็จแล้วต้องเห็นนัดในแท็บตารางเลย ไม่ต้องกด "ซิงค์ M365" เอง
+   */
+  const loadEvents = useCallback(
+    async (quiet = true) => {
+      if (!quiet) {
+        setCalBusy(true);
+        setCalErr("");
+      }
+      try {
+        const res = await authedGet<{ events?: CalEvent[]; error?: string; reply?: string }>(
+          "/api/calendar/events",
+          getToken,
+          getGraphToken
+        );
+        if (res.error) setCalErr(res.reply || res.error);
+        else {
+          setCalErr("");
+          setEvents(res.events || []);
+        }
+      } catch (e) {
+        setCalErr((e as Error).message);
+      }
+      if (!quiet) setCalBusy(false);
+    },
+    [getToken, getGraphToken]
+  );
+
+  /* นัดที่เพิ่งเกิดขึ้น (จองเอง หรือคนอื่นส่งนัดมา) — ตามเก็บเงียบ ๆ ทุก 3 นาที
+     และทุกครั้งที่กลับมาเห็นหน้าจอ */
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      void loadEvents(true);
+    };
+    const id = setInterval(tick, 180_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [loadEvents]);
+
   /* ตามเก็บงานใหม่ทุกนาที และทุกครั้งที่กลับมาเห็นหน้าจอ — เงียบ ๆ ไม่มีตัวหมุน
      หยุดถามตอนแอปถูกซ่อน จะได้ไม่ยิง Graph/Supabase ทิ้งตอนไม่มีใครดู */
   useEffect(() => {
@@ -845,9 +903,22 @@ function AppShell() {
 
       {/* แชทไม่ถูกถอดตอนสลับแท็บ แค่ซ่อน — บทสนทนาและสถานะที่ล้างไปจึงอยู่ตามเดิม */}
       <div className={tab === "chat" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
-        <AssistantTab seed={seed} onSeedUsed={() => setSeed(undefined)} />
+        <AssistantTab
+          seed={seed}
+          onSeedUsed={() => setSeed(undefined)}
+          onBooked={() => void loadEvents(true)}
+        />
       </div>
-      {tab === "sched" && <ScheduleTab initial={events} initialRooms={rooms} onAsk={ask} />}
+      {tab === "sched" && (
+        <ScheduleTab
+          events={events}
+          busy={calBusy}
+          err={calErr}
+          onReload={() => void loadEvents(false)}
+          initialRooms={rooms}
+          onAsk={ask}
+        />
+      )}
       {tab === "task" && (
         <TasksTab
           tasks={tasks}

@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, MapPin, RefreshCw, Users, Video } from "lucide-react";
 import { useM365Auth } from "@/components/M365AuthProvider";
+import { appBridge } from "@/components/useKeepAwake";
+import { teamsHref } from "@/lib/teamsLink";
 /** นัดหมายหนึ่งรายการจาก /api/calendar/events */
 export type CalEvent = {
   id: string;
@@ -96,19 +98,23 @@ type View = "ev" | "rm";
  * และสถานะห้องของวันนั้น — สถานะห้องดึงตามวันที่เลือก ไม่ใช่วันนี้ตายตัว
  */
 export default function ScheduleTab({
-  initial,
+  events,
+  busy,
+  err,
+  onReload,
   initialRooms,
   onAsk,
 }: {
-  initial?: CalEvent[] | null;
+  /** นัดทั้งหมดมาจากเปลือกแอป — ที่นี่ไม่ดึงเอง จึงอัปเดทเองได้หลังจองเสร็จ */
+  events: CalEvent[] | null;
+  busy: boolean;
+  err: string;
+  onReload: () => void;
   /** สถานะห้องของ "วันนี้" ที่ฉากโหลดตอนเปิดแอปดึงมาแล้ว */
   initialRooms?: Room[] | null;
   onAsk: (t: string) => void;
 }) {
   const { getToken, getGraphToken } = useM365Auth();
-  const [events, setEvents] = useState<CalEvent[]>(initial || []);
-  const [busyEv, setBusyEv] = useState(!initial);
-  const [errEv, setErrEv] = useState("");
   const [sel, setSel] = useState(0);
   const [view, setView] = useState<View>("ev");
 
@@ -122,38 +128,6 @@ export default function ScheduleTab({
       return { key, dom: d.getDate(), dow: DOW[d.getDay()], date: d };
     });
   }, []);
-
-  const loadEvents = useCallback(async () => {
-    try {
-      const res = await authedGet<{ events?: CalEvent[]; error?: string; reply?: string }>(
-        "/api/calendar/events",
-        getToken,
-        getGraphToken
-      );
-      if (res.error) {
-        setErrEv(res.reply || res.error);
-        setEvents([]);
-      } else {
-        setEvents(res.events || []);
-      }
-    } catch (e) {
-      setErrEv((e as Error).message);
-    }
-    setBusyEv(false);
-  }, [getToken, getGraphToken]);
-
-  // โหลดข้อมูลจริงตอนเปิดแท็บ — ฉากโหลดตอนเปิดแอปส่งมาให้แล้วก็ไม่ต้องยิงซ้ำ
-  useEffect(() => {
-    if (initial) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadEvents();
-  }, [loadEvents, initial]);
-
-  const reloadEvents = () => {
-    setBusyEv(true);
-    setErrEv("");
-    void loadEvents();
-  };
 
   /* ---------- ห้องประชุมของวันที่เลือก ---------- */
   const [rooms, setRooms] = useState<Room[]>(initialRooms || []);
@@ -202,7 +176,7 @@ export default function ScheduleTab({
     return () => clearInterval(id);
   }, []);
 
-  const dayEvents = events
+  const dayEvents = (events || [])
     .filter((e) => dayKeyOf(e.start) === days[sel]?.key)
     .sort((a, b) => a.start.localeCompare(b.start));
 
@@ -216,17 +190,17 @@ export default function ScheduleTab({
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-marker text-[19px]">ตารางและห้องประชุม</h2>
         <button
-          onClick={reloadEvents}
-          disabled={busyEv}
+          onClick={onReload}
+          disabled={busy}
           className={`${NOTE_SM} ${PRESS} ${N_BLUE} px-2.5 py-1 font-hand text-[15px] font-bold disabled:opacity-50 cursor-pointer`}
         >
-          {busyEv ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "ซิงค์ M365"}
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "ซิงค์ M365"}
         </button>
       </div>
 
       <div className="grid grid-cols-7 gap-1.5">
         {days.map((d, i) => {
-          const has = events.some((e) => dayKeyOf(e.start) === d.key);
+          const has = (events || []).some((e) => dayKeyOf(e.start) === d.key);
           const on = i === sel;
           return (
             <button
@@ -272,19 +246,21 @@ export default function ScheduleTab({
             {dayLabel} · {dayEvents.length} รายการ
           </p>
 
-          {errEv && (
+          {err && (
             <BlankNote tint={N_PINK}>
-              {errEv}
+              {err}
               <button
-                onClick={reloadEvents}
+                onClick={onReload}
                 className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] mt-3 inline-flex items-center gap-1.5 px-3 py-1 text-[13px] font-note cursor-pointer`}
               >
                 <RefreshCw className="w-3.5 h-3.5" /> ลองอีกครั้ง
               </button>
             </BlankNote>
           )}
-          {!errEv && busyEv && <BlankNote>กำลังดึงปฏิทินจาก Microsoft 365…</BlankNote>}
-          {!errEv && !busyEv && !dayEvents.length && <BlankNote>ไม่มีนัดหมาย — ว่างทั้งวันครับ</BlankNote>}
+          {!err && events === null && <BlankNote>กำลังดึงปฏิทินจาก Microsoft 365…</BlankNote>}
+          {!err && events !== null && !dayEvents.length && (
+            <BlankNote>ไม่มีนัดหมาย — ว่างทั้งวันครับ</BlankNote>
+          )}
 
           <div className="flex flex-col gap-3.5">
             {dayEvents.map((e, i) => {
@@ -324,9 +300,12 @@ export default function ScheduleTab({
                     )}
                   </div>
                   {e.joinUrl && (
+                    /* เปิดแอป Teams ถ้ามี ไม่มีก็ไปลิงก์ประชุม — teamsHref จัดการให้
+                       target="_blank" ใช้ไม่ได้กับ intent: (WebView เปิดแท็บใหม่ไม่ได้)
+                       จึงเปิดในหน้าเดิมตอนอยู่ในแอป */
                     <a
-                      href={e.joinUrl}
-                      target="_blank"
+                      href={teamsHref(e.joinUrl, !!appBridge())}
+                      target={appBridge() ? undefined : "_blank"}
                       rel="noreferrer"
                       className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] self-start inline-flex items-center gap-1.5 px-2.5 py-1 text-[12.5px]`}
                     >
