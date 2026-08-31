@@ -25,6 +25,10 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* ดีไซน์โน้ตแปะกระดาน — note = เนื้อหา, marker = หัวข้อ, hand = โน้ตข้างกระดาษ/เวลา */
+  --font-note: var(--font-mali);
+  --font-marker: var(--font-sriracha);
+  --font-hand: var(--font-caveat);
 }
 
 @media (prefers-color-scheme: dark) {

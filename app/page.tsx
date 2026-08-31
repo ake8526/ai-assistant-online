@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Send, LogIn, Loader2, MapPin, FileText, Folder, Settings as SettingsIcon, Eraser } from "lucide-react";
+import { Send, Loader2, MapPin, FileText, Folder, Settings as SettingsIcon, Eraser } from "lucide-react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } from "@/lib/chatMemory";
 import { SLASH_COMMANDS, isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText } from "@/lib/slashCommands";
@@ -41,73 +41,92 @@ const SUGGESTIONS = [
   "/ตั้งค่าข่าว",
 ];
 
+/* ---------- ดีไซน์โน้ตแปะกระดาน ----------
+   สีอยู่ใน "แผ่นโน้ต" ขอบกับเงาเป็นหมึกสีเดียวกันหมด เงาแข็งไม่เบลอเหมือนกระดาษซ้อน */
+const BOARD = "bg-[#f1efe9] text-[#232122] font-note";
+const NOTE = "border-2 border-[#232122] rounded-[14px] shadow-[3px_3px_0_#232122]";
+const NOTE_SM = "border-2 border-[#232122] rounded-[11px] shadow-[2px_2px_0_#232122]";
+/* มุมพับขวาบน */
+const FOLD =
+  "relative rounded-tr-none before:content-[''] before:absolute before:-top-0.5 before:-right-0.5 " +
+  "before:w-5 before:h-5 before:bg-[#f1efe9] before:border-l-2 before:border-b-2 " +
+  "before:border-[#232122] before:rounded-bl-[5px]";
+/* กดแล้วยุบลงไปทับเงา เหมือนกดกระดาษจริง */
+const PRESS = "active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-transform";
+
+const N_YELLOW = "bg-[#fef2c0]";
+const N_BLUE = "bg-[#dcebfe]";
+const N_GREEN = "bg-[#d6f5e3]";
+const N_PINK = "bg-[#ffdee7]";
+const N_PURPLE = "bg-[#eae1ff]";
+const N_ORANGE = "bg-[#ffe7ce]";
+
+/* สีโน้ตของปุ่มคำสั่งด่วน ไล่วนไปตามลำดับ */
+const CHIP_TINTS = [N_BLUE, N_GREEN, N_PURPLE, N_PINK, N_ORANGE];
+
+function MicrosoftMark() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 21 21" aria-hidden="true" className="shrink-0">
+      <rect x="1" y="1" width="9" height="9" rx="1" fill="#f25022" />
+      <rect x="11" y="1" width="9" height="9" rx="1" fill="#7fba00" />
+      <rect x="1" y="11" width="9" height="9" rx="1" fill="#00a4ef" />
+      <rect x="11" y="11" width="9" height="9" rx="1" fill="#ffb900" />
+    </svg>
+  );
+}
+
+/* หน้ายิ้มของผู้ช่วย — วาดเส้นเดียวกับไอคอนในแอป */
+function AssistantFace({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      aria-hidden="true"
+      className={`shrink-0 border-2 border-[#232122] rounded-[10px] ${N_YELLOW} p-0.5 -rotate-3 ${className}`}
+    >
+      <g fill="none" stroke="#232122" strokeWidth="2" strokeLinecap="round">
+        <path d="M11.4 15 L11.4 17" />
+        <path d="M20.6 14.9 L20.6 16.9" />
+        <path d="M12 21.6 C14.4 24.2 18.4 24.2 20.4 21.4" />
+      </g>
+    </svg>
+  );
+}
+
 function LoginGate() {
   const { login } = useM365Auth();
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black text-slate-100 flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
-      {/* Ambient background glow */}
-      <div className="absolute top-1/4 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
-      
-      <div className="max-w-md w-full text-center space-y-6 relative z-10">
-        {/* Brand Capsule */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-slate-300 backdrop-blur-md shadow-lg shadow-black/20">
-          <div className="grid grid-cols-2 gap-0.5 w-3 h-3">
-            <span className="bg-red-500 rounded-[0.5px]" />
-            <span className="bg-emerald-500 rounded-[0.5px]" />
-            <span className="bg-sky-500 rounded-[0.5px]" />
-            <span className="bg-amber-400 rounded-[0.5px]" />
-          </div>
-          <span>KTIS GROUP · MICROSOFT 365</span>
+    <div className={`min-h-screen ${BOARD} flex flex-col items-center justify-center p-6`}>
+      <div className="w-full max-w-sm flex flex-col items-center gap-5">
+        <div className={`${NOTE_SM} ${N_BLUE} px-3 py-0.5 -rotate-2 font-hand text-[15px] font-bold`}>
+          KTIS Group · Microsoft 365
         </div>
 
-        {/* Mascot Center */}
-        <div className="relative w-44 h-48 mx-auto flex items-center justify-center">
-          <div className="absolute inset-0 bg-sky-400/20 rounded-full blur-2xl" />
+        <div className={`${NOTE} ${FOLD} bg-white w-full p-6 pt-7 flex flex-col items-center gap-3 -rotate-[0.6deg]`}>
           <img
             src="/ktisx-reading-video.gif?v=8"
-            alt="KTIS X AI Assistant"
-            className="w-full h-full object-contain relative z-10 drop-shadow-[0_12px_24px_rgba(0,0,0,0.8)]"
+            alt="ผู้ช่วย KTIS X"
+            className="w-32 h-36 object-contain"
           />
-        </div>
-
-        {/* Heading */}
-        <div className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-            KTIS X <span className="bg-gradient-to-r from-sky-400 via-cyan-300 to-indigo-400 bg-clip-text text-transparent">AI Assistant</span>
-          </h1>
-          <p className="text-sm text-slate-400 leading-relaxed max-w-sm mx-auto">
-            ผู้ช่วย AI อัจฉริยะองค์กร สังเกตการณ์ จัดการตารางงาน และควบคุมการประชุมอย่างแม่นยำ
+          <h1 className="font-marker text-[21px] leading-snug text-center">KTIS X ผู้ช่วยงาน</h1>
+          <p className="text-[13.5px] text-[#6a6560] text-center leading-relaxed">
+            ถามตารางงาน เช็คเวลาว่าง จองห้องประชุม สรุปวาระ — พิมพ์สั่งเป็นภาษาคนได้เลยครับ
           </p>
         </div>
 
-        {/* Action Card */}
-        <div className="p-4 sm:p-5 rounded-3xl bg-[#0a1230]/70 border border-sky-400/25 backdrop-blur-xl shadow-2xl shadow-black/70 space-y-3">
-          <button
-            onClick={() => login()}
-            className="w-full flex items-center justify-between px-4 sm:px-5 py-3.5 rounded-[15px] bg-gradient-to-r from-[#005ea6] via-[#0078d4] via-[#0099e6] to-[#00c8f8] hover:from-[#006ec4] hover:via-[#0086eb] hover:to-[#22d3ee] text-white font-bold text-[14.5px] border border-white/35 shadow-[0_10px_25px_rgba(0,120,212,0.45),0_0_20px_rgba(0,242,254,0.35),inset_0_1px_2px_rgba(255,255,255,0.45)] hover:shadow-[0_15px_35px_rgba(0,120,212,0.6),0_0_30px_rgba(0,242,254,0.55)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer group"
-          >
-            <div className="flex items-center gap-3">
-              <svg width="20" height="20" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
-                <rect x="1" y="1" width="9" height="9" fill="#f25022" rx="1.5"/>
-                <rect x="11" y="1" width="9" height="9" fill="#7fba00" rx="1.5"/>
-                <rect x="1" y="11" width="9" height="9" fill="#00a4ef" rx="1.5"/>
-                <rect x="11" y="11" width="9" height="9" fill="#ffb900" rx="1.5"/>
-              </svg>
-              <span className="tracking-tight">เข้าสู่ระบบด้วย Microsoft 365</span>
-            </div>
-            <div className="w-7 h-7 rounded-full bg-white/20 border border-white/35 text-white flex items-center justify-center shadow-inner group-hover:bg-white/35 group-hover:translate-x-1 transition-all duration-200">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-              </svg>
-            </div>
-          </button>
-          <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-medium">
-            <span className="text-emerald-400">🛡️</span>
-            <span>ความปลอดภัยระดับองค์กร (Microsoft Entra ID SSO)</span>
-          </div>
-        </div>
+        <button
+          onClick={() => login()}
+          className={`${NOTE} ${PRESS} ${N_YELLOW} w-full px-5 py-4 flex items-center gap-3 rotate-[0.5deg] cursor-pointer`}
+        >
+          <MicrosoftMark />
+          <span className="flex-1 text-left font-semibold text-[14.5px]">เข้าสู่ระบบด้วย Microsoft 365</span>
+          <span className="grid place-items-center w-7 h-7 border-2 border-[#232122] rounded-full text-[15px] leading-none">
+            →
+          </span>
+        </button>
 
-        <p className="text-[10px] text-slate-600 tracking-wider">KTIS ENTERPRISE INTELLIGENCE · V2.5</p>
+        <p className="font-hand text-[15px] text-[#9c968e] -rotate-1 text-center">
+          ใช้บัญชี KTIS ของคุณ · ปลอดภัยด้วย Microsoft Entra ID SSO
+        </p>
       </div>
     </div>
   );
@@ -391,34 +410,35 @@ function ChatContent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative">
-      <header className="p-4 border-b border-slate-800 flex items-center gap-3">
+    <div className={`min-h-screen ${BOARD} flex flex-col relative`}>
+      <header className="px-4 py-3 border-b-2 border-[#232122] bg-white flex items-center gap-3">
+        <AssistantFace className="w-9 h-9" />
         <div className="flex-1 min-w-0">
-          <div className="font-bold">AI Assistant</div>
-          <div className="text-[11px] text-slate-500 truncate">{account?.username}</div>
+          <div className="font-marker text-[16px] leading-tight">ผู้ช่วยงาน KTIS X</div>
+          <div className="font-hand text-[14px] text-[#6a6560] truncate">{account?.username}</div>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/ai-office"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300"
-          >
-            🏢 AI Office
-          </Link>
-          <Link
-            href="/settings"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200"
-          >
-            <SettingsIcon className="w-4 h-4" /> ตั้งค่า
-          </Link>
-        </div>
+        <Link
+          href="/ai-office"
+          className={`${NOTE_SM} ${PRESS} ${N_GREEN} px-2.5 py-1 font-hand text-[15px] font-bold -rotate-1`}
+        >
+          AI Office
+        </Link>
+        <Link
+          href="/settings"
+          aria-label="ตั้งค่า"
+          className={`${NOTE_SM} ${PRESS} bg-white grid place-items-center w-9 h-9 rotate-1`}
+        >
+          <SettingsIcon className="w-4 h-4" />
+        </Link>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 space-y-3 max-w-2xl w-full mx-auto">
+      <main className="flex-1 overflow-y-auto p-4 space-y-4 max-w-2xl w-full mx-auto">
         {msgs.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "me" ? "justify-end" : "justify-start"}`}>
+          <div key={i} className={`flex ${m.role === "me" ? "justify-end" : "justify-start gap-2 items-end"}`}>
+            {m.role === "bot" && <AssistantFace className="w-8 h-8" />}
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
-                m.role === "me" ? "bg-emerald-600 text-white" : "bg-slate-800/90 border border-slate-700"
+              className={`${NOTE} max-w-[82%] px-4 py-3 text-[14px] whitespace-pre-wrap leading-relaxed ${
+                m.role === "me" ? `${N_YELLOW} rotate-[0.4deg]` : `bg-white ${FOLD} -rotate-[0.4deg]`
               }`}
             >
               {m.text}
@@ -427,47 +447,51 @@ function ChatContent() {
                   href={m.mapUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-2 flex items-center gap-1.5 text-sky-400 hover:text-sky-300 text-xs font-semibold"
+                  className={`${NOTE_SM} ${N_BLUE} mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 font-hand text-[15px] font-bold`}
                 >
-                  <MapPin className="w-4 h-4" /> เปิดแผนที่ / เส้นทาง
+                  <MapPin className="w-3.5 h-3.5" /> เปิดแผนที่ / เส้นทาง
                 </a>
               )}
               {!!m.files?.length && (
-                <div className="mt-2 space-y-1">
+                <div className="mt-2.5 flex flex-col gap-1.5">
                   {m.files.slice(0, 8).map((f, j) => (
                     <a
                       key={j}
                       href={f.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 truncate"
+                      className={`${NOTE_SM} ${N_GREEN} flex items-center gap-2 px-2.5 py-1.5 text-[13px] truncate`}
                     >
-                      {f.is_folder ? <Folder className="w-3.5 h-3.5 shrink-0" /> : <FileText className="w-3.5 h-3.5 shrink-0" />}
+                      {f.is_folder ? (
+                        <Folder className="w-3.5 h-3.5 shrink-0" />
+                      ) : (
+                        <FileText className="w-3.5 h-3.5 shrink-0" />
+                      )}
                       <span className="truncate">{f.name}</span>
                     </a>
                   ))}
                 </div>
               )}
               {!!m.slots?.length && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="mt-2.5 flex flex-wrap gap-2">
                   {m.slots.slice(0, 10).map((s, j) => (
                     <button
                       key={j}
                       onClick={() => pickSlot(s, m.intent)}
-                      className="text-[11px] px-2.5 py-1.5 rounded-lg bg-sky-700/60 hover:bg-sky-600 border border-sky-600/50"
+                      className={`${NOTE_SM} ${PRESS} ${N_BLUE} px-2.5 py-1 font-hand text-[15px] font-bold cursor-pointer`}
                     >
-                      {m.intent === "confirm_meeting" ? `✅ ยืนยัน ${s.label}` : s.label}
+                      {m.intent === "confirm_meeting" ? `ยืนยัน ${s.label}` : s.label}
                     </button>
                   ))}
                 </div>
               )}
               {!!m.choices?.length && (
-                <div className="mt-2 flex flex-col gap-1.5">
+                <div className="mt-2.5 flex flex-col gap-2">
                   {m.choices.slice(0, 10).map((c, j) => (
                     <button
                       key={j}
                       onClick={() => pickChoice(c, m.intent)}
-                      className="text-left text-[11px] px-2.5 py-1.5 rounded-lg bg-slate-700/70 hover:bg-slate-600 border border-slate-600"
+                      className={`${NOTE_SM} ${PRESS} ${N_PURPLE} text-left px-3 py-1.5 text-[13.5px] cursor-pointer`}
                     >
                       {c.label || c.displayName || c.mail}
                     </button>
@@ -478,42 +502,48 @@ function ChatContent() {
           </div>
         ))}
         {busy && (
-          <div className="flex justify-start">
-            <div className="rounded-2xl px-4 py-2.5 bg-slate-800/90 border border-slate-700">
-              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+          <div className="flex justify-start gap-2 items-end">
+            <AssistantFace className="w-8 h-8" />
+            <div className={`${NOTE} bg-white px-4 py-3.5 flex gap-1.5`}>
+              <i className="w-[7px] h-[7px] rounded-full bg-[#232122] animate-bounce [animation-delay:0ms]" />
+              <i className="w-[7px] h-[7px] rounded-full bg-[#232122] animate-bounce [animation-delay:150ms]" />
+              <i className="w-[7px] h-[7px] rounded-full bg-[#232122] animate-bounce [animation-delay:300ms]" />
             </div>
           </div>
         )}
         <div ref={bottomRef} />
       </main>
 
-      <footer className="p-3 border-t border-slate-800">
-        <div className="max-w-2xl mx-auto space-y-2">
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-            {SUGGESTIONS.map((s) => (
+      <footer className="px-3 pt-2 pb-3 border-t-2 border-[#232122] bg-white">
+        <div className="max-w-2xl mx-auto space-y-2.5">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {SUGGESTIONS.map((sg, i) => (
               <button
-                key={s}
-                onClick={() => send(s)}
+                key={sg}
+                onClick={() => send(sg)}
                 disabled={busy}
-                className="shrink-0 text-[11px] px-2.5 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300"
+                className={`${NOTE_SM} ${PRESS} ${CHIP_TINTS[i % CHIP_TINTS.length]} shrink-0 px-3 py-1.5 text-[12.5px] disabled:opacity-45 cursor-pointer ${
+                  i % 2 ? "rotate-1" : "-rotate-1"
+                }`}
               >
-                {s}
+                {sg}
               </button>
             ))}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
-              placeholder="พิมพ์ / เพื่อเลือกคำสั่ง หรือพิมพ์เอง…"
+              placeholder="พิมพ์ / เพื่อเลือกคำสั่ง หรือพิมพ์สั่งเอง…"
               disabled={busy}
-              className="flex-1 rounded-xl bg-slate-900 border border-slate-700 px-4 py-2.5 text-sm outline-none focus:border-sky-600"
+              className={`${NOTE} flex-1 min-w-0 bg-white rounded-[26px] px-4 py-2.5 text-[14px] outline-none placeholder:text-[#9c968e] focus:shadow-[3px_3px_0_#232122]`}
             />
             <button
               onClick={() => send()}
               disabled={busy || !input.trim()}
-              className="px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40"
+              aria-label="ส่ง"
+              className={`${NOTE} ${PRESS} ${N_YELLOW} grid place-items-center w-11 h-11 shrink-0 disabled:opacity-40 cursor-pointer`}
             >
               <Send className="w-4 h-4" />
             </button>
@@ -526,7 +556,7 @@ function ChatContent() {
         onClick={clearMemory}
         disabled={busy}
         title="ล้างความจำ AI"
-        className="fixed bottom-24 right-4 z-20 flex items-center gap-1.5 rounded-full bg-slate-800/95 border border-slate-600 px-3.5 py-2.5 text-xs font-semibold text-slate-100 shadow-lg shadow-black/40 hover:bg-slate-700 disabled:opacity-50"
+        className={`${NOTE_SM} ${PRESS} ${N_PINK} fixed bottom-28 right-4 z-20 flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-semibold disabled:opacity-50 -rotate-2 cursor-pointer`}
       >
         <Eraser className="w-4 h-4" /> ล้างความจำ
       </button>
@@ -538,8 +568,11 @@ function HomeGate() {
   const { ready, isAuthenticated } = useM365Auth();
   if (!ready) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-slate-500" />
+      <div className={`min-h-screen ${BOARD} flex items-center justify-center`}>
+        <div className={`${NOTE} ${N_YELLOW} px-5 py-3 flex items-center gap-2.5 -rotate-1`}>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span className="font-hand text-[16px] font-bold">กำลังเปิดผู้ช่วย…</span>
+        </div>
       </div>
     );
   }
