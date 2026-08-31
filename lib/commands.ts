@@ -19,6 +19,7 @@ import { runWithTrace, trace } from "@/lib/trace";
 import { after } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { normalizeDue, resolveResponsible, ingestActionItems } from "@/lib/followup";
+import { splitAddTaskItems } from "@/lib/taskSplit";
 import { normalizeThaiTypo, detectWrongKeyboard, suggestCorrectedNick } from "@/lib/keyboard";
 import { createHash } from "crypto";
 import {
@@ -7509,6 +7510,43 @@ async function handleParsed(
   }
 
   if (intent === "add_task") {
+    // ข้อความที่ใส่เลขข้อ/bullet มา = หลายงาน อย่ายัดเป็นชื่องานเดียว
+    // (params.title จาก LLM เอาทุกข้อมาต่อกันเป็นชื่อเดียว ซึ่งใช้ติดตามงานไม่ได้)
+    const items = splitAddTaskItems(text);
+    if (items.length > 1) {
+      const NL = String.fromCharCode(10);
+      const added: string[] = [];
+      const failed: string[] = [];
+      for (const it of items) {
+        const tid = await addTask({
+          owner_upn: userUpn,
+          title: it.title,
+          responsible: it.responsible,
+          responsible_upn: await resolveResponsible(it.responsible),
+          due: normalizeDue(it.duePhrase),
+          source: "manual",
+        });
+        if (tid) {
+          const when = it.duePhrase ? ` — ${it.duePhrase}` : "";
+          added.push(`#${tid} ${it.title}${when}`);
+        } else {
+          failed.push(it.title);
+        }
+      }
+      if (!added.length) return { intent, reply: "เพิ่มงานไม่สำเร็จครับ ลองใหม่อีกครั้ง" };
+      return {
+        intent,
+        reply:
+          `เพิ่มงานแล้ว ${added.length} รายการครับ
+` +
+          added.map((a) => `• ${a}`).join(NL) +
+          (failed.length ? `
+
+เพิ่มไม่สำเร็จ ${failed.length} รายการ: ${failed.join(", ")}` : ""),
+        data: { count: added.length },
+      };
+    }
+
     const title = String(params.title || "").trim();
     if (!title) return { intent, reply: "ไม่พบชื่องานที่จะเพิ่ม" };
     const responsible = String(params.responsible || "");
