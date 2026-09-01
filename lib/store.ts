@@ -84,6 +84,21 @@ export async function duePendingTasks(): Promise<Task[]> {
   return data || [];
 }
 
+/** Pending tasks due within the next `withinMs` (still in the future). */
+export async function upcomingDueTasks(withinMs: number): Promise<Task[]> {
+  const now = Date.now();
+  const until = new Date(now + Math.max(0, withinMs)).toISOString();
+  const { data, error } = await admin
+    .from("tasks")
+    .select("*")
+    .eq("status", "pending")
+    .not("due", "is", null)
+    .gt("due", new Date(now).toISOString())
+    .lte("due", until);
+  if (error) throw new Error(`upcomingDueTasks: ${error.message}`);
+  return data || [];
+}
+
 // ---------------------------------------------------------------------------
 // Settings (per-user key/value)
 // ---------------------------------------------------------------------------

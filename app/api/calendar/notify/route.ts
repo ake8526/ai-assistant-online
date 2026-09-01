@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkCronSecret } from "@/lib/auth";
 import { notifyNewAppointments } from "@/lib/calendarNotify";
+import { notifyUpcomingMeetings } from "@/lib/meetingReminder";
 import { nudgePendingMeetingInvites } from "@/lib/meetingInvite";
 import { pushQuotaGone } from "@/lib/line";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
@@ -40,13 +41,15 @@ async function run(req: Request) {
     const results: Record<string, unknown> = {};
     for (const upn of users) {
       results[upn] = await runWithTrace({ upn, channel: "cron" }, async () => {
-        trace("receive", "cron · แจ้งนัดใหม่");
+        trace("receive", "cron · แจ้งนัดใหม่ / เตือนก่อนประชุม");
         const res = await notifyNewAppointments(upn);
         if (res.notified > 0) trace("reply", `แจ้งนัดใหม่ ${res.notified} รายการ`);
         // Nothing new to announce is a finished run, so say so — ending on a
         // fetch made every quiet poll look like a job that died mid-flight.
         else trace("reply", `ไม่มีนัดใหม่ · ตรวจ ${res.checked} นัด`, "skip");
-        return res;
+        const upcoming = await notifyUpcomingMeetings(upn);
+        if (upcoming.notified > 0) trace("reply", `เตือนก่อนประชุม ${upcoming.notified} รายการ`);
+        return { ...res, upcoming };
       });
     }
     // This route also carries the invite nudge, which has its own pause.

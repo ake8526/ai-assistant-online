@@ -1,28 +1,35 @@
 import { NextResponse } from "next/server";
 import { AuthError, requireUser } from "@/lib/auth";
 import { addPlace, allSettings, getPrimaryPlace, setSetting } from "@/lib/store";
+import {
+  getMeetingRemindMinutes,
+  getTaskRemindAheadDays,
+  setMeetingRemindMinutes,
+  setTaskRemindAheadDays,
+} from "@/lib/remindPrefs";
 import { assertConfigured } from "@/lib/supabaseServer";
 import { permsOf } from "@/lib/roles";
 
-// GET → { work_start, work_end, work_location, home_location, perms }
-//
-// perms เดินทางมากับก้อนนี้เพราะหน้าแชทดึง /api/settings ตอนเปิดแอปอยู่แล้ว —
-// สิทธิ์ที่ต้องรู้ตั้งแต่วาดปุ่ม (เช่นคำสั่งทดสอบ) จะได้ไม่ต้องยิงอีกรอบ
+// GET → work hours/places + reminder prefs + perms
 export async function GET(req: Request) {
   try {
     assertConfigured();
     const upn = await requireUser(req);
-    const [s, work, home, perms] = await Promise.all([
+    const [s, work, home, perms, meeting_remind_minutes, task_remind_ahead_days] = await Promise.all([
       allSettings(upn),
       getPrimaryPlace(upn, "work"),
       getPrimaryPlace(upn, "home"),
       permsOf(upn),
+      getMeetingRemindMinutes(upn),
+      getTaskRemindAheadDays(upn),
     ]);
     return NextResponse.json({
       work_start: s.work_start || "09:00",
       work_end: s.work_end || "17:00",
       work_location: work?.location || "",
       home_location: home?.location || "",
+      meeting_remind_minutes,
+      task_remind_ahead_days,
       perms,
     });
   } catch (e) {
@@ -31,7 +38,7 @@ export async function GET(req: Request) {
   }
 }
 
-// POST { work_start?, work_end?, work_location?, home_location? } → save
+// POST { work_*, meeting_remind_minutes?, task_remind_ahead_days? }
 export async function POST(req: Request) {
   try {
     assertConfigured();
@@ -40,6 +47,13 @@ export async function POST(req: Request) {
 
     if (body.work_start) await setSetting(upn, "work_start", String(body.work_start));
     if (body.work_end) await setSetting(upn, "work_end", String(body.work_end));
+
+    if (body.meeting_remind_minutes !== undefined) {
+      await setMeetingRemindMinutes(upn, Number(body.meeting_remind_minutes));
+    }
+    if (body.task_remind_ahead_days !== undefined) {
+      await setTaskRemindAheadDays(upn, Number(body.task_remind_ahead_days));
+    }
 
     for (const [category, key] of [
       ["work", "work_location"],

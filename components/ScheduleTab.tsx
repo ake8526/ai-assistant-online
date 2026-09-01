@@ -662,7 +662,7 @@ export default function ScheduleTab({
                   <p className={`text-[12px] ${INK_2}`}>อ่านสถานะไม่ได้: {r.error}</p>
                 ) : (
                   <button
-                    onClick={() => onAsk(`จอง${r.name} ${dayLabel}`)}
+                    onClick={() => onAsk(`จอง${r.name} ${selKey}`)}
                     className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] self-start px-3 py-1.5 text-[13px] cursor-pointer`}
                   >
                     จองห้องนี้

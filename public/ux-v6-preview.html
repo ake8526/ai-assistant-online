@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KTIS X · UX v6 — ผู้ช่วยเป็นหน้าแรก + แถบสั่งงานทุกหน้า</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mali:ital,wght@0,400;0,500;0,600;0,700&family=Sriracha&family=Caveat:wght@500;600;700&display=swap">
+<style>
+/* KTIS X UX v6 — chat-first (v5) + command bar + safe confirm */
+:root {
+  --board:#f1efe9; --card:#fff; --ink:#232122; --ink-2:#6a6560; --ink-3:#9c968e;
+  --n-yellow:#fef2c0; --n-blue:#dcebfe; --n-green:#d6f5e3; --n-pink:#ffdee7;
+  --n-purple:#eae1ff; --n-orange:#ffe7ce;
+  --lift:3px 3px 0 var(--ink); --lift-sm:2px 2px 0 var(--ink); --lift-lg:5px 5px 0 var(--ink);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+button,select,input,textarea{font:inherit;color:inherit}
+body{font-family:"Mali",sans-serif;background:#ddd9d0;color:var(--ink);min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:16px;padding:20px 14px 44px;line-height:1.5}
+.brief{width:min(880px,100%);background:var(--card);border:2px solid var(--ink);border-radius:14px;box-shadow:var(--lift);padding:13px 16px}
+.brief h1{font-family:"Sriracha",cursive;font-size:17px;font-weight:400}
+.brief p,.brief li{font-size:12.5px;color:var(--ink-2)}
+.brief ul{margin:8px 0 0;list-style:none;display:grid;gap:5px}
+.brief li{display:flex;gap:8px;align-items:baseline}
+.brief b{font-family:"Caveat",cursive;font-size:15px;min-width:90px;flex-shrink:0;color:var(--ink)}
+.phone{width:min(390px,100%);height:820px;max-height:calc(100vh - 40px);background:var(--board);border:2.5px solid var(--ink);border-radius:28px;box-shadow:var(--lift-lg);overflow:hidden;position:relative;display:flex;flex-direction:column}
+.note{background:var(--n,var(--card));border:2px solid var(--ink);border-radius:14px;box-shadow:var(--lift);position:relative}
+.note.sm{border-radius:11px;box-shadow:var(--lift-sm)}
+.fold{border-top-right-radius:0}
+.fold::before{content:"";position:absolute;top:-2px;right:-2px;width:20px;height:20px;background:var(--board);border-left:2px solid var(--ink);border-bottom:2px solid var(--ink);border-bottom-left-radius:5px}
+.press{cursor:pointer;transition:transform .1s}.press:active{transform:translate(2px,2px);box-shadow:none!important}
+.y{--n:var(--n-yellow)}.b{--n:var(--n-blue)}.g{--n:var(--n-green)}.p{--n:var(--n-pink)}.v{--n:var(--n-purple)}.o{--n:var(--n-orange)}
+.hand{font-family:"Caveat",cursive}.mute{color:var(--ink-2)}.faint{color:var(--ink-3)}
+svg.gl{fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.top{flex-shrink:0;background:var(--card);border-bottom:2px solid var(--ink);padding:11px 14px;display:flex;align-items:center;gap:11px}
+.face{width:38px;height:38px;border:2px solid var(--ink);border-radius:11px;background:var(--n-yellow);padding:2px;transform:rotate(-3deg);flex-shrink:0}
+.top .who{flex:1;min-width:0}.top h2{font-family:"Sriracha",cursive;font-size:15px;font-weight:400;line-height:1.2}
+.top .sub{font-family:"Caveat",cursive;font-size:14px;color:var(--ink-2)}
+.body{flex:1;min-height:0;overflow-y:auto;padding:14px;display:none;flex-direction:column;gap:13px}
+.body.on{display:flex}.body::-webkit-scrollbar{display:none}
+.sec{font-family:"Sriracha",cursive;font-size:13.5px;color:var(--ink-2);transform:rotate(-.6deg)}
+#p-chat{padding-bottom:0;display:flex;flex-direction:column;gap:0}
+.glance{padding:12px 14px;display:flex;align-items:center;gap:11px;text-align:left;transform:rotate(-.5deg);flex-shrink:0}
+.glance .t{flex-shrink:0;text-align:center}
+.glance .t b{font-family:"Caveat",cursive;font-size:19px;display:block;line-height:1}
+.glance .t small{font-family:"Caveat",cursive;font-size:13px;color:var(--ink-2)}
+.glance .g{flex:1;min-width:0}
+.glance h4{font-size:14px;font-weight:600;line-height:1.3}
+.glance p{font-size:11.5px;color:var(--ink-2)}
+.main-stream{flex:1;display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto;padding:14px 0}
+.chips{display:flex;gap:8px;overflow-x:auto;margin:0 -14px;padding:2px 14px 6px;flex-shrink:0}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex-shrink:0;border:2px solid var(--ink);border-radius:18px;box-shadow:var(--lift-sm);padding:6px 13px;font-size:12.5px;background:var(--n,var(--card))}
+.tab-composer{flex-shrink:0;margin:0 -14px;padding:0 14px 14px}
+.tab-composer .in{padding:5px 5px 5px 15px;border-radius:26px;display:flex;align-items:center;gap:8px}
+.tab-composer input{flex:1;min-width:0;border:0;background:none;font-size:13.5px;outline:none}
+.tab-composer input::placeholder{color:var(--ink-3)}
+.tab-composer .go{width:36px;height:36px;border:2px solid var(--ink);border-radius:50%;background:var(--n-yellow);display:grid;place-items:center;flex-shrink:0}
+.tab-composer .go svg{width:17px;height:17px}
+/* hero — ไม่ใช้แท็บแยกแล้ว */
+.hero{padding:15px 16px;display:flex;flex-direction:column;gap:10px;transform:rotate(-.5deg)}
+.hero .lead{display:flex;align-items:baseline;gap:9px}
+.hero .cd{font-family:"Caveat",cursive;font-size:30px;font-weight:700;line-height:1}
+.hero .cd small{font-size:16px;font-weight:600}
+.hero .when{font-family:"Caveat",cursive;font-size:16px;color:var(--ink-2)}
+.hero h3{font-size:15.5px;font-weight:600;line-height:1.35}
+.hero .meta{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--ink-2)}
+.hero .acts{display:flex;gap:8px;margin-top:2px}
+.mini-btn{border:2px solid var(--ink);border-radius:10px;box-shadow:var(--lift-sm);background:var(--card);padding:6px 12px;font-size:12.5px}
+.prog{height:11px;border:2px solid var(--ink);border-radius:7px;background:var(--card);overflow:hidden}
+.prog>i{display:block;height:100%;background-image:repeating-linear-gradient(45deg,var(--ink) 0 2px,transparent 2px 7px);border-right:2px solid var(--ink);transition:width 1s linear}
+/* timeline */
+.tl{display:flex;flex-direction:column;gap:10px}
+.tl-row{display:flex;gap:11px}
+.tl-time{width:46px;flex-shrink:0;text-align:right;padding-top:11px}
+.tl-time b{font-family:"Caveat",cursive;font-size:17px;display:block;line-height:1}
+.tl-time small{font-family:"Caveat",cursive;font-size:13px;color:var(--ink-3)}
+.tl-card{flex:1;min-width:0;padding:11px 13px;display:flex;flex-direction:column;gap:5px}
+.tl-card h4{font-size:14px;font-weight:600;line-height:1.3}
+.tl-card.done{opacity:.5}.tl-card.done h4{text-decoration:line-through}
+/* quick grid */
+.quick{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.q{padding:11px 12px;display:flex;align-items:center;gap:9px;font-size:13px;text-align:left}
+.q svg{width:18px;height:18px;flex-shrink:0}
+/* tasks */
+.task{padding:11px 13px;display:flex;align-items:center;gap:11px}
+.task .g{flex:1;min-width:0}.task h4{font-size:14px;font-weight:600}.task p{font-size:11.5px;color:var(--ink-2)}
+.tagx{font-family:"Caveat",cursive;font-size:14px;font-weight:700;border:2px solid var(--ink);border-radius:18px;padding:0 8px;background:var(--card);flex-shrink:0;white-space:nowrap}
+.chk{width:30px;height:30px;border:2px solid var(--ink);border-radius:9px;background:var(--card);display:grid;place-items:center;flex-shrink:0}
+.chk svg{width:18px;height:18px}.chk path{stroke-dasharray:30;stroke-dashoffset:30;transition:stroke-dashoffset .25s}
+.task.closed .chk{background:var(--n-green)}.task.closed .chk path{stroke-dashoffset:0}
+.task.closed .g{opacity:.5}.task.closed h4{text-decoration:line-through}
+.task.sel{outline:3px solid var(--ink);outline-offset:2px}
+/* schedule */
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.d{border:2px solid var(--ink);border-radius:10px;background:var(--card);padding:5px 0 4px;display:flex;flex-direction:column;align-items:center;gap:1px}
+.d span{font-size:10px;color:var(--ink-2)}.d b{font-family:"Caveat",cursive;font-size:16px;line-height:1}
+.d i{width:4px;height:4px;border-radius:50%;background:var(--ink)}.d i.off{background:transparent}
+.d.on{background:var(--n-yellow);box-shadow:var(--lift-sm);transform:rotate(-2deg)}
+.seg{display:flex;border:2px solid var(--ink);border-radius:12px;overflow:hidden;box-shadow:var(--lift-sm)}
+.seg button{flex:1;padding:7px 0;font-size:12.5px;background:var(--card);border:0;border-right:2px solid var(--ink)}
+.seg button:last-child{border-right:0}.seg button[aria-pressed="true"]{background:var(--n-blue);font-weight:600}
+.row2{display:flex;gap:11px}.row2 .t{width:46px;flex-shrink:0;text-align:right;padding-top:10px}
+.row2 .t b{font-family:"Caveat",cursive;font-size:17px;display:block;line-height:1}
+.row2 .t small{font-family:"Caveat",cursive;font-size:13px;color:var(--ink-3)}
+.row2 .c{flex:1;min-width:0;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.row2 h4{font-size:14px;font-weight:600;line-height:1.3}
+.bar-hatch{height:11px;border:2px solid var(--ink);border-radius:7px;background:var(--card);overflow:hidden;margin-top:5px}
+.bar-hatch>i{display:block;height:100%;background-image:repeating-linear-gradient(45deg,var(--ink) 0 2px,transparent 2px 7px)}
+/* settings cards */
+.cat{padding:13px 14px;text-align:left;display:flex;flex-direction:column;gap:7px;width:100%}
+.cat h4{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.cat h4 svg{width:18px;height:18px}
+.cat ul{list-style:none;font-size:12px;color:var(--ink-2);display:flex;flex-direction:column;gap:2px}
+.cat .foot{display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:12px}
+.cat .kbtn{font-family:"Caveat",cursive;font-size:14px;font-weight:700}
+.cat .open{display:flex;align-items:center;gap:3px;font-weight:600}
+.catGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* command bar + nav */
+.cmd-wrap{flex-shrink:0;padding:0 12px 6px;background:var(--board)}
+.cmd-bar{padding:6px 6px 6px 14px;border:2px solid var(--ink);border-radius:26px;background:var(--card);box-shadow:var(--lift);display:flex;align-items:center;gap:8px}
+.cmd-bar .ph{flex:1;font-size:13.5px;color:var(--ink-3);text-align:left;background:none;border:0;cursor:pointer}
+.cmd-bar .go{width:36px;height:36px;border:2px solid var(--ink);border-radius:50%;background:var(--n-yellow);display:grid;place-items:center;flex-shrink:0}
+.cmd-bar .go svg{width:17px;height:17px}
+.nav{flex-shrink:0;display:grid;grid-template-columns:repeat(4,1fr);border-top:2px solid var(--ink);background:var(--card);padding:7px 6px 9px}
+.nav button{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;color:var(--ink-3);background:none;border:0}
+.nav .box{width:42px;height:27px;border:2px solid transparent;border-radius:10px;display:grid;place-items:center}
+.nav svg{width:19px;height:19px}.nav button.on{color:var(--ink);font-weight:600}
+.nav button.on .box{border-color:var(--ink);background:var(--n-yellow);box-shadow:var(--lift-sm)}
+/* assistant sheet */
+.scrim{position:absolute;inset:0;background:rgba(35,33,34,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--board);border-top:2.5px solid var(--ink);border-radius:20px 20px 0 0;box-shadow:0 -4px 0 var(--ink);transform:translateY(100%);transition:transform .28s ease,max-height .25s ease;z-index:50;display:flex;flex-direction:column;max-height:78%}
+.sheet.on{transform:translateY(0)}
+/* P2: โหมดโฟกัสแชท — ส่งข้อความแล้วซ่อนเนื้อหาแท็บ ขยาย sheet */
+.phone.chat-focus .top{display:none}
+.phone.chat-focus .body{display:none!important}
+.phone.chat-focus .sheet.on{max-height:calc(100% - 108px);border-radius:16px 16px 0 0}
+.phone.chat-focus .ctx-chips{display:none}
+.phone.chat-focus .sheet-head .show-work{display:inline-flex}
+.sheet-head{padding:12px 14px 8px;display:flex;align-items:center;gap:10px;border-bottom:2px solid var(--ink);background:var(--card)}
+.sheet-head h3{font-family:"Sriracha",cursive;font-size:15px;flex:1}
+.sheet-head .show-work{display:none;align-items:center;font-size:12px;font-weight:600;border:2px solid var(--ink);border-radius:10px;box-shadow:var(--lift-sm);padding:5px 10px;background:var(--n-blue)}
+.sheet-body{flex:1;min-height:0;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.sheet-foot{padding:8px 14px 14px;border-top:2px solid var(--ink);background:var(--card)}
+.ctx-chips{display:flex;gap:7px;overflow-x:auto;margin-bottom:8px;padding-bottom:2px}
+.ctx-chips::-webkit-scrollbar{display:none}
+.ctx-chip{flex-shrink:0;border:2px solid var(--ink);border-radius:18px;box-shadow:var(--lift-sm);padding:5px 11px;font-size:12px;background:var(--n-blue)}
+.stream{display:flex;flex-direction:column;gap:10px}
+.msg{display:flex;gap:8px;align-items:flex-end}.msg.me{flex-direction:row-reverse}
+.bub{max-width:82%;padding:10px 13px;font-size:13.5px}
+.bub .ts{display:block;font-family:"Caveat",cursive;font-size:13px;color:var(--ink-3);margin-top:3px}
+.bub ul{list-style:none;margin:7px 0 1px;display:flex;flex-direction:column;gap:6px}
+.bub li{border:2px solid var(--ink);border-radius:9px;padding:4px 9px;font-size:12.5px;display:flex;gap:8px;background:var(--card)}
+.bub li b{font-family:"Caveat",cursive;font-size:15px;flex-shrink:0}
+.face-sm{width:28px;height:28px;border:2px solid var(--ink);border-radius:9px;background:var(--n-yellow);padding:1px;flex-shrink:0;transform:rotate(-3deg)}
+.composer .in{padding:5px 5px 5px 15px;border-radius:26px;display:flex;align-items:center;gap:8px}
+.composer input{flex:1;min-width:0;border:0;background:none;font-size:13.5px;outline:none}
+.composer input::placeholder{color:var(--ink-3)}
+/* confirm dialog */
+.confirm{position:absolute;inset:0;display:grid;place-items:center;padding:20px;z-index:60;pointer-events:none;opacity:0;transition:opacity .2s}
+.confirm.on{pointer-events:auto;opacity:1}
+.confirm .box{background:var(--card);border:2.5px solid var(--ink);border-radius:16px;box-shadow:var(--lift-lg);padding:16px;max-width:320px;width:100%}
+.confirm h4{font-size:15px;font-weight:600;margin-bottom:8px}
+.confirm ul{list-style:none;font-size:13px;color:var(--ink-2);margin:8px 0 14px;display:flex;flex-direction:column;gap:4px}
+.confirm .btns{display:flex;gap:8px}
+.confirm .btns button{flex:1;padding:10px;border:2px solid var(--ink);border-radius:12px;box-shadow:var(--lift-sm);font-size:13px;font-weight:600}
+.confirm .ok{background:var(--n-green)}.confirm .no{background:var(--card)}
+/* toast */
+.toast{position:absolute;bottom:120px;left:50%;transform:translateX(-50%) translateY(8px);background:var(--ink);color:var(--card);padding:8px 16px;border-radius:20px;font-size:12.5px;opacity:0;transition:opacity .2s,transform .2s;z-index:70;white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="brief">
+  <h1>KTIS X · UX v6 — ตัวอย่างลองใช้งาน</h1>
+  <p>คงโครง v5 (แท็บผู้ช่วยเป็นหน้าแรก) + แถบสั่งงานทุกหน้า + โฟกัสแชท (P2)</p>
+  <ul>
+    <li><b>ผู้ช่วย</b> แท็บเริ่มต้น — glance นัดถัดไป + แชทเต็ม (เหมือน v5)</li>
+    <li><b>แถบสั่งงาน</b> ทุกหน้า — สั่งจากตาราง/งานได้โดยไม่สลับแท็บ</li>
+    <li><b>ยืนยัน</b> ใช้คำเฉพาะ เช่น "ยืนยันปิดงาน" ไม่ใช่แค่ "ยืนยัน"</li>
+    <li><b>โฟกัสแชท (P2)</b> ส่งข้อความใน sheet → ซ่อนงาน/นัดทั้งหมด sheet ขยาย — กด "แสดงงาน" กลับ</li>
+    <li><b>แผนเต็ม</b> ดูที่ <code>docs/ux-v6-improvement-plan.md</code></li>
+  </ul>
+</div>
+
+<div class="phone" id="phone">
+  <header class="top">
+    <svg class="face" viewBox="0 0 32 32"><g class="gl" stroke="#232122" fill="none" stroke-width="2"><path d="M11.4 15 L11.4 17"/><path d="M20.6 14.9 L20.6 16.9"/><path d="M12 21.6 C14.4 24.2 18.4 24.2 20.4 21.4"/></g></svg>
+    <div class="who">
+      <h2 id="topTitle">ผู้ช่วย AI</h2>
+      <div class="sub" id="topSub">weerasak.pi@ktisgroup.com</div>
+    </div>
+  </header>
+
+  <!-- ===== ผู้ช่วย (แท็บแรก — คง v5) ===== -->
+  <div class="body on" id="p-chat">
+    <button class="note sm b glance press" data-ask="เตรียมนัด 1" type="button">
+      <div class="t"><b>13:00</b><small>น.</small></div>
+      <div class="g">
+        <h4>Onsite visit งานฉนวนชั้น 2</h4>
+        <p>อีก 45 นาที · โรงงานฉนวน ม.2</p>
+      </div>
+    </button>
+    <div class="main-stream" id="mainStream">
+      <div class="msg">
+        <svg class="face-sm" viewBox="0 0 32 32"><g class="gl" stroke="#232122" fill="none" stroke-width="2"><path d="M11.4 15 L11.4 17"/><path d="M20.6 14.9 L20.6 16.9"/><path d="M12 21.6 C14.4 24.2 18.4 24.2 20.4 21.4"/></g></svg>
+        <div class="note sm bub b">สวัสดีครับ พิมพ์สั่งงานได้เลย หรือกดชิปด้านล่าง<span class="ts">08:15 น.</span></div>
+      </div>
+    </div>
+    <div class="chips">
+      <button class="chip y press" data-tab-ask="/">/</button>
+      <button class="chip b press" data-tab-ask="ตารางวันนี้">ตารางวันนี้</button>
+      <button class="chip g press" data-tab-ask="งานค้าง">งานค้าง</button>
+      <button class="chip o press" data-tab-ask="ข่าววันนี้">ข่าววันนี้</button>
+    </div>
+    <div class="note sm tab-composer">
+      <div class="in">
+        <input id="tabInput" placeholder="พิมพ์สั่งงาน…" autocomplete="off">
+        <button class="go press" id="tabSend" aria-label="ส่ง"><svg class="gl" viewBox="0 0 24 24"><path d="M5 12h12M13 6l6 6-6 6"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ตาราง ===== -->
+  <div class="body" id="p-sched">
+    <div class="week" id="weekStrip"></div>
+    <div class="seg" id="segView">
+      <button aria-pressed="true" data-view="ev">นัด</button>
+      <button aria-pressed="false" data-view="rm">ห้อง</button>
+    </div>
+    <div id="viewEv">
+      <div class="sec" id="dayLabel">อังคาร · 2 รายการ</div>
+      <div id="agenda"></div>
+    </div>
+    <div id="viewRm" hidden>
+      <div class="sec">ห้องประชุม</div>
+      <div id="rooms"></div>
+    </div>
+  </div>
+
+  <!-- ===== งาน ===== -->
+  <div class="body" id="p-task">
+    <div class="sec">เลือกแล้วกดปิด — ดู dialog ยืนยันแบบ v6</div>
+    <div id="taskList"></div>
+    <button class="note sm p press" style="padding:12px;font-size:14px;font-weight:600;width:100%" id="btnCloseSel">ปิดงานที่เลือก (0)</button>
+  </div>
+
+  <!-- ===== ตั้งค่า ===== -->
+  <div class="body" id="p-set">
+    <div class="sec">6 หมวด · แตะการ์ดเพื่อปรับ (จาก v5)</div>
+    <div class="catGrid" id="catGrid"></div>
+  </div>
+
+  <!-- command bar -->
+  <div class="cmd-wrap">
+    <div class="cmd-bar">
+      <button class="ph press" id="openSheet">พิมพ์สั่งงาน… (แตะเพื่อเปิดผู้ช่วย)</button>
+      <button class="go press" id="openSheetGo" aria-label="เปิดผู้ช่วย"><svg class="gl" viewBox="0 0 24 24"><path d="M5 12h12M13 6l6 6-6 6"/></svg></button>
+    </div>
+  </div>
+
+  <nav class="nav" id="nav">
+    <button class="on" data-go="chat"><div class="box"><svg class="gl" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div>ผู้ช่วย</button>
+    <button data-go="sched"><div class="box"><svg class="gl" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>ตาราง</button>
+    <button data-go="task"><div class="box"><svg class="gl" viewBox="0 0 24 24"><path d="M9 11l2 2 4-4"/><rect x="3" y="4" width="18" height="16" rx="2"/></svg></div>งาน</button>
+    <button data-go="set"><div class="box"><svg class="gl" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2"/></svg></div>ตั้งค่า</button>
+  </nav>
+
+  <!-- assistant sheet -->
+  <div class="scrim" id="scrim"></div>
+  <div class="sheet" id="sheet">
+    <div class="sheet-head">
+      <svg class="face-sm" viewBox="0 0 32 32"><g class="gl" stroke="#232122" fill="none" stroke-width="2"><path d="M11.4 15 L11.4 17"/><path d="M20.6 14.9 L20.6 16.9"/><path d="M12 21.6 C14.4 24.2 18.4 24.2 20.4 21.4"/></g></svg>
+      <h3>ผู้ช่วย KTIS X</h3>
+      <button class="show-work press" id="btnShowWork" type="button">แสดงงาน</button>
+      <button class="tagx press" id="sheetClose">ปิด</button>
+    </div>
+    <div class="sheet-body">
+      <div class="ctx-chips" id="ctxChips"></div>
+      <div class="stream" id="stream">
+        <div class="msg">
+          <svg class="face-sm" viewBox="0 0 32 32"><g class="gl" stroke="#232122" fill="none" stroke-width="2"><path d="M11.4 15 L11.4 17"/><path d="M20.6 14.9 L20.6 16.9"/><path d="M12 21.6 C14.4 24.2 18.4 24.2 20.4 21.4"/></g></svg>
+          <div class="note sm bub b">สวัสดีครับ สั่งงานได้จากทุกหน้า — ไม่ต้องสลับแท็บ<span class="ts">08:15 น.</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="sheet-foot">
+      <div class="note sm composer">
+        <div class="in">
+          <input id="askInput" placeholder="พิมพ์คำสั่ง…" autocomplete="off">
+          <button class="go press" id="btnSend" aria-label="ส่ง"><svg class="gl" viewBox="0 0 24 24"><path d="M5 12h12M13 6l6 6-6 6"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- safe confirm -->
+  <div class="confirm" id="confirm">
+    <div class="box">
+      <h4 id="confirmTitle">⚠️ ปิดงานที่เลือก?</h4>
+      <ul id="confirmList"></ul>
+      <div class="btns">
+        <button class="ok press" id="confirmOk">ยืนยันปิดงาน</button>
+        <button class="no press" id="confirmNo">ยกเลิก</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+const DOW=["อา","จ","อ","พ","พฤ","ศ","ส"];
+const WEEK=[
+  {w:1,d:1,label:"จ. 1 ก.ย.",ev:[{t:"09:00",e:"09:30",title:"Weekly Sync",where:"Teams",n:"g"},{t:"13:00",e:"14:00",title:"Onsite visit",where:"โรงงาน",n:"b"},{t:"16:30",e:"17:30",title:"เคลียร์งบ IT",where:"KTISX",n:"y"}],busy:[]},
+  {w:2,d:2,label:"อ. 2 ก.ย.",ev:[{t:"10:00",e:"11:00",title:"Review งบ Q4",where:"Teams",n:"v"}],busy:[["10:00","11:00"]]},
+  {w:3,d:3,label:"พ. 3 ก.ย.",ev:[],busy:[]},
+  {w:4,d:4,label:"พฤ. 4 ก.ย.",ev:[{t:"14:00",e:"15:00",title:"Sync IT",where:"KTISX",n:"b"}],busy:[["14:00","15:00"]]},
+  {w:5,d:5,label:"ศ. 5 ก.ย.",ev:[],busy:[]},
+  {w:6,d:6,label:"ส. 6 ก.ย.",ev:[],busy:[]},
+  {w:0,d:7,label:"อ. 7 ก.ย.",ev:[],busy:[]},
+];
+const TASKS=[
+  {t:"สรุปผลทดสอบ UAT",due:"เกิน 2 วัน",tag:"เกิน",n:"p"},
+  {t:"งบ IT ไตรมาส 4",due:"ครบวันนี้",tag:"วันนี้",n:"y"},
+  {t:"สัญญา Cloud",due:"พรุ่งนี้",tag:"พรุ่งนี้",n:"b"},
+];
+const CATS=[
+  {id:"acct",tint:"b",title:"บัญชี & สิทธิ์",lines:["M365: เชื่อมแล้ว","ปฏิทิน: อนุญาต","LINE: เชื่อมแล้ว"]},
+  {id:"hours",tint:"y",title:"เวลา & สถานที่",lines:["08:30 – 17:00","ที่ทำงาน: ยังไม่ตั้ง","ที่พัก: ยังไม่ตั้ง"]},
+  {id:"notify",tint:"g",title:"การแจ้งเตือน",lines:["ก่อนประชุม 15 น.","สรุปเช้า 07:00","เตือนงานเกิน: เปิด"]},
+  {id:"screen",tint:"p",title:"หน้าจอ & ธีม",lines:["ไม่ให้พักจอ: เปิด","ธีม: สว่าง","ตัวอักษร: ปกติ"]},
+  {id:"link",tint:"v",title:"เชื่อมต่อ",lines:["LINE: เชื่อมแล้ว","Outlook: ซิงค์ 08:12","ส่งออก Excel"]},
+  {id:"help",tint:"o",title:"ช่วยเหลือ",lines:["คู่มือคำสั่ง","สถานะ: ปกติ","v6 preview"]},
+];
+const CTX={
+  chat:["เตรียมนัด 1","ตารางวันนี้","ข่าววันนี้"],
+  sched:["จองห้อง KTISX","หาเวลาว่าง","นัดประชุม"],
+  task:["เพิ่มงานใหม่","ดูงานเกินกำหนด"],
+  set:["/ช่วยเหลือ","/ตั้งค่าข่าว"],
+};
+
+let sel=0, view="ev", tab="chat", selectedTasks=new Set(), chatFocus=false;
+
+const NAMES={chat:"ผู้ช่วย AI",sched:"ตาราง",task:"งาน",set:"ตั้งค่า"};
+const SUBS={chat:"weerasak.pi@ktisgroup.com",sched:"1–7 ก.ย. · ปฏิทิน + ห้อง",task:"เลือกแล้วปิด — ดู dialog ยืนยัน",set:"6 หมวด · แตะการ์ด"};
+
+function enterChatFocus(){
+  if(chatFocus) return;
+  chatFocus=true;
+  document.getElementById("phone").classList.add("chat-focus");
+}
+function exitChatFocus(){
+  chatFocus=false;
+  document.getElementById("phone").classList.remove("chat-focus");
+}
+
+function go(name){
+  tab=name;
+  document.querySelectorAll(".body").forEach(b=>b.classList.toggle("on",b.id==="p-"+name));
+  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.go===name));
+  document.getElementById("topTitle").textContent=NAMES[name];
+  document.getElementById("topSub").textContent=SUBS[name];
+  updateCtx();
+}
+document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>go(b.dataset.go));
+document.querySelectorAll("[data-go]").forEach(b=>{ if(b.closest("#nav")) return; b.onclick=()=>go(b.dataset.go); });
+
+function drawWeek(){
+  document.getElementById("weekStrip").innerHTML=WEEK.map((d,i)=>`
+    <button class="d press ${i===sel?"on":""}" onclick="pick(${i})">
+      <span>${DOW[d.w]}</span><b>${d.d}</b><i class="${d.ev.length?"":"off"}"></i>
+    </button>`).join("");
+  const day=WEEK[sel];
+  document.getElementById("dayLabel").textContent=`${day.label} · ${day.ev.length} รายการ`;
+  document.getElementById("agenda").innerHTML=day.ev.length?day.ev.map(e=>`
+    <div class="row2"><div class="t"><b>${e.t}</b><small>${e.e}</small></div>
+    <div class="note sm ${e.n} c"><h4>${e.title}</h4><span class="hand mute" style="font-size:14px">${e.where}</span></div></div>`).join("")
+    :`<div class="note sm fold y" style="padding:22px;text-align:center"><span class="hand" style="font-size:17px">ว่างทั้งวัน</span></div>`;
+  const pct=day.busy.length?35:0;
+  document.getElementById("rooms").innerHTML=`
+    <div class="note fold ${day.busy.length?"p":"g"}" style="padding:12px 13px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1"><h4 style="font-size:14px;font-weight:600">ห้อง KTISX (ชั้น 3)</h4>
+        <p style="font-size:11.5px;color:var(--ink-2)">10 ท่าน · TV + Teams</p></div>
+        <span class="tagx">${day.busy.length?"มีคิว":"ว่าง"}</span></div>
+      <div class="bar-hatch"><i style="width:${pct}%"></i></div>
+      <button class="tagx press" style="margin-top:9px" data-ask="จองห้อง KTISX ${day.label}">จองห้องนี้</button>
+    </div>`;
+}
+function pick(i){sel=i;drawWeek();}
+document.querySelectorAll("#segView button").forEach(b=>b.onclick=()=>{
+  view=b.dataset.view;
+  document.querySelectorAll("#segView button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));
+  document.getElementById("viewEv").hidden=view!=="ev";
+  document.getElementById("viewRm").hidden=view!=="rm";
+});
+
+function drawTasks(){
+  document.getElementById("taskList").innerHTML=TASKS.map((t,i)=>`
+    <div class="task note sm ${t.n} ${selectedTasks.has(i)?"sel":""}" data-idx="${i}">
+      <button class="chk press" aria-label="เลือก"><svg class="gl" viewBox="0 0 20 20"><path d="M3.6 10.4 L8 15 L16.6 4.6"/></svg></button>
+      <div class="g"><h4>${t.t}</h4><p>${t.due}</p></div>
+      <span class="tagx">${t.tag}</span>
+    </div>`).join("");
+  document.querySelectorAll(".task").forEach(row=>{
+    row.onclick=()=>{
+      const i=+row.dataset.idx;
+      selectedTasks.has(i)?selectedTasks.delete(i):selectedTasks.add(i);
+      row.classList.toggle("sel");
+      if(selectedTasks.has(i)) row.querySelector(".chk path").style.strokeDashoffset="0";
+      else row.querySelector(".chk path").style.strokeDashoffset="30";
+      document.getElementById("btnCloseSel").textContent=`ปิดงานที่เลือก (${selectedTasks.size})`;
+    };
+  });
+}
+document.getElementById("btnCloseSel").onclick=()=>{
+  if(!selectedTasks.size){toast("เลือกงานก่อนครับ");return;}
+  const items=[...selectedTasks].map(i=>TASKS[i].t);
+  document.getElementById("confirmList").innerHTML=items.map(t=>`<li>• ${t}</li>`).join("");
+  document.getElementById("confirm").classList.add("on");
+  document.getElementById("scrim").classList.add("on");
+};
+document.getElementById("confirmNo").onclick=()=>{
+  document.getElementById("confirm").classList.remove("on");
+  if(!document.getElementById("sheet").classList.contains("on")) document.getElementById("scrim").classList.remove("on");
+};
+document.getElementById("confirmOk").onclick=()=>{
+  const n = selectedTasks.size;
+  document.getElementById("confirm").classList.remove("on");
+  document.getElementById("scrim").classList.remove("on");
+  [...selectedTasks].sort((a,b)=>b-a).forEach(i=>TASKS.splice(i,1));
+  selectedTasks.clear();
+  drawTasks();
+  document.getElementById("btnCloseSel").textContent="ปิดงานที่เลือก (0)";
+  toast("✅ ปิดงานแล้ว — ใช้คำว่า \"ยืนยันปิดงาน\" ไม่ใช่แค่ \"ยืนยัน\"");
+  if(tab==="chat") bubble("","ปิดงาน <b>"+n+"</b> รายการเรียบร้อยครับ ✅","mainStream");
+  else bubble("","ปิดงาน <b>"+n+"</b> รายการเรียบร้อยครับ ✅","stream");
+};
+
+function drawCats(){
+  document.getElementById("catGrid").innerHTML=CATS.map(c=>`
+    <button class="note cat ${c.tint} press">
+      <h4>${c.title}</h4>
+      <ul>${c.lines.map(l=>`<li>${l}</li>`).join("")}</ul>
+      <span class="foot"><span class="kbtn">${c.lines.length} รายการ</span><span class="open">เปิด ›</span></span>
+    </button>`).join("");
+  document.querySelectorAll(".cat").forEach(b=>b.onclick=()=>toast("เปิด "+b.querySelector("h4").textContent+" (ตัวอย่าง)"));
+}
+
+/* sheet */
+const scrim=document.getElementById("scrim");
+const sheet=document.getElementById("sheet");
+function openSheet(){sheet.classList.add("on");scrim.classList.add("on");}
+function closeSheet(){exitChatFocus();sheet.classList.remove("on");document.getElementById("confirm").classList.remove("on");scrim.classList.remove("on");}
+document.getElementById("openSheet").onclick=openSheet;
+document.getElementById("openSheetGo").onclick=openSheet;
+document.getElementById("sheetClose").onclick=closeSheet;
+document.getElementById("btnShowWork").onclick=()=>{exitChatFocus();toast("แสดงงานแล้ว — sheet ยังเปิดอยู่");};
+scrim.onclick=()=>{ if(document.getElementById("confirm").classList.contains("on")) document.getElementById("confirmNo").click(); else closeSheet(); };
+
+function updateCtx(){
+  document.getElementById("ctxChips").innerHTML=(CTX[tab]||[]).map(c=>
+    `<button class="ctx-chip press" data-ask="${c}">${c}</button>`).join("");
+}
+
+const nowStr=()=>new Date().toTimeString().slice(0,5)+" น.";
+function bubble(cls,html,targetId){
+  const st=document.getElementById(targetId||"stream");
+  const el=document.createElement("div");el.className="msg "+cls;
+  const face=cls==="me"?"":`<svg class="face-sm" viewBox="0 0 32 32"><g class="gl" stroke="#232122" fill="none" stroke-width="2"><path d="M11.4 15 L11.4 17"/><path d="M20.6 14.9 L20.6 16.9"/><path d="M12 21.6 C14.4 24.2 18.4 24.2 20.4 21.4"/></g></svg>`;
+  el.innerHTML=face+`<div class="note sm bub ${cls==="me"?"y":""}">${html}<span class="ts">${nowStr()}</span></div>`;
+  st.appendChild(el);
+  st.parentElement.scrollTop=st.parentElement.scrollHeight;
+}
+function reply(q){
+  if(/ยืนยัน$/.test(q)&&!/ยืนยัน\w/.test(q)) return `⚠️ คำว่า "ยืนยัน" อย่างเดียวไม่ปลอดภัยครับ — กรุณากดปุ่ม <b>ยืนยันปิดงาน</b> หรือพิมพ์คำเฉพาะ`;
+  if(q.includes("ห้อง"))return"ห้อง KTISX ว่าง <b>14:00–16:00</b> ครับ — กดยืนยันจองเพื่อสร้างนัด";
+  if(q.includes("ตาราง")||q.includes("นัด"))return`วันนี้ 2 นัด<ul><li><b>13:00</b><span>Onsite visit</span></li><li><b>16:30</b><span>เคลียร์งบ IT</span></li></ul>`;
+  if(q.includes("งาน"))return`ค้าง 3 รายการ<ul><li><b>เกิน</b><span>สรุป UAT</span></li><li><b>วันนี้</b><span>งบ IT Q4</span></li></ul>`;
+  if(q.includes("เตรียม"))return"📌 <b>สรุปนัด</b>: ไปโรงงานฉนวน · นำ PPE · เช็ครายการ QC ก่อนออก";
+  if(q.includes("ข่าว"))return"📰 ข่าววันนี้ 3 เรื่อง — AI, พลังงาน, ยานยนต์ (ดูใน LINE ได้)";
+  return `รับคำสั่ง "${q}" แล้วครับ กำลังดึงข้อมูล…`;
+}
+/** sheet — จากแท็บอื่น (P1) */
+function ask(q){openSheet();enterChatFocus();bubble("me",q,"stream");setTimeout(()=>bubble("",reply(q),"stream"),500);}
+/** แชท inline — แท็บผู้ช่วย */
+function tabAsk(q){bubble("me",q,"mainStream");setTimeout(()=>bubble("",reply(q),"mainStream"),500);}
+document.getElementById("btnSend").onclick=()=>{
+  const i=document.getElementById("askInput");
+  if(!i.value.trim())return;ask(i.value.trim());i.value="";
+};
+document.getElementById("askInput").addEventListener("keydown",e=>{if(e.key==="Enter")document.getElementById("btnSend").click();});
+document.getElementById("tabSend").onclick=()=>{
+  const i=document.getElementById("tabInput");
+  if(!i.value.trim())return;tabAsk(i.value.trim());i.value="";
+};
+document.getElementById("tabInput").addEventListener("keydown",e=>{if(e.key==="Enter")document.getElementById("tabSend").click();});
+document.addEventListener("click",e=>{
+  const t=e.target.closest("[data-ask]");
+  if(t){ if(tab==="chat") tabAsk(t.dataset.ask); else ask(t.dataset.ask); return; }
+  const c=e.target.closest("[data-tab-ask]");
+  if(c) tabAsk(c.dataset.tabAsk);
+});
+
+let tm;
+function toast(msg){
+  const t=document.getElementById("toast");t.textContent=msg;t.classList.add("on");
+  clearTimeout(tm);tm=setTimeout(()=>t.classList.remove("on"),2400);
+}
+
+drawWeek();drawTasks();drawCats();updateCtx();
+</script>
+</body>
+</html>

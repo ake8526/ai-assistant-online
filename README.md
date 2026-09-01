@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KTIS X AI Assistant (online)
 
-## Getting Started
+Next.js app on Vercel — work assistant for KTIS: chat commands (web + LINE), morning brief, meeting prep/summary, tasks + reminders, find/book/cancel meetings, news digest.
 
-First, run the development server:
+Repo: `ake8526/ai-assistant-online` · Live: https://ktis-ai-assistant.vercel.app
+
+## App entry
+
+| Path | What |
+| --- | --- |
+| `/` | Main React shell (tabs: ผู้ช่วย / ตาราง / งาน / ตั้งค่า) — **canonical** |
+| `/line-link` | Link M365 ↔ LINE (LIFF) |
+| `/consents`, `/settings`, `/setup` | Consent + settings flows |
+| `/api/line/webhook` | LINE Messaging API |
+| `/api/command` | Same command brain as LINE (used by web chat) |
+
+Legacy `/mobile`, `/chat`, `/index.html` redirect to `/`.
+
+## Local dev
 
 ```bash
+npm install
+cp .env.example .env.local   # if present; otherwise copy known Vercel env keys
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Required env (high level): M365 app registration, Supabase, LINE channel tokens, LLM keys. See `docs/` in the parent workspace and Vercel project settings.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Checks
 
-## Learn More
+```bash
+npm run test:confirm   # confirmation-word / RSVP collision regressions
+npm run build
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Agent rules
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Before changing confirmation or LINE webhook behavior, read [`AGENTS.md`](./AGENTS.md). Short words like "ยืนยัน" must only answer the question the assistant just asked.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## UX plan
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Workspace plan + preview: `docs/ux-v6-improvement-plan.md`, `ux-v6-preview.html` (parent folder).

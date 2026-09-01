@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:confirm": "node --experimental-strip-types scripts/test-confirm-safety.mts",
     "sync:sf": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-system-functions.ps1"
   },
   "dependencies": {

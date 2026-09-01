@@ -38,6 +38,11 @@ const nextConfig: NextConfig = {
       { source: "/system-functions.html", destination: "/home.html", permanent: true },
       { source: "/functions.html", destination: "/home.html", permanent: true },
       { source: "/functions-th.html", destination: "/home.html", permanent: true },
+      // Legacy UIs → React app shell
+      { source: "/mobile", destination: "/", permanent: true },
+      { source: "/mobile.html", destination: "/", permanent: true },
+      { source: "/index.html", destination: "/", permanent: true },
+      { source: "/chat", destination: "/", permanent: true },
     ];
   },
   async rewrites() {

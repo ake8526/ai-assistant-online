@@ -42,6 +42,10 @@ export type Settings = {
   work_end?: string;
   work_location?: string;
   home_location?: string;
+  /** นาทีก่อนเริ่มนัด — 0 = ปิด (ค่าเริ่ม 15) */
+  meeting_remind_minutes?: number;
+  /** วันก่อน due ของงาน — 0 = ปิด (ค่าเริ่ม 1) */
+  task_remind_ahead_days?: number;
   /** สิทธิ์ของผู้ใช้คนนี้ (lib/roles) — บางปุ่มต้องรู้ตั้งแต่ตอนวาด */
   perms?: string[];
   error?: string;
@@ -254,8 +258,14 @@ export default function SettingsBoard({
 
   /** POST /api/settings — แสดงค่าใหม่ทันที ถ้าเซิร์ฟเวอร์ปฏิเสธค่อยย้อนคืน */
   const saveSetting = async (
-    field: "work_start" | "work_end" | "work_location" | "home_location",
-    value: string
+    field:
+      | "work_start"
+      | "work_end"
+      | "work_location"
+      | "home_location"
+      | "meeting_remind_minutes"
+      | "task_remind_ahead_days",
+    value: string | number
   ) => {
     const before = s;
     onChange({ ...data, settings: { ...(s || {}), [field]: value } });
@@ -361,8 +371,8 @@ export default function SettingsBoard({
           ? [dash, dash, "ส่งทาง LINE ที่ผูกไว้"]
           : [
               `สรุปงานเช้า: ${nf.brief.enabled ? `${nf.brief.time} · ${daysLabel(nf.brief.days)}` : "ปิด"}`,
-              `ข่าว: ${nf.news.enabled ? `${nf.news.time} · ${daysLabel(nf.news.days)}` : "ปิด"}`,
-              "ส่งทาง LINE ที่ผูกไว้",
+              `ก่อนประชุม: ${(s?.meeting_remind_minutes ?? 15) > 0 ? `${s?.meeting_remind_minutes ?? 15} นาที` : "ปิด"}`,
+              `งานล่วงหน้า: ${(s?.task_remind_ahead_days ?? 1) > 0 ? `${s?.task_remind_ahead_days ?? 1} วัน` : "ปิด"}`,
             ],
     },
     {
@@ -691,6 +701,62 @@ export default function SettingsBoard({
                             </span>
                           </Row>
                         )}
+                        <Row>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-[13.5px] font-semibold">เตือนก่อนประชุม</h4>
+                            <p className={`text-[11.5px] ${INK_2}`}>
+                              ส่ง LINE ก่อนเริ่มนัดตามนาทีที่ตั้ง (ค่าเริ่ม 15)
+                            </p>
+                          </div>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            <select
+                              aria-label="นาทีก่อนประชุม"
+                              value={String(s?.meeting_remind_minutes ?? 15)}
+                              onChange={(e) =>
+                                void saveSetting("meeting_remind_minutes", Number(e.target.value))
+                              }
+                              className={SELECT}
+                            >
+                              <option value={0}>ปิด</option>
+                              {[5, 10, 15, 30, 60].map((n) => (
+                                <option key={n} value={n}>
+                                  {n} นาที
+                                </option>
+                              ))}
+                            </select>
+                            {saving === "meeting_remind_minutes" && (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            )}
+                          </span>
+                        </Row>
+                        <Row>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-[13.5px] font-semibold">เตือนงานล่วงหน้า</h4>
+                            <p className={`text-[11.5px] ${INK_2}`}>
+                              ส่ง LINE ก่อนถึงกำหนดส่งงาน (ค่ายังเตือนตอนเลยกำหนดเหมือนเดิม)
+                            </p>
+                          </div>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            <select
+                              aria-label="วันก่อนกำหนดงาน"
+                              value={String(s?.task_remind_ahead_days ?? 1)}
+                              onChange={(e) =>
+                                void saveSetting("task_remind_ahead_days", Number(e.target.value))
+                              }
+                              className={SELECT}
+                            >
+                              <option value={0}>ปิด</option>
+                              {[1, 2, 3, 7].map((n) => (
+                                <option key={n} value={n}>
+                                  {n} วัน
+                                </option>
+                              ))}
+                            </select>
+                            {saving === "task_remind_ahead_days" && (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            )}
+                          </span>
+                        </Row>
                         <Row last>
                           <Link href="/line-link" className="flex-1 min-w-0 flex items-center gap-2">
                             <span className="flex-1 min-w-0">

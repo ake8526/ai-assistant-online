@@ -2,7 +2,18 @@
 import { createHash } from "crypto";
 import { Attendee, resolveAttendee, resolveUser } from "@/lib/graph";
 import { getLineId, pushLineMessages, pushQuotaGone, sendLine } from "@/lib/line";
-import { Task, addTask, duePendingTasks, markReminded, updateTaskStatus } from "@/lib/store";
+import { getTaskRemindAheadDays } from "@/lib/remindPrefs";
+import {
+  Task,
+  addTask,
+  duePendingTasks,
+  getSetting,
+  markReminded,
+  setSetting,
+  upcomingDueTasks,
+  updateTaskStatus,
+} from "@/lib/store";
+import { admin } from "@/lib/supabaseServer";
 
 const NOTIFY_RESPONSIBLE = (process.env.NOTIFY_RESPONSIBLE || "true").toLowerCase() === "true";
 
@@ -214,6 +225,117 @@ export async function checkDue(): Promise<Record<string, number>> {
   for (const tid of deliveredIds) {
     await updateTaskStatus(tid, "overdue");
     await markReminded(tid);
+  }
+  return reminded;
+}
+
+const ADVANCE_SEEN_KEY = "task_advance_seen";
+const ADVANCE_SEEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const ADVANCE_SEEN_MAX = 400;
+
+type AdvanceSeen = [id: string, ts: number];
+
+async function loadAdvanceSeen(upn: string): Promise<Map<number, number>> {
+  const raw = await getSetting(upn, ADVANCE_SEEN_KEY);
+  const map = new Map<number, number>();
+  if (!raw) return map;
+  try {
+    const arr = JSON.parse(raw) as AdvanceSeen[];
+    if (!Array.isArray(arr)) return map;
+    const cutoff = Date.now() - ADVANCE_SEEN_TTL_MS;
+    for (const [id, ts] of arr) {
+      if (Number(ts) < cutoff) continue;
+      const n = Number(id);
+      if (Number.isFinite(n)) map.set(n, Number(ts));
+    }
+  } catch {
+    /* ignore */
+  }
+  return map;
+}
+
+async function saveAdvanceSeen(upn: string, map: Map<number, number>): Promise<void> {
+  const cutoff = Date.now() - ADVANCE_SEEN_TTL_MS;
+  const entries: AdvanceSeen[] = [...map.entries()]
+    .filter(([, ts]) => ts >= cutoff)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, ADVANCE_SEEN_MAX)
+    .map(([id, ts]) => [String(id), ts]);
+  await setSetting(upn, ADVANCE_SEEN_KEY, JSON.stringify(entries));
+}
+
+function formatAdvanceReminder(tasks: Task[], days: number): string {
+  const lines = [
+    days <= 1
+      ? "🗓️ แจ้งเตือน: มีงานใกล้ถึงกำหนด (ภายใน 1 วัน)"
+      : `🗓️ แจ้งเตือน: มีงานใกล้ถึงกำหนด (ภายใน ${days} วัน)`,
+    "",
+  ];
+  tasks.forEach((t, i) => {
+    const who = t.responsible || "ไม่ระบุผู้รับผิดชอบ";
+    const src = t.source ? ` (จาก: ${t.source})` : "";
+    lines.push(`  ${i + 1}) ${t.title} — ${who} | กำหนด ${fmtDue(t.due)}${src}`);
+  });
+  lines.push("", "กดเลขด้านล่างเพื่อปิดงาน หรือพิมพ์ «ปิดงาน <ชื่องาน>»");
+  lines.push(`ดูงานทั้งหมด: ${APP_BASE}/`);
+  return lines.join("\n");
+}
+
+/**
+ * Remind about tasks due soon (not yet overdue). Uses a per-user seen set so
+ * overdue reminders can still fire later via reminded_at.
+ */
+export async function checkUpcomingDue(): Promise<Record<string, number>> {
+  if (await pushQuotaGone()) {
+    console.log("advance reminders: skipped — LINE push quota exhausted this month");
+    return {};
+  }
+
+  const { data: links } = await admin.from("line_links").select("upn");
+  const users = [
+    ...new Set((links || []).map((r) => String(r.upn || "").toLowerCase()).filter(Boolean)),
+  ];
+  const reminded: Record<string, number> = {};
+  const { runWithTrace, trace } = await import("@/lib/trace");
+
+  for (const upn of users) {
+    const days = await getTaskRemindAheadDays(upn);
+    if (days <= 0) continue;
+
+    const windowMs = days * 24 * 60 * 60_000;
+    const mine = (await upcomingDueTasks(windowMs)).filter(
+      (t) =>
+        String(t.owner_upn || "").toLowerCase() === upn ||
+        String(t.responsible_upn || "").toLowerCase() === upn
+    );
+    if (!mine.length) continue;
+
+    const seen = await loadAdvanceSeen(upn);
+    const fresh = mine.filter((t) => !seen.has(t.id));
+    if (!fresh.length) continue;
+
+    try {
+      await runWithTrace({ upn, channel: "cron" }, async () => {
+        trace("receive", "cron · เตือนงานล่วงหน้า");
+        trace("compose", `งาน ${fresh.length} รายการ`);
+        const body = formatAdvanceReminder(fresh, days);
+        const lineId = await getLineId(upn);
+        if (lineId) {
+          await pushLineMessages(lineId, [
+            { type: "text", text: body.slice(0, 4900), quickReply: reminderQuickReply(fresh) },
+          ]);
+        } else {
+          await sendLine(upn, "🗓️ งานใกล้ถึงกำหนด", body);
+        }
+        trace("reply", "ส่งเตือนล่วงหน้า LINE");
+      });
+      reminded[upn] = fresh.length;
+      const nowTs = Date.now();
+      for (const t of fresh) seen.set(t.id, nowTs);
+      await saveAdvanceSeen(upn, seen);
+    } catch (e) {
+      console.log(`advance reminder failed for ${upn}: ${e}`);
+    }
   }
   return reminded;
 }

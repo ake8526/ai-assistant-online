@@ -175,20 +175,20 @@ function quickReplyFor(res: CommandResult, upn?: string, cardHandled = false): {
     for (const c of res.choices as Choice[]) {
       if (!c.task_id || items.length >= 12) continue;
       n++;
-      add(n, `a=done&t=${c.task_id}`, `ปิดงาน ${n}) ${c.label || ""}`);
+      add(n, `a=doneask&t=${c.task_id}`, `ปิดงาน ${n}) ${c.label || ""}`);
     }
   } else if (res.intent === "confirm_cancel" && Array.isArray(res.choices)) {
     // Confirm / abort a meeting deletion — the summary sits in the message body.
     for (const c of res.choices as Choice[]) {
       if (!c.data || items.length >= 12) continue;
-      const label = c.label || "ยืนยัน";
+      const label = c.label || "ยืนยันยกเลิก";
       items.push({
         type: "action",
         action: {
           type: "postback",
           label: truncate(label, 20),
           data: c.data.slice(0, 300),
-          displayText: truncate(label, 60),
+          displayText: truncate(label.replace(/^✅\s*/, ""), 60),
         },
       });
     }
@@ -1403,14 +1403,12 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
 
     // Meeting RSVP / reschedule by text — before news onboarding
     //
-    // "ยืนยัน" is how someone accepts an invite AND how they confirm anything
-    // else. When the assistant has just asked a yes/no of its own, that answer
-    // belongs to the question on screen: a bare confirm here once accepted a
-    // stale invite and booked a meeting nobody asked for.
+    // Short "ยืนยัน" / "ตกลง" / "ใช่" belongs only to the assistant's last
+    // confirm_* question. Letting RSVP run first once accepted a stale invite
+    // while the user meant to close tasks (AGENTS.md).
+    const { shouldDeferPrePipeline } = await import("@/lib/confirmSafety");
     const ctxNow = await loadCtx(upn);
-    const awaitingOwnConfirm =
-      ctxNow?.last_intent === "confirm_complete_task" &&
-      /^(?:ยืนยัน|ยืนยันปิดงาน|ตกลง|ปิดเลย|ใช่|ปิด|confirm|ok|yes)$/i.test(text.trim());
+    const awaitingOwnConfirm = shouldDeferPrePipeline(ctxNow?.last_intent, text);
     if (!awaitingOwnConfirm) {
       const hostEdit = await tryHandleHostEditText(upn, text);
       if (hostEdit) {

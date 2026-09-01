@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { checkCronSecret } from "@/lib/auth";
 import { outsideCronWindow } from "@/lib/cronWindow";
-import { checkDue } from "@/lib/followup";
+import { checkDue, checkUpcomingDue } from "@/lib/followup";
 import { assertConfigured } from "@/lib/supabaseServer";
 
 export const maxDuration = 60;
 
-// POST/GET ?key=CRON_SECRET — remind about overdue tasks (owner + responsible person)
+// POST/GET ?key=CRON_SECRET — overdue + advance (pre-due) task reminders
 export async function POST(req: Request) {
   return run(req);
 }
@@ -19,8 +19,9 @@ async function run(req: Request) {
   try {
     assertConfigured();
     if (!checkCronSecret(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const upcoming = await checkUpcomingDue();
     const reminded = await checkDue();
-    return NextResponse.json({ ok: true, reminded });
+    return NextResponse.json({ ok: true, upcoming, reminded });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

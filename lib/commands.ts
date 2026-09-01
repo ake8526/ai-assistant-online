@@ -1027,6 +1027,8 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
       const params: Record<string, unknown> = { attendees };
       if (weekday) params.weekday = weekday;
       if (period) params.period = period;
+      const isoDate = t.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
+      if (isoDate) params.date = isoDate[1];
       if (at) params.at = at;
       if (note) params.note = note;
       if (room) params.room = room;
@@ -1802,6 +1804,49 @@ async function loadAddTaskDraft(userUpn: string): Promise<AddTaskDraft | null> {
 
 async function clearAddTaskDraft(userUpn: string): Promise<void> {
   await deleteSetting(userUpn.toLowerCase(), ADD_TASK_DRAFT_KEY);
+}
+
+const CLOSE_TASK_PENDING_KEY = "_pending_close_task_ids";
+const CLOSE_TASK_PENDING_TTL_MS = 15 * 60_000;
+
+type CloseTaskPending = { ts: number; ids: number[] };
+
+async function saveCloseTaskPending(userUpn: string, ids: number[]): Promise<void> {
+  await setSetting(
+    userUpn.toLowerCase(),
+    CLOSE_TASK_PENDING_KEY,
+    JSON.stringify({ ts: Date.now(), ids } satisfies CloseTaskPending)
+  );
+}
+
+/** Pending close ids — expires in 15 min so a later bare confirm cannot close stale work. */
+async function loadCloseTaskPending(userUpn: string): Promise<number[] | null> {
+  try {
+    const raw = await getSetting(userUpn.toLowerCase(), CLOSE_TASK_PENDING_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CloseTaskPending | number[];
+    // Legacy: bare id array (no timestamp) — treat as expired so collision class dies.
+    if (Array.isArray(parsed)) {
+      await deleteSetting(userUpn.toLowerCase(), CLOSE_TASK_PENDING_KEY);
+      return null;
+    }
+    const ids = Array.isArray(parsed?.ids) ? parsed.ids.filter((n) => Number.isFinite(n)) : [];
+    if (!ids.length) {
+      await deleteSetting(userUpn.toLowerCase(), CLOSE_TASK_PENDING_KEY);
+      return null;
+    }
+    if (Date.now() - Number(parsed.ts || 0) > CLOSE_TASK_PENDING_TTL_MS) {
+      await deleteSetting(userUpn.toLowerCase(), CLOSE_TASK_PENDING_KEY);
+      return null;
+    }
+    return ids;
+  } catch {
+    return null;
+  }
+}
+
+async function clearCloseTaskPending(userUpn: string): Promise<void> {
+  await deleteSetting(userUpn.toLowerCase(), CLOSE_TASK_PENDING_KEY);
 }
 
 /** ข้อความทวนรายการ — โชว์กำหนดส่งที่ตีความแล้ว ผู้ใช้จึงเห็นตอนที่อ่านเพี้ยน */
@@ -5092,32 +5137,35 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     /^(?:ยืนยัน|ตกลง|ใช่|ปิด|confirm|ok|yes)$/i.test(text);
   if (closeConfirmSpecific || closeConfirmShort) {
     try {
-      const rawStored = await getSetting(userUpn.toLowerCase(), "_pending_close_task_ids");
-      if (rawStored) {
-        const taskIds = JSON.parse(rawStored);
-        if (Array.isArray(taskIds) && taskIds.length > 0) {
-          await deleteSetting(userUpn.toLowerCase(), "_pending_close_task_ids");
-          const pending = (await listTasks(userUpn)).filter(
-            (t) => t.status === "pending" || t.status === "overdue" || t.status === "done"
-          );
-          const closedTitles: string[] = [];
-          for (const tid of taskIds) {
-            const t = pending.find((p) => p.id === tid);
-            if (await updateTaskStatus(tid, "done")) {
-              closedTitles.push(`• ${t?.title || `งาน #${tid}`}`);
-            }
-          }
-          if (closedTitles.length > 0) {
-            return {
-              intent: "complete_task",
-              reply: `✅ ปิดงาน ${closedTitles.length} รายการเรียบร้อยแล้วครับ:\n${closedTitles.join("\n")}`,
-              suggestions: [
-                { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
-                { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
-              ],
-            };
+      const taskIds = await loadCloseTaskPending(userUpn);
+      if (taskIds && taskIds.length > 0) {
+        await clearCloseTaskPending(userUpn);
+        const pending = (await listTasks(userUpn)).filter(
+          (t) => t.status === "pending" || t.status === "overdue" || t.status === "done"
+        );
+        const closedTitles: string[] = [];
+        for (const tid of taskIds) {
+          const t = pending.find((p) => p.id === tid);
+          if (await updateTaskStatus(tid, "done")) {
+            closedTitles.push(`• ${t?.title || `งาน #${tid}`}`);
           }
         }
+        if (closedTitles.length > 0) {
+          return {
+            intent: "complete_task",
+            reply: `✅ ปิดงาน ${closedTitles.length} รายการเรียบร้อยแล้วครับ:\n${closedTitles.join("\n")}`,
+            suggestions: [
+              { label: "สรุปตารางเช้า", text: "สรุปตารางเช้า" },
+              { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+            ],
+          };
+        }
+      } else if (closeConfirmSpecific) {
+        return {
+          intent: "complete_task_expired",
+          reply: "ไม่มีรายการปิดงานที่ค้างยืนยันครับ (เก็บให้ 15 นาที) พิมพ์ปิดงานใหม่ได้เลย",
+          suggestions: [{ label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" }],
+        };
       }
     } catch (e) {
       console.warn("confirm close tasks error:", e);
@@ -7998,7 +8046,10 @@ async function handleParsed(
       // If not confirmed yet, ask user for confirmation first!
       if (!isConfirmed) {
         const confirmList = matchedTasks.map((t) => `• ${t.title}`).join("\n");
-        await setSetting(userUpn.toLowerCase(), "_pending_close_task_ids", JSON.stringify(matchedTasks.map((t) => t.id)));
+        await saveCloseTaskPending(
+          userUpn,
+          matchedTasks.map((t) => t.id)
+        );
         return {
           intent: "confirm_complete_task",
           pending_task_ids: matchedTasks.map((t) => t.id),
@@ -8014,7 +8065,7 @@ async function handleParsed(
       }
 
       // Confirmed: Execute the status updates
-      await deleteSetting(userUpn.toLowerCase(), "_pending_close_task_ids");
+      await clearCloseTaskPending(userUpn);
       const closedTitles: string[] = [];
       for (const t of matchedTasks) {
         if (await updateTaskStatus(t.id, "done")) {

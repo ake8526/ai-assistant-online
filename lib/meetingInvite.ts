@@ -6,6 +6,12 @@ import { getLineId, pushLineMessages } from "@/lib/line";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 import { fmtDateTime, fmtTime, nowWall, parseWall, parseHHMM, addMinutes, wallIso, wallToUtcIso } from "@/lib/time";
 import { trace } from "@/lib/trace";
+export {
+  classifyMeetingRsvpText,
+  isMeetingRescheduleText,
+  isMeetingRsvpText,
+} from "@/lib/meetingRsvpText";
+import { classifyMeetingRsvpText, isMeetingRescheduleText } from "@/lib/meetingRsvpText";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Re-ping unanswered LINE invitees this often. */
@@ -25,6 +31,9 @@ const agoLabel = (ms: number) =>
 
 const PENDING_RSVP_KEY = "_mt_rsvp_pending";
 const HOST_EDIT_KEY = "_mt_host_edit";
+
+// RSVP / reschedule text classifiers live in meetingRsvpText.ts (re-exported above).
+
 
 export type MeetingInviteRecord = {
   id: string;
@@ -156,35 +165,6 @@ export async function getPendingRsvp(attendeeUpn: string): Promise<PendingRsvp |
     console.warn("[mt-invite] scan pending", String(e).slice(0, 120));
   }
   return null;
-}
-
-/** Free-text RSVP while a LINE invite is pending (works even before news onboarding). */
-export function classifyMeetingRsvpText(text: string): "accept" | "decline" | null {
-  const t = (text || "").trim();
-  if (!t) return null;
-  // Reschedule asks are handled separately — don't treat as decline
-  if (isMeetingRescheduleText(t)) return null;
-  if (
-    /^(ยืนยัน(เข้าร่วม(นัด)?)?|เข้าร่วม(นัด)?|ไปได้|รับนัด|ตกลง|ok)$/i.test(t) ||
-    /^ยืนยันเข้าร่วม/.test(t)
-  ) {
-    return "accept";
-  }
-  if (
-    /ไม่สะดวก|ไปไม่ได้|ขอถอน|ติดธุระ|ขอโทษ.*(ไม่|ยกเลิก)|decline/i.test(t) ||
-    /ยกเลิก(นัด|การเข้าร่วม|ให้)?/.test(t) ||
-    /^\/?ยกเลิก$/.test(t)
-  ) {
-    return "decline";
-  }
-  return null;
-}
-
-/** Attendee asking to move the meeting time (e.g. เปลี่ยนเวลาเป็นบ่าย3). */
-export function isMeetingRescheduleText(text: string): boolean {
-  const t = (text || "").trim();
-  if (!t) return false;
-  return /เปลี่ยนเวลา|เลื่อน(นัด|เวลา|ประชุม)?|ขอเลื่อน|ย้ายเวลา|เลื่อนไป|เปลี่ยนเป็น|ขอเปลี่ยน/.test(t);
 }
 
 /** Best-effort parse of requested time for the host notification. */
@@ -364,11 +344,6 @@ export async function tryHandleMeetingRsvpText(
   if (!kind) return null;
   if (!pending) return null;
   return respondMeetingInvite(responderUpn, pending.organizerUpn, pending.inviteId, kind === "accept");
-}
-
-/** True when text looks like RSVP (used to keep news onboarding from stealing it). */
-export function isMeetingRsvpText(text: string): boolean {
-  return classifyMeetingRsvpText(text) != null;
 }
 
 /** Look up LINE user ids for M365 emails that already linked the bot. */
