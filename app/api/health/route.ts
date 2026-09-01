@@ -4,6 +4,7 @@ import { getLineId, lineQuotaReading } from "@/lib/line";
 import { getDelegatedGraphToken, hasMicrosoftToken } from "@/lib/msGraphOAuth";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
 import { deviceCount, pushConfigured, pushSelfCheck } from "@/lib/push";
+import { meetingTasksOff } from "@/lib/opsPause";
 
 export const dynamic = "force-dynamic";
 
@@ -152,6 +153,24 @@ export async function GET(req: Request) {
           note: String((e as Error).message || e).slice(0, 160),
         });
       }
+    }
+
+    /* ---- สวิตช์ที่คนสั่งปิดไว้ด้วยมือ ----
+       ปิดไว้แล้วไม่มีวันหมดอายุ ถ้าไม่โชว์ก็ลืมได้ง่าย ๆ แล้วสงสัยทีหลังว่า
+       ทำไมงานจากประชุมไม่เข้าเลย */
+    try {
+      const mt = await meetingTasksOff();
+      if (mt.off) {
+        const since = mt.at ? new Date(mt.at + 7 * 60 * 60_000).toISOString().slice(0, 16).replace("T", " ") : "";
+        parts.push({
+          key: "meeting_tasks",
+          name: "เพิ่มงานจากประชุม",
+          level: "warn",
+          note: `ปิดไว้ด้วยมือ${since ? ` ตั้งแต่ ${since}` : ""} — ยังสรุปประชุมให้ปกติ แต่ไม่เขียนลงตารางงาน`,
+        });
+      }
+    } catch {
+      /* อ่านสวิตช์ไม่ได้ก็ไม่ควรทำให้หน้าสถานะพัง */
     }
 
     const level: HealthLevel = parts.some((p) => p.level === "down")

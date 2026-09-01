@@ -35,6 +35,8 @@ import {
   summaryTeaser,
 } from "@/lib/summaryPage";
 import { findLinkedLineAttendees } from "@/lib/meetingInvite";
+import { meetingTasksOff } from "@/lib/opsPause";
+import { trace } from "@/lib/trace";
 import { addMinutes, fmtDateTime, nowWall, parseWall, wallIso } from "@/lib/time";
 
 const TRANSCRIPT_LOOKBACK_HOURS = Number(process.env.TRANSCRIPT_LOOKBACK_HOURS || 24);
@@ -473,8 +475,14 @@ export async function listRecentOnline(userUpn: string, lookbackHours = 24 * 14)
 /** Scheduled-run flow: summarize new meetings, deliver, and ingest action items. */
 export async function runScheduledForUser(
   userUpn: string
-): Promise<{ summarized: number; tasksAdded: number; skipped: number }> {
+): Promise<{ summarized: number; tasksAdded: number; skipped: number; tasksOff?: boolean }> {
   const res = await summarizeRecent(userUpn, { deliver: true, skipSummarized: true });
+  /* ปิดการเอางานจากประชุมมาเพิ่มไว้ — ยังสรุปและส่งสรุปให้ปกติ แค่ไม่เขียนลง
+     ตารางงาน (เปิด/ปิดที่ _ops/meeting_tasks_off) */
+  if ((await meetingTasksOff()).off) {
+    trace("reply", `หยุดเพิ่มงานจากประชุมไว้ — ข้าม ${res.action_items.length} งาน`, "skip");
+    return { summarized: res.summaries.length, tasksAdded: 0, skipped: res.skipped, tasksOff: true };
+  }
   const added = await ingestActionItems(res.action_items);
   return { summarized: res.summaries.length, tasksAdded: added, skipped: res.skipped };
 }
