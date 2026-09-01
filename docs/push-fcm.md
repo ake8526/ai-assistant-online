@@ -1,9 +1,8 @@
-# แจ้งเตือนขึ้นเครื่องแม้ปิดแอป — สิ่งที่ต้องทำ
+# แจ้งเตือนขึ้นเครื่องแม้ปิดแอป (FCM)
 
-ฝั่งเว็บ (รีโปนี้) ทำเสร็จแล้วทั้งหมด เหลือสองอย่างที่ทำในรีโปนี้ไม่ได้:
-ใส่ค่า env บน Vercel และสร้าง APK รุ่นใหม่ที่มี Firebase
+ทำเสร็จแล้วทั้งฝั่งเว็บและตัว APK — เหลืออย่างเดียวคือใส่ env บน Vercel
 
-## โปรเจค Firebase ที่ใช้
+## โปรเจค Firebase
 
 | ค่า | |
 | --- | --- |
@@ -15,10 +14,10 @@
 
 Google Analytics และ Gemini in Firebase ปิดไว้ ไม่ได้ใช้
 
-## 1. env บน Vercel (ทำก่อน ถึงจะส่งได้)
+## 1. env บน Vercel (ยังต้องทำ)
 
-เอาจาก Firebase console → Project settings → **Service accounts** →
-*Generate new private key* จะได้ไฟล์ JSON มาหนึ่งไฟล์ แล้วเอาสามค่านี้ไปใส่
+Firebase console → Project settings → **Service accounts** → *Generate new private key*
+ได้ไฟล์ JSON มา แล้วเอาสามค่านี้ไปใส่ที่ Vercel → Settings → Environment Variables
 
 | env | เอามาจากคีย์ไหนใน JSON |
 | --- | --- |
@@ -26,61 +25,59 @@ Google Analytics และ Gemini in Firebase ปิดไว้ ไม่ได
 | `FCM_CLIENT_EMAIL` | `client_email` |
 | `FCM_PRIVATE_KEY` | `private_key` — วางทั้งก้อนรวม `-----BEGIN PRIVATE KEY-----` |
 
-ไฟล์ JSON นั้นคือกุญแจของโปรเจค **อย่า commit ลง git** ใส่ใน Vercel แล้วลบทิ้ง
+ใส่แล้วต้อง **Redeploy** ถึงจะมีผล และ **ลบไฟล์ JSON ทิ้ง** อย่า commit
 
-ยังไม่ใส่ env ระบบก็ทำงานปกติ แค่ไม่มีแจ้งเตือนขึ้นเครื่อง (`lib/push.ts`
-เช็คก่อนทุกครั้ง ไม่มีค่าก็ข้ามไปเงียบ ๆ ไม่ทำให้ตัวส่งอื่นพัง)
+ยังไม่ใส่ env ระบบก็ทำงานปกติ แค่ไม่มีแจ้งเตือนขึ้นเครื่อง (`lib/push.ts` เช็คก่อน
+ทุกครั้ง ไม่มีค่าก็ข้ามไปเงียบ ๆ ไม่ทำให้ตัวส่งอื่นพัง)
 
-## 2. APK รุ่นใหม่ต้องทำอะไร
+## 2. APK — ทำเสร็จแล้ว (รุ่น 3.5)
 
-ดาวน์โหลด `google-services.json` จาก Firebase console (Project settings →
-General → แอป Android) วางไว้ที่ `app/` ของโปรเจค Android แล้ว
+`public/KTISX-AI-Assistant.apk` เป็นรุ่นที่มี Firebase แล้ว เซ็นด้วยกุญแจตัวเดิม
+(`db9a73e3…` ตรวจแล้วตรงกับรุ่น 3.4) เครื่องที่ลงอยู่แล้ว **อัปเดตทับได้เลย
+ไม่ต้องถอนก่อน**
 
-1. ใส่ `firebase-messaging` + plugin `com.google.gms.google-services`
-2. ประกาศสิทธิ์ `POST_NOTIFICATIONS` (Android 13 ขึ้นไป) และขอสิทธิ์ตอนเปิดแอป
-3. สร้าง notification channel ชื่อ id **`ktisx`** — ฝั่งเซิร์ฟเวอร์ส่งมาที่ช่องนี้
-4. เพิ่มสองเมธอดใน JavaScript interface `KtisxApp` (ตัวเดิมที่มี `setKeepAwake`)
+ในตัวแอปมี:
+
+- `PushService` (FirebaseMessagingService) — รับข้อความและเด้งแจ้งเตือน
+  ตอนแอปเปิดอยู่ ส่วนตอนแอปปิด Android เด้งให้เอง
+- notification channel id **`ktisx`** ตรงกับที่ `lib/push.ts` ส่งมา
+- สะพาน `KtisxApp` เพิ่มสองเมธอด — หน้าเว็บเรียกเองอัตโนมัติ
+  (`usePushRegister` ใน `components/Inbox.tsx`) แอปไม่ต้องยิง API เอง
 
 ```java
-@JavascriptInterface
-public String getPushToken() {
-    // คืนโทเคน FCM ล่าสุด ("" ได้ถ้ายังไม่พร้อม/ไม่อนุญาต)
-    return lastFcmToken == null ? "" : lastFcmToken;
-}
-
-@JavascriptInterface
-public void askNotifyPermission() {
-    // ขอสิทธิ์ POST_NOTIFICATIONS — เรียกซ้ำได้ ระบบถามครั้งเดียว
-}
+@JavascriptInterface public String getPushToken()      // โทเคน FCM ("" ถ้ายังไม่พร้อม)
+@JavascriptInterface public void askNotifyPermission() // ขอสิทธิ์ POST_NOTIFICATIONS (Android 13+)
 ```
 
-หน้าเว็บเรียก `getPushToken()` เองตอนเปิดแอป แล้วส่งไปที่
-`POST /api/push/register` ให้อัตโนมัติ (`usePushRegister` ใน
-`components/Inbox.tsx`) — ฝั่งแอปไม่ต้องยิง API เอง
+### ซอร์สและวิธี build ใหม่
 
-5. ตอนแตะแจ้งเตือน ให้เปิดแอปแล้วอ่าน `data.open` (ค่าที่ส่งมาคือ `inbox`)
-   เพื่อพาไปที่กล่องแจ้งเตือน
+ซอร์สอยู่ที่ `../android_app` (นอก git เพราะมี keystore กับ google-services.json)
 
-### รูปแบบข้อความที่เซิร์ฟเวอร์ส่ง
-
-```json
-{
-  "message": {
-    "token": "<โทเคนของเครื่อง>",
-    "notification": { "title": "🌅 สรุปตารางเช้า", "body": "…" },
-    "data": { "open": "inbox", "tag": "brief" },
-    "android": { "priority": "HIGH", "notification": { "channel_id": "ktisx", "tag": "brief" } }
-  }
-}
+```
+cd /c/Users/admin/AppData/Local/Temp/ktisx-apk     # ต้อง build ในพาธที่ไม่มีช่องว่าง
+export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
+/c/Users/admin/.gradle/wrapper/dists/gradle-8.5-bin/*/gradle-8.5/bin/gradle :app:assembleRelease --no-daemon
 ```
 
-`tag` เป็นชนิดของเรื่อง (`brief` / `news` / `task` / `meeting` / `system`)
-ใช้ทับแจ้งเตือนเก่าชนิดเดียวกัน จะได้ไม่กองซ้อนกันหลายใบ
+จุดที่เคยพลาด:
 
-## 3. เช็คว่าทำงานไหม
+- `local.properties` ต้องเขียน `sdk.dir=C:/Users/.../Sdk` แบบ **สแลชหน้า** —
+  ใส่ `\` เดี่ยวจะได้ error `Invalid file path` ที่ชี้ไปผิดที่จนหลงทาง
+- build ในโฟลเดอร์ที่พาธมีช่องว่าง (`NB AKE`, `AI Assistant`) AGP ล้ม —
+  ให้ copy ไป `%TEMP%\ktisx-apk` แล้ว build ที่นั่น
+- `versionCode` ต้องเดินหน้าเสมอ (3.4 = 16, 3.5 = 17) ไม่งั้นอัปเดตทับไม่ได้
 
-- `GET /api/push/register` คืน `{ configured, devices }` — `configured` บอกว่า
-  env ครบหรือยัง `devices` คือจำนวนเครื่องที่ลงทะเบียนไว้ของคนที่เรียก
-- ทุกอย่างที่เข้ากล่องแจ้งเตือน (`addNotice`) จะยิง push เองอัตโนมัติ —
-  สรุปตารางเช้า ข่าวประจำวัน เตือนงานเลยกำหนด เตือนงานใกล้ถึงกำหนด
-- โทเคนที่ FCM ตอบว่าใช้ไม่ได้แล้ว (ถอนแอป/ล้างข้อมูล) ระบบลบทิ้งเอง
+## 3. เช็คว่าครบหรือยัง
+
+เปิดแอป → **ตั้งค่า** → **ช่วยเหลือ & ระบบ** → **สถานะระบบ** ดูบรรทัด
+"แจ้งเตือนขึ้นเครื่อง"
+
+| ขึ้นว่า | แปลว่า |
+| --- | --- |
+| ยังไม่ได้ตั้งค่า FCM บนเซิร์ฟเวอร์ | ยังไม่ได้ใส่ env หรือยังไม่ redeploy |
+| เซิร์ฟเวอร์พร้อมแล้ว แต่ยังไม่มีเครื่องลงทะเบียน | env ถูกแล้ว รอเครื่องที่ลงแอป 3.5 เปิดสักครั้ง |
+| พร้อมส่ง · ลงทะเบียนไว้ N เครื่อง | ครบวงจร |
+
+ทุกอย่างที่เข้ากล่องแจ้งเตือน (`addNotice`) ยิง push เองอัตโนมัติ — สรุปตารางเช้า
+ข่าวประจำวัน งานเลยกำหนด งานใกล้ถึงกำหนด เตือนก่อนประชุม และนัดใหม่ในปฏิทิน
+โทเคนที่ FCM ตอบว่าใช้ไม่ได้แล้ว (ถอนแอป/ล้างข้อมูล) ระบบลบทิ้งเอง
