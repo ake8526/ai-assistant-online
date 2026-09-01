@@ -618,7 +618,8 @@ function AssistantTab({
                 onHover={slash.setIndex}
               />
             )}
-            {/* บนมือถือกด / บนคีย์บอร์ดลำบาก ปุ่มนี้เปิดเมนูเดียวกันด้วยนิ้ว */}
+            {/* บนมือถือกด / บนคีย์บอร์ดลำบาก ปุ่มนี้เปิดเมนูเดียวกันด้วยนิ้ว
+                ป้ายเป็น "?" เพราะคนที่ยังไม่รู้ว่ามีคำสั่งอะไร อ่าน "/" ไม่ออกว่าคืออะไร */}
             <button
               onClick={slash.toggle}
               // อย่าให้ช่องพิมพ์หลุดโฟกัส ไม่งั้น blur ปิดเมนูแล้วปุ่มนี้ไปเปิดใหม่ทันที
@@ -630,7 +631,7 @@ function AssistantTab({
                 slash.open ? N_GREEN : N_PURPLE
               } font-marker grid place-items-center w-11 h-11 shrink-0 text-[18px] leading-none disabled:opacity-40 cursor-pointer`}
             >
-              /
+              ?
             </button>
             <input
               ref={inputRef}
