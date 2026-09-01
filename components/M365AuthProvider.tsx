@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { PublicClientApplication, AccountInfo, InteractionRequiredAuthError } from "@azure/msal-browser";
-import { msalConfig, loginRequest, graphCalendarRequest } from "@/lib/msalConfig";
+import { msalConfig, loginRequest, loginSelectRequest, graphCalendarRequest } from "@/lib/msalConfig";
 
 const RETURN_KEY = "msal_return_path";
 
@@ -39,6 +39,8 @@ interface AuthContextType {
   account: AccountInfo | null;
   login: () => Promise<void>;
   logout: () => Promise<void>;
+  /** ล้างเซสชันแล้วเปิดหน้าเลือกบัญชี — ใช้เมื่ออยากเข้าด้วยอีเมลอื่น */
+  switchAccount: () => Promise<void>;
   isAuthenticated: boolean;
   /** True after MSAL has finished initializing (session restore checked). */
   ready: boolean;
@@ -54,6 +56,7 @@ const AuthContext = createContext<AuthContextType>({
   account: null,
   login: async () => {},
   logout: async () => {},
+  switchAccount: async () => {},
   isAuthenticated: false,
   ready: false,
   getToken: async () => null,
@@ -144,41 +147,69 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem("dev_m365_account", JSON.stringify(devAccount)); } catch { /* ignore */ }
   };
 
+  const ensureMsal = async (): Promise<PublicClientApplication | null> => {
+    if (msalInstance) return msalInstance;
+    try {
+      msalInstance = new PublicClientApplication(msalConfig);
+      await msalInstance.initialize();
+      return msalInstance;
+    } catch (err) {
+      console.error("Failed initializing MSAL:", err);
+      return null;
+    }
+  };
+
+  const wipeLocalSession = async () => {
+    if (msalInstance) {
+      try {
+        msalInstance.setActiveAccount(null);
+      } catch {
+        /* ignore */
+      }
+      try {
+        await msalInstance.clearCache();
+      } catch {
+        /* ignore */
+      }
+    }
+    try {
+      localStorage.removeItem("dev_m365_account");
+    } catch {
+      /* ignore */
+    }
+    setAccount(null);
+  };
+
   const login = async () => {
     if (typeof window !== "undefined" && window.location.hostname === "localhost") {
       // Dev environment fallback to instant login as Weerasak Pimton
       devLogin();
       return;
     }
-    if (!msalInstance) {
-      try {
-        msalInstance = new PublicClientApplication(msalConfig);
-        await msalInstance.initialize();
-      } catch (err) {
-        console.error("Failed initializing MSAL:", err);
-      }
-    }
+    const instance = await ensureMsal();
     rememberReturnPath();
-    if (!msalInstance) {
+    if (!instance) {
       devLogin();
       return;
     }
     try {
+      // บังคับหน้าเลือกบัญชี — ไม่มี prompt นี้ Azure จะ SSO บัญชีเดิมทันที
+      // ไม่มีปุ่ม "ใช้บัญชีอื่น" ให้กด
       // WebView ของแอป / เบราว์เซอร์ใน LINE เปิด popup ไม่ได้ ถ้ายังลอง popup ก่อน
       // MSAL จะค้างรอจน timeout (~60 วิ) แล้วค่อยไป redirect — ข้ามไป redirect เลย
       if (isEmbeddedBrowser()) {
-        await msalInstance.loginRedirect(loginRequest);
+        await instance.loginRedirect(loginSelectRequest);
         return;
       }
       try {
-        const resp = await msalInstance.loginPopup(loginRequest);
+        const resp = await instance.loginPopup(loginSelectRequest);
         if (resp?.account) {
-          msalInstance.setActiveAccount(resp.account);
+          instance.setActiveAccount(resp.account);
           setAccount(resp.account);
           return;
         }
       } catch {
-        await msalInstance.loginRedirect(loginRequest);
+        await instance.loginRedirect(loginSelectRequest);
       }
     } catch (err) {
       console.error("M365 Login error:", err);
@@ -187,14 +218,15 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const reauth = async () => {
-    if (!msalInstance) return;
+    const instance = await ensureMsal();
+    if (!instance) return;
     rememberReturnPath();
-    const acct = account || msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
+    const acct = account || instance.getActiveAccount() || instance.getAllAccounts()[0];
     try {
       if (acct) {
-        await msalInstance.acquireTokenRedirect({ ...loginRequest, account: acct });
+        await instance.acquireTokenRedirect({ ...loginRequest, account: acct });
       } else {
-        await msalInstance.loginRedirect(loginRequest);
+        await instance.loginRedirect(loginSelectRequest);
       }
     } catch (err) {
       console.error("M365 reauth error:", err);
@@ -202,17 +234,62 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    if (msalInstance) {
-      const acct = msalInstance.getAllAccounts()[0];
-      try {
-        await msalInstance.logoutPopup({ account: acct });
-      } catch {
-        // popup closed/blocked — still wipe local cache
-      }
-      try { await msalInstance.clearCache(); } catch { /* ignore */ }
+    const instance = msalInstance;
+    const acct = instance?.getActiveAccount() || instance?.getAllAccounts()[0] || account;
+    try {
+      localStorage.removeItem("dev_m365_account");
+    } catch {
+      /* ignore */
     }
-    try { localStorage.removeItem("dev_m365_account"); } catch { /* ignore */ }
     setAccount(null);
+
+    if (!instance || !acct || acct.homeAccountId === "dev-admin-id") {
+      if (instance) {
+        try {
+          await instance.clearCache();
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    }
+
+    try {
+      // ออกจากเซสชัน Microsoft ด้วย — ไม่งั้น login รอบถัดไปยัง SSO บัญชีเดิม
+      // หน้านี้เป็น "ลงชื่อออก" มีแค่บัญชีที่ล็อกอินอยู่ ไม่ใช่หน้าเลือกเข้า
+      // หลังจบกลับแอปแล้วกดเข้าสู่ระบบ จะได้หน้าเลือกบัญชี (prompt=select_account)
+      if (isEmbeddedBrowser()) {
+        rememberReturnPath();
+        await instance.logoutRedirect({
+          account: acct,
+          postLogoutRedirectUri: window.location.origin,
+        });
+        return;
+      }
+      try {
+        await instance.logoutPopup({ account: acct });
+      } catch {
+        /* popup ปิด/บล็อก */
+      }
+      try {
+        await instance.clearCache();
+      } catch {
+        /* ignore */
+      }
+    } catch (err) {
+      console.error("M365 Logout error:", err);
+      try {
+        await instance.clearCache();
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  /** เปลี่ยนบัญชี — ข้ามหน้า "ลงชื่อออก" ของ Microsoft แล้วเปิดหน้าเลือกบัญชีเลย */
+  const switchAccount = async () => {
+    await wipeLocalSession();
+    await login();
   };
 
   const getToken = async (): Promise<string | null> => {
@@ -301,6 +378,7 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
         account,
         login,
         logout,
+        switchAccount,
         isAuthenticated: !!account,
         ready,
         getToken,

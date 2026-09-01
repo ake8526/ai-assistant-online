@@ -230,7 +230,7 @@ export default function SettingsBoard({
   theme: Theme;
   build: BuildInfo;
 }) {
-  const { account, logout, getToken, getGraphToken } = useM365Auth();
+  const { account, logout, switchAccount, getToken, getGraphToken } = useM365Auth();
   const [open, setOpen] = useState<CatId | null>(null);
   const [saving, setSaving] = useState("");
 
@@ -519,6 +519,18 @@ export default function SettingsBoard({
                           อนุญาต
                         </button>
                       )}
+                    </Row>
+                    <Row>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-[13.5px] font-semibold">เปลี่ยนบัญชี</h4>
+                        <p className={`text-[11.5px] ${INK_2}`}>เข้าด้วยอีเมล Microsoft 365 อื่น</p>
+                      </div>
+                      <button
+                        onClick={() => void switchAccount()}
+                        className={`${NOTE_SM} ${PRESS} ${SURFACE} px-2.5 py-1 text-[12.5px] shrink-0 cursor-pointer`}
+                      >
+                        เลือกบัญชี
+                      </button>
                     </Row>
                     <Row last>
                       <div className="flex-1 min-w-0">

@@ -18,6 +18,17 @@ export const loginRequest: PopupRequest = {
 };
 
 /**
+ * ล็อกอินแบบให้เลือกบัญชีเสมอ — ไม่ใส่ใน loginRequest ปกติ เพราะตัวนั้นใช้กับ
+ * acquireTokenSilent ด้วย ถ้าใส่ prompt ไป silent จะพัง
+ *
+ * ไม่มี prompt นี้ Azure AD มัก SSO กลับบัญชีเดิมทันที ไม่มีปุ่ม "บัญชีอื่น"
+ */
+export const loginSelectRequest: PopupRequest = {
+  ...loginRequest,
+  prompt: "select_account",
+};
+
+/**
  * Graph calendar scopes — access token for Microsoft Graph.
  * Free/busy and shared calendars then follow the signed-in user's M365 rights
  * (same as Outlook), not app-only Application Access Policy.
