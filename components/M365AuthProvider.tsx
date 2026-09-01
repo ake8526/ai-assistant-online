@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { PublicClientApplication, AccountInfo, InteractionRequiredAuthError } from "@azure/msal-browser";
 import { msalConfig, loginRequest, loginSelectRequest, graphCalendarRequest } from "@/lib/msalConfig";
+import { clearPrimaryAccount, canSwitchAccounts } from "@/lib/accountPrimary";
 
 const RETURN_KEY = "msal_return_path";
 
@@ -241,6 +242,7 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore */
     }
+    clearPrimaryAccount();
     setAccount(null);
 
     if (!instance || !acct || acct.homeAccountId === "dev-admin-id") {
@@ -286,8 +288,11 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  /** เปลี่ยนบัญชี — ข้ามหน้า "ลงชื่อออก" ของ Microsoft แล้วเปิดหน้าเลือกบัญชีเลย */
+  /** เปลี่ยนบัญชี — ข้ามหน้า "ลงชื่อออก" ของ Microsoft แล้วเปิดหน้าเลือกบัญชีเลย
+   *  เรียกได้เฉพาะเมื่อ canSwitchAccounts (ตั้งค่าตรวจก่อนโชว์ปุ่ม) */
   const switchAccount = async () => {
+    if (!canSwitchAccounts(null)) return;
+    // ไม่ล้างบัญชีหลัก / สิทธิ์สลับ — บัญชีสองที่ไม่มีสิทธิ์ยังต้องสลับกลับบัญชีหลักได้
     await wipeLocalSession();
     await login();
   };

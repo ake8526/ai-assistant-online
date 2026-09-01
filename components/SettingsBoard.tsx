@@ -36,6 +36,11 @@ import {
 import { appBridge, type KeepAwake } from "@/components/useKeepAwake";
 import type { BuildInfo } from "@/components/useFreshBuild";
 import { THEME_LABEL, THEME_MODES, type Theme, type ThemeMode } from "@/components/useTheme";
+import {
+  canSwitchAccounts,
+  getPrimaryUpn,
+  rememberPrimaryAccount,
+} from "@/lib/accountPrimary";
 
 export type Settings = {
   work_start?: string;
@@ -238,6 +243,24 @@ export default function SettingsBoard({
   const ms = data.ms;
   const nf = data.notify;
   const health = data.health;
+  const permsKey = (s?.perms || []).join(",");
+  const hasAdmin = (s?.perms || []).includes("admin");
+  const [primaryUpn, setPrimaryUpn] = useState("");
+  const [showSwitchAccount, setShowSwitchAccount] = useState(false);
+  const currentUpn = (account?.username || "").toLowerCase();
+  const onSecondary = !!primaryUpn && !!currentUpn && primaryUpn !== currentUpn;
+
+  // บัญชีแรกบนเครื่องนี้ = บัญชีหลัก; ถ้ามีสิทธิ์ admin จำไว้ว่าเครื่องนี้สลับบัญชีได้
+  useEffect(() => {
+    if (!account?.username) {
+      setPrimaryUpn("");
+      setShowSwitchAccount(false);
+      return;
+    }
+    rememberPrimaryAccount(account.username, hasAdmin);
+    setPrimaryUpn(getPrimaryUpn());
+    setShowSwitchAccount(canSwitchAccounts(s?.perms));
+  }, [account?.username, hasAdmin, permsKey, s?.perms]);
 
   const load = useCallback(async () => {
     const [settings, status] = await Promise.all([
@@ -490,7 +513,11 @@ export default function SettingsBoard({
                     <Row>
                       <div className="flex-1 min-w-0">
                         <h4 className="text-[13.5px] font-semibold truncate">{account?.username}</h4>
-                        <p className={`text-[11.5px] ${INK_2}`}>{account?.name || "Microsoft 365 · KTIS Group"}</p>
+                        <p className={`text-[11.5px] ${INK_2}`}>
+                          {onSecondary
+                            ? `บัญชีหลัก: ${primaryUpn}`
+                            : account?.name || "Microsoft 365 · KTIS Group"}
+                        </p>
                       </div>
                       <span
                         className={`${NOTE_SM} ${N_GREEN} px-2 py-0.5 font-hand text-[15px] font-bold shrink-0 inline-flex items-center gap-1`}
@@ -520,18 +547,24 @@ export default function SettingsBoard({
                         </button>
                       )}
                     </Row>
-                    <Row>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-[13.5px] font-semibold">เปลี่ยนบัญชี</h4>
-                        <p className={`text-[11.5px] ${INK_2}`}>เข้าด้วยอีเมล Microsoft 365 อื่น</p>
-                      </div>
-                      <button
-                        onClick={() => void switchAccount()}
-                        className={`${NOTE_SM} ${PRESS} ${SURFACE} px-2.5 py-1 text-[12.5px] shrink-0 cursor-pointer`}
-                      >
-                        เลือกบัญชี
-                      </button>
-                    </Row>
+                    {showSwitchAccount && (
+                      <Row>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-[13.5px] font-semibold">เปลี่ยนบัญชี</h4>
+                          <p className={`text-[11.5px] ${INK_2}`}>
+                            {onSecondary
+                              ? "สลับกลับบัญชีหลัก หรือเข้าด้วยอีเมลอื่น"
+                              : "เข้าด้วยอีเมล Microsoft 365 อื่น (สำหรับผู้มีสิทธิ์จัดการ)"}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => void switchAccount()}
+                          className={`${NOTE_SM} ${PRESS} ${SURFACE} px-2.5 py-1 text-[12.5px] shrink-0 cursor-pointer`}
+                        >
+                          เลือกบัญชี
+                        </button>
+                      </Row>
+                    )}
                     <Row last>
                       <div className="flex-1 min-w-0">
                         <h4 className="text-[13.5px] font-semibold">ออกจากระบบ</h4>
