@@ -55,7 +55,31 @@ function normalizeKey(raw: string): string {
 
 const unquote = (v: string) => (v || "").trim().replace(/^["']|["']$/g, "");
 
+/**
+ * ทางที่พลาดยากที่สุด: วางไฟล์ service account ทั้งไฟล์ลงตัวแปรเดียว
+ *
+ * แยกใส่สามตัวแปรแล้วพลาดกันบ่อย — คนละบรรทัดกัน คีย์ยาวจนล้นจอ และมีบรรทัด
+ * "private_key_id" หน้าตาคล้าย "private_key" ให้หยิบผิดได้ง่าย (เกิดขึ้นจริง)
+ * วางทั้งไฟล์แบบนี้ไม่ต้องเลือกอะไรเลย
+ */
+function fromJsonEnv() {
+  const raw = (process.env.FCM_SERVICE_ACCOUNT || "").trim();
+  if (!raw.startsWith("{")) return null;
+  try {
+    const j = JSON.parse(raw) as { project_id?: string; client_email?: string; private_key?: string };
+    const projectId = unquote(j.project_id || "");
+    const clientEmail = unquote(j.client_email || "");
+    const privateKey = normalizeKey(j.private_key || "");
+    if (!projectId || !clientEmail || !privateKey.includes("PRIVATE KEY")) return null;
+    return { projectId, clientEmail, privateKey };
+  } catch {
+    return null;
+  }
+}
+
 function creds() {
+  const whole = fromJsonEnv();
+  if (whole) return whole;
   const projectId = unquote(process.env.FCM_PROJECT_ID || "");
   const clientEmail = unquote(process.env.FCM_CLIENT_EMAIL || "");
   const privateKey = normalizeKey(process.env.FCM_PRIVATE_KEY || "");
@@ -73,7 +97,9 @@ export async function pushSelfCheck(): Promise<{ ok: boolean; error?: string }> 
   if (!creds()) {
     return {
       ok: false,
-      error: "ยังไม่ได้ตั้งค่า env FCM_PROJECT_ID / FCM_CLIENT_EMAIL / FCM_PRIVATE_KEY (หรือคีย์ไม่ใช่ PEM)",
+      error:
+        "ยังไม่ได้ตั้งค่า หรือคีย์ไม่ใช่ PEM — วางไฟล์ service account ทั้งไฟล์ลง FCM_SERVICE_ACCOUNT " +
+        "ตัวเดียวจบ (หรือใส่ FCM_PROJECT_ID / FCM_CLIENT_EMAIL / FCM_PRIVATE_KEY ให้ครบ)",
     };
   }
   try {

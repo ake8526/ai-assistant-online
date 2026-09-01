@@ -19,6 +19,17 @@ Google Analytics และ Gemini in Firebase ปิดไว้ ไม่ได
 Firebase console → Project settings → **Service accounts** → *Generate new private key*
 ได้ไฟล์ JSON มา แล้วเอาสามค่านี้ไปใส่ที่ Vercel → Settings → Environment Variables
 
+**วิธีที่พลาดยากที่สุด — ตัวแปรเดียว**
+
+| env | ค่า |
+| --- | --- |
+| `FCM_SERVICE_ACCOUNT` | เปิดไฟล์ json ด้วย Notepad → `Ctrl+A` `Ctrl+C` → วางทั้งก้อน |
+
+เปิดไฟล์ทั้งไฟล์วางลงไปเลย ไม่ต้องเลือกบรรทัด ไม่ต้องกลัวขึ้นบรรทัดเพี้ยน
+
+**หรือแยกสามตัวก็ได้** (พลาดง่ายกว่า — บรรทัด `private_key_id` หน้าตาคล้าย
+`private_key` มาก คนหยิบผิดกันบ่อย)
+
 | env | เอามาจากคีย์ไหนใน JSON |
 | --- | --- |
 | `FCM_PROJECT_ID` | `project_id` (คือ `ktis-x-assistant`) |
