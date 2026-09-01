@@ -15,7 +15,6 @@ import ScheduleTab, { type CalEvent, type Room } from "@/components/ScheduleTab"
 import TasksTab, { type Task } from "@/components/TasksTab";
 import SettingsBoard, { type Health, type NotifyCfg, type SettingsData } from "@/components/SettingsBoard";
 import AssistantTab from "@/components/AssistantTab";
-import CommandBar from "@/components/CommandBar";
 import AssistantSheet from "@/components/AssistantSheet";
 import { contextChipsForTab, type SheetTab } from "@/lib/sheetContextChips";
 import { useKeepAwake } from "@/components/useKeepAwake";
@@ -511,8 +510,6 @@ function AppShell() {
         </>
       )}
 
-      {tab !== "chat" && <CommandBar onOpen={() => openSheet()} />}
-
       <AssistantSheet
         open={sheetOpen}
         chatFocus={chatFocus}
@@ -526,7 +523,6 @@ function AppShell() {
         canTest={(settings.settings?.perms || []).includes("test.cmds")}
         onBooked={() => void loadEvents(true)}
         instanceKey={sheetKey}
-        hasCommandBar={tab !== "chat"}
       />
 
       <nav className="sticky bottom-0 z-30 grid grid-cols-4 border-t-2 border-[var(--nb-ink)] bg-[var(--nb-surface)] px-1.5 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] shrink-0">

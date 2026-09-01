@@ -3,7 +3,7 @@
 import { Send } from "lucide-react";
 import { NOTE, N_YELLOW, PRESS } from "@/components/noteStyles";
 
-/** แถบสั่งงานเหนือ nav — เปิด Assistant sheet โดยไม่ต้องสลับไปแท็บผู้ช่วย */
+/** แถบสั่งงาน (ไม่ mount ทุกแท็บ) — ใช้เฉพาะเมื่อฝังในหน้าที่ต้องการ เช่น action จองห้องเปิด sheet แทน */
 export default function CommandBar({ onOpen }: { onOpen: () => void }) {
   return (
     <div className="shrink-0 px-3 pb-1.5 bg-[var(--nb-board)]">
