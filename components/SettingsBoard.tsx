@@ -59,6 +59,8 @@ export type Settings = {
   hours_set?: boolean;
   /** วันทำงาน 0=อาทิตย์ … 6=เสาร์ — ใช้กันไม่ให้เสนอนัดในวันหยุดของคนคนนั้น */
   work_days?: number[];
+  /** ผูกบัญชี LINE ไว้แล้วหรือยัง */
+  line_linked?: boolean;
   error?: string;
 };
 export type MsStatus = {

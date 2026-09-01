@@ -14,6 +14,7 @@ import { GraphEvent, getEventsRange, TIMEZONE } from "@/lib/graph";
 import { sendLine } from "@/lib/line";
 import { getSetting, setSetting } from "@/lib/store";
 import { addMinutes, nowWall, wallIso } from "@/lib/time";
+import { addNotice } from "@/lib/inbox";
 
 const LOOKAHEAD_DAYS = 14;
 /** Absent = never seeded; a fresh key name so the old (empty) seed flag cannot
@@ -123,7 +124,9 @@ export async function notifyNewAppointments(upn: string): Promise<CalendarNotify
       for (const ev of batch) {
         // Mark first: a push that throws must not be retried on every poll.
         seen.set(seenKey(ev.id as string), Date.now());
-        await sendLine(upn, "", formatNewEvent(ev));
+        const text = formatNewEvent(ev);
+        await addNotice(upn, { kind: "meeting", title: "📅 นัดใหม่ในปฏิทิน", body: text }).catch(() => {});
+        await sendLine(upn, "", text);
         out.notified += 1;
       }
     } finally {

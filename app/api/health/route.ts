@@ -3,6 +3,7 @@ import { AuthError, resolveUser } from "@/lib/auth";
 import { getLineId, lineQuotaReading } from "@/lib/line";
 import { getDelegatedGraphToken, hasMicrosoftToken } from "@/lib/msGraphOAuth";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
+import { deviceCount, pushConfigured } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
@@ -105,6 +106,37 @@ export async function GET(req: Request) {
       }
     } catch (e) {
       parts.push({ key: "line", name: "LINE", level: "warn", note: String((e as Error).message || e).slice(0, 160) });
+    }
+
+    /* ---- แจ้งเตือนขึ้นเครื่อง (FCM) ----
+       แยกสองเรื่องให้ชัด: ตั้งค่าฝั่งเซิร์ฟเวอร์แล้วหรือยัง กับเครื่องนี้ลงทะเบียน
+       แล้วหรือยัง — ทั้งคู่พังเงียบเหมือนกันถ้าไม่บอก */
+    try {
+      if (!pushConfigured()) {
+        parts.push({
+          key: "push",
+          name: "แจ้งเตือนขึ้นเครื่อง",
+          level: "warn",
+          note: "ยังไม่ได้ตั้งค่า FCM บนเซิร์ฟเวอร์ (env FCM_*)",
+        });
+      } else {
+        const n = await deviceCount(upn);
+        parts.push({
+          key: "push",
+          name: "แจ้งเตือนขึ้นเครื่อง",
+          level: n ? "ok" : "warn",
+          note: n
+            ? `พร้อมส่ง · ลงทะเบียนไว้ ${n} เครื่อง`
+            : "เซิร์ฟเวอร์พร้อมแล้ว แต่ยังไม่มีเครื่องลงทะเบียน — ต้องใช้แอปรุ่นที่มี Firebase",
+        });
+      }
+    } catch (e) {
+      parts.push({
+        key: "push",
+        name: "แจ้งเตือนขึ้นเครื่อง",
+        level: "warn",
+        note: String((e as Error).message || e).slice(0, 160),
+      });
     }
 
     const level: HealthLevel = parts.some((p) => p.level === "down")

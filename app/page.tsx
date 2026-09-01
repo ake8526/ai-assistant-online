@@ -669,7 +669,7 @@ function AppShell() {
         <FirstRunSetup
           msLinked={!!settings.ms?.linked}
           noLicense={noLicense}
-          lineLinked={false}
+          lineLinked={!!settings.settings?.line_linked}
           hoursSet={!!settings.settings?.hours_set}
           workStart={settings.settings?.work_start || ""}
           workEnd={settings.settings?.work_end || ""}

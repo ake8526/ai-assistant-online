@@ -8,6 +8,7 @@ import { sendLine } from "@/lib/line";
 import { getMeetingRemindMinutes } from "@/lib/remindPrefs";
 import { getSetting, setSetting } from "@/lib/store";
 import { addMinutes, nowWall, parseWall, wallIso } from "@/lib/time";
+import { addNotice } from "@/lib/inbox";
 
 const SEEN_KEY = "meeting_remind_seen";
 const SEEN_MAX = 200;
@@ -107,7 +108,10 @@ export async function notifyUpcomingMeetings(upn: string): Promise<MeetingRemind
     const start = parseWall(startIso);
     const lead = start ? Math.max(1, Math.round((start.getTime() - now.getTime()) / 60_000)) : minutes;
     try {
-      await sendLine(upn, "⏰ ใกล้ถึงเวลานัด", formatUpcoming(ev, lead));
+      const text = formatUpcoming(ev, lead);
+      // เข้ากล่องในแอปด้วย ไม่ใช่ไป LINE ทางเดียว (กล่องยิง push ต่อให้เอง)
+      await addNotice(upn, { kind: "meeting", title: "⏰ ใกล้ถึงเวลานัด", body: text }).catch(() => {});
+      await sendLine(upn, "⏰ ใกล้ถึงเวลานัด", text);
       seen.set(entryKey(ev.id as string, startIso), nowTs);
       out.notified += 1;
     } catch (e) {

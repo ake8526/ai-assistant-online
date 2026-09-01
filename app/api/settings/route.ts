@@ -9,19 +9,22 @@ import {
 } from "@/lib/remindPrefs";
 import { assertConfigured } from "@/lib/supabaseServer";
 import { permsOf } from "@/lib/roles";
+import { getLineId } from "@/lib/line";
 
 // GET → work hours/places + reminder prefs + perms
 export async function GET(req: Request) {
   try {
     assertConfigured();
     const upn = await requireUser(req);
-    const [s, work, home, perms, meeting_remind_minutes, task_remind_ahead_days] = await Promise.all([
+    const [s, work, home, perms, meeting_remind_minutes, task_remind_ahead_days, lineId] = await Promise.all([
       allSettings(upn),
       getPrimaryPlace(upn, "work"),
       getPrimaryPlace(upn, "home"),
       permsOf(upn),
       getMeetingRemindMinutes(upn),
       getTaskRemindAheadDays(upn),
+      // ผูก LINE ไว้หรือยัง — หน้าตั้งค่าครั้งแรกต้องรู้ ไม่งั้นชวนให้เชื่อมทั้งที่เชื่อมแล้ว
+      getLineId(upn).catch(() => null),
     ]);
     return NextResponse.json({
       work_start: s.work_start || "09:00",
@@ -42,6 +45,7 @@ export async function GET(req: Request) {
       home_location: home?.location || "",
       meeting_remind_minutes,
       task_remind_ahead_days,
+      line_linked: !!lineId,
       // "" = ยังไม่เคยผ่านหน้าตั้งค่าครั้งแรก, done = ทำครบ, skip = กดข้ามไว้
       onboarding: s.onboarding || "",
       perms,
