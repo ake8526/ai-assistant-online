@@ -258,6 +258,44 @@ export default function SettingsBoard({
   const { account, logout, switchAccount, getToken, getGraphToken } = useM365Auth();
   const [open, setOpen] = useState<CatId | null>(null);
   const [saving, setSaving] = useState("");
+  /* ── ทดลอง: ซิงค์งานเข้า Microsoft To Do (เปิดรายคน) ──────────────────
+     To Do ไม่มีสิทธิ์แบบ app-only มีแต่ delegated — เขียนได้เฉพาะ To Do ของ
+     เจ้าตัวที่กดอนุญาตเอง จึงต้องมีสวิตช์รายคน ไม่ใช่เปิดทั้งระบบ */
+  const [todo, setTodo] = useState<{ on: boolean; consent: boolean } | null>(null);
+  const [todoMsg, setTodoMsg] = useState("");
+
+  const todoCall = async (body?: Record<string, unknown>) => {
+    const token = await getToken();
+    const r = await fetch("/api/todo/sync", {
+      method: body ? "POST" : "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    return (await r.json()) as Record<string, unknown>;
+  };
+
+  const loadTodo = async () => {
+    try {
+      const j = await todoCall();
+      setTodo({ on: !!j.on, consent: !!j.consent });
+    } catch {
+      /* โหลดสถานะไม่ได้ก็ซ่อนส่วนนี้ไว้ ไม่ต้องขึ้น error ให้รก */
+    }
+  };
+
+  const runTodoSync = async () => {
+    setTodoMsg("กำลังซิงค์…");
+    try {
+      const j = await todoCall({});
+      setTodoMsg(
+        j.ok
+          ? `ซิงค์แล้ว — สร้างใหม่ ${j.created} · ปิดใน To Do ${j.completedInTodo} · ปิดจาก To Do ${j.closedFromTodo}`
+          : String(j.reason || j.error || "ซิงค์ไม่สำเร็จ")
+      );
+    } catch {
+      setTodoMsg("ซิงค์ไม่สำเร็จ ลองอีกครั้งครับ");
+    }
+  };
 
   const s = data.settings;
   const ms = data.ms;
@@ -477,7 +515,11 @@ export default function SettingsBoard({
           {CATS.map(({ id, tint, tilt, Icon, title, kbtn, lines }) => (
             <button
               key={id}
-              onClick={() => setOpen(id)}
+              onClick={() => {
+                setOpen(id);
+                // โหลดสถานะ To Do ตอนกางการ์ด "เชื่อมต่อ" ครั้งแรก ไม่ยิงทุกครั้งที่เปิดแอป
+                if (id === "link" && !todo) void loadTodo();
+              }}
               /* ทัวร์สอนใช้ชี้ที่การ์ดนี้ — ปุ่มเล่นทัวร์ซ้ำอยู่ข้างในซึ่งยังยุบอยู่ตอนนั้น */
               data-tour={id === "help" ? "set-learn" : undefined}
               className={`${NOTE} ${tint} ${tilt} ${PRESS} px-3 pt-3 pb-2.5 flex flex-col gap-1.5 text-left cursor-pointer`}
@@ -917,6 +959,53 @@ export default function SettingsBoard({
                         เชื่อม
                       </Link>
                     </Row>
+                    {/* ยังทดลองอยู่ — โชว์เฉพาะคนที่มีสิทธิ์ "คำสั่งทดสอบ" */}
+                    {(s?.perms || []).includes("test.cmds") && (
+                      <Row>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-[13.5px] font-semibold">
+                            งานเข้า Microsoft To Do <span className={`font-hand text-[14px] ${INK_2}`}>· ทดลอง</span>
+                          </h4>
+                          <p className={`text-[11.5px] ${INK_2}`}>
+                            {todo?.consent
+                              ? "งานที่ต้องตามจะไปอยู่ในลิสต์ “KTIS X” ของ To Do คุณ ปิดที่ไหนก็ปิดตามกัน"
+                              : "ต้องอนุญาตสิทธิ์ To Do เพิ่มก่อน (สิทธิ์ปฏิทินเดิมไม่ครอบ)"}
+                          </p>
+                          {!!todoMsg && <p className={`text-[11.5px] ${INK_2} mt-1`}>{todoMsg}</p>}
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {!todo?.consent ? (
+                              <button
+                                onClick={() => void grantCalendar()}
+                                className={`${NOTE_SM} ${PRESS} ${SURFACE} px-2.5 py-1 text-[12.5px] cursor-pointer`}
+                              >
+                                อนุญาตสิทธิ์ To Do
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={async () => {
+                                    const next = !todo?.on;
+                                    setTodo({ on: next, consent: true });
+                                    await todoCall({ on: next });
+                                    setTodoMsg(next ? "เปิดซิงค์แล้ว — กดซิงค์เดี๋ยวนี้เพื่อดูผลทันที" : "ปิดซิงค์แล้ว");
+                                  }}
+                                  className={`${NOTE_SM} ${PRESS} ${todo?.on ? N_GREEN : SURFACE} px-2.5 py-1 text-[12.5px] cursor-pointer`}
+                                >
+                                  {todo?.on ? "เปิดอยู่" : "เปิดซิงค์"}
+                                </button>
+                                <button
+                                  onClick={() => void runTodoSync()}
+                                  disabled={!todo?.on}
+                                  className={`${NOTE_SM} ${PRESS} ${SURFACE} px-2.5 py-1 text-[12.5px] disabled:opacity-45 cursor-pointer`}
+                                >
+                                  ซิงค์เดี๋ยวนี้
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </Row>
+                    )}
                     <Row last>
                       <Link href="/ai-office" className="flex-1 min-w-0 flex items-center gap-2">
                         <span className="flex-1 min-w-0">
