@@ -86,30 +86,39 @@ async function saveMap(upn: string, m: Map): Promise<void> {
 
 /* ── ลิสต์ ───────────────────────────────────────────────────────────── */
 
-/** หา (หรือสร้าง) ลิสต์ "KTIS X" แล้วจำ id ไว้ ไม่ต้องถามใหม่ทุกครั้ง */
-async function ensureList(upn: string): Promise<string> {
-  const cached = await getSetting(upn, K_LIST);
-  if (cached) {
-    try {
-      await asUser(upn, () => graphGet(`/me/todo/lists/${cached}`));
-      return cached;
-    } catch {
-      // ลิสต์ถูกลบทิ้งไปแล้ว — สร้างใหม่ ไม่ใช่พังทั้งการซิงค์
-    }
-  }
-  const lists = (await asUser(upn, () =>
+type RemoteList = { id: string; displayName?: string; wellknownListName?: string };
+
+/**
+ * ลิสต์ที่เกี่ยวข้อง — อ่านทีเดียวได้ทั้งลิสต์ปลายทางและลิสต์ที่ดึงงานเข้ามา
+ *
+ * `KTIS X` คือลิสต์ที่เราเขียนงานลงไป (สร้างให้ถ้ายังไม่มี)
+ *
+ * `import` เพิ่มลิสต์เริ่มต้นของ To Do เข้ามาด้วย (`wellknownListName` =
+ * defaultList ซึ่งในเครื่องภาษาอังกฤษชื่อ "Tasks") เพราะคนพิมพ์งานลงลิสต์นี้
+ * เป็นปกติ — เจ้าตัวพิมพ์ «test» ลงลิสต์ Tasks แล้วไม่เห็นในไลน์ ก็เข้าใจว่าพัง
+ * ลิสต์ที่ผู้ใช้ตั้งเองชื่ออื่น (ของใช้ในบ้าน รายการซื้อของ) ยังไม่ถูกอ่าน
+ */
+async function resolveLists(upn: string): Promise<{ target: string; sources: string[] }> {
+  const lists = ((await asUser(upn, () =>
     graphGet("/me/todo/lists", { $top: "50" })
-  )) as { value?: { id: string; displayName: string }[] };
-  const found = (lists.value || []).find((l) => l.displayName === LIST_NAME);
-  const id =
-    found?.id ||
-    (
+  )) as { value?: RemoteList[] }).value || [];
+
+  const cached = await getSetting(upn, K_LIST);
+  let target = lists.find((l) => l.id === cached)?.id || lists.find((l) => l.displayName === LIST_NAME)?.id;
+  if (!target) {
+    // ลิสต์ถูกลบทิ้งไปแล้ว — สร้างใหม่ ไม่ใช่พังทั้งการซิงค์
+    target = (
       (await asUser(upn, () =>
         graphSend("/me/todo/lists", "POST", { displayName: LIST_NAME })
       )) as { id: string }
     ).id;
-  await setSetting(upn, K_LIST, id);
-  return id;
+  }
+  if (target !== cached) await setSetting(upn, K_LIST, target);
+
+  const sources = [target];
+  const def = lists.find((l) => l.wellknownListName === "defaultList")?.id;
+  if (def && def !== target) sources.push(def);
+  return { target, sources };
 }
 
 /* ── แปลงงานของเรา → To Do ───────────────────────────────────────────── */
@@ -145,11 +154,19 @@ type RemoteTask = {
   dueDateTime?: { dateTime?: string; timeZone?: string };
 };
 
-/** To Do ส่งเวลามาแบบไม่มี Z ต่อท้าย พร้อมชื่อโซนแยก ─ ปั้นกลับเป็น ISO */
+/**
+ * To Do ส่งเวลามาแบบไม่มี Z ต่อท้าย พร้อมชื่อโซนแยก — ปั้นกลับเป็น ISO
+ *
+ * ที่เห็นจริงคือ timeZone = "UTC" (การ์ด «test» ที่ผู้ใช้พิมพ์เอง 1 ก.ย. 2026)
+ * ถ้าเจอชื่อโซนอื่นถือเป็นเวลาไทย ไม่ใช่ UTC — ผู้ใช้ทั้งองค์กรอยู่ไทย เดาผิด
+ * ทางนี้คลาดไป 7 ชม.ในทิศที่ยังอ่านรู้เรื่อง ดีกว่าโยนกำหนดส่งทิ้งไปเลย
+ */
 function remoteDue(card: RemoteTask): string | null {
   const raw = card.dueDateTime?.dateTime;
   if (!raw) return null;
-  const iso = /[Zz]|[+-]\d{2}:\d{2}$/.test(raw) ? raw : `${raw}Z`;
+  const zone = String(card.dueDateTime?.timeZone || "UTC").trim();
+  const utc = /^(utc|gmt|etc\/gmt|utc\+00:00)$/i.test(zone);
+  const iso = /[Zz]|[+-]\d{2}:\d{2}$/.test(raw) ? raw : `${raw}${utc ? "Z" : "+07:00"}`;
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
@@ -176,28 +193,37 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
     return { ...out, reason: "ยังไม่ได้อนุญาตสิทธิ์ Microsoft To Do — กดอนุญาตใหม่ที่หน้าตั้งค่า" };
   }
 
-  const listId = await ensureList(upn);
+  const { target: listId, sources } = await resolveLists(upn);
   out.listId = listId;
   const map = await loadMap(upn);
   const tasks = await listTasks(upn);
 
-  /* อ่านการ์ดทั้งลิสต์ทีเดียวแล้วทำ index ไว้
+  /* อ่านการ์ดของทุกลิสต์ที่เกี่ยวข้องทีเดียวแล้วทำ index ไว้
      
      ของเดิมยิง GET แยกทีละงานเพื่อดูสถานะ — cron รอบละนาที คนเดียวก็เกิน
-     4,000 คำขอต่อวันแล้ว และโตตามจำนวนงานคูณจำนวนคน ลิสต์นี้เป็นลิสต์ที่ระบบ
-     สร้างเอง ขนาดจึงคุมได้ อ่านหน้าเดียว 200 การ์ดพอ (mapping เก็บไว้ 300) */
-  let cards: RemoteTask[] = [];
+     4,000 คำขอต่อวันแล้ว และโตตามจำนวนงานคูณจำนวนคน ลิสต์พวกนี้ขนาดคุมได้
+     อ่านหน้าเดียว 200 การ์ดพอ (mapping เก็บไว้ 300)
+     
+     เก็บ id ลิสต์ไว้กับการ์ดด้วย เพราะการ์ดที่ดึงมาจากลิสต์เริ่มต้นยังอยู่ที่เดิม
+     เวลาไปติ๊กปิดต้องยิงเข้าลิสต์นั้น ไม่ใช่ลิสต์ KTIS X */
+  const byId = new Map<string, { card: RemoteTask; listId: string }>();
+  const cards: { card: RemoteTask; listId: string }[] = [];
   let remoteOk = true;
-  try {
-    const page = (await asUser(upn, () =>
-      graphGet(`/me/todo/lists/${listId}/tasks`, { $top: "200" })
-    )) as { value?: RemoteTask[] };
-    cards = page.value || [];
-  } catch (e) {
-    remoteOk = false;
-    out.reason = `อ่านลิสต์ To Do ไม่สำเร็จ: ${String(e).slice(0, 120)}`;
+  for (const src of sources) {
+    try {
+      const page = (await asUser(upn, () =>
+        graphGet(`/me/todo/lists/${src}/tasks`, { $top: "200" })
+      )) as { value?: RemoteTask[] };
+      for (const card of page.value || []) {
+        if (!card?.id) continue;
+        cards.push({ card, listId: src });
+        byId.set(card.id, { card, listId: src });
+      }
+    } catch (e) {
+      remoteOk = false;
+      out.reason = `อ่านลิสต์ To Do ไม่สำเร็จ: ${String(e).slice(0, 120)}`;
+    }
   }
-  const byId = new Map(cards.filter((c) => c.id).map((c) => [c.id!, c]));
 
   for (const t of tasks) {
     const key = String(t.id);
@@ -212,24 +238,24 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
       )) as { id?: string };
       if (made?.id) {
         map[key] = made.id;
-        byId.set(made.id, { id: made.id, title: t.title, status: "notStarted" });
+        byId.set(made.id, { card: { id: made.id, title: t.title, status: "notStarted" }, listId });
         out.created += 1;
       }
       continue;
     }
 
-    const card = byId.get(todoId);
-    if (!card) {
-      /* ไม่อยู่ในลิสต์แล้ว — ถูกลบใน To Do ก็ลืม mapping ทิ้ง รอบหน้าสร้างใหม่
+    const hit = byId.get(todoId);
+    if (!hit) {
+      /* ไม่อยู่ในลิสต์ไหนแล้ว — ถูกลบใน To Do ก็ลืม mapping ทิ้ง รอบหน้าสร้างใหม่
          ถ้างานยังค้าง แต่ตอนอ่านลิสต์ไม่สำเร็จห้ามลืม ไม่งั้นจะสร้างซ้ำทั้งลิสต์ */
       if (remoteOk) delete map[key];
       continue;
     }
 
-    const doneThere = card.status === "completed";
+    const doneThere = hit.card.status === "completed";
     if (closedHere && !doneThere) {
       await asUser(upn, () =>
-        graphSend(`/me/todo/lists/${listId}/tasks/${todoId}`, "PATCH", { status: "completed" })
+        graphSend(`/me/todo/lists/${hit.listId}/tasks/${todoId}`, "PATCH", { status: "completed" })
       );
       out.completedInTodo += 1;
     } else if (!closedHere && doneThere) {
@@ -238,14 +264,10 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
     }
   }
 
-  /* ทางกลับ: การ์ดที่เจ้าตัวพิมพ์เองในลิสต์ KTIS X — ดึงเข้ามาเป็นงานฝั่งนี้
-     
-     ดึงจากลิสต์ KTIS X ลิสต์เดียว ไม่ไล่ทุกลิสต์ในบัญชี — ลิสต์ Tasks กับ
-     ลิสต์ส่วนตัวมีเรื่องบ้าน เรื่องซื้อของ ที่ไม่ควรโผล่มาในไลน์ที่ทำงาน
-     ลิสต์นี้เป็นลิสต์ที่ระบบสร้างเอง ใครพิมพ์ลงในนี้ถือว่าตั้งใจให้ผู้ช่วยเห็น */
+  /* ทางกลับ: การ์ดที่เจ้าตัวพิมพ์เองใน To Do — ดึงเข้ามาเป็นงานฝั่งนี้ */
   const known = new Set(Object.values(map));
-  for (const card of cards) {
-    if (!card?.id || known.has(card.id)) continue;
+  for (const { card } of cards) {
+    if (!card.id || known.has(card.id)) continue;
     // ปิดไปแล้วไม่ต้องเอาเข้ามาให้เป็นงานค้างใหม่
     if (card.status === "completed") continue;
     const title = String(card.title || "").trim();
