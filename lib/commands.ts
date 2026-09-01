@@ -52,7 +52,9 @@ import { gpsCapturePageUrl } from "@/lib/gpsCapture";
 import { listRecentOnline } from "@/lib/meetings";
 import { HELP_TOPICS, findHelpTopic, helpMenuFlex, helpMenuText, helpTopicFlex, helpTopicText, visibleTopics } from "@/lib/help";
 import { notYetAnswer } from "@/lib/notYet";
-import { calendarConsentNeededMessage } from "@/lib/msGraphOAuth";
+import { calendarConsentNeededMessage, hasTasksConsent } from "@/lib/msGraphOAuth";
+import { todoConsentUrl } from "@/lib/consentLink";
+import { setTodoSyncOn, syncTodoForUser, todoSyncOn } from "@/lib/todoSync";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { busyRanges, findCommonSlots, formatBusy, freeRangesReply, isWeekendWindow, outsideWorkHours, wantsLunchIncluded, workHoursLabel, workingHoursRemain } from "@/lib/scheduling";
 import {
@@ -2210,6 +2212,21 @@ async function parseIntent(
       params: { meeting_index: mi, file_query: textClean },
       source: "quick",
     };
+  }
+
+  /* Microsoft To Do — คำสั่งสั้น ๆ ที่ไม่ต้องพึ่ง LLM
+     
+     ต้องมีคำว่า todo / to do / ทูดู อยู่ในข้อความจริง ๆ ไม่จับคำกว้างอย่าง
+     "งาน" หรือ "ซิงค์" เดี่ยว ๆ เพราะคำพวกนั้นเป็นของคำสั่งงานที่มีอยู่แล้ว
+     และจำกัดความยาวไว้ด้วย — "เพิ่มงาน ทำ todo list ให้ลูกค้า พรุ่งนี้" เป็นงาน
+     ของผู้ใช้ ไม่ใช่คำสั่งเชื่อม To Do */
+  if (/(?:todo|to\s*-?\s*do|ทูดู)/i.test(textClean) && textClean.length <= 44) {
+    // "เปิด" มี "ปิด" อยู่ข้างใน — ถ้าไม่กัน lookbehind ไว้ "เปิด todo" จะกลายเป็นปิด
+    const off = /(?<![เแโใไ])ปิด|เลิก|หยุด|ไม่ใช้|ไม่เอา|ยกเลิก|disconnect|off/i.test(textClean);
+    const connect = /เชื่อม|ต่อ|อนุญาต|เปิด|ผูก|ขอสิทธิ์|สิทธิ์|เริ่ม|connect|link|on/i.test(textClean);
+    const syncNow = /ซิงค์|ซิ้ง|ซิ่ง|sync|ส่ง|อัปเดต|อัพเดท|update|เข้า|ลง/i.test(textClean);
+    const intent = off ? "todo_off" : connect ? "todo_connect" : syncNow ? "todo_sync_now" : "todo_status";
+    return { intent, params: {}, source: "quick" };
   }
 
   // Contact / Support queries: "มีปัญหาต้องติดต่อใคร", "ติดต่อใคร", "แจ้งปัญหา", "ติดต่อแอดมิน"
@@ -7519,6 +7536,91 @@ async function handleParsed(
       includeLunch: lunch,
     });
     return withCalendarNext({ intent, reply, period }, "free");
+  }
+
+  /* ── Microsoft To Do ─────────────────────────────────────────────────
+
+     To Do มีแต่สิทธิ์แบบ delegated เขียนได้เฉพาะของเจ้าตัวที่กดอนุญาตเอง
+     ปุ่มในไลน์จึงพาไปหน้าอนุญาตของ Microsoft ผ่านลิงก์ที่เซ็นไว้ (มี upn ติดไป
+     ด้วย เพราะไลน์ไม่มี id token ให้) — กดแทนกันไม่ได้ตามระบบของ Microsoft */
+  if (intent === "todo_connect" || intent === "todo_status") {
+    const consent = await hasTasksConsent(userUpn);
+    const on = await todoSyncOn(userUpn);
+
+    if (!consent) {
+      return {
+        intent,
+        reply:
+          "ส่งงานเข้า Microsoft To Do ได้ครับ แต่ต้องให้คุณกดอนุญาตสิทธิ์เองก่อน — " +
+          "Microsoft ไม่ยอมให้ระบบเขียน To Do ของใครโดยที่เจ้าตัวไม่ได้อนุญาต\n\n" +
+          `กด «อนุญาตสิทธิ์ To Do» ด้านล่าง → เลือกบัญชี ${userUpn} → กด Accept\n\n` +
+          "เสร็จแล้วระบบจะส่งงานที่ค้างเข้าลิสต์ «KTIS X» ให้ทันที\nลิงก์มีอายุ 30 นาที",
+        uri_actions: [{ label: "อนุญาตสิทธิ์ To Do", uri: todoConsentUrl(userUpn) }],
+      };
+    }
+
+    if (!on) {
+      await setTodoSyncOn(userUpn, true);
+      const res = await syncTodoForUser(userUpn).catch((e) => ({
+        ok: false,
+        reason: String(e),
+        created: 0,
+      }));
+      return {
+        intent,
+        reply: res.ok
+          ? `เปิดการส่งงานเข้า To Do แล้วครับ ✅\nส่งเข้าลิสต์ «KTIS X» รอบแรก ${res.created} งาน`
+          : `เปิดสวิตช์ให้แล้ว แต่รอบแรกยังไม่ผ่าน: ${res.reason || "ไม่ทราบสาเหตุ"}`,
+        suggestions: [{ label: "ซิงค์ todo", text: "ซิงค์ todo" }],
+      };
+    }
+
+    return {
+      intent,
+      reply:
+        "To Do เชื่อมอยู่แล้วครับ ✅\n" +
+        "งานใหม่เข้าลิสต์ «KTIS X» ให้เอง และติ๊กเสร็จใน To Do แล้วงานฝั่งนี้ปิดตามให้\n\n" +
+        "สั่งซิงค์เดี๋ยวนี้พิมพ์ «ซิงค์ todo» · หยุดพิมพ์ «ปิด todo»",
+      suggestions: [
+        { label: "ซิงค์ todo", text: "ซิงค์ todo" },
+        { label: "ปิด todo", text: "ปิด todo" },
+      ],
+    };
+  }
+
+  if (intent === "todo_sync_now") {
+    if (!(await hasTasksConsent(userUpn))) {
+      return {
+        intent,
+        reply: "ยังไม่ได้อนุญาตสิทธิ์ To Do ครับ — กดปุ่มด้านล่างก่อนหนึ่งครั้ง แล้วงานจะเข้าให้เอง",
+        uri_actions: [{ label: "อนุญาตสิทธิ์ To Do", uri: todoConsentUrl(userUpn) }],
+      };
+    }
+    if (!(await todoSyncOn(userUpn))) await setTodoSyncOn(userUpn, true);
+    try {
+      const res = await syncTodoForUser(userUpn);
+      if (!res.ok) return { intent, reply: `ซิงค์ไม่สำเร็จครับ: ${res.reason || "ไม่ทราบสาเหตุ"}` };
+      const parts = [`งานใหม่เข้า To Do ${res.created} งาน`];
+      if (res.completedInTodo) parts.push(`ปิดใน To Do ตาม ${res.completedInTodo} งาน`);
+      if (res.closedFromTodo) parts.push(`ปิดฝั่งนี้ตามที่ติ๊กใน To Do ${res.closedFromTodo} งาน`);
+      return { intent, reply: `ซิงค์เรียบร้อยครับ ✅\n${parts.join("\n")}` };
+    } catch (e) {
+      return { intent, reply: `ซิงค์ไม่สำเร็จครับ: ${String(e).slice(0, 180)}` };
+    }
+  }
+
+  /* ปิดแค่สวิตช์ ไม่ถอนสิทธิ์และไม่ลบลิสต์ — เปิดใหม่แล้วงานเดิมไม่ถูกสร้างซ้ำ
+     เพราะ mapping ยังอยู่ */
+  if (intent === "todo_off") {
+    await setTodoSyncOn(userUpn, false);
+    return {
+      intent,
+      reply:
+        "หยุดส่งงานเข้า To Do แล้วครับ\n" +
+        "งานที่อยู่ในลิสต์ «KTIS X» ยังอยู่ตามเดิม ลบทิ้งเองได้ที่แอป To Do\n\n" +
+        "อยากเปิดใหม่พิมพ์ «เปิด todo»",
+      suggestions: [{ label: "เปิด todo", text: "เปิด todo" }],
+    };
   }
 
   if (intent === "set_work_location" || intent === "set_home_location") {
