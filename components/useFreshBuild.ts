@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/* เช็คถี่พอที่จะเห็น build ใหม่ในไม่กี่นาทีหลัง deploy — เป็นการยิง JSON สั้น ๆ
-   ครั้งเดียวต่อรอบ ถูกกว่าการที่ผู้ใช้ใช้ของเก่าอยู่โดยไม่รู้ตัว */
-const CHECK_MS = 3 * 60_000;
+/** ตอนเปิดแอปอยู่ — เช็คถี่เพื่อรู้ว่ามี deploy ใหม่ภายในไม่กี่สิบวินาที */
+const CHECK_VISIBLE_MS = 20_000;
+/** ตอนสลับไปแอปอื่น — เช็คช้าลง ประหยัดแบต/เน็ต (กลับมาแล้วเช็คทันทีอยู่แล้ว) */
+const CHECK_HIDDEN_MS = 3 * 60_000;
 /** ช่วงต้นอายุของหน้า ถือว่าเพิ่งเปิดแอป — เจอของเก่าให้โหลดใหม่ทันที */
 const STARTUP_MS = 20_000;
+/** หน่วงสั้น ๆ ก่อนโหลดใหม่ตอนกำลังดูอยู่ — ให้เห็นแถบ "มีรุ่นใหม่" แวบหนึ่ง */
+const AUTO_RELOAD_DELAY_MS = 1_200;
 const RELOAD_AT_KEY = "ktisx_fresh_reload_at";
 
 /**
@@ -22,11 +25,20 @@ const RELOAD_AT_KEY = "ktisx_fresh_reload_at";
  *   <meta name="ktisx-build"> = รหัสของโค้ดชุดที่หน้านี้โหลดมา (เซิร์ฟเวอร์ฝังไว้)
  *   /api/version              = รหัสที่เซิร์ฟเวอร์ให้บริการตอนนี้
  *
- * จังหวะโหลดใหม่: เพิ่งเปิดแอป หรือตอนผู้ใช้สลับออกไปแล้วกลับมา — ไม่ตัดจบกลาง
- * ที่กำลังพิมพ์อยู่ ถ้าเจอระหว่างใช้งานก็จดไว้แล้วรอจังหวะนั้น
+ * ทำไมไม่ "push" จาก Vercel ตรงเข้าแอป: เบราว์เซอร์/WebView ไม่มีช่องรับ
+ * deploy event โดยตรงโดยไม่สมัคร Web Push — จึงยิง /api/version ถี่ ๆ แทน
+ * (ประมาณทุก 20 วิตอนเปิดอยู่) พอเห็นรุ่นใหม่ก็โหลดเองในจังหวะที่ปลอดภัย
  */
 /** รหัสโค้ดที่กำลังรันในจอ / ที่เซิร์ฟเวอร์ให้บริการ — เอาไปโชว์ในหน้าตั้งค่า */
 export type BuildInfo = { mine: string; live: string; stale: boolean; refresh: () => void };
+
+function isTyping(): boolean {
+  const el = document.activeElement;
+  if (!el || !(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
 
 export function useFreshBuild(): BuildInfo {
   const staleRef = useRef(false);
@@ -39,6 +51,8 @@ export function useFreshBuild(): BuildInfo {
 
   useEffect(() => {
     let alive = true;
+    let intervalId = 0;
+    let autoReloadTimer = 0;
     const bornAt = Date.now();
     const mine =
       document.querySelector('meta[name="ktisx-build"]')?.getAttribute("content")?.trim() || "";
@@ -65,6 +79,17 @@ export function useFreshBuild(): BuildInfo {
       window.location.reload();
     };
 
+    const scheduleAutoReload = () => {
+      if (autoReloadTimer) return;
+      autoReloadTimer = window.setTimeout(() => {
+        autoReloadTimer = 0;
+        if (!alive || !staleRef.current) return;
+        // กำลังพิมพ์อยู่ — อย่าตัดบทสนทนา ให้แถบ "มีรุ่นใหม่" บอกแทน
+        if (document.visibilityState === "visible" && isTyping()) return;
+        reload();
+      }, AUTO_RELOAD_DELAY_MS);
+    };
+
     const check = async () => {
       if (!alive || staleRef.current) return;
       let live = "";
@@ -81,23 +106,47 @@ export function useFreshBuild(): BuildInfo {
       if (live === mine) return;
 
       staleRef.current = true;
-      // เพิ่งเปิดแอปมา หรือกำลังไม่ได้ดูอยู่ — โหลดใหม่ได้เลย ไม่มีอะไรให้เสีย
-      if (Date.now() - bornAt < STARTUP_MS || document.visibilityState !== "visible") reload();
+      // เพิ่งเปิด / ไม่ได้มองจอ / ไม่ได้พิมพ์ → โหลดใหม่ให้เองใกล้เคียงเรียลไทม์
+      if (Date.now() - bornAt < STARTUP_MS || document.visibilityState !== "visible") {
+        reload();
+        return;
+      }
+      if (!isTyping()) scheduleAutoReload();
+    };
+
+    const armInterval = () => {
+      if (intervalId) window.clearInterval(intervalId);
+      const ms =
+        document.visibilityState === "visible" ? CHECK_VISIBLE_MS : CHECK_HIDDEN_MS;
+      intervalId = window.setInterval(() => void check(), ms);
     };
 
     const onVisibility = () => {
+      armInterval();
       if (document.visibilityState !== "visible") return;
-      if (staleRef.current) reload();
+      if (staleRef.current) {
+        if (!isTyping()) reload();
+        return;
+      }
+      void check();
+    };
+
+    // กลับมาโฟกัสหน้าต่าง (เช่น จากสลับแอปในบาง WebView ที่ไม่ยิง visibility)
+    const onFocus = () => {
+      if (staleRef.current && !isTyping()) reload();
       else void check();
     };
 
     void check();
-    const id = setInterval(() => void check(), CHECK_MS);
+    armInterval();
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
     return () => {
       alive = false;
-      clearInterval(id);
+      if (intervalId) window.clearInterval(intervalId);
+      if (autoReloadTimer) window.clearTimeout(autoReloadTimer);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
 
