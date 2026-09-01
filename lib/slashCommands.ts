@@ -11,6 +11,12 @@ export type SlashCommand = {
   /** Short hint in the menu body */
   hint: string;
   /**
+   * What must be typed after the command, e.g. the meeting subject. Picking
+   * such a command from the "/" menu fills the command in and waits, instead
+   * of sending a bare command the handler cannot act on.
+   */
+  arg?: string;
+  /**
    * Other names for the same command. People reach for the word they think of
    * first — /คำสั่ง, /คู่มือ, /help — and answering "ไม่รู้จักคำสั่ง" to any of them
    * teaches the wrong lesson. Aliases stay out of the menu so it reads as one
@@ -40,6 +46,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     label: "/test_meeting",
     message: "/test_meeting",
     hint: "ทดสอบสรุปประชุม — พิมพ์ชื่อเรื่องหรือเลขต่อท้าย",
+    arg: "ชื่อเรื่องหรือเลขที่",
   },
 ];
 

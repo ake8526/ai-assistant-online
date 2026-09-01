@@ -18,6 +18,7 @@ import {
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } from "@/lib/chatMemory";
 import { SLASH_COMMANDS, isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText } from "@/lib/slashCommands";
+import { SlashMenu, useSlashMenu } from "@/components/SlashMenu";
 import ScheduleTab, { type CalEvent, type Room } from "@/components/ScheduleTab";
 import TasksTab, { type Task } from "@/components/TasksTab";
 import SettingsBoard, { type Health, type NotifyCfg, type SettingsData } from "@/components/SettingsBoard";
@@ -74,8 +75,8 @@ type Msg = {
   mapUrl?: string | null;
 };
 
+/** ทางลัดที่โผล่เมื่อคำตอบล่าสุดไม่ได้เสนอปุ่มอะไร — รายการเต็มอยู่ที่ปุ่ม "/" ข้างช่องพิมพ์ */
 const SUGGESTIONS = [
-  "/",
   "/ล้างความจำ",
   "/ตารางวันนี้",
   "/นัดพรุ่งนี้",
@@ -172,6 +173,7 @@ function AssistantTab({
     history: ChatTurn[];
   }>({ history: [] });
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   /** คำสั่งที่กำลังวิ่ง — เก็บไว้กดยกเลิกได้ บางคำถามใช้เวลาหลายสิบวินาที */
   const abortRef = useRef<AbortController | null>(null);
 
@@ -300,7 +302,10 @@ function AssistantTab({
         setBusy(false);
         return;
       }
-      t = slashToUserText(cmd);
+      // ส่วนที่พิมพ์ต่อท้ายคำสั่ง ("/test_meeting ประชุมงบ") ต้องเดินทางไปด้วย —
+      // ตัดทิ้งเมื่อไหร่ /test_meeting ก็ไม่รู้ว่าจะสรุปประชุมไหน (เหมือนใน LINE)
+      const slashRest = slashBody.trim().replace(/^\/?[^\s]+\s*/, "");
+      t = slashToUserText(cmd, slashRest);
     }
 
     addMsg({ role: "me", text: original });
@@ -370,10 +375,10 @@ function AssistantTab({
    * ถ้าคำตอบล่าสุดไม่ได้เสนอปุ่มอะไร ก็กลับไปใช้รายการคำสั่งเดิม
    */
   // ดูแค่คำตอบล่าสุด ไม่ย้อนไปเอาปุ่มของเรื่องที่จบไปแล้ว
-  // "/" ไว้เปิดรายการคำสั่งทั้งหมด ต้องหาได้ตลอดแม้ตอนมีปุ่มของคำตอบอยู่
+  // รายการคำสั่งทั้งหมดไม่ต้องแย่งที่ตรงนี้แล้ว — ปุ่ม "/" ข้างช่องพิมพ์เปิดได้ตลอด
   const lastBot = msgs.filter((m) => m.role === "bot").at(-1);
   const chips = lastBot?.suggestions?.length
-    ? [{ label: "/", text: "/" }, ...lastBot.suggestions.slice(0, 6)]
+    ? lastBot.suggestions.slice(0, 6)
     : SUGGESTIONS.map((sg) => ({ label: sg, text: sg }));
 
   const pickSlot = async (slot: Slot, intent?: string) => {
@@ -495,6 +500,13 @@ function AssistantTab({
     ]);
   };
 
+  const slash = useSlashMenu({
+    input,
+    setInput,
+    send,
+    focusInput: () => inputRef.current?.focus(),
+  });
+
   return (
     <div className="flex-1 min-h-0 flex flex-col relative">
       <main className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 max-w-2xl w-full mx-auto">
@@ -598,11 +610,36 @@ function AssistantTab({
               </button>
             ))}
           </div>
-          <div className="flex gap-2 items-center">
+          <div className="relative flex gap-2 items-center">
+            {slash.open && !busy && (
+              <SlashMenu
+                items={slash.items}
+                index={slash.index}
+                query={slash.query}
+                onPick={slash.pick}
+                onHover={slash.setIndex}
+              />
+            )}
+            {/* บนมือถือกด / บนคีย์บอร์ดลำบาก ปุ่มนี้เปิดเมนูเดียวกันด้วยนิ้ว */}
+            <button
+              onClick={slash.toggle}
+              // อย่าให้ช่องพิมพ์หลุดโฟกัส ไม่งั้น blur ปิดเมนูแล้วปุ่มนี้ไปเปิดใหม่ทันที
+              onMouseDown={(e) => e.preventDefault()}
+              disabled={busy}
+              aria-label="ดูคำสั่งทั้งหมด"
+              aria-expanded={slash.open}
+              className={`${NOTE} ${PRESS} ${
+                slash.open ? N_GREEN : N_PURPLE
+              } font-marker grid place-items-center w-11 h-11 shrink-0 text-[18px] leading-none disabled:opacity-40 cursor-pointer`}
+            >
+              /
+            </button>
             <input
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
+              onKeyDown={slash.onKeyDown}
+              onBlur={slash.close}
               placeholder="พิมพ์ / เพื่อเลือกคำสั่ง หรือพิมพ์สั่งเอง…"
               disabled={busy}
               className={`${NOTE} flex-1 min-w-0 bg-[var(--nb-surface)] rounded-[26px] px-4 py-2.5 text-[14px] outline-none placeholder:text-[var(--nb-ink-3)] focus:shadow-[3px_3px_0_var(--nb-ink)]`}
