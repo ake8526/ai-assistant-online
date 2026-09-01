@@ -19,6 +19,7 @@ import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } from "@/lib/chatMemory";
 import { SLASH_COMMANDS, isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText } from "@/lib/slashCommands";
 import { SlashMenu, useSlashMenu } from "@/components/SlashMenu";
+import { bumpCommand, useCommandsByUse } from "@/lib/commandUsage";
 import ScheduleTab, { type CalEvent, type Room } from "@/components/ScheduleTab";
 import TasksTab, { type Task } from "@/components/TasksTab";
 import SettingsBoard, { type Health, type NotifyCfg, type SettingsData } from "@/components/SettingsBoard";
@@ -74,14 +75,6 @@ type Msg = {
   intent?: string;
   mapUrl?: string | null;
 };
-
-/** ทางลัดที่โผล่เมื่อคำตอบล่าสุดไม่ได้เสนอปุ่มอะไร — รายการเต็มอยู่ที่ปุ่ม "/" ข้างช่องพิมพ์ */
-const SUGGESTIONS = [
-  "/ล้างความจำ",
-  "/ตารางวันนี้",
-  "/นัดพรุ่งนี้",
-  "/ตั้งค่าข่าว",
-];
 
 function LoginGate() {
   const { login } = useM365Auth();
@@ -154,7 +147,10 @@ function AssistantTab({
   /** จองนัดสำเร็จ — ให้เปลือกแอปดึงปฏิทินใหม่ ตารางจะอัปเดตเองไม่ต้องกดซิงค์ */
   onBooked?: () => void;
 }) {
-  const { getToken, getGraphToken } = useM365Auth();
+  const { getToken, getGraphToken, account } = useM365Auth();
+  const who = account?.username || "";
+  /** คำสั่งเรียงตามที่ผู้ใช้คนนี้ใช้บ่อย — ใช้ทำปุ่มลัดเหนือช่องพิมพ์ */
+  const byUse = useCommandsByUse(who);
   const [msgs, setMsgs] = useState<Msg[]>([
     { role: "bot", text: "สวัสดีครับ 👋 ผมคือผู้ช่วย AI ของคุณ\nถามเรื่องนัดประชุม งานค้าง เวลาว่าง หรือสั่งนัดประชุมได้เลยครับ" },
   ]);
@@ -289,6 +285,8 @@ function AssistantTab({
         setBusy(false);
         return;
       }
+      // นับก่อนแยกทาง ไม่งั้นคำสั่งที่จบในเครื่อง (ล้างความจำ/ยกเลิก) จะไม่ถูกนับ
+      bumpCommand(who, cmd.cmd);
       if (cmd.cmd === "ล้างความจำ") {
         addMsg({ role: "me", text: t });
         clearMemory();
@@ -379,7 +377,7 @@ function AssistantTab({
   const lastBot = msgs.filter((m) => m.role === "bot").at(-1);
   const chips = lastBot?.suggestions?.length
     ? lastBot.suggestions.slice(0, 6)
-    : SUGGESTIONS.map((sg) => ({ label: sg, text: sg }));
+    : byUse.slice(0, 5).map((c) => ({ label: `/${c.cmd}`, text: `/${c.cmd}` }));
 
   const pickSlot = async (slot: Slot, intent?: string) => {
     if (busy) return;
