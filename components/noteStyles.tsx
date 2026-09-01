@@ -42,20 +42,28 @@ export function MicrosoftMark() {
   );
 }
 
-/** หน้ายิ้มของผู้ช่วย — เส้นเดียวกับไอคอนแอป */
+/**
+ * หน้าผู้ช่วย — หัวหุ่นยนต์ KTIS X ตัวเดียวกับหน้าเข้าสู่ระบบและไอคอนแอป
+ *
+ * ของเดิมเป็นหน้ายิ้มลายเส้นที่วาดเอง ซึ่งไม่เหมือนหุ่นยนต์ที่ผู้ใช้เห็นตอนเปิดแอป
+ * เลย — ตัวละครในแอปควรเป็นตัวเดียวกันทุกที่ ภาพครอปมาจาก ktisx-robot.png
+ * (สคริปต์ครอปหัวอยู่ในคอมมิตที่เพิ่มไฟล์นี้) พื้นเหลืองกับกรอบหมึกยังอยู่ตามเดิม
+ * รูปจึงยังเป็น "โน้ตแปะ" กลืนกับที่เหลือของหน้าจอ
+ */
 export function AssistantFace({ className = "" }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 32 32"
+    <span
       aria-hidden="true"
-      className={`shrink-0 border-2 border-[var(--nb-ink)] rounded-[10px] ${N_YELLOW} p-0.5 -rotate-3 ${className}`}
+      className={`shrink-0 grid place-items-center overflow-hidden border-2 border-[var(--nb-ink)] rounded-[10px] ${N_YELLOW} -rotate-3 ${className}`}
     >
-      <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-        <path d="M11.4 15 L11.4 17" />
-        <path d="M20.6 14.9 L20.6 16.9" />
-        <path d="M12 21.6 C14.4 24.2 18.4 24.2 20.4 21.4" />
-      </g>
-    </svg>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/ktisx-robot-head.png"
+        alt=""
+        className="w-full h-full object-contain scale-[1.06]"
+        draggable={false}
+      />
+    </span>
   );
 }
 
