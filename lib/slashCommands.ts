@@ -23,6 +23,12 @@ export type SlashCommand = {
    * command, not four.
    */
   aliases?: string[];
+  /**
+   * เห็นเฉพาะคนที่มีสิทธิ์ "คำสั่งทดสอบ" (test.cmds ใน lib/roles) — สั่งได้ด้วย
+   * ไม่ใช่แค่ซ่อนจากเมนู คนที่ไม่มีสิทธิ์พิมพ์เองก็ต้องได้ "ไม่รู้จักคำสั่ง"
+   * ไม่งั้นซ่อนไปก็เท่านั้น ใครเห็นคนอื่นพิมพ์ก็พิมพ์ตามได้
+   */
+  restricted?: boolean;
 };
 
 export const SLASH_COMMANDS: SlashCommand[] = [
@@ -40,15 +46,24 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   // Replies cost nothing, so previewing a push-shaped message this way never
   // spends quota — which is the whole point while the monthly cap is gone.
-  { cmd: "test", label: "/test", message: "/test", hint: "ดูตัวอย่างข้อความเช้า (ไม่กินโควตา)" },
+  { cmd: "test", label: "/test", message: "/test", hint: "ดูตัวอย่างข้อความเช้า (ไม่กินโควตา)", restricted: true },
   {
     cmd: "test_meeting",
     label: "/test_meeting",
     message: "/test_meeting",
     hint: "ทดสอบสรุปประชุม — พิมพ์ชื่อเรื่องหรือเลขต่อท้าย",
     arg: "ชื่อเรื่องหรือเลขที่",
+    restricted: true,
   },
 ];
+
+/**
+ * คำสั่งที่ผู้ใช้คนนี้เห็นได้ — ทุกที่ที่โชว์หรือรับคำสั่งต้องเรียกผ่านตัวนี้
+ * ทั้งเมนูในเว็บ ปุ่มลัด ปุ่มใน LINE และการจับคู่ตอนพิมพ์เอง
+ */
+export function visibleCommands(canTest: boolean): SlashCommand[] {
+  return canTest ? SLASH_COMMANDS : SLASH_COMMANDS.filter((c) => !c.restricted);
+}
 
 export function isSlashMenu(text: string): boolean {
   return text.trim() === "/" || text.trim() === "／";
@@ -63,15 +78,16 @@ export function parseSlashCommand(text: string): string | null {
   return body;
 }
 
-export function matchSlashCommand(body: string): SlashCommand | null {
+/** `cmds` คือชุดที่ผู้ใช้คนนั้นเห็นได้ — นอกชุดนี้ต้องไม่จับคู่ ถือว่าไม่มีคำสั่งนั้น */
+export function matchSlashCommand(body: string, cmds: SlashCommand[] = SLASH_COMMANDS): SlashCommand | null {
   const q = body.trim().replace(/^\//, "").toLowerCase();
   const named = (c: SlashCommand) => [c.cmd, ...(c.aliases || [])].map((s) => s.toLowerCase());
-  const exact = SLASH_COMMANDS.find((c) => named(c).includes(q) || c.message.toLowerCase() === `/${q}`);
+  const exact = cmds.find((c) => named(c).includes(q) || c.message.toLowerCase() === `/${q}`);
   if (exact) return exact;
   // A command may take an argument ("/test ประชุม"). Matching only whole
   // strings answered "ไม่รู้จักคำสั่ง" to a command the menu had just offered.
   const head = q.split(/\s+/)[0] || "";
-  return SLASH_COMMANDS.find((c) => named(c).includes(head)) || null;
+  return cmds.find((c) => named(c).includes(head)) || null;
 }
 
 function quickReplyItems(cmds: SlashCommand[]) {
@@ -85,16 +101,16 @@ function quickReplyItems(cmds: SlashCommand[]) {
   }));
 }
 
-export function slashMenuMessage(): object {
+export function slashMenuMessage(cmds: SlashCommand[] = SLASH_COMMANDS): object {
   const lines = [
     "เลือกคำสั่งได้เลยครับ (พิมพ์ / แล้วเลือกปุ่ม)",
     "",
-    ...SLASH_COMMANDS.map((c, i) => `${i + 1}) /${c.cmd} — ${c.hint}`),
+    ...cmds.map((c, i) => `${i + 1}) /${c.cmd} — ${c.hint}`),
   ];
   return {
     type: "text",
     text: lines.join("\n"),
-    quickReply: { items: quickReplyItems(SLASH_COMMANDS) },
+    quickReply: { items: quickReplyItems(cmds) },
   };
 }
 

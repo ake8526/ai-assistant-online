@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   RefreshCw,
   Send,
@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import { appendChatTurns, chatMemoryExpired, pruneChatHistory, type ChatTurn } from "@/lib/chatMemory";
-import { SLASH_COMMANDS, isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText } from "@/lib/slashCommands";
+import { isSlashMenu, matchSlashCommand, parseSlashCommand, slashToUserText, visibleCommands } from "@/lib/slashCommands";
 import { SlashMenu, useSlashMenu } from "@/components/SlashMenu";
 import { bumpCommand, useCommandsByUse } from "@/lib/commandUsage";
 import ScheduleTab, { type CalEvent, type Room } from "@/components/ScheduleTab";
@@ -139,6 +139,7 @@ function AssistantTab({
   onSeedUsed,
   onBooked,
   clearSignal,
+  canTest = false,
 }: {
   seed?: string;
   onSeedUsed?: () => void;
@@ -146,11 +147,16 @@ function AssistantTab({
   clearSignal?: number;
   /** จองนัดสำเร็จ — ให้เปลือกแอปดึงปฏิทินใหม่ ตารางจะอัปเดตเองไม่ต้องกดซิงค์ */
   onBooked?: () => void;
+  /** อยู่ในกลุ่มทดสอบไหม — คำสั่ง /test ต้องไม่โผล่ให้คนที่ไม่ได้อยู่ในกลุ่ม */
+  canTest?: boolean;
 }) {
   const { getToken, getGraphToken, account } = useM365Auth();
   const who = account?.username || "";
+  /* สิทธิ์มาทีหลังตอนโหลดเสร็จ ระหว่างนั้นถือว่ายังไม่มี — ยอมให้คนในกลุ่มเห็นช้า
+     หนึ่งจังหวะ ดีกว่าให้คนนอกกลุ่มเห็นคำสั่งทดสอบแวบหนึ่งแล้วค่อยหาย */
+  const cmds = useMemo(() => visibleCommands(canTest), [canTest]);
   /** คำสั่งเรียงตามที่ผู้ใช้คนนี้ใช้บ่อย — ใช้ทำปุ่มลัดเหนือช่องพิมพ์ */
-  const byUse = useCommandsByUse(who);
+  const byUse = useCommandsByUse(who, cmds);
   const [msgs, setMsgs] = useState<Msg[]>([
     { role: "bot", text: "สวัสดีครับ 👋 ผมคือผู้ช่วย AI ของคุณ\nถามเรื่องนัดประชุม งานค้าง เวลาว่าง หรือสั่งนัดประชุมได้เลยครับ" },
   ]);
@@ -264,8 +270,8 @@ function AssistantTab({
         role: "bot",
         text:
           "เลือกคำสั่งได้เลยครับ\n\n" +
-          SLASH_COMMANDS.map((c, i) => `${i + 1}) /${c.cmd} — ${c.hint}`).join("\n"),
-        choices: SLASH_COMMANDS.map((c) => ({ label: c.message, displayName: c.label })),
+          cmds.map((c, i) => `${i + 1}) /${c.cmd} — ${c.hint}`).join("\n"),
+        choices: cmds.map((c) => ({ label: c.message, displayName: c.label })),
         intent: "slash_menu",
       });
       setBusy(false);
@@ -273,13 +279,13 @@ function AssistantTab({
     }
     const slashBody = parseSlashCommand(t);
     if (slashBody) {
-      const cmd = matchSlashCommand(slashBody);
+      const cmd = matchSlashCommand(slashBody, cmds);
       if (!cmd) {
         addMsg({ role: "me", text: t });
         addMsg({
           role: "bot",
           text: `ไม่รู้จักคำสั่ง /${slashBody} ครับ\nพิมพ์ / เพื่อดูรายการคำสั่ง`,
-          choices: SLASH_COMMANDS.map((c) => ({ label: c.message, displayName: c.label })),
+          choices: cmds.map((c) => ({ label: c.message, displayName: c.label })),
           intent: "slash_menu",
         });
         setBusy(false);
@@ -499,6 +505,7 @@ function AssistantTab({
   };
 
   const slash = useSlashMenu({
+    commands: cmds,
     input,
     setInput,
     send,
@@ -1029,6 +1036,7 @@ function AppShell() {
       {/* แชทไม่ถูกถอดตอนสลับแท็บ แค่ซ่อน — บทสนทนาและสถานะที่ล้างไปจึงอยู่ตามเดิม */}
       <div className={tab === "chat" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
         <AssistantTab
+          canTest={(settings.settings?.perms || []).includes("test.cmds")}
           seed={seed}
           onSeedUsed={() => setSeed(undefined)}
           onBooked={() => void loadEvents(true)}

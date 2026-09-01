@@ -15,13 +15,16 @@ import { getSetting, setSetting } from "@/lib/store";
 const OWNER = "_ops";
 const KEY = "roles";
 
-export type Perm = "monitor.view" | "log.view" | "chat.logs" | "jobs.stop" | "admin";
+export type Perm = "monitor.view" | "log.view" | "chat.logs" | "jobs.stop" | "test.cmds" | "admin";
 
 export const PERMS: { key: Perm; label: string; hint: string }[] = [
   { key: "monitor.view", label: "ดูห้องทำงาน", hint: "เปิดหน้า /monitor และดูงานที่กำลังทำสด ๆ" },
   { key: "log.view", label: "ดู log", hint: "เปิดหน้า /monitor/log และดูประวัติการทำงาน" },
   { key: "chat.logs", label: "ดูประวัติแชท", hint: "ดูและดาวน์โหลดประวัติบทสนทนา (Chat Logs / Dataset)" },
   { key: "jobs.stop", label: "หยุดงานค้าง", hint: "กดปุ่มหยุด/พักงานที่ระบบตั้งเวลาไว้" },
+  // คำสั่งทดสอบมีไว้ให้คนที่ดูแลระบบลองของ ไม่ใช่ของใช้ประจำวัน — คนทั่วไปเห็นแล้ว
+  // กดเล่นจะได้ข้อความที่ดูเหมือนของจริงแต่ไม่ใช่ เมนูจึงไม่ควรโชว์ให้ทุกคน
+  { key: "test.cmds", label: "คำสั่งทดสอบ", hint: "เห็นและใช้ /test กับ /test_meeting" },
   { key: "admin", label: "จัดการสิทธิ์", hint: "เพิ่ม/ลบสิทธิ์ของคนอื่น" },
 ];
 

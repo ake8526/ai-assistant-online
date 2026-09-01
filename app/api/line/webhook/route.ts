@@ -34,7 +34,10 @@ import {
   slashMenuMessage,
   slashToUserText,
   textWithDraftEscape,
+  visibleCommands,
+  type SlashCommand,
 } from "@/lib/slashCommands";
+import { can } from "@/lib/roles";
 import { richMenuReply, richMenuRewrite, sanitizeMenuText } from "@/lib/lineRichMenu";
 import { assertConfigured } from "@/lib/supabaseServer";
 import { runWithTrace, trace, setTraceUser, muteTrace } from "@/lib/trace";
@@ -1478,9 +1481,17 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       }
     }
 
+    /* คำสั่งทดสอบเห็นเฉพาะคนในกลุ่ม (สิทธิ์ test.cmds) — ทั้งเมนูและตอนพิมพ์เอง
+       ถามสิทธิ์ครั้งเดียวต่อข้อความ ไม่ใช่ทุกจุดที่ต้องใช้รายการคำสั่ง */
+    let cmdsCache: SlashCommand[] | null = null;
+    const cmds = async () => {
+      if (!cmdsCache) cmdsCache = visibleCommands(await can(upn, "test.cmds"));
+      return cmdsCache;
+    };
+
     // Slash commands always win over booking drafts / onboarding text input
     if (isSlashMenu(text)) {
-      await replyAndLog(upn, ev.replyToken, slashMenuMessage(), { intent: "slash_menu" });
+      await replyAndLog(upn, ev.replyToken, slashMenuMessage(await cmds()), { intent: "slash_menu" });
       return;
     }
 
@@ -1496,7 +1507,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
 
     const slashBody = parseSlashCommand(text);
     if (slashBody) {
-      const cmd = matchSlashCommand(slashBody);
+      const cmd = matchSlashCommand(slashBody, await cmds());
       if (!cmd) {
         await replyAndLog(
           upn,
@@ -1504,7 +1515,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
           {
             type: "text",
             text: `ไม่รู้จักคำสั่ง /${slashBody} ครับ\nพิมพ์ / เพื่อดูรายการคำสั่ง`,
-            quickReply: (slashMenuMessage() as { quickReply: object }).quickReply,
+            quickReply: (slashMenuMessage(await cmds()) as { quickReply: object }).quickReply,
           },
           { intent: "unknown_slash" }
         );
@@ -1526,7 +1537,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
           {
             type: "text",
             text: "ล้างความจำการสนทนาแล้วครับ — เริ่มเรื่องใหม่ได้เลย 🧹\n(ยกเลิกงานจองนัดที่ค้างไว้ด้วย)",
-            quickReply: (slashMenuMessage() as { quickReply: object }).quickReply,
+            quickReply: (slashMenuMessage(await cmds()) as { quickReply: object }).quickReply,
           },
           { intent: "clear_memory" }
         );

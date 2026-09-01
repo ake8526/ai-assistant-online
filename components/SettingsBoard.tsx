@@ -42,6 +42,8 @@ export type Settings = {
   work_end?: string;
   work_location?: string;
   home_location?: string;
+  /** สิทธิ์ของผู้ใช้คนนี้ (lib/roles) — บางปุ่มต้องรู้ตั้งแต่ตอนวาด */
+  perms?: string[];
   error?: string;
 };
 export type MsStatus = { linked?: boolean; note?: string; error?: string };

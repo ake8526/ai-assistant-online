@@ -53,13 +53,15 @@ function headWord(q: string): string {
 /**
  * กรองตามชื่อคำสั่ง ชื่อเล่น และคำอธิบาย — /help ต้องเจอ /ช่วยเหลือ
  *
+ * `cmds` คือชุดที่ผู้ใช้คนนั้นเห็นได้ (บางคำสั่งจำกัดสิทธิ์) — ไม่ใช่ทั้งหมดเสมอไป
+ *
  * ชื่อคำสั่งต้องมาก่อนคำอธิบายเสมอ ไม่ใช่เรียงตามลำดับในไฟล์: พิมพ์ "/ยกเลิก"
  * แล้วได้ /ล้างความจำ ขึ้นก่อน (เพราะคำอธิบายของมันมีคำว่า "ยกเลิกงานค้าง")
  * แปลว่ากด Enter ทันทีจะไปล้างประวัติแชททิ้ง ทั้งที่พิมพ์ชื่อคำสั่งมาตรง ๆ แล้ว
  */
-export function filterCommands(q: string): SlashCommand[] {
+export function filterCommands(q: string, cmds: SlashCommand[] = SLASH_COMMANDS): SlashCommand[] {
   const h = headWord(q);
-  if (!h) return SLASH_COMMANDS;
+  if (!h) return cmds;
   const names = (c: SlashCommand) => [c.cmd, ...(c.aliases || [])].map((s) => s.toLowerCase());
   const rank = (c: SlashCommand) => {
     const ns = names(c);
@@ -69,18 +71,21 @@ export function filterCommands(q: string): SlashCommand[] {
     if (c.hint.toLowerCase().includes(h)) return 3;
     return 9;
   };
-  return SLASH_COMMANDS.map((c, i) => ({ c, i, r: rank(c) }))
+  return cmds.map((c, i) => ({ c, i, r: rank(c) }))
     .filter((x) => x.r < 9)
     .sort((a, b) => a.r - b.r || a.i - b.i)
     .map((x) => x.c);
 }
 
 export function useSlashMenu({
+  commands,
   input,
   setInput,
   send,
   focusInput,
 }: {
+  /** คำสั่งที่ผู้ใช้คนนี้เห็นได้ — คนนอกกลุ่มทดสอบต้องไม่เจอ /test ทั้งในเมนูและตอนพิมพ์เอง */
+  commands: SlashCommand[];
   input: string;
   setInput: (v: string) => void;
   /** ส่งข้อความ — ตัวเดียวกับปุ่มส่ง */
@@ -88,7 +93,7 @@ export function useSlashMenu({
   focusInput: () => void;
 }) {
   const q = slashQuery(input);
-  const items = useMemo(() => (q === null ? [] : filterCommands(q)), [q]);
+  const items = useMemo(() => (q === null ? [] : filterCommands(q, commands)), [q, commands]);
   /**
    * แถวที่เลือกอยู่ ผูกกับข้อความที่ค้นตอนนั้น — พิมพ์ต่อจนรายการเปลี่ยน
    * ตัวเลือกกลับไปแถวแรกเอง ไม่ค้างอยู่ที่ตำแหน่งของรายการชุดเก่า
@@ -120,7 +125,7 @@ export function useSlashMenu({
     const m = /^(\S+)\s/.exec(q);
     if (!m) return false;
     const head = m[1].toLowerCase();
-    return SLASH_COMMANDS.some(
+    return commands.some(
       (c) => !!c.arg && [c.cmd, ...(c.aliases || [])].some((n) => n.toLowerCase() === head)
     );
   })();
