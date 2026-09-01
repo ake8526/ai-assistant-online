@@ -401,7 +401,8 @@ export function FirstRunSetup({
   briefOn: boolean;
   briefTime: string;
   onSaveHours: (start: string, end: string) => void;
-  onSaveBrief: (time: string) => void;
+  /** enabled=false คือกดยกเลิกทีหลัง ต้องปิดของจริงด้วย ไม่ใช่แค่เอาเครื่องหมายถูกออก */
+  onSaveBrief: (time: string, enabled: boolean) => void;
   onGrant: () => void;
   /** tour = จบแล้วเล่นทัวร์ต่อ, skip = ข้ามการตั้งค่า (ยังเล่นทัวร์อยู่ดี) */
   onFinish: (how: "done" | "skip") => void;
@@ -415,13 +416,24 @@ export function FirstRunSetup({
     line: lineLinked ? "done" : "todo",
   });
 
+  const [busy, setBusy] = useState("");
   const set = (k: string, v: ItemState) => setState((p) => ({ ...p, [k]: v }));
+  /**
+   * ขอ token กับ MSAL กินเวลาในจังหวะเดียวกับที่กดปุ่ม เครื่องหมายถูกเลยไม่ทันขึ้น
+   * — ดูเหมือนกดแล้วไม่ติด ต้องรอแป๊บถึงจะมา ให้จอวาดเสร็จก่อนแล้วค่อยยิงงานหนัก
+   */
+  const after = (fn: () => void) => window.setTimeout(fn, 0);
   const items = ["ms", "hours", "brief", "line"];
   const doneCount = items.filter((k) => state[k] === "done").length;
   const ready = state.ms === "done" && state.hours === "done";
 
-  const CLOCK = ["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00"];
-  const OUT = ["16:00", "16:30", "17:00", "17:30", "18:00"];
+  /* ค่าที่ตั้งไว้เดิมอาจไม่ตรงกับตัวเลือกที่เตรียมไว้ (เช่นสรุปเช้า 07:01 จาก
+     ของเดิม) ถ้าไม่ใส่เข้าไปในรายการ ช่องจะโชว์ตัวแรกทั้งที่ค่าจริงเป็นอีกอัน */
+  const withCurrent = (list: string[], v: string) =>
+    !v || list.includes(v) ? list : [...list, v].sort();
+  const CLOCK = withCurrent(["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00"], workStart);
+  const OUT = withCurrent(["16:00", "16:30", "17:00", "17:30", "18:00"], workEnd);
+  const BRIEF = withCurrent(["07:00", "07:30", "08:00", "08:30"], briefTime);
 
   const field =
     "font-note text-[12.5px] bg-[var(--nb-board)] text-[var(--nb-ink)] border-2 border-[var(--nb-ink)] rounded-[10px] px-2 py-1";
@@ -458,8 +470,16 @@ export function FirstRunSetup({
           {state.ms === "done" ? (
             <span className={`font-hand text-[15px] ${INK_2}`}>อนุญาตแล้ว — ดึงปฏิทินได้</span>
           ) : (
-            <button type="button" onClick={onGrant} className={`${NOTE_SM} ${PRESS} ${N_BLUE} px-2.5 py-1 text-[12.5px] cursor-pointer`}>
-              อนุญาต Microsoft 365
+            <button
+              type="button"
+              onClick={() => {
+                setBusy("ms");
+                after(onGrant);
+              }}
+              disabled={busy === "ms"}
+              className={`${NOTE_SM} ${PRESS} ${N_BLUE} px-2.5 py-1 text-[12.5px] disabled:opacity-60 cursor-pointer`}
+            >
+              {busy === "ms" ? "กำลังเปิดหน้าอนุญาต…" : "อนุญาต Microsoft 365"}
             </button>
           )}
         </SetupCard>
@@ -486,13 +506,18 @@ export function FirstRunSetup({
           <button
             type="button"
             onClick={() => {
-              onSaveHours(hours.s, hours.e);
               set("hours", "done");
+              after(() => onSaveHours(hours.s, hours.e));
             }}
             className={`${NOTE_SM} ${PRESS} ${N_GREEN} px-2.5 py-1 text-[12.5px] cursor-pointer`}
           >
             {state.hours === "done" ? "บันทึกแล้ว" : "ใช้เวลานี้"}
           </button>
+          {state.hours === "done" && (
+            <button type="button" onClick={() => set("hours", "todo")} className={`${INK_3} px-1.5 py-1 text-[12.5px] underline cursor-pointer`}>
+              แก้ใหม่
+            </button>
+          )}
         </SetupCard>
 
         <SetupCard
@@ -504,7 +529,7 @@ export function FirstRunSetup({
           tagTint={N_YELLOW}
         >
           <select className={field} value={bt} onChange={(e) => setBt(e.target.value)}>
-            {["07:00", "07:30", "08:00", "08:30"].map((t) => (
+            {BRIEF.map((t) => (
               <option key={t}>{t}</option>
             ))}
           </select>
@@ -512,16 +537,30 @@ export function FirstRunSetup({
           <button
             type="button"
             onClick={() => {
-              onSaveBrief(bt);
               set("brief", "done");
+              after(() => onSaveBrief(bt, true));
             }}
             className={`${NOTE_SM} ${PRESS} ${N_GREEN} px-2.5 py-1 text-[12.5px] cursor-pointer`}
           >
             {state.brief === "done" ? "เปิดแล้ว" : "เปิดใช้"}
           </button>
-          <button type="button" onClick={() => set("brief", "skip")} className={`${INK_3} px-1.5 py-1 text-[12.5px] cursor-pointer`}>
-            ไม่เอา
-          </button>
+          {state.brief === "todo" ? (
+            <button type="button" onClick={() => set("brief", "skip")} className={`${INK_3} px-1.5 py-1 text-[12.5px] cursor-pointer`}>
+              ไม่เอา
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                const wasOn = state.brief === "done";
+                set("brief", "todo");
+                if (wasOn) after(() => onSaveBrief(bt, false));
+              }}
+              className={`${INK_3} px-1.5 py-1 text-[12.5px] underline cursor-pointer`}
+            >
+              ยกเลิก
+            </button>
+          )}
         </SetupCard>
 
         <SetupCard
@@ -539,9 +578,15 @@ export function FirstRunSetup({
               <Link href="/line-link" className={`${NOTE_SM} ${PRESS} ${N_GREEN} px-2.5 py-1 text-[12.5px]`}>
                 เชื่อม LINE
               </Link>
-              <button type="button" onClick={() => set("line", "skip")} className={`${INK_3} px-1.5 py-1 text-[12.5px] cursor-pointer`}>
-                ไว้ก่อน
-              </button>
+              {state.line === "skip" ? (
+                <button type="button" onClick={() => set("line", "todo")} className={`${INK_3} px-1.5 py-1 text-[12.5px] underline cursor-pointer`}>
+                  ยกเลิก (ข้ามไว้อยู่)
+                </button>
+              ) : (
+                <button type="button" onClick={() => set("line", "skip")} className={`${INK_3} px-1.5 py-1 text-[12.5px] cursor-pointer`}>
+                  ไว้ก่อน
+                </button>
+              )}
             </>
           )}
         </SetupCard>

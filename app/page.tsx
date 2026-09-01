@@ -420,23 +420,31 @@ function AppShell() {
   const finishSetup = (how: "done" | "skip") => {
     setSetupOpen(false);
     setOnbLocal(how);
-    // จำไม่ได้ก็แค่ขึ้นใหม่รอบหน้า ไม่ใช่เรื่องที่ต้องขวางผู้ใช้ด้วยข้อความ error
-    void postSettings({ onboarding: how }).catch(() => {});
     // ข้ามการตั้งค่า ไม่ได้แปลว่าข้ามการสอน — ยังพาเดินดูให้ก่อน
     setTourOpen(true);
+    /* ขอ token กับ MSAL กินเวลาในจังหวะเดียวกับที่กดปุ่ม จอเลยค้างแวบหนึ่งก่อนจะ
+       เปลี่ยนหน้า — ปล่อยให้วาดจอใหม่ก่อน แล้วค่อยยิงไปบันทึก (จำไม่ได้ก็แค่ขึ้น
+       หน้าตั้งค่าใหม่รอบหน้า ไม่ใช่เรื่องที่ต้องขวางผู้ใช้ด้วยข้อความ error) */
+    window.setTimeout(() => void postSettings({ onboarding: how }).catch(() => {}), 0);
   };
 
   const saveHours = (start: string, end: string) => {
-    setSettings((p) => ({ ...p, settings: { ...(p.settings || {}), work_start: start, work_end: end } }));
+    setSettings((p) => ({
+      ...p,
+      settings: { ...(p.settings || {}), work_start: start, work_end: end, hours_set: true },
+    }));
     void postSettings({ work_start: start, work_end: end }).catch(() => {});
   };
 
-  const saveBrief = async (time: string) => {
+  const saveBrief = async (time: string, enabled: boolean) => {
+    setSettings((p) =>
+      p.notify ? { ...p, notify: { ...p.notify, brief: { ...p.notify.brief, enabled, time } } } : p
+    );
     const token = await getToken();
     await fetch("/api/notify", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ kind: "brief", enabled: true, time, days: [1, 2, 3, 4, 5] }),
+      body: JSON.stringify({ kind: "brief", enabled, time, days: [1, 2, 3, 4, 5] }),
     }).catch(() => {});
   };
 
@@ -633,7 +641,7 @@ function AppShell() {
           briefOn={!!settings.notify?.brief?.enabled}
           briefTime={settings.notify?.brief?.time || "07:30"}
           onSaveHours={saveHours}
-          onSaveBrief={(t) => void saveBrief(t)}
+          onSaveBrief={(t, on) => void saveBrief(t, on)}
           onGrant={() => void grantCalendar()}
           onFinish={finishSetup}
         />
