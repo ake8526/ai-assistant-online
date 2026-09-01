@@ -37,6 +37,16 @@ const K_LAST = "todo_last_sync";
 /* cron ตัวเตือนงานเดินทุกนาที แต่ To Do ไม่ต้องละเอียดขนาดนั้น — เว้นช่วงไว้
    ไม่ให้ยิง Graph ฟรี ๆ ทุกนาทีต่อคน (สั่งเองด้วย «ซิงค์ todo» ไม่ติดเพดานนี้) */
 const SWEEP_EVERY_MS = 3 * 60_000;
+
+/**
+ * งานที่ถือว่าจบแล้วจริง — มีแค่สองสถานะนี้
+ *
+ * ของเดิมเขียน `t.status !== "pending"` ซึ่งนับ "overdue" เป็นจบด้วย
+ * lib/followup.ts เปลี่ยนงานเลยกำหนดเป็น overdue เอง ผลคือการ์ด «test» ของ
+ * ผู้ใช้ถูกติ๊กว่าเสร็จใน To Do ทั้งที่ยังไม่ได้ทำ — งานเกินกำหนดคืองานที่ยัง
+ * ค้างอยู่ ไม่ใช่งานที่ปิดแล้ว
+ */
+const CLOSED = new Set(["done", "cancelled"]);
 /** งานที่ปิดแล้วไม่ต้องจำ mapping ไว้ตลอด — เก็บพอให้ปิดฝั่ง To Do ได้ */
 const MAP_MAX = 300;
 
@@ -228,7 +238,7 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
   for (const t of tasks) {
     const key = String(t.id);
     const todoId = map[key];
-    const closedHere = t.status !== "pending";
+    const closedHere = CLOSED.has(t.status);
 
     if (!todoId) {
       // ปิดแล้วและไม่เคยส่งไป ก็ไม่ต้องไปสร้างของที่ทำเสร็จแล้วให้เกะกะ
