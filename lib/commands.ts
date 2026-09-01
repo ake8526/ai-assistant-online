@@ -7603,6 +7603,7 @@ async function handleParsed(
       const parts = [`งานใหม่เข้า To Do ${res.created} งาน`];
       if (res.completedInTodo) parts.push(`ปิดใน To Do ตาม ${res.completedInTodo} งาน`);
       if (res.closedFromTodo) parts.push(`ปิดฝั่งนี้ตามที่ติ๊กใน To Do ${res.closedFromTodo} งาน`);
+      if (res.importedFromTodo) parts.push(`ดึงงานที่พิมพ์ในลิสต์ KTIS X เข้ามา ${res.importedFromTodo} งาน`);
       return { intent, reply: `ซิงค์เรียบร้อยครับ ✅\n${parts.join("\n")}` };
     } catch (e) {
       return { intent, reply: `ซิงค์ไม่สำเร็จครับ: ${String(e).slice(0, 180)}` };

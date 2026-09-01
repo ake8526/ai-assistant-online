@@ -136,6 +136,7 @@ export default async function TodoReady({
         <p style={{ marginBottom: 6 }}>ต่อจากนี้:</p>
         <ul>
           <li>งานใหม่จะเข้า To Do ให้เองอัตโนมัติ</li>
+          <li>พิมพ์งานเองในลิสต์ <code>KTIS X</code> ก็เข้ามาที่ผู้ช่วยและไลน์ด้วย</li>
           <li>ติ๊กเสร็จใน To Do แล้ว งานในผู้ช่วยจะปิดตามให้</li>
           <li>ปิดงานในผู้ช่วย งานใน To Do ก็ปิดตาม</li>
           <li>อยากหยุด — พิมพ์ «ปิด todo» ในไลน์</li>

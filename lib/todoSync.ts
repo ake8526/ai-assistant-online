@@ -14,7 +14,8 @@
 
 import { graphGet, graphSend } from "@/lib/graph";
 import { withDelegatedGraph, hasTasksConsent } from "@/lib/msGraphOAuth";
-import { getSetting, listTasks, setSetting, updateTaskStatus, type Task } from "@/lib/store";
+import { addTask, getSetting, listTasks, setSetting, updateTaskStatus, type Task } from "@/lib/store";
+import { admin } from "@/lib/supabaseServer";
 
 /**
  * เรียก Graph ในนามเจ้าตัวเท่านั้น
@@ -41,6 +42,8 @@ export type TodoSyncResult = {
   created: number;
   completedInTodo: number;
   closedFromTodo: number;
+  /** การ์ดที่ผู้ใช้พิมพ์เองในลิสต์ KTIS X แล้วดึงเข้ามาเป็นงานฝั่งนี้ */
+  importedFromTodo: number;
   listId?: string;
 };
 
@@ -130,6 +133,23 @@ function payloadFor(t: Task) {
   return p;
 }
 
+type RemoteTask = {
+  id?: string;
+  title?: string;
+  status?: string;
+  body?: { content?: string };
+  dueDateTime?: { dateTime?: string; timeZone?: string };
+};
+
+/** To Do ส่งเวลามาแบบไม่มี Z ต่อท้าย พร้อมชื่อโซนแยก ─ ปั้นกลับเป็น ISO */
+function remoteDue(card: RemoteTask): string | null {
+  const raw = card.dueDateTime?.dateTime;
+  if (!raw) return null;
+  const iso = /[Zz]|[+-]\d{2}:\d{2}$/.test(raw) ? raw : `${raw}Z`;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 /* ── ตัวซิงค์ ────────────────────────────────────────────────────────── */
 
 /**
@@ -140,7 +160,13 @@ function payloadFor(t: Task) {
  *    ที่ทำเสร็จไปแล้ว ซึ่งน่ารำคาญกว่าไม่เตือนเลย)
  */
 export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
-  const out: TodoSyncResult = { ok: false, created: 0, completedInTodo: 0, closedFromTodo: 0 };
+  const out: TodoSyncResult = {
+    ok: false,
+    created: 0,
+    completedInTodo: 0,
+    closedFromTodo: 0,
+    importedFromTodo: 0,
+  };
   if (!(await todoSyncOn(upn))) return { ...out, reason: "ยังไม่ได้เปิดซิงค์ To Do สำหรับบัญชีนี้" };
   if (!(await hasTasksConsent(upn))) {
     return { ...out, reason: "ยังไม่ได้อนุญาตสิทธิ์ Microsoft To Do — กดอนุญาตใหม่ที่หน้าตั้งค่า" };
@@ -192,7 +218,93 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
     }
   }
 
+  /* ทางกลับ: การ์ดที่เจ้าตัวพิมพ์เองในลิสต์ KTIS X ─ ดึงเข้ามาเป็นงานฝั่งนี้
+     
+     ดึงจากลิสต์ KTIS X ลิสต์เดียว ไม่ไล่ทุกลิสต์ในบัญชี ─ ลิสต์ Tasks กับ
+     ลิสต์ส่วนตัวมีเรื่องบ้าน เรื่องซื้อของ ที่ไม่ควรโผล่มาในไลน์ที่ทำงาน
+     ลิสต์นี้เป็นลิสต์ที่ระบบสร้างเอง ใครพิมพ์ลงในนี้ถือว่าตั้งใจให้ผู้ช่วยเห็น */
+  try {
+    const remote = (await asUser(upn, () =>
+      graphGet(`/me/todo/lists/${listId}/tasks`, { $top: "100" })
+    )) as { value?: RemoteTask[] };
+    const known = new Set(Object.values(map));
+    for (const card of remote.value || []) {
+      if (!card?.id || known.has(card.id)) continue;
+      // ปิดไปแล้วไม่ต้องเอาเข้ามาให้เป็นงานค้างใหม่
+      if (card.status === "completed") continue;
+      const title = String(card.title || "").trim();
+      if (!title) continue;
+      const id = await addTask({
+        owner_upn: upn,
+        title: title.slice(0, 300),
+        detail: String(card.body?.content || "").trim().slice(0, 2000),
+        due: remoteDue(card),
+        source: "todo",
+      });
+      if (id) {
+        map[String(id)] = card.id;
+        known.add(card.id);
+        out.importedFromTodo += 1;
+      }
+    }
+  } catch (e) {
+    // ดึงกลับไม่ได้ไม่ควรทำให้ที่ส่งไปแล้วเสียเปล่า ─ บันทึกไว้แล้วไปต่อ
+    out.reason = `ดึงงานจาก To Do ไม่สำเร็จ: ${String(e).slice(0, 120)}`;
+  }
+
   await saveMap(upn, map);
   out.ok = true;
+  return out;
+}
+
+/* ── รอบอัตโนมัติ ─────────────────────────────────────────────── */
+
+/**
+ * ซิงค์ให้ทุกคนที่เปิดสวิตช์ไว้ ─ เกาะไปกับ cron ตัวเตือนงาน
+ *
+ * ไม่มีตัวนี้ To Do จะอัปเดตแค่ตอนผู้ใช้พิมพ์ «ซิงค์ todo» เอง ซึ่งไม่ตรงกับที่
+ * หน้าผลลัพธ์บอกไว้ว่า "งานใหม่จะเข้า To Do ให้เองอัตโนมัติ"
+ *
+ * คนหนึ่งพังไม่ลากคนอื่นล้ม ─ token หมดอายุหรือถอนสิทธิ์เป็นเรื่องรายคน
+ */
+export async function syncTodoForAll(): Promise<{
+  users: number;
+  created: number;
+  completedInTodo: number;
+  closedFromTodo: number;
+  importedFromTodo: number;
+  failed: { upn: string; error: string }[];
+}> {
+  const out = {
+    users: 0,
+    created: 0,
+    completedInTodo: 0,
+    closedFromTodo: 0,
+    importedFromTodo: 0,
+    failed: [] as { upn: string; error: string }[],
+  };
+  const { data } = await admin
+    .from("settings")
+    .select("owner_upn")
+    .eq("key", K_ON)
+    .eq("value", "on");
+  for (const row of (data || []) as { owner_upn: string }[]) {
+    const upn = String(row.owner_upn || "").toLowerCase();
+    if (!upn) continue;
+    out.users += 1;
+    try {
+      const r = await syncTodoForUser(upn);
+      if (!r.ok) {
+        out.failed.push({ upn, error: r.reason || "ไม่ทราบสาเหตุ" });
+        continue;
+      }
+      out.created += r.created;
+      out.completedInTodo += r.completedInTodo;
+      out.closedFromTodo += r.closedFromTodo;
+      out.importedFromTodo += r.importedFromTodo;
+    } catch (e) {
+      out.failed.push({ upn, error: String(e).slice(0, 160) });
+    }
+  }
   return out;
 }
