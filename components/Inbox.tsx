@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Bell, X, CalendarDays, ListChecks, Newspaper, Sunrise, Info } from "lucide-react";
 import { useM365Auth } from "@/components/M365AuthProvider";
+import { appBridge } from "@/components/useKeepAwake";
 import {
   INK_2,
   INK_3,
@@ -102,6 +103,39 @@ export function useInbox() {
   );
 
   return { notices, unread: notices.filter((n) => !n.read).length, loaded, refresh: load, markRead };
+}
+
+/**
+ * บอกเซิร์ฟเวอร์ว่าเครื่องนี้รับแจ้งเตือนได้ — เปลือกแอป Android ที่มี Firebase
+ * จะมี getPushToken() ให้เรียก เว็บธรรมดาไม่มี ก็ข้ามไปเงียบ ๆ
+ *
+ * ส่งซ้ำทุกครั้งที่เปิดแอปโดยตั้งใจ เพราะ FCM หมุนโทเคนเองได้ และฝั่งเซิร์ฟเวอร์
+ * ถือว่าการส่งซ้ำคือการต่ออายุ ไม่ใช่การเพิ่มเครื่องใหม่
+ */
+export function usePushRegister() {
+  const { getToken, isAuthenticated } = useM365Auth();
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const id = window.setTimeout(async () => {
+      try {
+        const bridge = appBridge();
+        bridge?.askNotifyPermission?.();
+        const device = bridge?.getPushToken?.();
+        if (!device || device.length < 20) return;
+        const token = await getToken();
+        if (!token) return;
+        await fetch("/api/push/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ token: device, platform: "android" }),
+        });
+      } catch {
+        /* ลงทะเบียนไม่ได้ก็ยังใช้แอปได้ปกติ แค่ไม่มีแจ้งเตือนขึ้นเครื่อง */
+      }
+    }, 1200);
+    return () => window.clearTimeout(id);
+  }, [getToken, isAuthenticated]);
 }
 
 function dayLabel(at: number): string {

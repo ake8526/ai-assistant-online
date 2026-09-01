@@ -23,7 +23,7 @@ import { useTheme } from "@/components/useTheme";
 import { useFreshBuild } from "@/components/useFreshBuild";
 import SplashScreen, { SPLASH_START, type SplashSteps } from "@/components/SplashScreen";
 import { FirstRunSetup, NoLicenseNag, SetupNag, TourOverlay } from "@/components/Onboarding";
-import { InboxBell, InboxSheet, useInbox } from "@/components/Inbox";
+import { InboxBell, InboxSheet, useInbox, usePushRegister } from "@/components/Inbox";
 import {
   AssistantFace,
   authedGet,
@@ -197,6 +197,7 @@ function AppShell() {
   const [setupOpen, setSetupOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const inbox = useInbox();
+  usePushRegister();
   const [tourOpen, setTourOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [booted, setBooted] = useState(false);

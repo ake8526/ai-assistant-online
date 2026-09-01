@@ -20,6 +20,14 @@ type ScreenBridge = {
    * — เคยส่งลิงก์ intent:// ไปให้แอปรุ่นเก่าที่ดักไม่ได้ กดแล้วขึ้น ERR_UNKNOWN_URL_SCHEME
    */
   openMeeting?: (url: string) => void;
+  /**
+   * โทเคน FCM ของเครื่องนี้ — มีตั้งแต่ APK รุ่นที่ใส่ Firebase เข้าไปแล้ว
+   * หน้าเว็บเอาไปแจ้ง /api/push/register เพื่อให้ยิงแจ้งเตือนขึ้นเครื่องได้
+   * แม้ปิดแอปอยู่ คืนค่าว่างได้ถ้า Firebase ยังไม่พร้อมหรือผู้ใช้ไม่อนุญาต
+   */
+  getPushToken?: () => string;
+  /** ขอสิทธิ์แจ้งเตือน (Android 13 ขึ้นไปต้องขอ) — เรียกได้ซ้ำ ระบบถามครั้งเดียว */
+  askNotifyPermission?: () => void;
 };
 
 export function appBridge(): ScreenBridge | null {

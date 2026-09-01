@@ -12,6 +12,7 @@
  */
 
 import { getSetting, setSetting } from "@/lib/store";
+import { sendPush } from "@/lib/push";
 
 export type NoticeKind = "brief" | "news" | "task" | "meeting" | "system";
 
@@ -74,6 +75,11 @@ export async function addNotice(
   const id = `${at.toString(36)}${Math.floor(at % 1000).toString(36)}`;
   const next = [{ id, kind: n.kind, title: n.title, body: n.body || "", at }, ...rows].slice(0, MAX);
   await setSetting(upn, KEY, JSON.stringify(next));
+
+  /* เด้งขึ้นเครื่องด้วย แม้ปิดแอปอยู่ — ยิงที่นี่ที่เดียว ตัวส่งทุกตัวที่บันทึกลง
+     กล่องจึงได้แจ้งเตือนอัตโนมัติ ไม่ต้องไปไล่เติมทีละที่แล้วลืมบางที่
+     ส่งไม่สำเร็จก็ไม่ควรทำให้การบันทึกลงกล่องล้มตาม */
+  await sendPush(upn, { title: n.title, body: n.body || "", tag: n.kind }).catch(() => {});
 }
 
 /** กดอ่านแล้ว — "all" คืออ่านทั้งกล่อง */
