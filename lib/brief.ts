@@ -10,6 +10,7 @@ import {
 } from "@/lib/graph";
 import { chat } from "@/lib/llm";
 import { getLineId, pushLineMessages } from "@/lib/line";
+import { addNotice } from "@/lib/inbox";
 import { fetchArticle } from "@/lib/rss";
 import { getMeetingMaterials } from "@/lib/meetingMaterials";
 import { getSetting, setSetting } from "@/lib/store";
@@ -452,6 +453,9 @@ export async function runForUser(userUpn: string, ready?: MorningAgenda): Promis
   if (!lineId) throw new Error(`${userUpn} ยังไม่ได้เชื่อมบัญชี LINE`);
 
   const header = "🌅 สรุปตารางเช้า";
+  /* เก็บเข้ากล่องในแอปด้วยเสมอ — ส่ง LINE ไม่ผ่าน (โควตาหมด/ยังไม่เชื่อม)
+     กล่องในแอปจะเป็นทางเดียวที่ผู้ใช้ได้เห็นข้อความฉบับนี้ */
+  await addNotice(userUpn, { kind: "brief", title: header, body: agenda.text }).catch(() => {});
   const body = `${header}\n\n${agenda.text}`;
 
   if (!agenda.choices.length) {

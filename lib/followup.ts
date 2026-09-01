@@ -2,6 +2,7 @@
 import { createHash } from "crypto";
 import { Attendee, resolveAttendee, resolveUser } from "@/lib/graph";
 import { getLineId, pushLineMessages, pushQuotaGone, sendLine } from "@/lib/line";
+import { addNotice } from "@/lib/inbox";
 import { getTaskRemindAheadDays } from "@/lib/remindPrefs";
 import {
   Task,
@@ -197,6 +198,11 @@ export async function checkDue(): Promise<Record<string, number>> {
     try {
       await runWithTrace({ upn, channel: "cron" }, async () => {
         trace("receive", "cron · เตือนงานเลยกำหนด");
+        await addNotice(upn, {
+          kind: "task",
+          title: "⏰ งานที่เลยกำหนด",
+          body: formatReminder(tasks),
+        }).catch(() => {});
         trace("compose", `งาน ${tasks.length} รายการ`);
         try {
           const lineId = await getLineId(upn);
@@ -317,6 +323,11 @@ export async function checkUpcomingDue(): Promise<Record<string, number>> {
     try {
       await runWithTrace({ upn, channel: "cron" }, async () => {
         trace("receive", "cron · เตือนงานล่วงหน้า");
+        await addNotice(upn, {
+          kind: "task",
+          title: "🗓️ งานใกล้ถึงกำหนด",
+          body: formatAdvanceReminder(fresh, days),
+        }).catch(() => {});
         trace("compose", `งาน ${fresh.length} รายการ`);
         const body = formatAdvanceReminder(fresh, days);
         const lineId = await getLineId(upn);

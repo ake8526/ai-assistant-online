@@ -387,8 +387,10 @@ export function FirstRunSetup({
   workEnd,
   briefOn,
   briefTime,
+  newsOn,
   onSaveHours,
   onSaveBrief,
+  onOpenNews,
   onGrant,
   onFinish,
 }: {
@@ -400,9 +402,12 @@ export function FirstRunSetup({
   workEnd: string;
   briefOn: boolean;
   briefTime: string;
+  newsOn: boolean;
   onSaveHours: (start: string, end: string) => void;
   /** enabled=false คือกดยกเลิกทีหลัง ต้องปิดของจริงด้วย ไม่ใช่แค่เอาเครื่องหมายถูกออก */
   onSaveBrief: (time: string, enabled: boolean) => void;
+  /** ไปหน้าเลือกหัวข้อข่าว — เลือกเองว่าจะตามเรื่องอะไร ไม่ใช่ยัดให้ */
+  onOpenNews: () => void;
   onGrant: () => void;
   /** tour = จบแล้วเล่นทัวร์ต่อ, skip = ข้ามการตั้งค่า (ยังเล่นทัวร์อยู่ดี) */
   onFinish: (how: "done" | "skip") => void;
@@ -413,6 +418,7 @@ export function FirstRunSetup({
     ms: msLinked ? "done" : "todo",
     hours: hoursSet ? "done" : "todo",
     brief: briefOn ? "done" : "todo",
+    news: newsOn ? "done" : "todo",
     line: lineLinked ? "done" : "todo",
   });
 
@@ -423,7 +429,7 @@ export function FirstRunSetup({
    * — ดูเหมือนกดแล้วไม่ติด ต้องรอแป๊บถึงจะมา ให้จอวาดเสร็จก่อนแล้วค่อยยิงงานหนัก
    */
   const after = (fn: () => void) => window.setTimeout(fn, 0);
-  const items = ["ms", "hours", "brief", "line"];
+  const items = ["ms", "hours", "brief", "news", "line"];
   const doneCount = items.filter((k) => state[k] === "done").length;
   const ready = state.ms === "done" && state.hours === "done";
 
@@ -443,7 +449,7 @@ export function FirstRunSetup({
       <div className="shrink-0 px-4 pt-4 pb-2.5 border-b-2 border-[var(--nb-ink)] bg-[var(--nb-surface)]">
         <h2 className="font-marker text-[17px]">ตั้งค่าก่อนเริ่มใช้</h2>
         <p className={`text-[12.5px] ${INK_2} mt-0.5 mb-2`}>
-          4 อย่างนี้ทำครั้งเดียว แล้วผู้ช่วยจะทำงานให้ถูกตั้งแต่วันแรก
+          ทำครั้งเดียว แล้วผู้ช่วยจะทำงานให้ถูกตั้งแต่วันแรก
         </p>
         <div className="flex items-center gap-2">
           <span className="flex-1 h-3 rounded-full border-2 border-[var(--nb-ink)] bg-[var(--nb-board)] overflow-hidden">
@@ -564,8 +570,52 @@ export function FirstRunSetup({
         </SetupCard>
 
         <SetupCard
-          state={state.line}
+          state={state.news}
           n={4}
+          title="ข่าวที่อยากให้ตามให้"
+          hint="เลือกหัวข้อเอง เช่น น้ำตาล พลังงาน ราคาอ้อย แล้วผู้ช่วยสรุปให้ทุกวัน"
+          tag="แนะนำ"
+          tagTint={N_YELLOW}
+        >
+          {state.news === "done" ? (
+            <>
+              <span className={`font-hand text-[15px] ${INK_2}`}>เปิดแล้ว</span>
+              <button
+                type="button"
+                onClick={onOpenNews}
+                className={`${NOTE_SM} ${PRESS} bg-[var(--nb-surface)] px-2.5 py-1 text-[12.5px] cursor-pointer`}
+              >
+                แก้หัวข้อ
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  set("news", "done");
+                  after(onOpenNews);
+                }}
+                className={`${NOTE_SM} ${PRESS} ${N_GREEN} px-2.5 py-1 text-[12.5px] cursor-pointer`}
+              >
+                เลือกหัวข้อข่าว
+              </button>
+              {state.news === "skip" ? (
+                <button type="button" onClick={() => set("news", "todo")} className={`${INK_3} px-1.5 py-1 text-[12.5px] underline cursor-pointer`}>
+                  ยกเลิก (ข้ามไว้อยู่)
+                </button>
+              ) : (
+                <button type="button" onClick={() => set("news", "skip")} className={`${INK_3} px-1.5 py-1 text-[12.5px] cursor-pointer`}>
+                  ไม่เอา
+                </button>
+              )}
+            </>
+          )}
+        </SetupCard>
+
+        <SetupCard
+          state={state.line}
+          n={5}
           title="เชื่อม LINE"
           hint="สั่งงานและรับแจ้งเตือนทาง LINE ได้ ไม่ต้องเปิดแอปนี้ค้างไว้"
           tag="ทำทีหลังได้"

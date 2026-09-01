@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { checkCronSecret } from "@/lib/auth";
 import { resolveLinkedUpn, sendLine } from "@/lib/line";
+import { addNotice } from "@/lib/inbox";
 import { buildDigest, formatDigestSkippedNote, formatStoriesText, rememberDeliveredStories } from "@/lib/digest";
 import { digestKickSettingKey, type DigestKickPayload } from "@/lib/digestKick";
 import { deleteSetting, getSetting } from "@/lib/store";
@@ -94,6 +95,12 @@ async function run(req: Request) {
             return { ok: true, delivered: 0, note: why };
           }
           const extra = formatDigestSkippedNote(digest.skipped, !!digest.stories?.length);
+          // เก็บเข้ากล่องในแอปด้วย จะได้ย้อนอ่านข่าวเมื่อวานได้โดยไม่ต้องเลื่อนหาในไลน์
+          await addNotice(upn, {
+            kind: "news",
+            title: "📰 ข่าวประจำวัน",
+            body: formatStoriesText(digest.stories, digest.note) + extra,
+          }).catch(() => {});
           await sendLine(upn, "", formatStoriesText(digest.stories, digest.note) + extra, fromCron);
           await rememberDeliveredStories(upn, digest.stories);
           if (fromCron && !force) await markSent(upn, "news");

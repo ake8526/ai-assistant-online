@@ -10,6 +10,7 @@ import {
   ListChecks,
   SlidersHorizontal,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 import ScheduleTab, { type CalEvent, type Room } from "@/components/ScheduleTab";
 import TasksTab, { type Task } from "@/components/TasksTab";
@@ -22,6 +23,7 @@ import { useTheme } from "@/components/useTheme";
 import { useFreshBuild } from "@/components/useFreshBuild";
 import SplashScreen, { SPLASH_START, type SplashSteps } from "@/components/SplashScreen";
 import { FirstRunSetup, SetupNag, TourOverlay } from "@/components/Onboarding";
+import { InboxBell, InboxSheet, useInbox } from "@/components/Inbox";
 import {
   AssistantFace,
   authedGet,
@@ -148,6 +150,7 @@ function whenLabel(e: NonNullable<NextUp>): { time: string; note: string } {
 
 function AppShell() {
   const { account, getToken, getGraphToken } = useM365Auth();
+  const router = useRouter();
   const [tab, setTab] = useState<TabKey>("chat");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [chatFocus, setChatFocus] = useState(false);
@@ -192,6 +195,8 @@ function AppShell() {
      รอโหลดใหม่ทั้งชุด */
   const [onbLocal, setOnbLocal] = useState<string | null>(null);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const inbox = useInbox();
   const [tourOpen, setTourOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [booted, setBooted] = useState(false);
@@ -466,6 +471,7 @@ function AppShell() {
         </div>
         {/* ล้างความจำมาอยู่มุมขวาของหัวเรื่อง — ที่เก่าเป็นปุ่มลอยใหม่ทับแชทอยู่
             เห็นเฉพาะแท็บแชท เพราะแท็บอื่นไม่มีความจำให้ล้าง */}
+        <InboxBell unread={inbox.unread} onClick={() => setInboxOpen(true)} />
         {tab === "chat" && (
           <button
             type="button"
@@ -631,6 +637,15 @@ function AppShell() {
         })}
       </nav>
 
+      {inboxOpen && (
+        <InboxSheet
+          notices={inbox.notices}
+          loaded={inbox.loaded}
+          onRead={(id) => void inbox.markRead(id)}
+          onClose={() => setInboxOpen(false)}
+        />
+      )}
+
       {showSetup && booted && (
         <FirstRunSetup
           msLinked={!!settings.ms?.linked}
@@ -640,6 +655,8 @@ function AppShell() {
           workEnd={settings.settings?.work_end || ""}
           briefOn={!!settings.notify?.brief?.enabled}
           briefTime={settings.notify?.brief?.time || "07:30"}
+          newsOn={!!settings.notify?.news?.enabled}
+          onOpenNews={() => router.push("/consents")}
           onSaveHours={saveHours}
           onSaveBrief={(t, on) => void saveBrief(t, on)}
           onGrant={() => void grantCalendar()}
