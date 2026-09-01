@@ -108,6 +108,23 @@ async function graphFetch(
   }
 }
 
+/**
+ * เรียก Graph แบบเขียน (POST/PATCH/DELETE) — graphGet มีอยู่แล้วแต่ read-only
+ * คืน json ที่ตอบมา หรือ null เมื่อ 204 (PATCH ของ To Do ตอบ 200 พร้อม body,
+ * แต่บาง endpoint ตอบ 204 เปล่า ๆ)
+ */
+export async function graphSend(
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  body?: unknown
+): Promise<unknown> {
+  const r = await graphFetch(path, { method, body });
+  if (!r.ok) throw new Error(`Graph ${r.status} ${method} ${path}: ${(await r.text()).slice(0, 300)}`);
+  if (r.status === 204) return null;
+  const text = await r.text();
+  return text ? JSON.parse(text) : null;
+}
+
 export async function graphGet(path: string, params?: Record<string, string>, headers?: Record<string, string>) {
   const r = await graphFetch(path, { params, headers });
   if (!r.ok) throw new Error(`Graph ${r.status} ${path}: ${(await r.text()).slice(0, 300)}`);

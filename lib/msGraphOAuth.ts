@@ -13,6 +13,27 @@ const GRAPH_SCOPE = [
   "Calendars.Read",
   "Calendars.ReadWrite",
 ].join(" ");
+/**
+ * ชุดที่ขอเพิ่ม Tasks.ReadWrite สำหรับซิงค์งานเข้า Microsoft To Do
+ *
+ * To Do ไม่มีสิทธิ์แบบ app-only เลย มีแต่ delegated — จะเขียน To Do ของใครได้
+ * ต้องให้เจ้าตัวกดอนุญาตเองแล้วเก็บ refresh token ของเขาไว้
+ *
+ * ต้องลองชุดนี้ก่อนแล้วค่อยไล่ถอยลงไปชุดเดิม ไม่ใช่เอา Tasks ไปยัดใน
+ * GRAPH_SCOPE ตรง ๆ — คนที่ยังไม่ได้อนุญาต To Do จะ refresh ไม่ผ่าน แล้วตกไป
+ * ชุด calendar ที่ไม่มี People.Read ทำให้เสียความสามารถที่เคยมีไปเงียบ ๆ
+ */
+const GRAPH_SCOPE_TASKS = [
+  "openid",
+  "profile",
+  "offline_access",
+  "User.Read",
+  "People.Read",
+  "Calendars.Read",
+  "Calendars.ReadWrite",
+  "Tasks.ReadWrite",
+].join(" ");
+
 /** Fallback when stored token predates People.Read — keep calendar working. */
 const GRAPH_SCOPE_CALENDAR = [
   "openid",
@@ -50,7 +71,7 @@ export function buildMicrosoftAuthUrl(state: string): string {
     response_type: "code",
     redirect_uri: microsoftRedirectUri(),
     response_mode: "query",
-    scope: GRAPH_SCOPE,
+    scope: GRAPH_SCOPE_TASKS,
     state,
     // Do not force consent every time; with tenant-wide admin consent this can
     // still bounce normal users to "need admin approval" in strict tenants.
@@ -147,8 +168,9 @@ export async function getDelegatedGraphToken(upn: string): Promise<string | null
     return { access: json.access_token, refresh: json.refresh_token, scope: json.scope };
   };
 
-  // Prefer full scopes; if user never consented to People.Read, fall back so calendar still works.
-  let tok = await tryRefresh(GRAPH_SCOPE);
+  // ไล่จากชุดกว้างสุดลงไป — ได้เท่าที่เจ้าตัวเคยอนุญาตไว้จริง
+  let tok = await tryRefresh(GRAPH_SCOPE_TASKS);
+  if (!tok?.access) tok = await tryRefresh(GRAPH_SCOPE);
   if (!tok?.access) tok = await tryRefresh(GRAPH_SCOPE_CALENDAR);
   if (!tok?.access) return null;
 
@@ -158,6 +180,17 @@ export async function getDelegatedGraphToken(upn: string): Promise<string | null
     } catch { /* ignore */ }
   }
   return tok.access;
+}
+
+/** เจ้าตัวอนุญาต To Do ไว้แล้วหรือยัง — อ่านจาก scope ที่บันทึกไว้ตอนแลก token */
+export async function hasTasksConsent(upn: string): Promise<boolean> {
+  const { data } = await admin
+    .from("oauth_tokens")
+    .select("scope")
+    .eq("owner_upn", upn.toLowerCase())
+    .eq("provider", "microsoft")
+    .maybeSingle();
+  return /Tasks\.ReadWrite/i.test(data?.scope || "");
 }
 
 export function calendarConsentNeededMessage(): string {
