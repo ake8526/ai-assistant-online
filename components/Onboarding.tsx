@@ -381,6 +381,7 @@ function SetupCard({
 
 export function FirstRunSetup({
   msLinked,
+  noLicense,
   lineLinked,
   hoursSet,
   workStart,
@@ -395,6 +396,8 @@ export function FirstRunSetup({
   onFinish,
 }: {
   msLinked: boolean;
+  /** บัญชีนี้ไม่มี License 365 (ไม่มีกล่องจดหมาย) — ส่งนัดให้คนอื่นไม่ได้ */
+  noLicense: boolean;
   lineLinked: boolean;
   /** เคยตั้งเวลาทำงานเองแล้วหรือยัง — work_start มีค่าเริ่มต้นให้เสมอ ดูจากค่านั้นไม่ได้ */
   hoursSet: boolean;
@@ -473,20 +476,34 @@ export function FirstRunSetup({
           tag="จำเป็น"
           tagTint={N_PINK}
         >
+          {noLicense && (
+            <p className={`${NOTE_SM} ${N_PINK} w-full px-2.5 py-1.5 text-[11.5px] leading-[1.45]`}>
+              บัญชีนี้ยังไม่มี License Microsoft 365 — ใช้ Outlook ไม่ได้ และระบบจะ
+              <b className="font-semibold"> ส่งนัดให้คนอื่นไม่ได้</b> กรุณาขอ License จากฝ่าย IT ก่อน
+            </p>
+          )}
           {state.ms === "done" ? (
             <span className={`font-hand text-[15px] ${INK_2}`}>อนุญาตแล้ว — ดึงปฏิทินได้</span>
           ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setBusy("ms");
-                after(onGrant);
-              }}
-              disabled={busy === "ms"}
-              className={`${NOTE_SM} ${PRESS} ${N_BLUE} px-2.5 py-1 text-[12.5px] disabled:opacity-60 cursor-pointer`}
-            >
-              {busy === "ms" ? "กำลังเปิดหน้าอนุญาต…" : "อนุญาต Microsoft 365"}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setBusy("ms");
+                  after(onGrant);
+                }}
+                disabled={busy === "ms"}
+                className={`${NOTE_SM} ${PRESS} ${N_BLUE} px-2.5 py-1 text-[12.5px] disabled:opacity-60 cursor-pointer`}
+              >
+                {busy === "ms" ? "กำลังเปิดหน้าอนุญาต…" : "อนุญาต Microsoft 365"}
+              </button>
+              {/* กดผิดแล้วต้องถอยได้ ไม่ใช่ค้างอยู่กับ "กำลังเปิด…" จนกว่าจะเปลี่ยนหน้า */}
+              {busy === "ms" && (
+                <button type="button" onClick={() => setBusy("")} className={`${INK_3} px-1.5 py-1 text-[12.5px] underline cursor-pointer`}>
+                  ยกเลิก
+                </button>
+              )}
+            </>
           )}
         </SetupCard>
 
@@ -658,6 +675,19 @@ export function FirstRunSetup({
           {ready ? "เริ่มใช้งาน" : "ยังไม่ครบ — ทำต่อ"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** ไม่มี License 365 — บอกทุกแท็บ เพราะส่งนัดไม่ได้ทั้งระบบ ไม่ใช่แค่หน้าตั้งค่า */
+export function NoLicenseNag() {
+  return (
+    <div className={`${NOTE_SM} ${N_PINK} shrink-0 mx-4 mt-3 px-3 py-2`} role="status">
+      <p className="text-[12.5px] leading-snug">
+        บัญชีนี้ไม่มี License Microsoft 365 — ส่งนัดประชุมให้คนอื่นไม่ได้
+        <br />
+        <span className={INK_2}>ขอ License จากฝ่าย IT แล้วเข้าใหม่อีกครั้งครับ</span>
+      </p>
     </div>
   );
 }

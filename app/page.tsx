@@ -22,7 +22,7 @@ import { useKeepAwake } from "@/components/useKeepAwake";
 import { useTheme } from "@/components/useTheme";
 import { useFreshBuild } from "@/components/useFreshBuild";
 import SplashScreen, { SPLASH_START, type SplashSteps } from "@/components/SplashScreen";
-import { FirstRunSetup, SetupNag, TourOverlay } from "@/components/Onboarding";
+import { FirstRunSetup, NoLicenseNag, SetupNag, TourOverlay } from "@/components/Onboarding";
 import { InboxBell, InboxSheet, useInbox } from "@/components/Inbox";
 import {
   AssistantFace,
@@ -411,6 +411,8 @@ function AppShell() {
      จำที่เซิร์ฟเวอร์ว่าผ่านหน้าตั้งค่าแล้ว ไม่ใช่ที่เครื่อง — คนเดียวกันเปลี่ยน
      เครื่องหรือลงแอปใหม่จะได้ไม่โดนต้อนเข้าหน้าตั้งค่าซ้ำอีกรอบ */
   const onb = onbLocal ?? settings.settings?.onboarding ?? null;
+  /* mailbox === false คือถามแล้วได้คำตอบชัดว่าไม่มีกล่องจดหมาย ไม่ใช่ถามไม่ได้ */
+  const noLicense = settings.ms?.mailbox === false;
   const showSetup = setupOpen || onb === "";
 
   const postSettings = async (body: Record<string, unknown>) => {
@@ -517,6 +519,8 @@ function AppShell() {
           </button>
         </div>
       )}
+
+      {!contentHidden && noLicense && <NoLicenseNag />}
 
       {!contentHidden && onb === "skip" && !settings.ms?.linked && (
         <SetupNag onOpen={() => setSetupOpen(true)} />
@@ -649,6 +653,7 @@ function AppShell() {
       {showSetup && booted && (
         <FirstRunSetup
           msLinked={!!settings.ms?.linked}
+          noLicense={noLicense}
           lineLinked={false}
           hoursSet={!!settings.settings?.hours_set}
           workStart={settings.settings?.work_start || ""}

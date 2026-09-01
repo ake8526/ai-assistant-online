@@ -59,7 +59,13 @@ export type Settings = {
   hours_set?: boolean;
   error?: string;
 };
-export type MsStatus = { linked?: boolean; note?: string; error?: string };
+export type MsStatus = {
+  linked?: boolean;
+  /** มีกล่องจดหมายไหม (= ได้รับ License 365) — null คือถามไม่ได้ */
+  mailbox?: boolean | null;
+  note?: string;
+  error?: string;
+};
 
 /** ตารางเวลาแจ้งเตือนจาก /api/notify — brief = สรุปงานเช้า, news = ข่าว */
 export type NotifyKindCfg = { enabled: boolean; time: string; days: number[]; count?: number };
