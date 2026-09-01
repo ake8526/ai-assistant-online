@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { AuthError, requireUserOrCron } from "@/lib/auth";
 import { assertConfigured } from "@/lib/supabaseServer";
 import { addNotice } from "@/lib/inbox";
-import { deviceCount, pushConfigured, sendPush } from "@/lib/push";
+import { deviceCount, pushConfigured, pushSelfCheck, sendPush } from "@/lib/push";
 
 /**
  * ยิงแจ้งเตือนทดสอบหนึ่งใบ — ไว้พิสูจน์ว่าครบวงจรจริงหลังตั้งค่า FCM เสร็จ
@@ -52,7 +52,14 @@ export async function GET(req: Request) {
   try {
     assertConfigured();
     const upn = await requireUserOrCron(req);
-    return NextResponse.json({ configured: pushConfigured(), devices: await deviceCount(upn), upn });
+    const check = await pushSelfCheck();
+    return NextResponse.json({
+      configured: pushConfigured(),
+      keyOk: check.ok,
+      keyError: check.error,
+      devices: await deviceCount(upn),
+      upn,
+    });
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
     return NextResponse.json({ error: String(e) }, { status: 500 });
