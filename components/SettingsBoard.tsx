@@ -57,6 +57,8 @@ export type Settings = {
   onboarding?: string;
   /** เคยตั้งเวลาทำงานเองหรือยัง (work_start มีค่าเริ่มต้นให้เสมอ จึงดูจากค่านั้นไม่ได้) */
   hours_set?: boolean;
+  /** วันทำงาน 0=อาทิตย์ … 6=เสาร์ — ใช้กันไม่ให้เสนอนัดในวันหยุดของคนคนนั้น */
+  work_days?: number[];
   error?: string;
 };
 export type MsStatus = {

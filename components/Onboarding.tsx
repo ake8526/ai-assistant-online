@@ -338,6 +338,29 @@ export function TourOverlay({
 
 type ItemState = "todo" | "done" | "skip";
 
+const DAY_LABEL = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+
+/** เลือกวันในสัปดาห์ — 0 = อาทิตย์ ตรงกับที่ lib/notify ใช้ */
+function Days({ days, onChange }: { days: number[]; onChange: (d: number[]) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1 w-full">
+      {DAY_LABEL.map((d, i) => (
+        <button
+          key={i}
+          type="button"
+          aria-pressed={days.includes(i)}
+          onClick={() => onChange(days.includes(i) ? days.filter((x) => x !== i) : [...days, i].sort())}
+          className={`${NOTE_SM} ${PRESS} w-9 py-0.5 text-[12px] cursor-pointer ${
+            days.includes(i) ? N_GREEN : `bg-[var(--nb-surface)] ${INK_3} shadow-none`
+          }`}
+        >
+          {d}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** การ์ดหนึ่งข้อในหน้าตั้งค่าครั้งแรก */
 function SetupCard({
   state,
@@ -388,11 +411,14 @@ export function FirstRunSetup({
   workEnd,
   briefOn,
   briefTime,
+  briefDays,
+  workDays,
   newsOn,
   onSaveHours,
   onSaveBrief,
   onOpenNews,
   onGrant,
+  onRevoke,
   onFinish,
 }: {
   msLinked: boolean;
@@ -405,25 +431,50 @@ export function FirstRunSetup({
   workEnd: string;
   briefOn: boolean;
   briefTime: string;
+  briefDays: number[];
+  workDays: number[];
   newsOn: boolean;
-  onSaveHours: (start: string, end: string) => void;
+  onSaveHours: (start: string, end: string, days: number[]) => void;
   /** enabled=false คือกดยกเลิกทีหลัง ต้องปิดของจริงด้วย ไม่ใช่แค่เอาเครื่องหมายถูกออก */
-  onSaveBrief: (time: string, enabled: boolean) => void;
+  onSaveBrief: (time: string, enabled: boolean, days: number[]) => void;
   /** ไปหน้าเลือกหัวข้อข่าว — เลือกเองว่าจะตามเรื่องอะไร ไม่ใช่ยัดให้ */
   onOpenNews: () => void;
   onGrant: () => void;
+  /** ถอนสิทธิ์ที่เคยอนุญาตไว้ — กดผิดแล้วต้องเอาคืนได้ */
+  onRevoke: () => void;
   /** tour = จบแล้วเล่นทัวร์ต่อ, skip = ข้ามการตั้งค่า (ยังเล่นทัวร์อยู่ดี) */
   onFinish: (how: "done" | "skip") => void;
 }) {
   const [hours, setHours] = useState({ s: workStart || "09:00", e: workEnd || "17:00" });
+  const [wd, setWd] = useState<number[]>(workDays.length ? workDays : [1, 2, 3, 4, 5]);
   const [bt, setBt] = useState(briefTime || "07:30");
-  const [state, setState] = useState<Record<string, ItemState>>({
+  const [bd, setBd] = useState<number[]>(briefDays.length ? briefDays : [1, 2, 3, 4, 5]);
+  /* กด "อนุญาต Microsoft 365" แล้วแอปกระโดดออกไปหน้า Microsoft พอกลับมาหน้านี้
+     ถูกสร้างใหม่หมด สิ่งที่ติ๊กไว้ก่อนหน้าหายเกลี้ยง — เก็บไว้ใน sessionStorage
+     ให้กลับมาเจอของเดิม (อยู่แค่แท็บนี้ ปิดแอปแล้วหายไปเอง) */
+  const [state, setState] = useState<Record<string, ItemState>>(() => {
+    try {
+      const saved = sessionStorage.getItem("ktisx_setup_state");
+      if (saved) return JSON.parse(saved) as Record<string, ItemState>;
+    } catch {
+      /* โหมดส่วนตัวอ่านไม่ได้ ก็เริ่มจากค่าที่เซิร์ฟเวอร์บอก */
+    }
+    return {
     ms: msLinked ? "done" : "todo",
     hours: hoursSet ? "done" : "todo",
     brief: briefOn ? "done" : "todo",
     news: newsOn ? "done" : "todo",
-    line: lineLinked ? "done" : "todo",
+      line: lineLinked ? "done" : "todo",
+    };
   });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("ktisx_setup_state", JSON.stringify(state));
+    } catch {
+      /* เก็บไม่ได้ก็แค่เริ่มใหม่ตอนกลับมา */
+    }
+  }, [state]);
 
   const [busy, setBusy] = useState("");
   const set = (k: string, v: ItemState) => setState((p) => ({ ...p, [k]: v }));
@@ -483,7 +534,20 @@ export function FirstRunSetup({
             </p>
           )}
           {state.ms === "done" ? (
-            <span className={`font-hand text-[15px] ${INK_2}`}>อนุญาตแล้ว — ดึงปฏิทินได้</span>
+            <>
+              <span className={`font-hand text-[15px] ${INK_2}`}>อนุญาตแล้ว — ดึงปฏิทินได้</span>
+              {/* กดอนุญาตไปแล้วต้องถอนคืนได้ ไม่ใช่ให้ไปหาที่หน้าตั้งค่าเอง */}
+              <button
+                type="button"
+                onClick={() => {
+                  set("ms", "todo");
+                  after(onRevoke);
+                }}
+                className={`${INK_3} px-1.5 py-1 text-[12.5px] underline cursor-pointer`}
+              >
+                ยกเลิกการอนุญาต
+              </button>
+            </>
           ) : (
             <>
               <button
@@ -530,12 +594,14 @@ export function FirstRunSetup({
             type="button"
             onClick={() => {
               set("hours", "done");
-              after(() => onSaveHours(hours.s, hours.e));
+              after(() => onSaveHours(hours.s, hours.e, wd));
             }}
             className={`${NOTE_SM} ${PRESS} ${N_GREEN} px-2.5 py-1 text-[12.5px] cursor-pointer`}
           >
             {state.hours === "done" ? "บันทึกแล้ว" : "ใช้เวลานี้"}
           </button>
+          <p className={`w-full text-[11.5px] ${INK_2} mt-0.5`}>ทำงานวันไหนบ้าง</p>
+          <Days days={wd} onChange={setWd} />
           {state.hours === "done" && (
             <button type="button" onClick={() => set("hours", "todo")} className={`${INK_3} px-1.5 py-1 text-[12.5px] underline cursor-pointer`}>
               แก้ใหม่
@@ -556,12 +622,12 @@ export function FirstRunSetup({
               <option key={t}>{t}</option>
             ))}
           </select>
-          <span className="text-[12.5px]">จันทร์–ศุกร์</span>
+          <span className="text-[12.5px]">น.</span>
           <button
             type="button"
             onClick={() => {
               set("brief", "done");
-              after(() => onSaveBrief(bt, true));
+              after(() => onSaveBrief(bt, true, bd));
             }}
             className={`${NOTE_SM} ${PRESS} ${N_GREEN} px-2.5 py-1 text-[12.5px] cursor-pointer`}
           >
@@ -577,13 +643,15 @@ export function FirstRunSetup({
               onClick={() => {
                 const wasOn = state.brief === "done";
                 set("brief", "todo");
-                if (wasOn) after(() => onSaveBrief(bt, false));
+                if (wasOn) after(() => onSaveBrief(bt, false, bd));
               }}
               className={`${INK_3} px-1.5 py-1 text-[12.5px] underline cursor-pointer`}
             >
               ยกเลิก
             </button>
           )}
+          <p className={`w-full text-[11.5px] ${INK_2} mt-0.5`}>ส่งวันไหนบ้าง</p>
+          <Days days={bd} onChange={setBd} />
         </SetupCard>
 
         <SetupCard

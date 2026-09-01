@@ -29,6 +29,15 @@ export async function GET(req: Request) {
       /* ค่าข้างบนใส่ค่าเริ่มต้นให้เสมอ หน้าตั้งค่าครั้งแรกจึงแยกไม่ออกว่าผู้ใช้
          ตั้งเองแล้วหรือยัง — ธงนี้บอกว่าเคยกดบันทึกจริงหรือเปล่า */
       hours_set: !!s.work_start,
+      // วันทำงาน 0=อาทิตย์ … 6=เสาร์ ไม่เคยตั้ง = จันทร์–ศุกร์
+      work_days: (() => {
+        try {
+          const d = JSON.parse(s.work_days || "[]") as number[];
+          return Array.isArray(d) && d.length ? d : [1, 2, 3, 4, 5];
+        } catch {
+          return [1, 2, 3, 4, 5];
+        }
+      })(),
       work_location: work?.location || "",
       home_location: home?.location || "",
       meeting_remind_minutes,
@@ -51,6 +60,10 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     if (body.onboarding) await setSetting(upn, "onboarding", String(body.onboarding));
+    if (Array.isArray(body.work_days)) {
+      const days = [...new Set((body.work_days as unknown[]).map(Number))].filter((d) => d >= 0 && d <= 6);
+      await setSetting(upn, "work_days", JSON.stringify(days.sort()));
+    }
     if (body.work_start) await setSetting(upn, "work_start", String(body.work_start));
     if (body.work_end) await setSetting(upn, "work_end", String(body.work_end));
 

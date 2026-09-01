@@ -24,6 +24,7 @@ import { useFreshBuild } from "@/components/useFreshBuild";
 import SplashScreen, { SPLASH_START, type SplashSteps } from "@/components/SplashScreen";
 import { FirstRunSetup, NoLicenseNag, SetupNag, TourOverlay } from "@/components/Onboarding";
 import { InboxBell, InboxSheet, useInbox, usePushRegister } from "@/components/Inbox";
+import { NewsTopicsSheet } from "@/components/NewsTopics";
 import {
   AssistantFace,
   authedGet,
@@ -196,6 +197,7 @@ function AppShell() {
   const [onbLocal, setOnbLocal] = useState<string | null>(null);
   const [setupOpen, setSetupOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
+  const [newsOpen, setNewsOpen] = useState(false);
   const inbox = useInbox();
   usePushRegister();
   const [tourOpen, setTourOpen] = useState(false);
@@ -436,23 +438,33 @@ function AppShell() {
     window.setTimeout(() => void postSettings({ onboarding: how }).catch(() => {}), 0);
   };
 
-  const saveHours = (start: string, end: string) => {
+  const saveHours = (start: string, end: string, days: number[]) => {
     setSettings((p) => ({
       ...p,
-      settings: { ...(p.settings || {}), work_start: start, work_end: end, hours_set: true },
+      settings: { ...(p.settings || {}), work_start: start, work_end: end, work_days: days, hours_set: true },
     }));
-    void postSettings({ work_start: start, work_end: end }).catch(() => {});
+    void postSettings({ work_start: start, work_end: end, work_days: days }).catch(() => {});
   };
 
-  const saveBrief = async (time: string, enabled: boolean) => {
+  const saveBrief = async (time: string, enabled: boolean, days: number[]) => {
     setSettings((p) =>
-      p.notify ? { ...p, notify: { ...p.notify, brief: { ...p.notify.brief, enabled, time } } } : p
+      p.notify ? { ...p, notify: { ...p.notify, brief: { ...p.notify.brief, enabled, time, days } } } : p
     );
     const token = await getToken();
     await fetch("/api/notify", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ kind: "brief", enabled, time, days: [1, 2, 3, 4, 5] }),
+      body: JSON.stringify({ kind: "brief", enabled, time, days }),
+    }).catch(() => {});
+  };
+
+  /** ถอนสิทธิ์ปฏิทินที่เคยอนุญาตไว้ — กดผิดต้องเอาคืนได้ */
+  const revokeCalendar = async () => {
+    setSettings((p) => ({ ...p, ms: { ...(p.ms || {}), linked: false } }));
+    const token = await getToken();
+    await fetch("/api/oauth/microsoft/status", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
     }).catch(() => {});
   };
 
@@ -642,6 +654,8 @@ function AppShell() {
         })}
       </nav>
 
+      {newsOpen && <NewsTopicsSheet onClose={() => setNewsOpen(false)} />}
+
       {inboxOpen && (
         <InboxSheet
           notices={inbox.notices}
@@ -662,9 +676,12 @@ function AppShell() {
           briefOn={!!settings.notify?.brief?.enabled}
           briefTime={settings.notify?.brief?.time || "07:30"}
           newsOn={!!settings.notify?.news?.enabled}
-          onOpenNews={() => router.push("/consents")}
+          onOpenNews={() => setNewsOpen(true)}
           onSaveHours={saveHours}
-          onSaveBrief={(t, on) => void saveBrief(t, on)}
+          briefDays={settings.notify?.brief?.days || []}
+          workDays={settings.settings?.work_days || []}
+          onSaveBrief={(t, on, d) => void saveBrief(t, on, d)}
+          onRevoke={() => void revokeCalendar()}
           onGrant={() => void grantCalendar()}
           onFinish={finishSetup}
         />
