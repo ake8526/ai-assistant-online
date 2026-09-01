@@ -24,12 +24,73 @@ const TOKEN_TTL_DAYS = 60;
 
 type DeviceToken = { t: string; at: number; plat?: string };
 
+/**
+ * ทำคีย์ที่คนวางมาให้ node อ่านออก
+ *
+ * คีย์ใน service account JSON เป็น PEM ที่มีขึ้นบรรทัดจริง แต่เวลาคัดลอกจากไฟล์
+ * ไปวางในช่อง env มันเพี้ยนได้หลายแบบ และทุกแบบให้ error เดียวกันคือ
+ * "DECODER routines::unsupported" ซึ่งไม่บอกว่าเพี้ยนตรงไหน (เกิดขึ้นจริง)
+ *  - ติดเครื่องหมายคำพูดหัวท้ายมาจาก JSON
+ *  - เป็น \n ตัวอักษรสองตัว ไม่ใช่ขึ้นบรรทัดจริง
+ *  - ขึ้นบรรทัดหายหมดกลายเป็นบรรทัดเดียว
+ *  - มี \r ปนมาจาก Windows
+ * ตัวนี้รับมาได้ทุกแบบ แล้วประกอบ PEM ใหม่ให้ถูกรูป
+ */
+function normalizeKey(raw: string): string {
+  let k = (raw || "").trim();
+  if (k.length > 1 && ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'")))) {
+    k = k.slice(1, -1);
+  }
+  k = k.replace(/\\r/g, "").replace(/\\n/g, "\n").replace(/\r/g, "").trim();
+  const m = k.match(/-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/);
+  if (m) {
+    const body = m[2].replace(/\s+/g, "");
+    const lines = body.match(/.{1,64}/g) || [];
+    k = `-----BEGIN ${m[1]}-----\n${lines.join("\n")}\n-----END ${m[1]}-----\n`;
+  } else if (!k.endsWith("\n")) {
+    k += "\n";
+  }
+  return k;
+}
+
+const unquote = (v: string) => (v || "").trim().replace(/^["']|["']$/g, "");
+
 function creds() {
-  const projectId = process.env.FCM_PROJECT_ID || "";
-  const clientEmail = process.env.FCM_CLIENT_EMAIL || "";
-  const privateKey = (process.env.FCM_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-  if (!projectId || !clientEmail || !privateKey) return null;
+  const projectId = unquote(process.env.FCM_PROJECT_ID || "");
+  const clientEmail = unquote(process.env.FCM_CLIENT_EMAIL || "");
+  const privateKey = normalizeKey(process.env.FCM_PRIVATE_KEY || "");
+  if (!projectId || !clientEmail || !privateKey.includes("PRIVATE KEY")) return null;
   return { projectId, clientEmail, privateKey };
+}
+
+/**
+ * ตรวจว่าคีย์ใช้ได้จริงไหม — ขอ access token หนึ่งครั้งแล้วบอกว่าติดตรงไหน
+ *
+ * แยก "ยังไม่ได้ตั้งค่า" กับ "ตั้งแล้วแต่คีย์เพี้ยน" ให้ชัด เพราะสองอันนี้อาการ
+ * หน้างานเหมือนกันเป๊ะ คือแจ้งเตือนไม่เด้งเฉย ๆ
+ */
+export async function pushSelfCheck(): Promise<{ ok: boolean; error?: string }> {
+  if (!creds()) {
+    return {
+      ok: false,
+      error: "ยังไม่ได้ตั้งค่า env FCM_PROJECT_ID / FCM_CLIENT_EMAIL / FCM_PRIVATE_KEY (หรือคีย์ไม่ใช่ PEM)",
+    };
+  }
+  try {
+    const t = await accessToken();
+    return t
+      ? { ok: true }
+      : { ok: false, error: "ขอ access token จาก Google ไม่ผ่าน — ตรวจ FCM_CLIENT_EMAIL และคีย์" };
+  } catch (e) {
+    const msg = String((e as Error).message || e);
+    if (/DECODER|unsupported|PEM|asn1/i.test(msg)) {
+      return {
+        ok: false,
+        error: `FCM_PRIVATE_KEY อ่านไม่ออก — ต้องเป็นค่าใน "private_key" ทั้งก้อนรวมบรรทัด BEGIN/END (${msg.slice(0, 60)})`,
+      };
+    }
+    return { ok: false, error: msg.slice(0, 160) };
+  }
 }
 
 export function pushConfigured(): boolean {

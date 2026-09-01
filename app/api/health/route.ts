@@ -3,9 +3,12 @@ import { AuthError, resolveUser } from "@/lib/auth";
 import { getLineId, lineQuotaReading } from "@/lib/line";
 import { getDelegatedGraphToken, hasMicrosoftToken } from "@/lib/msGraphOAuth";
 import { admin, assertConfigured } from "@/lib/supabaseServer";
-import { deviceCount, pushConfigured } from "@/lib/push";
+import { deviceCount, pushConfigured, pushSelfCheck } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
+
+/** ใช้กระโดดออกจากบล็อกเช็ค push โดยไม่ให้ไปโดน catch ที่แปลเป็น error จริง */
+class SkipPush extends Error {}
 const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
 
 export type HealthLevel = "ok" | "warn" | "down";
@@ -120,6 +123,16 @@ export async function GET(req: Request) {
           note: "ยังไม่ได้ตั้งค่า FCM บนเซิร์ฟเวอร์ (env FCM_*)",
         });
       } else {
+        const check = await pushSelfCheck();
+        if (!check.ok) {
+          parts.push({
+            key: "push",
+            name: "แจ้งเตือนขึ้นเครื่อง",
+            level: "down",
+            note: (check.error || "คีย์ FCM ใช้ไม่ได้").slice(0, 160),
+          });
+          throw new SkipPush();
+        }
         const n = await deviceCount(upn);
         parts.push({
           key: "push",
@@ -131,12 +144,14 @@ export async function GET(req: Request) {
         });
       }
     } catch (e) {
-      parts.push({
-        key: "push",
-        name: "แจ้งเตือนขึ้นเครื่อง",
-        level: "warn",
-        note: String((e as Error).message || e).slice(0, 160),
-      });
+      if (!(e instanceof SkipPush)) {
+        parts.push({
+          key: "push",
+          name: "แจ้งเตือนขึ้นเครื่อง",
+          level: "warn",
+          note: String((e as Error).message || e).slice(0, 160),
+        });
+      }
     }
 
     const level: HealthLevel = parts.some((p) => p.level === "down")
