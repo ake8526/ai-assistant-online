@@ -83,5 +83,9 @@ export async function authedGet<T>(
   const sep = path.includes("?") ? "&" : "?";
   const url = graphToken ? `${path}${sep}graphToken=${encodeURIComponent(graphToken)}` : path;
   const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  /* 401 คือเซสชันใช้ไม่ได้แล้ว ไม่ใช่ข้อมูลผิด — ของเดิมโผล่ข้อความดิบของเซิร์ฟเวอร์
+     ("Token validation failed: Invalid Compact JWS") ให้ผู้ใช้อ่านซึ่งไม่ได้บอกว่า
+     ต้องทำอะไรต่อ */
+  if (r.status === 401) throw new Error("เซสชันหมดอายุ — ออกจากระบบแล้วเข้าใหม่อีกครั้งครับ");
   return (await r.json()) as T;
 }

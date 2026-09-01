@@ -20,6 +20,21 @@ function isEmbeddedBrowser(): boolean {
   );
 }
 
+/**
+ * บัญชี dev ใช้ได้แค่ตอนพัฒนาในเครื่อง
+ *
+ * ของเดิมถ้า MSAL ล้ม (WebView ของแอปเปิด popup/iframe ไม่ได้) จะตกไป devLogin()
+ * ทุกที่รวมทั้งเครื่องจริง แล้วเก็บบัญชีปลอมลง localStorage — บูทครั้งต่อไปหยิบ
+ * ของปลอมมาใช้ตลอด ทุก API เลยตอบ "Token validation failed: Invalid Compact JWS"
+ * เพราะโทเคนที่ส่งไปคือสตริง "dev-token-admin" ไม่ใช่ JWT (เกิดขึ้นจริงบนมือถือ)
+ * และผู้ใช้ออกจากสถานะนี้เองไม่ได้ เพราะหน้าจอยังขึ้นว่าล็อกอินแล้ว
+ */
+function devAllowed(): boolean {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return h === "localhost" || h === "127.0.0.1" || h.endsWith(".local");
+}
+
 function rememberReturnPath() {
   try {
     sessionStorage.setItem(RETURN_KEY, window.location.pathname + window.location.search);
@@ -118,7 +133,9 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         try {
           const devSaved = localStorage.getItem("dev_m365_account");
-          if (devSaved) setAccount(JSON.parse(devSaved));
+          if (devSaved && devAllowed()) setAccount(JSON.parse(devSaved));
+          // ค้างมาจากรุ่นก่อนที่ตกไปบัญชีปลอมบนเครื่องจริง — ลบให้หลุดจากสถานะนี้
+          else if (devSaved) localStorage.removeItem("dev_m365_account");
         } catch { /* ignore */ }
       }
       setReady(true);
@@ -133,6 +150,7 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const devLogin = () => {
+    if (!devAllowed()) return;
     const devAccount: AccountInfo = {
       homeAccountId: "dev-admin-id",
       environment: "login.microsoftonline.com",
@@ -182,7 +200,7 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async () => {
-    if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+    if (devAllowed()) {
       // Dev environment fallback to instant login as Weerasak Pimton
       devLogin();
       return;
@@ -214,6 +232,8 @@ export function M365AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.error("M365 Login error:", err);
+      // บนเครื่องจริง devLogin() ไม่ทำอะไร — คงสถานะยังไม่ล็อกอินไว้ ดีกว่าพาไป
+      // ต่อด้วยบัญชีปลอมที่ทุก API ปฏิเสธ
       devLogin();
     }
   };
