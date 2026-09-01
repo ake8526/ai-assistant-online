@@ -21,6 +21,7 @@ import { useKeepAwake } from "@/components/useKeepAwake";
 import { useTheme } from "@/components/useTheme";
 import { useFreshBuild } from "@/components/useFreshBuild";
 import SplashScreen, { SPLASH_START, type SplashSteps } from "@/components/SplashScreen";
+import { FirstRunSetup, SetupNag, TourOverlay } from "@/components/Onboarding";
 import {
   AssistantFace,
   authedGet,
@@ -186,6 +187,12 @@ function AppShell() {
   /* มี build ใหม่ขึ้นแล้วโหลดหน้าใหม่เอง — WebView ไม่โหลดใหม่ตอนเปิดจากรายการ
      แอปล่าสุด ทำให้ยังเจอบั๊กฝั่งหน้าจอที่แก้ไปแล้ว */
   const build = useFreshBuild();
+  /* เข้าใช้ครั้งแรก — ค่าจากเซิร์ฟเวอร์บอกว่าเคยผ่านหน้าตั้งค่าหรือยัง
+     ("" = ยังไม่เคย) ค่าที่เพิ่งกดในรอบนี้ทับของเซิร์ฟเวอร์ไว้ก่อน จะได้ไม่ต้อง
+     รอโหลดใหม่ทั้งชุด */
+  const [onbLocal, setOnbLocal] = useState<string | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [booted, setBooted] = useState(false);
   /* ปิดป้ายบอกรุ่นใหม่ได้ แต่ผูกกับรหัส build ที่ปิดไป — deploy รอบหน้าป้ายกลับมาเอง */
@@ -395,6 +402,50 @@ function AppShell() {
     openSheet(text);
   };
 
+  /* ── เข้าใช้ครั้งแรก ──────────────────────────────────────────────────
+     จำที่เซิร์ฟเวอร์ว่าผ่านหน้าตั้งค่าแล้ว ไม่ใช่ที่เครื่อง — คนเดียวกันเปลี่ยน
+     เครื่องหรือลงแอปใหม่จะได้ไม่โดนต้อนเข้าหน้าตั้งค่าซ้ำอีกรอบ */
+  const onb = onbLocal ?? settings.settings?.onboarding ?? null;
+  const showSetup = setupOpen || onb === "";
+
+  const postSettings = async (body: Record<string, unknown>) => {
+    const token = await getToken();
+    await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+  };
+
+  const finishSetup = (how: "done" | "skip") => {
+    setSetupOpen(false);
+    setOnbLocal(how);
+    // จำไม่ได้ก็แค่ขึ้นใหม่รอบหน้า ไม่ใช่เรื่องที่ต้องขวางผู้ใช้ด้วยข้อความ error
+    void postSettings({ onboarding: how }).catch(() => {});
+    // ข้ามการตั้งค่า ไม่ได้แปลว่าข้ามการสอน — ยังพาเดินดูให้ก่อน
+    setTourOpen(true);
+  };
+
+  const saveHours = (start: string, end: string) => {
+    setSettings((p) => ({ ...p, settings: { ...(p.settings || {}), work_start: start, work_end: end } }));
+    void postSettings({ work_start: start, work_end: end }).catch(() => {});
+  };
+
+  const saveBrief = async (time: string) => {
+    const token = await getToken();
+    await fetch("/api/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ kind: "brief", enabled: true, time, days: [1, 2, 3, 4, 5] }),
+    }).catch(() => {});
+  };
+
+  const grantCalendar = async () => {
+    const token = await getToken();
+    if (!token) return;
+    window.location.href = `/api/oauth/microsoft/start?token=${encodeURIComponent(token)}&back=/`;
+  };
+
   return (
     <div className={`h-screen [height:100dvh] overflow-hidden ${BOARD} flex flex-col`}>
       {!contentHidden && (
@@ -413,6 +464,7 @@ function AppShell() {
             onClick={() => setClearSignal((n) => n + 1)}
             title="ล้างความจำการสนทนา"
             aria-label="ล้างความจำ"
+            data-tour="chat-clear"
             className={`${NOTE_SM} ${PRESS} ${N_PINK} shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold cursor-pointer`}
           >
             <Eraser className="w-3.5 h-3.5" /> ล้าง
@@ -450,6 +502,10 @@ function AppShell() {
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
+      )}
+
+      {!contentHidden && onb === "skip" && !settings.ms?.linked && (
+        <SetupNag onOpen={() => setSetupOpen(true)} />
       )}
 
       {!contentHidden && tab === "chat" && next && (
@@ -505,7 +561,15 @@ function AppShell() {
             />
           )}
           {tab === "set" && (
-            <SettingsBoard data={settings} onChange={setSettings} keepAwake={keepAwake} theme={theme} build={build} />
+            <SettingsBoard
+              data={settings}
+              onChange={setSettings}
+              keepAwake={keepAwake}
+              theme={theme}
+              build={build}
+              onReplayTour={() => setTourOpen(true)}
+              onOpenSetup={() => setSetupOpen(true)}
+            />
           )}
         </>
       )}
@@ -533,6 +597,7 @@ function AppShell() {
               key={key}
               onClick={() => setTab(key)}
               aria-current={on ? "page" : undefined}
+              data-tour={`tab-${key}`}
               className={`flex flex-col items-center gap-1 py-0.5 cursor-pointer ${on ? "" : INK_3}`}
             >
               <span
@@ -557,6 +622,33 @@ function AppShell() {
           );
         })}
       </nav>
+
+      {showSetup && booted && (
+        <FirstRunSetup
+          msLinked={!!settings.ms?.linked}
+          lineLinked={false}
+          hoursSet={!!settings.settings?.hours_set}
+          workStart={settings.settings?.work_start || ""}
+          workEnd={settings.settings?.work_end || ""}
+          briefOn={!!settings.notify?.brief?.enabled}
+          briefTime={settings.notify?.brief?.time || "07:30"}
+          onSaveHours={saveHours}
+          onSaveBrief={(t) => void saveBrief(t)}
+          onGrant={() => void grantCalendar()}
+          onFinish={finishSetup}
+        />
+      )}
+
+      {tourOpen && !showSetup && booted && (
+        <TourOverlay
+          onTab={setTab}
+          onClose={() => {
+            setTourOpen(false);
+            // จบทัวร์ที่แท็บตั้งค่า แล้วปล่อยให้ค้างอยู่ตรงนั้น คนใช้ต้องมาหาแท็บแชทเอง
+            setTab("chat");
+          }}
+        />
+      )}
 
       {!booted && (
         <SplashScreen steps={steps} eventCount={events?.length} leaving={leaving} />

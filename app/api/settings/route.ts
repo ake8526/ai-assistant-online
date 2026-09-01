@@ -26,10 +26,15 @@ export async function GET(req: Request) {
     return NextResponse.json({
       work_start: s.work_start || "09:00",
       work_end: s.work_end || "17:00",
+      /* ค่าข้างบนใส่ค่าเริ่มต้นให้เสมอ หน้าตั้งค่าครั้งแรกจึงแยกไม่ออกว่าผู้ใช้
+         ตั้งเองแล้วหรือยัง — ธงนี้บอกว่าเคยกดบันทึกจริงหรือเปล่า */
+      hours_set: !!s.work_start,
       work_location: work?.location || "",
       home_location: home?.location || "",
       meeting_remind_minutes,
       task_remind_ahead_days,
+      // "" = ยังไม่เคยผ่านหน้าตั้งค่าครั้งแรก, done = ทำครบ, skip = กดข้ามไว้
+      onboarding: s.onboarding || "",
       perms,
     });
   } catch (e) {
@@ -45,6 +50,7 @@ export async function POST(req: Request) {
     const upn = await requireUser(req);
     const body = await req.json();
 
+    if (body.onboarding) await setSetting(upn, "onboarding", String(body.onboarding));
     if (body.work_start) await setSetting(upn, "work_start", String(body.work_start));
     if (body.work_end) await setSetting(upn, "work_end", String(body.work_end));
 

@@ -355,7 +355,7 @@ export default function ScheduleTab({
       )}
 
       {/* ดูเป็นแถบ 7 วัน หรือกางเป็นตารางเดือน — วันที่เลือกเดินไปกับทั้งสองโหมด */}
-      <div className="flex items-center gap-2">
+      <div data-tour="sched-view" className="flex items-center gap-2">
         <div className="flex border-2 border-[var(--nb-ink)] rounded-[10px] overflow-hidden shadow-[2px_2px_0_var(--nb-ink)] shrink-0">
           {(
             [
@@ -400,7 +400,7 @@ export default function ScheduleTab({
       </div>
 
       {range === "week" ? (
-        <div className="grid grid-cols-7 gap-1.5">
+        <div data-tour="sched-days" className="grid grid-cols-7 gap-1.5">
           {days.map((d) => {
             const has = !!perDay.get(d.key);
             const on = d.key === selKey;
@@ -473,7 +473,7 @@ export default function ScheduleTab({
       )}
 
       {/* สลับดูนัดหมาย / ห้องว่าง ของวันเดียวกัน */}
-      <div className="flex border-2 border-[var(--nb-ink)] rounded-[12px] overflow-hidden shadow-[2px_2px_0_var(--nb-ink)]">
+      <div data-tour="sched-rooms" className="flex border-2 border-[var(--nb-ink)] rounded-[12px] overflow-hidden shadow-[2px_2px_0_var(--nb-ink)]">
         {(
           [
             ["ev", "นัดหมาย", String(dayEvents.length)],
@@ -515,7 +515,7 @@ export default function ScheduleTab({
             <BlankNote>ไม่มีนัดหมาย — ว่างทั้งวันครับ</BlankNote>
           )}
 
-          <div className="flex flex-col gap-3.5">
+          <div data-tour="sched-events" className="flex flex-col gap-3.5">
             {dayEvents.map((e, i) => {
               const past = isPast(e, now);
               return (

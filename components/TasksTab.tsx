@@ -122,7 +122,7 @@ export default function TasksTab({
       </div>
 
       {!!list.length && (
-        <div className={`${NOTE_SM} ${counts.over ? N_PINK : N_GREEN} px-3.5 py-2.5 -rotate-[0.4deg]`}>
+        <div data-tour="task-list" className={`${NOTE_SM} ${counts.over ? N_PINK : N_GREEN} px-3.5 py-2.5 -rotate-[0.4deg]`}>
           <p className="font-hand text-[16px]">
             เกินกำหนด {counts.over} · วันนี้ {counts.today} · หลังจากนี้ {counts.later}
           </p>

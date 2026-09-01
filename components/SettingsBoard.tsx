@@ -53,6 +53,10 @@ export type Settings = {
   task_remind_ahead_days?: number;
   /** สิทธิ์ของผู้ใช้คนนี้ (lib/roles) — บางปุ่มต้องรู้ตั้งแต่ตอนวาด */
   perms?: string[];
+  /** ผ่านหน้าตั้งค่าครั้งแรกหรือยัง — "" | "done" | "skip" */
+  onboarding?: string;
+  /** เคยตั้งเวลาทำงานเองหรือยัง (work_start มีค่าเริ่มต้นให้เสมอ จึงดูจากค่านั้นไม่ได้) */
+  hours_set?: boolean;
   error?: string;
 };
 export type MsStatus = { linked?: boolean; note?: string; error?: string };
@@ -228,12 +232,18 @@ export default function SettingsBoard({
   keepAwake,
   theme,
   build,
+  onReplayTour,
+  onOpenSetup,
 }: {
   data: SettingsData;
   onChange: (next: SettingsData) => void;
   keepAwake: KeepAwake;
   theme: Theme;
   build: BuildInfo;
+  /** เล่นทัวร์สอนใช้อีกครั้ง — คนที่กดข้ามตอนแรกต้องกลับมาเรียนได้ */
+  onReplayTour?: () => void;
+  /** กลับไปหน้าตั้งค่าครั้งแรก เพื่อทำข้อที่ข้ามไว้ให้ครบ */
+  onOpenSetup?: () => void;
 }) {
   const { account, logout, switchAccount, getToken, getGraphToken } = useM365Auth();
   const [open, setOpen] = useState<CatId | null>(null);
@@ -433,6 +443,7 @@ export default function SettingsBoard({
       title: "ช่วยเหลือ & ระบบ",
       kbtn: "v3.0",
       lines: [
+        "เรียนรู้การใช้งาน",
         "คู่มือคำสั่งทั้งหมด",
         `สถานะระบบ: ${health === null ? "กำลังตรวจ…" : health.label}`,
         `โค้ด: ${build.mine || "—"}${build.stale ? " (มีรุ่นใหม่)" : ""}`,
@@ -452,11 +463,13 @@ export default function SettingsBoard({
       {/* กรอบเส้นประ บอกว่าการ์ดข้างในคือของที่แปะอยู่บนบอร์ด */}
       <div className="border-2 border-dashed border-[var(--nb-dash)] rounded-[16px] p-3 space-y-3">
         <p className={`font-marker text-[12.5px] ${INK_2} px-0.5`}>แตะการ์ดเพื่อดูและปรับค่า</p>
-        <div className="grid grid-cols-2 gap-3">
+        <div data-tour="set-cards" className="grid grid-cols-2 gap-3">
           {CATS.map(({ id, tint, tilt, Icon, title, kbtn, lines }) => (
             <button
               key={id}
               onClick={() => setOpen(id)}
+              /* ทัวร์สอนใช้ชี้ที่การ์ดนี้ — ปุ่มเล่นทัวร์ซ้ำอยู่ข้างในซึ่งยังยุบอยู่ตอนนั้น */
+              data-tour={id === "help" ? "set-learn" : undefined}
               className={`${NOTE} ${tint} ${tilt} ${PRESS} px-3 pt-3 pb-2.5 flex flex-col gap-1.5 text-left cursor-pointer`}
             >
               <h3 className="text-[13.5px] font-bold leading-tight flex items-center gap-1.5">
@@ -908,6 +921,30 @@ export default function SettingsBoard({
 
                 {cat.id === "help" && (
                   <>
+                    <Row>
+                      <div data-tour="set-learn" className="flex-1 min-w-0">
+                        <h4 className="text-[13.5px] font-semibold">เรียนรู้การใช้งาน</h4>
+                        <p className={`text-[11.5px] ${INK_2}`}>
+                          ดูทัวร์ชี้ทีละจุดอีกครั้ง หรือกลับไปหน้าตั้งค่าครั้งแรก
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <button
+                            type="button"
+                            onClick={onReplayTour}
+                            className={`${NOTE_SM} ${PRESS} ${N_YELLOW} px-2.5 py-1 text-[12.5px] cursor-pointer`}
+                          >
+                            เล่นทัวร์อีกครั้ง
+                          </button>
+                          <button
+                            type="button"
+                            onClick={onOpenSetup}
+                            className={`${NOTE_SM} ${PRESS} ${SURFACE} px-2.5 py-1 text-[12.5px] cursor-pointer`}
+                          >
+                            หน้าตั้งค่าครั้งแรก
+                          </button>
+                        </div>
+                      </div>
+                    </Row>
                     <Row>
                       <Link href="/help" className="flex-1 min-w-0 flex items-center gap-2">
                         <span className="flex-1 min-w-0">

@@ -551,7 +551,7 @@ export default function AssistantTab({
               ))}
             </div>
           )}
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div data-tour="chat-chips" className="flex gap-2 overflow-x-auto pb-1">
             {chips.map((c, i) => (
               <button
                 key={`${c.text}-${i}`}
@@ -586,6 +586,7 @@ export default function AssistantTab({
               disabled={busy}
               aria-label="ดูคำสั่งทั้งหมด"
               aria-expanded={slash.open}
+              data-tour="chat-ask"
               className={`${NOTE} ${PRESS} ${
                 slash.open ? N_GREEN : N_PURPLE
               } font-marker grid place-items-center w-11 h-11 shrink-0 text-[18px] leading-none disabled:opacity-40 cursor-pointer`}
@@ -593,6 +594,7 @@ export default function AssistantTab({
               ?
             </button>
             <input
+              data-tour="chat-input"
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
