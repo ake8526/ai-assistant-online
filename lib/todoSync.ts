@@ -33,6 +33,10 @@ const LIST_NAME = "KTIS X";
 const K_ON = "todo_sync";
 const K_LIST = "todo_list_id";
 const K_MAP = "todo_map";
+const K_LAST = "todo_last_sync";
+/* cron ตัวเตือนงานเดินทุกนาที แต่ To Do ไม่ต้องละเอียดขนาดนั้น — เว้นช่วงไว้
+   ไม่ให้ยิง Graph ฟรี ๆ ทุกนาทีต่อคน (สั่งเองด้วย «ซิงค์ todo» ไม่ติดเพดานนี้) */
+const SWEEP_EVERY_MS = 3 * 60_000;
 /** งานที่ปิดแล้วไม่ต้องจำ mapping ไว้ตลอด — เก็บพอให้ปิดฝั่ง To Do ได้ */
 const MAP_MAX = 300;
 
@@ -177,6 +181,24 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
   const map = await loadMap(upn);
   const tasks = await listTasks(upn);
 
+  /* อ่านการ์ดทั้งลิสต์ทีเดียวแล้วทำ index ไว้
+     
+     ของเดิมยิง GET แยกทีละงานเพื่อดูสถานะ — cron รอบละนาที คนเดียวก็เกิน
+     4,000 คำขอต่อวันแล้ว และโตตามจำนวนงานคูณจำนวนคน ลิสต์นี้เป็นลิสต์ที่ระบบ
+     สร้างเอง ขนาดจึงคุมได้ อ่านหน้าเดียว 200 การ์ดพอ (mapping เก็บไว้ 300) */
+  let cards: RemoteTask[] = [];
+  let remoteOk = true;
+  try {
+    const page = (await asUser(upn, () =>
+      graphGet(`/me/todo/lists/${listId}/tasks`, { $top: "200" })
+    )) as { value?: RemoteTask[] };
+    cards = page.value || [];
+  } catch (e) {
+    remoteOk = false;
+    out.reason = `อ่านลิสต์ To Do ไม่สำเร็จ: ${String(e).slice(0, 120)}`;
+  }
+  const byId = new Map(cards.filter((c) => c.id).map((c) => [c.id!, c]));
+
   for (const t of tasks) {
     const key = String(t.id);
     const todoId = map[key];
@@ -190,23 +212,21 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
       )) as { id?: string };
       if (made?.id) {
         map[key] = made.id;
+        byId.set(made.id, { id: made.id, title: t.title, status: "notStarted" });
         out.created += 1;
       }
       continue;
     }
 
-    let remote: { status?: string } | null = null;
-    try {
-      remote = (await asUser(upn, () =>
-        graphGet(`/me/todo/lists/${listId}/tasks/${todoId}`)
-      )) as { status?: string };
-    } catch {
-      // ถูกลบใน To Do — ลืม mapping ทิ้ง รอบหน้าจะสร้างใหม่ถ้างานยังค้าง
-      delete map[key];
+    const card = byId.get(todoId);
+    if (!card) {
+      /* ไม่อยู่ในลิสต์แล้ว — ถูกลบใน To Do ก็ลืม mapping ทิ้ง รอบหน้าสร้างใหม่
+         ถ้างานยังค้าง แต่ตอนอ่านลิสต์ไม่สำเร็จห้ามลืม ไม่งั้นจะสร้างซ้ำทั้งลิสต์ */
+      if (remoteOk) delete map[key];
       continue;
     }
 
-    const doneThere = remote?.status === "completed";
+    const doneThere = card.status === "completed";
     if (closedHere && !doneThere) {
       await asUser(upn, () =>
         graphSend(`/me/todo/lists/${listId}/tasks/${todoId}`, "PATCH", { status: "completed" })
@@ -218,38 +238,30 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
     }
   }
 
-  /* ทางกลับ: การ์ดที่เจ้าตัวพิมพ์เองในลิสต์ KTIS X ─ ดึงเข้ามาเป็นงานฝั่งนี้
+  /* ทางกลับ: การ์ดที่เจ้าตัวพิมพ์เองในลิสต์ KTIS X — ดึงเข้ามาเป็นงานฝั่งนี้
      
-     ดึงจากลิสต์ KTIS X ลิสต์เดียว ไม่ไล่ทุกลิสต์ในบัญชี ─ ลิสต์ Tasks กับ
+     ดึงจากลิสต์ KTIS X ลิสต์เดียว ไม่ไล่ทุกลิสต์ในบัญชี — ลิสต์ Tasks กับ
      ลิสต์ส่วนตัวมีเรื่องบ้าน เรื่องซื้อของ ที่ไม่ควรโผล่มาในไลน์ที่ทำงาน
      ลิสต์นี้เป็นลิสต์ที่ระบบสร้างเอง ใครพิมพ์ลงในนี้ถือว่าตั้งใจให้ผู้ช่วยเห็น */
-  try {
-    const remote = (await asUser(upn, () =>
-      graphGet(`/me/todo/lists/${listId}/tasks`, { $top: "100" })
-    )) as { value?: RemoteTask[] };
-    const known = new Set(Object.values(map));
-    for (const card of remote.value || []) {
-      if (!card?.id || known.has(card.id)) continue;
-      // ปิดไปแล้วไม่ต้องเอาเข้ามาให้เป็นงานค้างใหม่
-      if (card.status === "completed") continue;
-      const title = String(card.title || "").trim();
-      if (!title) continue;
-      const id = await addTask({
-        owner_upn: upn,
-        title: title.slice(0, 300),
-        detail: String(card.body?.content || "").trim().slice(0, 2000),
-        due: remoteDue(card),
-        source: "todo",
-      });
-      if (id) {
-        map[String(id)] = card.id;
-        known.add(card.id);
-        out.importedFromTodo += 1;
-      }
+  const known = new Set(Object.values(map));
+  for (const card of cards) {
+    if (!card?.id || known.has(card.id)) continue;
+    // ปิดไปแล้วไม่ต้องเอาเข้ามาให้เป็นงานค้างใหม่
+    if (card.status === "completed") continue;
+    const title = String(card.title || "").trim();
+    if (!title) continue;
+    const id = await addTask({
+      owner_upn: upn,
+      title: title.slice(0, 300),
+      detail: String(card.body?.content || "").trim().slice(0, 2000),
+      due: remoteDue(card),
+      source: "todo",
+    });
+    if (id) {
+      map[String(id)] = card.id;
+      known.add(card.id);
+      out.importedFromTodo += 1;
     }
-  } catch (e) {
-    // ดึงกลับไม่ได้ไม่ควรทำให้ที่ส่งไปแล้วเสียเปล่า ─ บันทึกไว้แล้วไปต่อ
-    out.reason = `ดึงงานจาก To Do ไม่สำเร็จ: ${String(e).slice(0, 120)}`;
   }
 
   await saveMap(upn, map);
@@ -269,6 +281,8 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
  */
 export async function syncTodoForAll(): Promise<{
   users: number;
+  /** ข้ามเพราะเพิ่งซิงค์ไปไม่ถึง SWEEP_EVERY_MS */
+  skipped: number;
   created: number;
   completedInTodo: number;
   closedFromTodo: number;
@@ -277,6 +291,7 @@ export async function syncTodoForAll(): Promise<{
 }> {
   const out = {
     users: 0,
+    skipped: 0,
     created: 0,
     completedInTodo: 0,
     closedFromTodo: 0,
@@ -291,6 +306,11 @@ export async function syncTodoForAll(): Promise<{
   for (const row of (data || []) as { owner_upn: string }[]) {
     const upn = String(row.owner_upn || "").toLowerCase();
     if (!upn) continue;
+    const last = Number(await getSetting(upn, K_LAST)) || 0;
+    if (Date.now() - last < SWEEP_EVERY_MS) {
+      out.skipped += 1;
+      continue;
+    }
     out.users += 1;
     try {
       const r = await syncTodoForUser(upn);
@@ -298,6 +318,7 @@ export async function syncTodoForAll(): Promise<{
         out.failed.push({ upn, error: r.reason || "ไม่ทราบสาเหตุ" });
         continue;
       }
+      await setSetting(upn, K_LAST, String(Date.now()));
       out.created += r.created;
       out.completedInTodo += r.completedInTodo;
       out.closedFromTodo += r.closedFromTodo;
