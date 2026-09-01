@@ -15,7 +15,14 @@ import { getSetting, setSetting } from "@/lib/store";
 const OWNER = "_ops";
 const KEY = "roles";
 
-export type Perm = "monitor.view" | "log.view" | "chat.logs" | "jobs.stop" | "test.cmds" | "admin";
+export type Perm =
+  | "monitor.view"
+  | "log.view"
+  | "chat.logs"
+  | "jobs.stop"
+  | "test.cmds"
+  | "account.switch"
+  | "admin";
 
 export const PERMS: { key: Perm; label: string; hint: string }[] = [
   { key: "monitor.view", label: "ดูห้องทำงาน", hint: "เปิดหน้า /monitor และดูงานที่กำลังทำสด ๆ" },
@@ -25,6 +32,11 @@ export const PERMS: { key: Perm; label: string; hint: string }[] = [
   // คำสั่งทดสอบมีไว้ให้คนที่ดูแลระบบลองของ ไม่ใช่ของใช้ประจำวัน — คนทั่วไปเห็นแล้ว
   // กดเล่นจะได้ข้อความที่ดูเหมือนของจริงแต่ไม่ใช่ เมนูจึงไม่ควรโชว์ให้ทุกคน
   { key: "test.cmds", label: "คำสั่งทดสอบ", hint: "เห็นและใช้ /test กับ /test_meeting" },
+  {
+    key: "account.switch",
+    label: "เปลี่ยนบัญชี",
+    hint: "เห็นปุ่มเลือกบัญชีในตั้งค่า — สลับไปอีเมลอื่นได้ (บัญชีแรกบนเครื่องเป็นบัญชีหลัก)",
+  },
   { key: "admin", label: "จัดการสิทธิ์", hint: "เพิ่ม/ลบสิทธิ์ของคนอื่น" },
 ];
 

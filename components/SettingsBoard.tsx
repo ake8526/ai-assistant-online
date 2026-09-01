@@ -244,23 +244,24 @@ export default function SettingsBoard({
   const nf = data.notify;
   const health = data.health;
   const permsKey = (s?.perms || []).join(",");
-  const hasAdmin = (s?.perms || []).includes("admin");
+  const maySwitch =
+    (s?.perms || []).includes("account.switch") || (s?.perms || []).includes("admin");
   const [primaryUpn, setPrimaryUpn] = useState("");
   const [showSwitchAccount, setShowSwitchAccount] = useState(false);
   const currentUpn = (account?.username || "").toLowerCase();
   const onSecondary = !!primaryUpn && !!currentUpn && primaryUpn !== currentUpn;
 
-  // บัญชีแรกบนเครื่องนี้ = บัญชีหลัก; ถ้ามีสิทธิ์ admin จำไว้ว่าเครื่องนี้สลับบัญชีได้
+  // บัญชีแรกบนเครื่องนี้ = บัญชีหลัก; ถ้ามีสิทธิ์เปลี่ยนบัญชี จำไว้ว่าเครื่องนี้สลับได้
   useEffect(() => {
     if (!account?.username) {
       setPrimaryUpn("");
       setShowSwitchAccount(false);
       return;
     }
-    rememberPrimaryAccount(account.username, hasAdmin);
+    rememberPrimaryAccount(account.username, maySwitch);
     setPrimaryUpn(getPrimaryUpn());
     setShowSwitchAccount(canSwitchAccounts(s?.perms));
-  }, [account?.username, hasAdmin, permsKey, s?.perms]);
+  }, [account?.username, maySwitch, permsKey, s?.perms]);
 
   const load = useCallback(async () => {
     const [settings, status] = await Promise.all([
@@ -554,7 +555,7 @@ export default function SettingsBoard({
                           <p className={`text-[11.5px] ${INK_2}`}>
                             {onSecondary
                               ? "สลับกลับบัญชีหลัก หรือเข้าด้วยอีเมลอื่น"
-                              : "เข้าด้วยอีเมล Microsoft 365 อื่น (สำหรับผู้มีสิทธิ์จัดการ)"}
+                              : "เข้าด้วยอีเมล Microsoft 365 อื่น (ต้องมีสิทธิ์เปลี่ยนบัญชี)"}
                           </p>
                         </div>
                         <button
