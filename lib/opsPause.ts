@@ -66,3 +66,33 @@ export async function pauseJobs(jobs: PausableJob[], until = endOfBkkDay()): Pro
 export async function resumeJobs(): Promise<void> {
   await setSetting(OWNER, KEY, "");
 }
+
+/* ── สวิตช์เฉพาะ "เอางานจากประชุมมาเพิ่ม" ──────────────────────────────
+ *
+ * ต่างจาก pauseJobs ข้างบนที่พัก cron ทั้งงาน — อันนั้นทำให้สรุปประชุมไม่ถูกส่ง
+ * ด้วย ซึ่งไม่ใช่สิ่งที่ต้องการเมื่อปัญหาอยู่ที่การเขียนงานลงตาราง ไม่ใช่ตัวสรุป
+ *
+ * ไม่มีวันหมดอายุ เพราะเป็นการสั่งปิดด้วยมือ ไม่ใช่การพักเพราะระบบพัง —
+ * เปิดกลับเองแล้วงานจะไหลเข้ามาอีกโดยไม่มีใครรู้ตัว แลกกับต้องโชว์สถานะไว้ที่
+ * ตั้งค่า → สถานะระบบ ให้เห็นทุกครั้งว่ายังปิดอยู่ จะได้ไม่ลืม
+ */
+const MEETING_TASKS_KEY = "meeting_tasks_off";
+
+export type MeetingTasksSwitch = { off: boolean; at?: number; note?: string };
+
+export async function meetingTasksOff(): Promise<MeetingTasksSwitch> {
+  const raw = await getSetting(OWNER, MEETING_TASKS_KEY);
+  if (!raw) return { off: false };
+  try {
+    const s = JSON.parse(raw) as MeetingTasksSwitch;
+    return { off: !!s.off, at: s.at, note: s.note };
+  } catch {
+    return { off: false };
+  }
+}
+
+export async function setMeetingTasksOff(off: boolean, note = ""): Promise<MeetingTasksSwitch> {
+  const s: MeetingTasksSwitch = { off, at: Date.now(), note: note.slice(0, 200) };
+  await setSetting(OWNER, MEETING_TASKS_KEY, JSON.stringify(s));
+  return s;
+}
