@@ -123,16 +123,33 @@ export async function getTranscriptText(userUpn: string, event: GraphEvent): Pro
 // ---------------------------------------------------------------------------
 // LLM summary
 // ---------------------------------------------------------------------------
+/**
+ * สรุปให้คนที่ไม่ได้เข้าประชุมอ่านรู้เรื่อง
+ *
+ * ของเดิมสั่งว่า "สรุป 3-6 บรรทัด" ซึ่งได้ย่อหน้าเดียวที่อ่านแล้วยังไม่รู้ว่า
+ * ในห้องคุยอะไรกัน ใครติดอะไร ตกลงอะไรได้ — คนอ่านคือคนที่ไม่ได้อยู่ในห้อง
+ * จึงต้องได้บริบทพอจะเข้าใจ ไม่ใช่แค่หัวข้อ
+ *
+ * เพิ่ม topics เข้ามาเพื่อให้เล่าเป็นเรื่อง ๆ ได้ โดยยังคงคีย์เดิมทั้งหมดไว้
+ * (summary / decisions / action_items) — สรุปเก่าที่เก็บไว้แล้วยังอ่านได้ปกติ
+ */
 const SUMMARY_SYSTEM = `คุณคือผู้ช่วยที่สรุปการประชุมจาก transcript ภาษาไทย
-สรุปให้กระชับ ตรงประเด็น และดึงงานที่ต้องติดตามออกมาให้ครบ
+คนอ่านสรุปนี้ "ไม่ได้เข้าประชุม" — ต้องอ่านแล้วเข้าใจว่าคุยอะไรกัน ตกลงอะไรได้
+และต้องทำอะไรต่อ โดยไม่ต้องกลับไปฟังเสียง
 ตอบกลับเป็น JSON เท่านั้น ตามโครงสร้างนี้:
 
 {
-  "summary": "สรุปประชุม 3-6 บรรทัด ครอบคลุมประเด็นหลักและข้อสรุป",
-  "decisions": ["ข้อตัดสินใจที่ได้จากที่ประชุม", "..."],
+  "summary": "ภาพรวม 5-10 บรรทัด เล่าว่าประชุมเรื่องอะไร มีใครเกี่ยวข้อง สถานะปัจจุบันเป็นอย่างไร และจบด้วยอะไร",
+  "topics": [
+    {
+      "title": "หัวข้อที่คุยกัน",
+      "detail": "รายละเอียด 2-5 บรรทัด: ที่มา ปัญหาที่เจอ ตัวเลข/ชื่อระบบ/กำหนดเวลาที่พูดถึง ข้อโต้แย้งหรือทางเลือกที่พิจารณา และสรุปของหัวข้อนี้"
+    }
+  ],
+  "decisions": ["ข้อตัดสินใจที่ได้จากที่ประชุม พร้อมเหตุผลสั้น ๆ ถ้ามีในบทสนทนา", "..."],
   "action_items": [
     {
-      "task": "สิ่งที่ต้องทำ",
+      "task": "สิ่งที่ต้องทำ เขียนให้ชัดว่าทำอะไรกับอะไร",
       "owner": "ชื่อผู้รับผิดชอบ (ถ้าระบุได้จาก transcript ไม่งั้นใส่ 'ไม่ระบุ')",
       "due": "กำหนดส่ง เช่น '2026-07-25 15:00' หรือ 'วันนี้ 15:00' ถ้าไม่ระบุใส่ null"
     }
@@ -140,52 +157,129 @@ const SUMMARY_SYSTEM = `คุณคือผู้ช่วยที่สร�
 }
 
 กติกา:
-- ห้ามแต่งข้อมูลที่ไม่มีใน transcript
+- ห้ามแต่งข้อมูลที่ไม่มีใน transcript — ไม่มีก็เว้นไว้ ดีกว่าเดา
+- topics ให้ครบทุกเรื่องที่คุยกันจริง เรียงตามลำดับที่คุย (ปกติ 3-8 หัวข้อ)
+- เก็บชื่อคน ชื่อระบบ ตัวเลข และกำหนดเวลาที่พูดถึงไว้ในรายละเอียด อย่าตัดทิ้ง
+  เพราะอ่านแล้วห้วน — พวกนี้คือส่วนที่ทำให้สรุปใช้งานได้จริง
 - ถ้ามีคนพูดว่าจะส่งไฟล์/งานภายในเวลาใด ให้ถือเป็น action_item เสมอ (สำคัญต่อการติดตาม)
 - owner ให้ใช้ชื่อที่ปรากฏจริงใน transcript`;
 
-// Keep one request within free-tier token limits (Thai ≈ 1 token/char).
-const MAX_CHARS = 15000;
+/** รวมสรุปย่อยหลายก้อนให้เป็นฉบับเดียว */
+const MERGE_SYSTEM = `คุณได้รับสรุปย่อยของการประชุมเดียวกันหลายช่วงตามลำดับเวลา
+รวมให้เป็นสรุปฉบับเดียวที่อ่านต่อเนื่องเป็นเรื่องเดียว
+- รวมหัวข้อที่เป็นเรื่องเดียวกันเข้าด้วยกัน อย่าให้ซ้ำ
+- งานที่ต้องติดตามที่เป็นเรื่องเดียวกัน ให้เหลือรายการเดียว โดยใช้ฉบับที่ระบุ
+  ผู้รับผิดชอบหรือกำหนดเวลาชัดที่สุด
+- ห้ามเพิ่มข้อมูลที่ไม่มีในสรุปย่อย
+ตอบกลับเป็น JSON โครงสร้างเดียวกับสรุปย่อยเท่านั้น`;
+
+/* gemini-2.5-flash รับ context ระดับล้าน token — เพดาน 15,000 ตัวอักษรของเดิม
+   มาจากสมัยที่ยังกลัวโควตา ผลคือประชุมยาวถูก "ตัดช่วงกลางออก" แล้วสรุปหายไป
+   ทั้งท่อนที่คุยเรื่องจริงจัง ตอนนี้เก็บทั้งฉบับ ถ้ายาวเกินก็แบ่งเป็นก้อนแล้ว
+   สรุปทีละก้อนก่อนรวม ไม่โยนช่วงกลางทิ้งอีก */
+const MAX_CHARS = 120_000;
+/** ยาวกว่านี้ค่อยแบ่งก้อน — แบ่งเมื่อไม่จำเป็นทำให้เสียบริบทข้ามก้อน */
+const CHUNK_CHARS = 90_000;
 
 export type SummaryResult = {
   summary?: string;
+  topics?: { title?: string; detail?: string }[];
   decisions?: string[];
   action_items?: ActionItem[];
   _note?: string;
 };
 
-function clip(text: string): { text: string; clipped: boolean } {
-  const t = text.trim();
-  if (t.length <= MAX_CHARS) return { text: t, clipped: false };
-  const head = Math.floor(MAX_CHARS * 0.6);
-  const tail = MAX_CHARS - head;
-  return {
-    text: t.slice(0, head) + "\n\n...[ตัดช่วงกลางออกเพราะประชุมยาวมาก]...\n\n" + t.slice(-tail),
-    clipped: true,
-  };
+function parseResult(raw: string): SummaryResult {
+  try {
+    return JSON.parse(raw) as SummaryResult;
+  } catch {
+    return { summary: raw, decisions: [], action_items: [] };
+  }
+}
+
+/** แบ่งตามรอยบรรทัด ไม่ตัดกลางประโยค */
+function chunks(text: string, size: number): string[] {
+  if (text.length <= size) return [text];
+  const out: string[] = [];
+  let buf = "";
+  for (const line of text.split("\n")) {
+    if (buf.length + line.length + 1 > size && buf) {
+      out.push(buf);
+      buf = "";
+    }
+    buf += (buf ? "\n" : "") + line;
+  }
+  if (buf) out.push(buf);
+  return out;
+}
+
+async function askSummary(
+  system: string,
+  subject: string,
+  body: string,
+  label: string
+): Promise<SummaryResult> {
+  const raw = await summaryChat(system, `หัวข้อประชุม: ${subject}\n\n${body}`, {
+    temperature: 0.2,
+    json: true,
+    timeoutMs: 60000,
+    traceStep: "compose",
+    tracePrefix: label,
+  });
+  return parseResult(raw);
 }
 
 export async function summarize(transcriptText: string, meetingSubject: string): Promise<SummaryResult> {
-  const { text, clipped } = clip(transcriptText);
-  const raw = await summaryChat(SUMMARY_SYSTEM, `หัวข้อประชุม: ${meetingSubject}\n\nTranscript:\n${text}`, {
-    temperature: 0.2,
-    json: true,
-    timeoutMs: 45000,
-    traceStep: "compose",
-    tracePrefix: "📋 สรุปประชุม",
-  });
-  let result: SummaryResult;
-  try {
-    result = JSON.parse(raw);
-  } catch {
-    result = { summary: raw, decisions: [], action_items: [] };
+  const full = transcriptText.trim().slice(0, MAX_CHARS);
+  const parts = chunks(full, CHUNK_CHARS);
+
+  if (parts.length === 1) {
+    const one = await askSummary(
+      SUMMARY_SYSTEM,
+      meetingSubject,
+      `Transcript:\n${parts[0]}`,
+      "📋 สรุปประชุม"
+    );
+    if (transcriptText.trim().length > MAX_CHARS) {
+      one._note = "ประชุมยาวมาก ระบบสรุปจากช่วงต้นเป็นหลัก";
+    }
+    return one;
   }
-  if (clipped) result._note = "หมายเหตุ: ประชุมยาวมาก ระบบสรุปจากช่วงต้นและช่วงท้าย (โมเดลฟรีมีขีดจำกัด)";
-  return result;
+
+  /* ประชุมยาว: สรุปทีละช่วงแล้วรวม — ทุกช่วงได้ถูกอ่าน ไม่มีท่อนไหนถูกโยนทิ้ง */
+  const pieces: SummaryResult[] = [];
+  for (let i = 0; i < parts.length; i += 1) {
+    pieces.push(
+      await askSummary(
+        SUMMARY_SYSTEM,
+        meetingSubject,
+        `ช่วงที่ ${i + 1} จาก ${parts.length} ของ transcript:\n${parts[i]}`,
+        `📋 สรุปประชุม ช่วง ${i + 1}/${parts.length}`
+      )
+    );
+  }
+  const merged = await askSummary(
+    MERGE_SYSTEM,
+    meetingSubject,
+    `สรุปย่อยตามลำดับเวลา:\n${JSON.stringify(pieces)}`,
+    "📋 รวมสรุปประชุม"
+  );
+  merged._note = `ประชุมยาว ${Math.round(full.length / 1000)}k ตัวอักษร — สรุปจาก ${parts.length} ช่วงรวมกัน`;
+  return merged;
 }
 
 export function formatSummary(subject: string, result: SummaryResult): string {
   const lines = [`📋 สรุปประชุม: ${subject}`, "", (result.summary || "").trim()];
+  if (result.topics?.length) {
+    lines.push("", "🗂 เรื่องที่คุยกัน:");
+    for (const t of result.topics) {
+      const title = (t?.title || "").trim();
+      const detail = (t?.detail || "").trim();
+      if (!title && !detail) continue;
+      lines.push("", `• ${title || "(ไม่มีหัวข้อ)"}`);
+      if (detail) for (const d of detail.split(/\n+/)) lines.push(`   ${d.trim()}`);
+    }
+  }
   if (result.decisions?.length) {
     lines.push("", "✅ ข้อตัดสินใจ:");
     for (const d of result.decisions) lines.push(`  • ${d}`);

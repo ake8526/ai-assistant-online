@@ -71,7 +71,7 @@ function settings(provider: Provider): { baseUrl: string; key: string; model: st
         process.env.GEMINI_BASE_URL ||
         "https://generativelanguage.googleapis.com/v1beta/openai",
       key,
-      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      model: liveGeminiModel(process.env.GEMINI_MODEL),
     };
   }
   const key = process.env.GROQ_API_KEY || "";
@@ -83,6 +83,30 @@ function settings(provider: Provider): { baseUrl: string; key: string; model: st
     // Replacement per that notice; override with GROQ_MODEL when Groq renames again.
     model: process.env.GROQ_MODEL || GROQ_MODELS[0],
   };
+}
+
+/**
+ * ชื่อรุ่น Gemini ที่ Google ปลดไปแล้ว → รุ่นที่ใช้แทน
+ *
+ * ตรวจกับคีย์จริง 2 ก.ย. 2026: gemini-2.5-flash และ gemini-2.0-flash ตอบ 404
+ * ("no longer available to new users") ส่วน gemini-flash-latest กับ
+ * gemini-3.6-flash ใช้ได้ ระบบยังทำงานอยู่เพราะมีลิสต์สำรอง แต่เสียเวลายิงทิ้ง
+ * สองครั้งทุกครั้งที่สรุปประชุม และ env บน Vercel ยังตั้งชื่อเก่าไว้
+ *
+ * แปลงชื่อให้ที่โค้ดเลย ไม่ต้องรอใครไปแก้ env ก่อน — ค่าที่ตั้งไว้ผิดรุ่นไม่ควร
+ * ทำให้ระบบช้าลงเงียบ ๆ
+ */
+const GEMINI_RETIRED: Record<string, string> = {
+  "gemini-2.0-flash": "gemini-flash-latest",
+  "gemini-2.5-flash": "gemini-flash-latest",
+  "gemini-1.5-flash": "gemini-flash-latest",
+  "gemini-1.5-pro": "gemini-flash-latest",
+};
+
+function liveGeminiModel(name?: string): string {
+  const m = (name || "").trim();
+  if (!m) return "gemini-flash-latest";
+  return GEMINI_RETIRED[m] || m;
 }
 
 class ProviderHttpError extends Error {
@@ -111,10 +135,9 @@ async function callProvider(
           new Set(
             [
               cfg.model,
-              process.env.GEMINI_MODEL_FALLBACK || "",
-              "gemini-2.0-flash",
+              liveGeminiModel(process.env.GEMINI_MODEL_FALLBACK),
               "gemini-flash-latest",
-              "gemini-2.5-flash",
+              "gemini-3.6-flash",
             ].filter(Boolean)
           )
         )
