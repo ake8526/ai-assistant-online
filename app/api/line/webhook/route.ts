@@ -605,6 +605,25 @@ function validSignature(rawBody: string, signature: string | null): boolean {
   }
 }
 
+/**
+ * บัญชีนี้ถูกระงับการใช้งานทางไลน์อยู่ไหม
+ *
+ * ทุกทางเข้าของ webhook (ข้อความ รูป ตำแหน่ง ปุ่ม) เช็คที่นี่ก่อนทำอะไรทั้งสิ้น
+ * ตอบสั้น ๆ ว่าถูกระงับ ไม่ปล่อยให้เงียบหาย — คนถูกระงับต้องรู้ว่าเกิดอะไรขึ้น
+ * และต้องไปหาใคร
+ */
+async function blockedHere(upn: string, replyToken: string): Promise<boolean> {
+  try {
+    const { isBlocked, blockedMessage } = await import("@/lib/blocked");
+    if (!(await isBlocked(upn, "line"))) return false;
+    await replyLine(replyToken, blockedMessage("line"));
+    return true;
+  } catch {
+    // อ่านสถานะไม่ได้ = ปล่อยผ่าน ไม่ใช่ปิดกั้นทั้งระบบ
+    return false;
+  }
+}
+
 function linkPromptMessage() {
   return {
     type: "template",
@@ -1285,6 +1304,7 @@ async function handleImageMessage(ev: LineEvent): Promise<void> {
     await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
     return;
   }
+  if (await blockedHere(upn, ev.replyToken)) return;
   setTraceUser(upn);
   trace("receive", "รูปจาก LINE");
   try {
@@ -1323,6 +1343,7 @@ async function handleLocationMessage(ev: LineEvent): Promise<void> {
     await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
     return;
   }
+  if (await blockedHere(upn, ev.replyToken)) return;
   setTraceUser(upn);
   const lat = Number(ev.message?.latitude);
   const lng = Number(ev.message?.longitude);
@@ -1382,6 +1403,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
     return;
   }
+  if (await blockedHere(upn, ev.replyToken)) return;
   setTraceUser(upn);
   trace("receive", "ข้อความเข้าจาก LINE");
   try {
@@ -1662,6 +1684,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
     return;
   }
+  if (await blockedHere(upn, ev.replyToken)) return;
   setTraceUser(upn);
   try {
     // Show 3-dot loading for any real work (not just prep).

@@ -32,14 +32,33 @@ export async function requireUser(req: Request): Promise<string> {
     throw new AuthError("Missing Bearer token");
   }
 
+  let upn: string;
   try {
-    return await verifyToken(m[1]);
+    upn = await verifyToken(m[1]);
   } catch (e) {
     if (devHeader) return devHeader.toLowerCase();
     if (process.env.NODE_ENV !== "production" || !TENANT) {
       return (process.env.DEFAULT_DEV_UPN || "weerasak.pi@ktisgroup.com").toLowerCase();
     }
     throw e;
+  }
+  await assertNotBlocked(upn, "web");
+  return upn;
+}
+
+/**
+ * ด่านระงับการใช้งาน — อยู่ตรงนี้ที่เดียวเพราะทุก API ของเว็บและแอปผ่าน
+ * requireUser ทั้งหมด กระจายไปเช็คทีละ route มีแต่จะหลุด
+ *
+ * ล้มเหลวแบบไม่ปิดกั้น: อ่านสถานะไม่ได้ (Supabase ล่ม) ให้ผ่านไป — ระบบอ่าน
+ * ค่าไม่ได้ไม่ควรกลายเป็นล็อกคนทั้งบริษัทออกจากระบบ
+ */
+async function assertNotBlocked(upn: string, channel: "web" | "line"): Promise<void> {
+  try {
+    const { isBlocked, blockedMessage } = await import("@/lib/blocked");
+    if (await isBlocked(upn, channel)) throw new AuthError(blockedMessage(channel));
+  } catch (e) {
+    if (e instanceof AuthError) throw e;
   }
 }
 

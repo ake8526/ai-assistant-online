@@ -102,7 +102,10 @@ function stamp(iso: string | null): string {
   const d = new Date(new Date(iso).getTime() + TZ_MS);
   if (Number.isNaN(d.getTime())) return "—";
   const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+  // ใส่ปีด้วย — งานในระบบมีตั้งแต่ ส.ค. ปีนี้ ถ้าเห็นแต่ "13/08" ต้องเดาเองว่าปีไหน
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${p(
+    d.getUTCHours()
+  )}:${p(d.getUTCMinutes())}`;
 }
 
 /** ที่มาของงาน — ชื่อประชุมยาว ๆ ตัดให้พออ่าน ส่วนค่าที่ระบบใช้เองแปลเป็นคำไทย */
@@ -263,17 +266,32 @@ function TodoView({ getToken }: { getToken: () => Promise<string | null> }) {
                       )}
                     </td>
                     <td>
+                      {/* กดสองครั้งเหมือนปุ่มลบ — ปิดซิงค์ของคนอื่นคือหยุดงานเข้า
+                          To Do ของเขาโดยที่เขาไม่รู้ ไม่ควรพลาดด้วยการกดครั้งเดียว */}
                       <button
+                        className={armed === `t${u.upn}` ? "danger armed" : ""}
                         disabled={!!busy || !u.consent}
-                        onClick={() =>
+                        onClick={() => {
+                          if (armed !== `t${u.upn}`) {
+                            setArmed(`t${u.upn}`);
+                            return;
+                          }
                           void act(
                             `t${u.upn}`,
                             { action: "toggle", upn: u.upn, on: !u.on },
                             () => `${u.on ? "ปิด" : "เปิด"}การซิงค์ของ ${shortUpn(u.upn)} แล้ว`
-                          )
-                        }
+                          );
+                        }}
                       >
-                        {u.on ? "เปิดอยู่ · กดเพื่อปิด" : "ปิดอยู่ · กดเพื่อเปิด"}
+                        {busy === `t${u.upn}`
+                          ? "กำลังทำ…"
+                          : armed === `t${u.upn}`
+                            ? u.on
+                              ? "ยืนยันปิดซิงค์"
+                              : "ยืนยันเปิดซิงค์"
+                            : u.on
+                              ? "เปิดอยู่ · กดเพื่อปิด"
+                              : "ปิดอยู่ · กดเพื่อเปิด"}
                       </button>
                     </td>
                     <td className="num">{u.tasks}</td>
