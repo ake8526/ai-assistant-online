@@ -47,12 +47,20 @@ export async function resolveResponsible(name: string, attendees?: Attendee[]): 
 }
 
 import { normalizeDue } from "@/lib/time";
+import { meetingTasksOff } from "@/lib/opsPause";
 
 const APP_BASE = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(/\/+$/, "");
 export { normalizeDue };
 
 /** Store meeting action items as tasks (deduped). Returns count of newly-added tasks. */
 export async function ingestActionItems(actionItems: ActionItem[]): Promise<number> {
+  /* สวิตช์หยุดเพิ่มงานจากประชุมต้องอยู่ตรงนี้ ไม่ใช่ที่ผู้เรียก
+     
+     ของเดิมเช็คไว้ที่ runScheduledForUser ที่เดียว แต่มีอีกสามทางที่เข้ามาถึง
+     ฟังก์ชันนี้ได้ — คำสั่ง «สรุปประชุม» ทางไลน์ ทางแอป และ /api/summaries/one
+     ผลคือปิดสวิตช์แล้วงานยังไหลเข้าอยู่ (2 ก.ย. 2026 เข้ามาอีก 3 งานทั้งที่ปิดไว้
+     ตั้งแต่วันก่อน) กันไว้ที่ประตูเดียวที่ทุกทางต้องผ่าน */
+  if ((await meetingTasksOff()).off) return 0;
   let added = 0;
   const newTasks: {
     title: string;

@@ -14,7 +14,15 @@
 
 import { graphGet, graphSend } from "@/lib/graph";
 import { withDelegatedGraph, hasTasksConsent } from "@/lib/msGraphOAuth";
-import { addTask, getSetting, listTasks, setSetting, updateTaskStatus, type Task } from "@/lib/store";
+import {
+  addTask,
+  deleteTasks,
+  getSetting,
+  listTasks,
+  setSetting,
+  updateTaskStatus,
+  type Task,
+} from "@/lib/store";
 import { admin } from "@/lib/supabaseServer";
 
 /**
@@ -444,5 +452,47 @@ export async function syncTodoForAll(): Promise<{
       out.failed.push({ upn, error: String(e).slice(0, 160) });
     }
   }
+  return out;
+}
+
+/* ── ลบงานทิ้ง ───────────────────────────────────────────── */
+
+/**
+ * ลบงานทั้งสองฝั่ง — ในระบบและการ์ดใน To Do ของเจ้าตัว
+ *
+ * ลบแค่ฝั่งเราไม่พอ การ์ดจะค้างอยู่ในแอปของเขาโดยไม่มีอะไรมาปิดให้อีกเลย
+ * (ตัวซิงค์เดินจากงานฝั่งเราไปหาการ์ด ไม่มีงานก็ไม่มีใครไปแตะการ์ดนั้น)
+ *
+ * ลบการ์ดก่อนแล้วค่อยลบงาน — ถ้าสลับกันแล้วการลบการ์ดพัง จะเหลือการ์ดกำพร้า
+ * ที่ไม่มีทางตามเก็บได้ เพราะ mapping หายไปพร้อมงาน
+ */
+export async function deleteTasksEverywhere(
+  upn: string,
+  ids: number[]
+): Promise<{ removed: number; cardsRemoved: number; cardsFailed: number }> {
+  const out = { removed: 0, cardsRemoved: 0, cardsFailed: 0 };
+  if (!ids.length) return out;
+
+  const map = await loadMap(upn);
+  const listId = await getSetting(upn, K_LIST);
+  const mapped = ids.filter((i) => map[String(i)]);
+
+  if (listId && mapped.length) {
+    for (const id of mapped) {
+      try {
+        await asUser(upn, () =>
+          graphSend(`/me/todo/lists/${listId}/tasks/${map[String(id)]}`, "DELETE")
+        );
+        out.cardsRemoved += 1;
+      } catch {
+        // การ์ดถูกลบไปแล้วหรือเรียกไม่ผ่าน — ไม่ใช่เหตุให้ไม่ลบงานฝั่งเรา
+        out.cardsFailed += 1;
+      }
+      delete map[String(id)];
+    }
+    await saveMap(upn, map);
+  }
+
+  out.removed = await deleteTasks(upn, ids);
   return out;
 }

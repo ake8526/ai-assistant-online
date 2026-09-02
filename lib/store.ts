@@ -68,6 +68,25 @@ export async function updateTaskStatus(taskId: number, status: string): Promise<
   return (data || []).length > 0;
 }
 
+/**
+ * ลบงานทิ้งถาวร — ใช้จากหน้าจัดการเท่านั้น
+ *
+ * จำกัดด้วย owner_upn เสมอ ไม่ใช่แค่ id: หน้าเว็บส่ง id มาเป็นชุด พลาดครั้งเดียว
+ * แล้วลบของคนอื่นไปด้วยจะไม่มีอะไรมาดักไว้เลย
+ */
+export async function deleteTasks(ownerUpn: string, ids: number[]): Promise<number> {
+  const clean = ids.filter((n) => Number.isInteger(n) && n > 0);
+  if (!clean.length) return 0;
+  const { data, error } = await admin
+    .from("tasks")
+    .delete()
+    .eq("owner_upn", ownerUpn.toLowerCase())
+    .in("id", clean)
+    .select("id");
+  if (error) throw new Error(`deleteTasks: ${error.message}`);
+  return (data || []).length;
+}
+
 export async function markReminded(taskId: number): Promise<void> {
   await admin.from("tasks").update({ reminded_at: new Date().toISOString() }).eq("id", taskId);
 }

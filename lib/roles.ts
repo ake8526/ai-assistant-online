@@ -21,6 +21,7 @@ export type Perm =
   | "chat.logs"
   | "jobs.stop"
   | "test.cmds"
+  | "todo.manage"
   | "account.switch"
   | "admin";
 
@@ -32,6 +33,13 @@ export const PERMS: { key: Perm; label: string; hint: string }[] = [
   // คำสั่งทดสอบมีไว้ให้คนที่ดูแลระบบลองของ ไม่ใช่ของใช้ประจำวัน — คนทั่วไปเห็นแล้ว
   // กดเล่นจะได้ข้อความที่ดูเหมือนของจริงแต่ไม่ใช่ เมนูจึงไม่ควรโชว์ให้ทุกคน
   { key: "test.cmds", label: "คำสั่งทดสอบ", hint: "เห็นและใช้ /test กับ /test_meeting" },
+  // ลบงานของคนอื่นทิ้งได้ และเปิด/ปิดการซิงค์ To Do แทนเขา — หนักกว่าการหยุดงาน
+  // ที่ตั้งเวลาไว้ จึงแยกเป็นสิทธิ์ของตัวเอง ไม่พ่วงไปกับ jobs.stop
+  {
+    key: "todo.manage",
+    label: "จัดการ To Do",
+    hint: "เปิดหน้า /monitor/todo — เปิด/ปิดการซิงค์ของแต่ละคน สั่งซิงค์ และลบงานทิ้ง",
+  },
   {
     key: "account.switch",
     label: "เปลี่ยนบัญชี",
