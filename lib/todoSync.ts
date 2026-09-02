@@ -37,6 +37,8 @@ const K_LAST = "todo_last_sync";
 /* cron ตัวเตือนงานเดินทุกนาที แต่ To Do ไม่ต้องละเอียดขนาดนั้น — เว้นช่วงไว้
    ไม่ให้ยิง Graph ฟรี ๆ ทุกนาทีต่อคน (สั่งเองด้วย «ซิงค์ todo» ไม่ติดเพดานนี้) */
 const SWEEP_EVERY_MS = 3 * 60_000;
+/** ซิงค์ได้กี่คนต่อรอบ — กันไม่ให้ cron ตัวเตือนงานหมดเวลาเพราะ To Do */
+const MAX_PER_SWEEP = 8;
 
 /**
  * งานที่ถือว่าจบแล้วจริง — มีแค่สองสถานะนี้
@@ -315,6 +317,8 @@ export async function syncTodoForAll(): Promise<{
   users: number;
   /** ข้ามเพราะเพิ่งซิงค์ไปไม่ถึง SWEEP_EVERY_MS */
   skipped: number;
+  /** ถึงคิวแล้วแต่เกินโควตาต่อรอบ — รอบถัดไปได้คิวก่อน */
+  queued: number;
   created: number;
   completedInTodo: number;
   closedFromTodo: number;
@@ -324,23 +328,50 @@ export async function syncTodoForAll(): Promise<{
   const out = {
     users: 0,
     skipped: 0,
+    queued: 0,
     created: 0,
     completedInTodo: 0,
     closedFromTodo: 0,
     importedFromTodo: 0,
     failed: [] as { upn: string; error: string }[],
   };
-  const { data } = await admin
+
+  const { data } = await admin.from("settings").select("owner_upn").eq("key", K_ON).eq("value", "on");
+  const upns = ((data || []) as { owner_upn: string }[])
+    .map((r) => String(r.owner_upn || "").toLowerCase())
+    .filter(Boolean);
+  if (!upns.length) return out;
+
+  /* อ่านเวลาซิงค์ล่าสุดของทุกคนทีเดียว ไม่ต้องยิงทีละคน */
+  const { data: lastRows } = await admin
     .from("settings")
-    .select("owner_upn")
-    .eq("key", K_ON)
-    .eq("value", "on");
-  for (const row of (data || []) as { owner_upn: string }[]) {
-    const upn = String(row.owner_upn || "").toLowerCase();
-    if (!upn) continue;
-    const last = Number(await getSetting(upn, K_LAST)) || 0;
-    if (Date.now() - last < SWEEP_EVERY_MS) {
-      out.skipped += 1;
+    .select("owner_upn,value")
+    .eq("key", K_LAST)
+    .in("owner_upn", upns);
+  const lastOf = new Map(
+    ((lastRows || []) as { owner_upn: string; value: string }[]).map((r) => [
+      String(r.owner_upn).toLowerCase(),
+      Number(r.value) || 0,
+    ])
+  );
+
+  const now = Date.now();
+  const due = upns.filter((u) => now - (lastOf.get(u) || 0) >= SWEEP_EVERY_MS);
+  out.skipped = upns.length - due.length;
+
+  /* คนที่รอนานสุดได้คิวก่อน แล้วตัดที่ MAX_PER_SWEEP
+     
+     route นี้มี maxDuration 60 วินาที และเป็น cron ตัวเตือนงานที่ต้องตรงเวลา
+     ปล่อยให้ To Do ของคนที่ 30 ลากจนหมดเวลา = การเตือนงานทั้งระบบพังตาม
+     ตัดจำนวนต่อรอบไว้ คนที่เหลือได้คิวในนาทีถัดไปเอง */
+  due.sort((x, y) => (lastOf.get(x) || 0) - (lastOf.get(y) || 0));
+  const batch = due.slice(0, MAX_PER_SWEEP);
+  out.queued = due.length - batch.length;
+
+  const deadline = now + 35_000;
+  for (const upn of batch) {
+    if (Date.now() > deadline) {
+      out.queued += 1;
       continue;
     }
     out.users += 1;

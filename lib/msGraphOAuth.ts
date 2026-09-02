@@ -182,15 +182,62 @@ export async function getDelegatedGraphToken(upn: string): Promise<string | null
   return tok.access;
 }
 
-/** เจ้าตัวอนุญาต To Do ไว้แล้วหรือยัง — อ่านจาก scope ที่บันทึกไว้ตอนแลก token */
+/**
+ * ยืนยันกับ Entra ว่าตอนนี้ได้สิทธิ์ To Do แล้วหรือยัง แล้วอัปเดต scope ที่เก็บไว้
+ *
+ * scope ในตารางคือของ ณ ตอนที่เจ้าตัวกดอนุญาตครั้งล่าสุด ถ้าแอดมินมา grant
+ * admin consent ให้ทั้งองค์กรทีหลัง คนที่เคยเชื่อมไว้แล้วจะได้สิทธิ์เพิ่มทันที
+ * โดยไม่ต้องกดอะไรอีก — แต่ค่าที่เก็บไว้ยังเป็นของเก่า ถ้าเชื่อค่าเก่าอย่างเดียว
+ * ระบบจะบอกทุกคนว่า "ยังไม่ได้อนุญาต" ตลอดไป ทั้งที่อนุญาตแล้ว
+ *
+ * ขอ token ด้วย scope ชุดที่มี Tasks แล้วดูว่า Entra คืนอะไรกลับมาจริง
+ */
+async function probeTasksScope(upn: string, refresh: string): Promise<boolean> {
+  const r = await fetch(`${AUTH_URL}/${tenant()}/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId(),
+      client_secret: clientSecret(),
+      refresh_token: refresh,
+      grant_type: "refresh_token",
+      scope: GRAPH_SCOPE_TASKS,
+    }),
+  });
+  if (!r.ok) return false;
+  const json = (await r.json()) as { scope?: string; refresh_token?: string };
+
+  /* บันทึกสิ่งที่ Entra คืนมาเสมอ ไม่ใช่เฉพาะตอนได้ Tasks — Entra หมุน refresh
+     token ใหม่ทุกครั้งที่แลก ถ้าไม่เก็บใบใหม่ไว้ก็เสี่ยงถือใบที่ถูกยกเลิกไปแล้ว
+     แล้วผู้ใช้หลุดทั้งปฏิทินเพราะการเช็คสิทธิ์ To Do เฉย ๆ */
+  const patch: Record<string, string> = { updated_at: new Date().toISOString() };
+  if (json.scope) patch.scope = json.scope;
+  if (json.refresh_token && json.refresh_token !== refresh) patch.refresh_token = json.refresh_token;
+  if (Object.keys(patch).length > 1) {
+    await admin
+      .from("oauth_tokens")
+      .update(patch)
+      .eq("owner_upn", upn.toLowerCase())
+      .eq("provider", "microsoft");
+  }
+  return /Tasks\.ReadWrite/i.test(json.scope || "");
+}
+
+/** เจ้าตัวอนุญาต To Do ไว้แล้วหรือยัง — อ่าน scope ที่บันทึกไว้ก่อน แล้วค่อยถาม Entra */
 export async function hasTasksConsent(upn: string): Promise<boolean> {
   const { data } = await admin
     .from("oauth_tokens")
-    .select("scope")
+    .select("scope,refresh_token")
     .eq("owner_upn", upn.toLowerCase())
     .eq("provider", "microsoft")
     .maybeSingle();
-  return /Tasks\.ReadWrite/i.test(data?.scope || "");
+  if (!data?.refresh_token) return false;
+  if (/Tasks\.ReadWrite/i.test(data.scope || "")) return true;
+  try {
+    return await probeTasksScope(upn, data.refresh_token);
+  } catch {
+    return false;
+  }
 }
 
 export function calendarConsentNeededMessage(): string {
