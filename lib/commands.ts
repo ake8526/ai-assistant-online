@@ -55,7 +55,13 @@ import { notYetAnswer } from "@/lib/notYet";
 import { calendarConsentNeededMessage, hasTasksConsent } from "@/lib/msGraphOAuth";
 import { todoConsentUrl } from "@/lib/consentLink";
 import { applyTaskEdit, matchTaskEdit } from "@/lib/taskEdit";
-import { setTodoSyncOn, syncTodoForUser, todoSyncOn } from "@/lib/todoSync";
+import {
+  setTodoSyncOn,
+  syncTodoAfterWrite,
+  syncTodoBeforeRead,
+  syncTodoForUser,
+  todoSyncOn,
+} from "@/lib/todoSync";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { busyRanges, findCommonSlots, formatBusy, freeRangesReply, isWeekendWindow, outsideWorkHours, wantsLunchIncluded, workHoursLabel, workingHoursRemain } from "@/lib/scheduling";
 import {
@@ -1782,6 +1788,24 @@ function dueLabelTh(iso: string): string {
   let t = fmtTime(wall);
   if (t === "00:00") t = "06:00";
   return `${fmtDate(wall)} ${t}`;
+}
+
+/**
+ * ดัน To Do ให้ตามหลังผู้ใช้เพิ่ม/ปิดงาน โดยไม่ให้คำตอบช้าลง
+ *
+ * after() ของ Next รันหลังส่ง response แล้ว — ต่างจาก void promise เฉย ๆ ที่
+ * ฟังก์ชันอาจถูกปิดก่อนงานเสร็จบนแพลตฟอร์ม serverless
+ *
+ * เรียกได้เฉพาะในบริบทของคำขอ ถ้าอยู่นอกนั้น (เช่น cron ที่เรียก handleCommand
+ * เอง) after() จะโยน error — จับไว้แล้วปล่อย เพราะ cron มีตัวซิงค์ของตัวเองอยู่
+ */
+async function pushTodoAfterReply(upn: string): Promise<void> {
+  try {
+    const { after } = await import("next/server");
+    after(() => syncTodoAfterWrite(upn));
+  } catch {
+    /* ไม่ได้อยู่ในคำขอ — ปล่อยให้ cron จัดการ */
+  }
 }
 
 async function saveAddTaskDraft(userUpn: string, items: AddTaskDraftItem[]): Promise<void> {
@@ -7555,6 +7579,7 @@ async function handleParsed(
     const idx = Number(params.index) || 0;
     const raw = String(params.raw || "");
     const res = await applyTaskEdit(userUpn, idx, raw);
+    if (res.ok) await pushTodoAfterReply(userUpn);
     return {
       intent,
       reply: res.reply,
@@ -7992,6 +8017,10 @@ async function handleParsed(
       if (t === "00:00") t = "06:00";
       return `${fmtDate(wall)} ${t}`;
     };
+    /* ซิงค์ To Do ก่อนแสดง — คนพิมพ์ "ดูงานที่ต้องติดตาม" คือกำลังจะเชื่อ
+       รายการนี้ ถ้าเพิ่งติ๊กเสร็จใน To Do แล้วยังโชว์ว่าค้างอยู่ ก็ไม่มีประโยชน์
+       ที่จะแสดง (มีเพดานเวลาในตัว ช้าเกินก็แสดงของที่มีไปก่อน) */
+    await syncTodoBeforeRead(userUpn);
     const tasks = await listTasks(userUpn);
     const pending = tasks.filter((t) => t.status === "pending" || t.status === "overdue");
     if (!pending.length) {
@@ -8099,6 +8128,7 @@ async function handleParsed(
   }
 
   if (intent === "add_task") {
+    await pushTodoAfterReply(userUpn);
     // ข้อความที่ใส่เลขข้อ/bullet มา = หลายงาน อย่ายัดเป็นชื่องานเดียว
     // (params.title จาก LLM เอาทุกข้อมาต่อกันเป็นชื่อเดียว ซึ่งใช้ติดตามงานไม่ได้)
     const split = splitAddTaskItems(text);
@@ -8132,6 +8162,9 @@ async function handleParsed(
   }
 
   if (intent === "complete_task") {
+    /* ปิดงานฝั่งนี้แล้วต้องไปติ๊กใน To Do ให้ทันที ไม่ใช่รอ cron รอบถัดไป —
+       ผู้ใช้เปิด To Do ดูหลังกดปิดในไลน์ แล้วเห็นว่ายังค้างอยู่ */
+    await pushTodoAfterReply(userUpn);
     const rawIds = Array.isArray(params.task_ids) ? (params.task_ids as number[]) : [];
     const singleTid = Number(params.task_id);
     const isConfirmed = !!params.confirmed;

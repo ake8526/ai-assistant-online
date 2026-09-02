@@ -296,7 +296,7 @@ function AppShell() {
     async (quiet = true) => {
       if (!quiet) setTaskSync(true);
       try {
-        const res = await authedGet<{ tasks?: Task[]; error?: string }>(
+        const res = await authedGet<{ tasks?: Task[]; error?: string; syncing?: boolean }>(
           "/api/tasks?status=pending",
           getToken,
           getGraphToken
@@ -305,6 +305,20 @@ function AppShell() {
         else {
           setTaskErr("");
           setTasks(res.tasks || []);
+          /* เซิร์ฟเวอร์กำลังซิงค์ Microsoft To Do อยู่เบื้องหลัง — ดึงซ้ำอีกครั้ง
+             ให้ตัวเลขตรงกับ To Do โดยไม่ต้องให้ผู้ใช้รอตอนเปิดแท็บ
+             ดึงซ้ำรอบเดียวพอ ไม่ตั้ง interval เพิ่ม เพราะ cron รายนาทีตามอยู่แล้ว */
+          if (res.syncing) {
+            setTimeout(() => {
+              void authedGet<{ tasks?: Task[] }>(
+                "/api/tasks?status=pending",
+                getToken,
+                getGraphToken
+              )
+                .then((r2) => setTasks(r2.tasks || []))
+                .catch(() => {});
+            }, 3000);
+          }
         }
       } catch (e) {
         setTaskErr((e as Error).message);

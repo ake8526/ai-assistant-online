@@ -13,7 +13,7 @@
  */
 
 import { graphGet, graphSend } from "@/lib/graph";
-import { withDelegatedGraph, hasTasksConsent } from "@/lib/msGraphOAuth";
+import { getDelegatedGraphToken, withDelegatedGraph, hasTasksConsent } from "@/lib/msGraphOAuth";
 import {
   addTask,
   deleteTasks,
@@ -31,10 +31,24 @@ import { admin } from "@/lib/supabaseServer";
  * withDelegatedGraph จะตกไปเรียกแบบ app-only เองถ้าไม่มี token ของผู้ใช้ ซึ่งกับ
  * /me/todo จะพังด้วย error ที่อ่านไม่รู้เรื่อง — ดักตรงนี้แล้วบอกสาเหตุจริงดีกว่า
  */
-async function asUser<T>(upn: string, fn: () => Promise<T>): Promise<T> {
-  const { result, asUser: ok } = await withDelegatedGraph(upn, fn);
+async function asUser<T>(upn: string, fn: () => Promise<T>, token?: string): Promise<T> {
+  const { result, asUser: ok } = await withDelegatedGraph(upn, fn, token);
   if (!ok) throw new Error("ไม่มีสิทธิ์ของผู้ใช้ที่เก็บไว้ — To Do เรียกแบบ app-only ไม่ได้");
   return result;
+}
+
+/**
+ * ขอ access token ของเจ้าตัวครั้งเดียวต่อการซิงค์
+ *
+ * withDelegatedGraph จะไป refresh token ใหม่ทุกครั้งที่เรียกถ้าไม่ส่ง token มาให้
+ * การซิงค์หนึ่งรอบเรียก Graph ราวสี่ครั้ง = คุยกับ Entra สี่รอบ วัดบน production
+ * ได้ 6-8 วินาทีต่อคน ซึ่งเป็นเหตุที่ตัวเลขสองฝั่งไม่ทันกัน แลกมาเป็น token
+ * ใบเดียวใช้ทั้งรอบ
+ */
+async function userToken(upn: string): Promise<string> {
+  const t = await getDelegatedGraphToken(upn);
+  if (!t) throw new Error("ไม่มีสิทธิ์ของผู้ใช้ที่เก็บไว้ — To Do เรียกแบบ app-only ไม่ได้");
+  return t;
 }
 
 const LIST_NAME = "KTIS X";
@@ -148,9 +162,14 @@ type RemoteList = { id: string; displayName?: string; wellknownListName?: string
  * เป็นปกติ — เจ้าตัวพิมพ์ «test» ลงลิสต์ Tasks แล้วไม่เห็นในไลน์ ก็เข้าใจว่าพัง
  * ลิสต์ที่ผู้ใช้ตั้งเองชื่ออื่น (ของใช้ในบ้าน รายการซื้อของ) ยังไม่ถูกอ่าน
  */
-async function resolveLists(upn: string): Promise<{ target: string; sources: string[] }> {
-  const lists = ((await asUser(upn, () =>
-    graphGet("/me/todo/lists", { $top: "50" })
+async function resolveLists(
+  upn: string,
+  token: string
+): Promise<{ target: string; sources: string[] }> {
+  const lists = ((await asUser(
+    upn,
+    () => graphGet("/me/todo/lists", { $top: "50" }),
+    token
   )) as { value?: RemoteList[] }).value || [];
 
   const cached = await getSetting(upn, K_LIST);
@@ -158,8 +177,10 @@ async function resolveLists(upn: string): Promise<{ target: string; sources: str
   if (!target) {
     // ลิสต์ถูกลบทิ้งไปแล้ว — สร้างใหม่ ไม่ใช่พังทั้งการซิงค์
     target = (
-      (await asUser(upn, () =>
-        graphSend("/me/todo/lists", "POST", { displayName: LIST_NAME })
+      (await asUser(
+        upn,
+        () => graphSend("/me/todo/lists", "POST", { displayName: LIST_NAME }),
+        token
       )) as { id: string }
     ).id;
   }
@@ -262,7 +283,8 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
     return { ...out, reason: "ยังไม่ได้อนุญาตสิทธิ์ Microsoft To Do — กดอนุญาตใหม่ที่หน้าตั้งค่า" };
   }
 
-  const { target: listId, sources } = await resolveLists(upn);
+  const token = await userToken(upn);
+  const { target: listId, sources } = await resolveLists(upn, token);
   out.listId = listId;
   const map = await loadMap(upn);
   const tasks = await listTasks(upn);
@@ -280,8 +302,10 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
   let remoteOk = true;
   for (const src of sources) {
     try {
-      const page = (await asUser(upn, () =>
-        graphGet(`/me/todo/lists/${src}/tasks`, { $top: "200" })
+      const page = (await asUser(
+        upn,
+        () => graphGet(`/me/todo/lists/${src}/tasks`, { $top: "200" }),
+        token
       )) as { value?: RemoteTask[] };
       for (const card of page.value || []) {
         if (!card?.id) continue;
@@ -302,8 +326,10 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
     if (!todoId) {
       // ปิดแล้วและไม่เคยส่งไป ก็ไม่ต้องไปสร้างของที่ทำเสร็จแล้วให้เกะกะ
       if (closedHere) continue;
-      const made = (await asUser(upn, () =>
-        graphSend(`/me/todo/lists/${listId}/tasks`, "POST", payloadFor(t))
+      const made = (await asUser(
+        upn,
+        () => graphSend(`/me/todo/lists/${listId}/tasks`, "POST", payloadFor(t)),
+        token
       )) as { id?: string };
       if (made?.id) {
         map[key] = made.id;
@@ -323,8 +349,13 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
 
     const doneThere = hit.card.status === "completed";
     if (closedHere && !doneThere) {
-      await asUser(upn, () =>
-        graphSend(`/me/todo/lists/${hit.listId}/tasks/${todoId}`, "PATCH", { status: "completed" })
+      await asUser(
+        upn,
+        () =>
+          graphSend(`/me/todo/lists/${hit.listId}/tasks/${todoId}`, "PATCH", {
+            status: "completed",
+          }),
+        token
       );
       out.completedInTodo += 1;
     } else if (!closedHere && doneThere) {
@@ -478,10 +509,14 @@ export async function deleteTasksEverywhere(
   const mapped = ids.filter((i) => map[String(i)]);
 
   if (listId && mapped.length) {
+    // token ใบเดียวใช้ลบทั้งชุด ไม่ต้อง refresh ต่อการ์ด
+    const token = await userToken(upn);
     for (const id of mapped) {
       try {
-        await asUser(upn, () =>
-          graphSend(`/me/todo/lists/${listId}/tasks/${map[String(id)]}`, "DELETE")
+        await asUser(
+          upn,
+          () => graphSend(`/me/todo/lists/${listId}/tasks/${map[String(id)]}`, "DELETE"),
+          token
         );
         out.cardsRemoved += 1;
       } catch {
@@ -495,4 +530,75 @@ export async function deleteTasksEverywhere(
 
   out.removed = await deleteTasks(upn, ids);
   return out;
+}
+
+/* ── ซิงค์ตอนกำลังจะดู ──────────────────────────────────────────────── */
+
+/**
+ * รอ Graph ได้เท่านี้ก่อนแสดงผล
+ *
+ * ใช้กับไลน์เท่านั้น เพราะบับเบิลที่ส่งไปแล้วแก้ไม่ได้ — ต้องรอให้ทันในรอบเดียว
+ * ส่วนแท็บงานบนเว็บไม่รอ (ดึงซ้ำเองได้) วัดจริงหนึ่งรอบราว 2 วินาที เพดาน 1.5
+ * วินาทีจึงทันเมื่อ Graph ตอบไว และรอบที่ไม่ทันก็ซิงค์ต่อเบื้องหลังจนจบ
+ * ครั้งถัดไปที่เปิดดูจึงตรง
+ */
+const LIVE_BUDGET_MS = 1500;
+
+/**
+ * ซิงค์ให้ทันก่อนจะแสดงรายการงาน
+ *
+ * cron รอบละนาทีทำให้ตัวเลขสองฝั่งต่างกันได้เป็นนาที ซึ่งผู้ใช้เห็นแล้วบอกว่า
+ * "ไม่ sync เรียลไทม์" — จริงตามนั้น เพราะไม่มีอะไรซิงค์ตอนคนกำลังเปิดดู
+ * เรียกตัวนี้ก่อนแสดงผล แล้วรายการที่เห็นจะตรงกับ To Do ณ วินาทีนั้น
+ *
+ * ไม่ติดเพดานเว้นช่วงของ cron โดยตั้งใจ: คนเปิดดูเองคือสัญญาณที่ชัดที่สุดว่า
+ * ตอนนี้อยากเห็นของจริง
+ *
+ * ล้มเหลวแบบไม่ขัดขวาง — Graph ช้าหรือล่มต้องไม่ทำให้ "ดูงานค้าง" พังไปด้วย
+ * แสดงของที่มีในฐานข้อมูลไปก่อนดีกว่าไม่แสดงอะไรเลย
+ */
+export async function syncTodoBeforeRead(upn: string): Promise<TodoSyncResult | null> {
+  try {
+    if (!(await todoSyncOn(upn))) return null;
+    const job = syncTodoForUser(upn)
+      .then(async (r) => {
+        if (r.ok) await setSetting(upn.toLowerCase(), K_LAST, String(Date.now()));
+        return r;
+      })
+      .catch(() => null);
+    const res = await Promise.race([
+      job,
+      new Promise<null>((r) => setTimeout(() => r(null), LIVE_BUDGET_MS)),
+    ]);
+    /* หมดเวลาแล้วแต่งานยังวิ่งอยู่ — ฝากไว้กับ after() ให้วิ่งต่อหลังส่ง response
+       ปล่อยเป็น promise ลอย ๆ ไม่ได้ เพราะบน serverless ฟังก์ชันอาจถูกปิดก่อนเสร็จ
+       แล้วการซิงค์จะค้างครึ่งทางทุกครั้งที่ Graph ช้า */
+    if (!res) {
+      try {
+        const { after } = await import("next/server");
+        after(() => job);
+      } catch {
+        /* ไม่ได้อยู่ในบริบทคำขอ — cron มีตัวซิงค์ของตัวเองอยู่แล้ว */
+      }
+    }
+    return res;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ดันงานขึ้น To Do หลังผู้ใช้เพิ่ม/ปิดงานเสร็จ
+ *
+ * ต่างจากตัวข้างบน: ไม่ต้องรอผล เพราะผู้ใช้ได้คำตอบไปแล้ว เรียกใน after()
+ * ของ route ให้วิ่งหลังส่ง response — คำตอบในไลน์จะไม่ช้าลงเพราะรอ Graph
+ */
+export async function syncTodoAfterWrite(upn: string): Promise<void> {
+  try {
+    if (!(await todoSyncOn(upn))) return;
+    const res = await syncTodoForUser(upn);
+    if (res.ok) await setSetting(upn.toLowerCase(), K_LAST, String(Date.now()));
+  } catch (e) {
+    console.log(`[todo] ซิงค์หลังเขียนไม่สำเร็จ ${upn}: ${String(e).slice(0, 120)}`);
+  }
 }
