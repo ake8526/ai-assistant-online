@@ -300,21 +300,30 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
   const byId = new Map<string, { card: RemoteTask; listId: string }>();
   const cards: { card: RemoteTask; listId: string }[] = [];
   let remoteOk = true;
-  for (const src of sources) {
-    try {
-      const page = (await asUser(
-        upn,
-        () => graphGet(`/me/todo/lists/${src}/tasks`, { $top: "200" }),
-        token
-      )) as { value?: RemoteTask[] };
-      for (const card of page.value || []) {
-        if (!card?.id) continue;
-        cards.push({ card, listId: src });
-        byId.set(card.id, { card, listId: src });
-      }
-    } catch (e) {
+
+  /* อ่านทุกลิสต์พร้อมกัน ไม่ใช่ไล่ทีละใบ
+
+     แต่ละคำขอไป Graph จาก Vercel ใช้เวลาราวหนึ่งวินาที เรียงกันสองใบก็เสียไป
+     สองวินาทีเปล่า ๆ ทั้งที่ไม่ได้พึ่งผลของกันเลย ใช้ allSettled เพราะลิสต์เดียว
+     อ่านไม่ได้ไม่ควรทำให้ทั้งรอบพัง แต่ต้องรู้ว่ามีที่อ่านไม่ได้ (remoteOk) —
+     ไม่งั้นจะเข้าใจผิดว่าการ์ดถูกลบแล้วไปลืม mapping ทิ้ง */
+  const pages = await Promise.allSettled(
+    sources.map((src) =>
+      asUser(upn, () => graphGet(`/me/todo/lists/${src}/tasks`, { $top: "200" }), token).then(
+        (page) => ({ src, page: page as { value?: RemoteTask[] } })
+      )
+    )
+  );
+  for (const r of pages) {
+    if (r.status === "rejected") {
       remoteOk = false;
-      out.reason = `อ่านลิสต์ To Do ไม่สำเร็จ: ${String(e).slice(0, 120)}`;
+      out.reason = `อ่านลิสต์ To Do ไม่สำเร็จ: ${String(r.reason).slice(0, 120)}`;
+      continue;
+    }
+    for (const card of r.value.page.value || []) {
+      if (!card?.id) continue;
+      cards.push({ card, listId: r.value.src });
+      byId.set(card.id, { card, listId: r.value.src });
     }
   }
 
