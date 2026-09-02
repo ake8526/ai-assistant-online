@@ -34,11 +34,15 @@ const K_ON = "todo_sync";
 const K_LIST = "todo_list_id";
 const K_MAP = "todo_map";
 const K_LAST = "todo_last_sync";
-/* cron ตัวเตือนงานเดินทุกนาที แต่ To Do ไม่ต้องละเอียดขนาดนั้น — เว้นช่วงไว้
-   ไม่ให้ยิง Graph ฟรี ๆ ทุกนาทีต่อคน (สั่งเองด้วย «ซิงค์ todo» ไม่ติดเพดานนี้) */
-const SWEEP_EVERY_MS = 3 * 60_000;
+const K_SEEN = "todo_seen";
+/* เว้นช่วงต่อคน กันยิง Graph ซ้ำถี่เกินจำเป็น (สั่งเองด้วย «ซิงค์ todo» ไม่ติดเพดานนี้)
+   
+   เคยตั้งไว้ 3 นาที รวมกับเพดาน 8 คนต่อรอบแล้วงานที่พิมพ์ใน To Do ใช้เวลาเกือบ
+   5 นาทีกว่าจะโผล่ในไลน์ ซึ่งช้าจนรู้สึกว่าไม่ทำงาน ตอนนี้อ่านทั้งลิสต์ครั้งเดียว
+   ต่อคน (2 คำขอ) การไล่ทุกนาทีจึงไม่หนักอะไร */
+const SWEEP_EVERY_MS = 60_000;
 /** ซิงค์ได้กี่คนต่อรอบ — กันไม่ให้ cron ตัวเตือนงานหมดเวลาเพราะ To Do */
-const MAX_PER_SWEEP = 8;
+const MAX_PER_SWEEP = 12;
 
 /**
  * งานที่ถือว่าจบแล้วจริง — มีแค่สองสถานะนี้
@@ -71,6 +75,32 @@ export async function todoSyncOn(upn: string): Promise<boolean> {
 
 export async function setTodoSyncOn(upn: string, on: boolean): Promise<void> {
   await setSetting(upn, K_ON, on ? "on" : "");
+}
+
+/* ── การ์ดที่เคยดึงเข้ามาแล้ว ─────────────────────────────────────────── */
+
+/**
+ * จำ id การ์ดที่เคยดึงจาก To Do เข้ามาเป็นงาน — กันดึงซ้ำ
+ *
+ * mapping อย่างเดียวไม่พอ เพราะรอบไหนอ่านลิสต์ที่การ์ดอยู่ไม่เจอ (ผู้ใช้ย้าย
+ * การ์ดไปลิสต์ที่เราไม่ได้อ่าน) ระบบจะถือว่าการ์ดถูกลบแล้วลืม mapping ทิ้ง
+ * พอการ์ดโผล่กลับมาก็ดึงเข้ามาเป็นงานใหม่อีกใบ — เกิดขึ้นจริงกับการ์ด «test»
+ * ได้งานซ้ำสองใบ (#145 กับ #149)
+ */
+async function loadSeen(upn: string): Promise<Set<string>> {
+  const raw = await getSetting(upn, K_SEEN);
+  if (!raw) return new Set();
+  try {
+    const a = JSON.parse(raw) as string[];
+    return new Set(Array.isArray(a) ? a : []);
+  } catch {
+    return new Set();
+  }
+}
+
+async function saveSeen(upn: string, seen: Set<string>): Promise<void> {
+  // ใหม่สุดอยู่ท้าย — ตัดหัวทิ้งเมื่อยาวเกิน
+  await setSetting(upn, K_SEEN, JSON.stringify([...seen].slice(-MAP_MAX)));
 }
 
 /* ── mapping ─────────────────────────────────────────────────────────── */
@@ -151,9 +181,15 @@ function payloadFor(t: Task) {
   };
   if (t.due) {
     // To Do รับเวลาแบบระบุโซนเอง — ส่ง UTC ไปตรง ๆ แล้วให้แอปเขาแปลงให้ผู้ใช้
-    p.dueDateTime = { dateTime: new Date(t.due).toISOString().replace("Z", ""), timeZone: "UTC" };
-    p.reminderDateTime = { dateTime: new Date(t.due).toISOString().replace("Z", ""), timeZone: "UTC" };
-    p.isReminderOn = true;
+    const at = new Date(t.due).toISOString().replace("Z", "");
+    p.dueDateTime = { dateTime: at, timeZone: "UTC" };
+    /* ตั้งเตือนเฉพาะงานที่กำหนดส่งยังไม่ถึง — งานเก่าที่เลยกำหนดไปแล้วถ้าตั้ง
+       เตือนย้อนหลัง To Do จะเด้งขึ้นมาทันทีพร้อมกันทั้งกอง วันแรกที่เปิดใช้ให้
+       ทั้งบริษัทคือวันที่งานค้างเก่าทั้งหมดไหลเข้าไปพร้อมกัน */
+    if (new Date(t.due).getTime() > Date.now()) {
+      p.reminderDateTime = { dateTime: at, timeZone: "UTC" };
+      p.isReminderOn = true;
+    }
   }
   return p;
 }
@@ -164,6 +200,7 @@ type RemoteTask = {
   status?: string;
   body?: { content?: string };
   dueDateTime?: { dateTime?: string; timeZone?: string };
+  reminderDateTime?: { dateTime?: string; timeZone?: string };
 };
 
 /**
@@ -173,14 +210,26 @@ type RemoteTask = {
  * ถ้าเจอชื่อโซนอื่นถือเป็นเวลาไทย ไม่ใช่ UTC — ผู้ใช้ทั้งองค์กรอยู่ไทย เดาผิด
  * ทางนี้คลาดไป 7 ชม.ในทิศที่ยังอ่านรู้เรื่อง ดีกว่าโยนกำหนดส่งทิ้งไปเลย
  */
-function remoteDue(card: RemoteTask): string | null {
-  const raw = card.dueDateTime?.dateTime;
+function toIso(dt?: { dateTime?: string; timeZone?: string }): string | null {
+  const raw = dt?.dateTime;
   if (!raw) return null;
-  const zone = String(card.dueDateTime?.timeZone || "UTC").trim();
+  const zone = String(dt?.timeZone || "UTC").trim();
   const utc = /^(utc|gmt|etc\/gmt|utc\+00:00)$/i.test(zone);
   const iso = /[Zz]|[+-]\d{2}:\d{2}$/.test(raw) ? raw : `${raw}${utc ? "Z" : "+07:00"}`;
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
+ * "เมื่อไหร่" ของการ์ดที่ผู้ใช้พิมพ์เอง — เอาเวลาเตือนก่อนกำหนดส่ง
+ *
+ * ใน To Do การตั้ง "Today" เก็บเป็นเที่ยงคืน ส่วนเวลาที่ผู้ใช้ตั้งจริงอยู่ในช่อง
+ * เตือน (Remind me at 11:55) คนละช่องกัน ถ้าอ่านแต่กำหนดส่งจะได้เที่ยงคืน
+ * แล้วไลน์แสดงเป็น 06:00 ตามกติกาของงานที่ไม่ระบุเวลา — ผู้ใช้เห็นสองที่ไม่ตรงกัน
+ * ทั้งที่ระบบไม่ได้อ่านผิด แค่หยิบผิดช่อง
+ */
+function remoteDue(card: RemoteTask): string | null {
+  return toIso(card.reminderDateTime) || toIso(card.dueDateTime);
 }
 
 /* ── ตัวซิงค์ ────────────────────────────────────────────────────────── */
@@ -278,8 +327,10 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
 
   /* ทางกลับ: การ์ดที่เจ้าตัวพิมพ์เองใน To Do — ดึงเข้ามาเป็นงานฝั่งนี้ */
   const known = new Set(Object.values(map));
+  const seen = await loadSeen(upn);
+  let seenChanged = false;
   for (const { card } of cards) {
-    if (!card.id || known.has(card.id)) continue;
+    if (!card.id || known.has(card.id) || seen.has(card.id)) continue;
     // ปิดไปแล้วไม่ต้องเอาเข้ามาให้เป็นงานค้างใหม่
     if (card.status === "completed") continue;
     const title = String(card.title || "").trim();
@@ -294,9 +345,12 @@ export async function syncTodoForUser(upn: string): Promise<TodoSyncResult> {
     if (id) {
       map[String(id)] = card.id;
       known.add(card.id);
+      seen.add(card.id);
+      seenChanged = true;
       out.importedFromTodo += 1;
     }
   }
+  if (seenChanged) await saveSeen(upn, seen);
 
   await saveMap(upn, map);
   out.ok = true;
