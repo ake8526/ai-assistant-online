@@ -87,6 +87,17 @@ export async function deleteTasks(ownerUpn: string, ids: number[]): Promise<numb
   return (data || []).length;
 }
 
+/** เลื่อนกำหนดส่งของงานหนึ่ง — ใช้ตอนผู้ใช้สั่งแก้เวลาจากไลน์ */
+export async function updateTaskDue(taskId: number, dueIso: string | null): Promise<boolean> {
+  const { data, error } = await admin
+    .from("tasks")
+    .update({ due: dueIso })
+    .eq("id", taskId)
+    .select("id");
+  if (error) throw new Error(`updateTaskDue: ${error.message}`);
+  return (data || []).length > 0;
+}
+
 export async function markReminded(taskId: number): Promise<void> {
   await admin.from("tasks").update({ reminded_at: new Date().toISOString() }).eq("id", taskId);
 }

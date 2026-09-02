@@ -54,6 +54,7 @@ import { HELP_TOPICS, findHelpTopic, helpMenuFlex, helpMenuText, helpTopicFlex, 
 import { notYetAnswer } from "@/lib/notYet";
 import { calendarConsentNeededMessage, hasTasksConsent } from "@/lib/msGraphOAuth";
 import { todoConsentUrl } from "@/lib/consentLink";
+import { applyTaskEdit, matchTaskEdit } from "@/lib/taskEdit";
 import { setTodoSyncOn, syncTodoForUser, todoSyncOn } from "@/lib/todoSync";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
 import { busyRanges, findCommonSlots, formatBusy, freeRangesReply, isWeekendWindow, outsideWorkHours, wantsLunchIncluded, workHoursLabel, workingHoursRemain } from "@/lib/scheduling";
@@ -2309,6 +2310,16 @@ async function parseIntent(
   // once. The handler still asks for confirmation before closing anything.
   if (/^(?:ปิด|เสร็จ|ทำเสร็จ|เคลียร์)(?:งาน)?\s*(?:ทั้งหมด|ทุกงาน|ทุกอัน|หมด)(?:เลย)?\s*(?:แล้ว|เลย|ครับ|ค่ะ|นะ)?$/i.test(textClean)) {
     return { intent: "complete_task", params: { all: true }, source: "quick" };
+  }
+
+  /* แก้เวลางาน / ตั้งรอบเตือน — "เปลี่ยนเวลางาน 2 ให้เตือน 2 รอบ 16.00 กับ 17.00"
+     
+     ต้องมีคำกริยาแก้ไข + คำว่า "งาน" + เลขลำดับ (ดู EDIT_RE ใน lib/taskEdit)
+     "ปิดงาน 1" ไม่เข้าเงื่อนไขเพราะ "ปิด" ไม่ใช่คำกริยาแก้ไข และ "เลื่อนนัด"
+     ไม่เข้าเพราะไม่มีคำว่างาน */
+  const taskEditIndex = matchTaskEdit(textClean);
+  if (taskEditIndex) {
+    return { intent: "edit_task_time", params: { index: taskEditIndex, raw: textClean }, source: "quick" };
   }
 
   // Quick task closure: "ปิดงาน 1 2 3", "ปิดงาน 1,2,3", "ปิดงาน 1 2"
@@ -7536,6 +7547,22 @@ async function handleParsed(
       includeLunch: lunch,
     });
     return withCalendarNext({ intent, reply, period }, "free");
+  }
+
+  /* แก้เวลางานและตั้งรอบเตือน — ผลกระทบอยู่ในระบบเราเท่านั้น ไม่ส่งอะไรออกนอก
+     จึงทำให้เลยแล้วรายงานผล ไม่ต้องถามยืนยันก่อน (ต่างจากการส่งนัดหรือจองปฏิทิน) */
+  if (intent === "edit_task_time") {
+    const idx = Number(params.index) || 0;
+    const raw = String(params.raw || "");
+    const res = await applyTaskEdit(userUpn, idx, raw);
+    return {
+      intent,
+      reply: res.reply,
+      suggestions: [
+        { label: "ดูงานค้าง", text: "ดูงานที่ต้องติดตาม" },
+        ...(res.ok ? [{ label: `ปิดงาน ${idx}`, text: `ปิดงาน ${idx}` }] : []),
+      ],
+    };
   }
 
   /* ── Microsoft To Do ─────────────────────────────────────────────────
