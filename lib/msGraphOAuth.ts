@@ -80,6 +80,31 @@ export function buildMicrosoftAuthUrl(state: string): string {
   return `${AUTH_URL}/${tenant()}/oauth2/v2.0/authorize?${p.toString()}`;
 }
 
+/**
+ * ลิงก์ให้แอดมินอนุมัติสิทธิ์แทนทั้งองค์กร (v2.0/adminconsent)
+ *
+ * ช่อง "ความยินยอมในนามขององค์กรของคุณ" บนหน้าขออนุญาตของผู้ใช้ก็ทำอย่าง
+ * เดียวกัน แต่เลือกไม่ได้ว่าจะอนุมัติสิทธิ์ตัวไหน — เหมาทุกตัวที่หน้านั้นแสดง
+ * endpoint นี้อนุมัติเฉพาะ scope ที่ส่งไป จึงเลือก "เฉพาะ To Do" ได้
+ *
+ * openid / profile / offline_access ไม่ต้องอนุมัติ (Entra ให้เองอยู่แล้ว) และ
+ * ใส่ไปในลิงก์นี้จะโดนปฏิเสธ — ส่งเฉพาะสิทธิ์ที่เป็นของ Graph จริง ๆ
+ */
+export function adminConsentUrl(which: "todo" | "all" = "all"): string {
+  const G = "https://graph.microsoft.com/";
+  const scopes =
+    which === "todo"
+      ? ["Tasks.ReadWrite"]
+      : ["User.Read", "People.Read", "Calendars.Read", "Calendars.ReadWrite", "Tasks.ReadWrite"];
+  const p = new URLSearchParams({
+    client_id: clientId(),
+    scope: scopes.map((s) => G + s).join(" "),
+    redirect_uri: microsoftRedirectUri(),
+    state: which,
+  });
+  return `${AUTH_URL}/${tenant()}/v2.0/adminconsent?${p.toString()}`;
+}
+
 export async function exchangeMicrosoftCode(code: string): Promise<{
   refresh_token?: string;
   access_token?: string;
