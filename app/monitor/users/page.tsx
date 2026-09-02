@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
+import { ConfirmDialog, type ConfirmSpec } from "@/components/ConfirmDialog";
 
 // ---------------------------------------------------------------------------
 // /monitor/users — ใครเข้ามาทางไหน อนุญาตอะไรไว้ และระงับใครได้
@@ -13,7 +14,7 @@ import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 // สีบอกสถานะ: เขียว = ใช้ทางไลน์ได้แล้ว · เหลือง = เข้าเว็บแต่ยังไม่ผูกไลน์
 // แดง = ถูกระงับ
 //
-// ทุกปุ่มที่มีผลกับคนอื่นต้องกดสองครั้ง
+// ทุกปุ่มที่มีผลกับคนอื่นเปิดกล่องยืนยันก่อน (components/ConfirmDialog)
 // ---------------------------------------------------------------------------
 
 type UserRow = {
@@ -55,11 +56,16 @@ body{background:#0e0e0f}
 .mus button:hover:not(:disabled){background:#2c2c2f}
 .mus button:disabled{opacity:.4;cursor:not-allowed}
 .mus button.danger{border-color:#7f1d1d;color:#fca5a5}
-.mus button.danger.armed{background:#7f1d1d;color:#fff}
 .mus .msg{font-size:13.5px;color:#fbbf24;margin-top:10px}
 .mus .center{min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center}
 .mus .link{color:#7dd3fc;text-decoration:none}
 `;
+
+/* ผลที่จะเกิดของแต่ละคำสั่ง — โชว์ในกล่องยืนยันก่อนลงมือ */
+const BL_ON = ["พิมพ์อะไรมาในไลน์ ระบบจะตอบว่าถูกระงับ แล้วหยุด", "การผูกบัญชีและสิทธิ์ต่าง ๆ ยังอยู่ครบ ปลดคืนได้ทุกเมื่อ", "งานที่ตั้งเตือนไว้จะยังส่งไม่ได้ระหว่างถูกระงับ"];
+const BW_ON = ["เข้าเว็บและแอปไม่ได้เลย ทุกคำขอถูกปฏิเสธ", "ล็อกอิน Microsoft ใหม่ก็ไม่ช่วย — การระงับอยู่ฝั่งเรา", "การผูกไลน์ยังอยู่ ถ้าจะปิดไลน์ด้วยต้องสั่งแยก"];
+const UL_LINES = ["ลบการผูกออก ไลน์นั้นจะไม่รู้จักบัญชีนี้อีก", "ไม่ใช่การปิดการใช้งาน — เจ้าตัวผูกกลับมาเองได้ทันที", "ใช้ตอนเปลี่ยนบัญชีไลน์ ถ้าจะปิดการใช้งานให้ใช้ ระงับไลน์"];
+const RM_LINES = ["ลบ token ที่เก็บฝั่งเรา — ปฏิทิน ไฟล์ และ To Do ของคนนี้จะใช้ไม่ได้", "ไม่ได้ถอน consent ที่ Microsoft เจ้าตัวล็อกอินใหม่ก็ได้กลับมา", "ถ้าเปิดซิงค์ To Do อยู่ งานจะหยุดไหลเข้า To Do ของเขา"];
 
 const TZ_MS = 7 * 3600_000;
 const shortUpn = (u: string) => u.replace(/@ktisgroup\.com$/i, "");
@@ -80,7 +86,7 @@ function UsersView({ getToken }: { getToken: () => Promise<string | null> }) {
   const [denied, setDenied] = useState(false);
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
-  const [armed, setArmed] = useState("");
+  const [ask, setAsk] = useState<ConfirmSpec | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -132,34 +138,29 @@ function UsersView({ getToken }: { getToken: () => Promise<string | null> }) {
         setMsg(`ไม่สำเร็จ: ${String(e).slice(0, 180)}`);
       } finally {
         setBusy("");
-        setArmed("");
       }
     },
     [getToken, load]
   );
 
-  /** ปุ่มที่มีผลกับคนอื่น — กดครั้งแรกง้างไว้ ครั้งที่สองทำจริง */
-  const twoStep = (
+  /**
+   * ปุ่มที่มีผลกับคนอื่น — กดแล้วเปิดกล่องยืนยันที่บอกว่าทำอะไร กับใคร
+   * และจะเกิดอะไรขึ้น ไม่ลงมือจากการกดครั้งเดียว
+   */
+  const guarded = (
     key: string,
     label: string,
-    confirmLabel: string,
+    spec: Omit<ConfirmSpec, "onConfirm">,
     body: Record<string, unknown>,
-    done: string,
-    danger = true
+    done: string
   ) => (
     <button
       key={key}
-      className={`${danger ? "danger" : ""}${armed === key ? " armed" : ""}`}
+      className={spec.danger ? "danger" : ""}
       disabled={!!busy}
-      onClick={() => {
-        if (armed !== key) {
-          setArmed(key);
-          return;
-        }
-        void act(key, body, done);
-      }}
+      onClick={() => setAsk({ ...spec, onConfirm: () => void act(key, body, done) })}
     >
-      {busy === key ? "กำลังทำ…" : armed === key ? confirmLabel : label}
+      {busy === key ? "กำลังทำ…" : label}
     </button>
   );
 
@@ -188,6 +189,7 @@ function UsersView({ getToken }: { getToken: () => Promise<string | null> }) {
   return (
     <div className="mus">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <ConfirmDialog spec={ask} onCancel={() => setAsk(null)} />
       <div className="wrap">
         <div className="kick">AI ASSISTANT · ผู้ใช้งาน</div>
         <h1>จัดการผู้ใช้งานและช่องทาง</h1>
@@ -303,35 +305,71 @@ function UsersView({ getToken }: { getToken: () => Promise<string | null> }) {
                         )}
                       </td>
                       <td>
-                        {twoStep(
+                        {guarded(
                           `bl${u.upn}`,
                           u.blocked.line ? "ปลดระงับไลน์" : "ระงับไลน์",
-                          u.blocked.line ? "ยืนยันปลด" : "ยืนยันระงับ",
+                          u.blocked.line
+                            ? {
+                                title: "ปลดระงับการใช้งานไลน์",
+                                target: u.upn,
+                                lines: ["กลับมาสั่งงานผู้ช่วยทางไลน์ได้ตามปกติ"],
+                                confirmLabel: "ยืนยันปลดระงับไลน์",
+                              }
+                            : {
+                                title: "ระงับการใช้งานไลน์",
+                                target: u.upn,
+                                lines: BL_ON,
+                                confirmLabel: "ยืนยันระงับไลน์",
+                                danger: true,
+                              },
                           { action: "block", upn: u.upn, channel: "line", on: !u.blocked.line },
-                          `${u.blocked.line ? "ปลดระงับ" : "ระงับ"}ไลน์ของ ${shortUpn(u.upn)} แล้ว`,
-                          !u.blocked.line
+                          `${u.blocked.line ? "ปลดระงับ" : "ระงับ"}ไลน์ของ ${shortUpn(u.upn)} แล้ว`
                         )}
-                        {twoStep(
+                        {guarded(
                           `bw${u.upn}`,
                           u.blocked.web ? "ปลดระงับเว็บ" : "ระงับเว็บ/แอป",
-                          u.blocked.web ? "ยืนยันปลด" : "ยืนยันระงับ",
+                          u.blocked.web
+                            ? {
+                                title: "ปลดระงับการใช้งานเว็บ/แอป",
+                                target: u.upn,
+                                lines: ["กลับมาเข้าเว็บและแอปได้ตามปกติ"],
+                                confirmLabel: "ยืนยันปลดระงับเว็บ",
+                              }
+                            : {
+                                title: "ระงับการใช้งานเว็บ/แอป",
+                                target: u.upn,
+                                lines: BW_ON,
+                                confirmLabel: "ยืนยันระงับเว็บ/แอป",
+                                danger: true,
+                              },
                           { action: "block", upn: u.upn, channel: "web", on: !u.blocked.web },
-                          `${u.blocked.web ? "ปลดระงับ" : "ระงับ"}เว็บของ ${shortUpn(u.upn)} แล้ว`,
-                          !u.blocked.web
+                          `${u.blocked.web ? "ปลดระงับ" : "ระงับ"}เว็บของ ${shortUpn(u.upn)} แล้ว`
                         )}
                         {u.line &&
-                          twoStep(
+                          guarded(
                             `ul${u.upn}`,
                             "ยกเลิกผูกไลน์",
-                            "ยืนยันยกเลิก",
+                            {
+                              title: "ยกเลิกการผูกบัญชีไลน์",
+                              target: `${u.upn} · ไลน์: ${u.line.name || "(ไม่มีชื่อ)"}`,
+                              lines: UL_LINES,
+                              confirmLabel: "ยืนยันยกเลิกการผูก",
+                              danger: true,
+                            },
                             { action: "unlink_line", upn: u.upn },
                             `ยกเลิกการผูกไลน์ของ ${shortUpn(u.upn)} แล้ว`
                           )}
                         {u.ms &&
-                          twoStep(
+                          guarded(
                             `rm${u.upn}`,
                             "ลบสิทธิ์ Microsoft",
-                            "ยืนยันลบสิทธิ์",
+                            {
+                              title: "ลบสิทธิ์ Microsoft ที่เก็บไว้",
+                              target: u.upn,
+                              lines: RM_LINES,
+                              confirmLabel: "ยืนยันลบสิทธิ์",
+                              danger: true,
+                            },
                             { action: "revoke_ms", upn: u.upn },
                             `ลบสิทธิ์ Microsoft ที่เก็บไว้ของ ${shortUpn(u.upn)} แล้ว`
                           )}

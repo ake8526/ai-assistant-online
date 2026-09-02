@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
+import { ConfirmDialog, type ConfirmSpec } from "@/components/ConfirmDialog";
 
 // ---------------------------------------------------------------------------
 // /monitor/todo — จัดการงานและการซิงค์ Microsoft To Do
@@ -11,7 +12,7 @@ import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 // ได้ต้องไล่ลบจากหลังบ้านทีละคน หน้านี้จัดกลุ่มตาม "ประชุมไหน วันไหน ของใคร"
 // ให้เห็นทั้งกองแล้วลบทีเดียว และเปิด/ปิดการซิงค์รายคนได้โดยไม่ต้องแตะ DB
 //
-// ลบได้ทีละกลุ่มเท่านั้น และต้องกดยืนยันซ้ำ — ไม่มีปุ่มล้างทั้งตาราง
+// ลบได้ทีละกลุ่มหรือทีละงาน และมีกล่องยืนยันเสมอ — ไม่มีปุ่มล้างทั้งตาราง
 // ---------------------------------------------------------------------------
 
 type UserRow = {
@@ -62,7 +63,6 @@ body{background:#0e0e0f}
 .mtd button:hover:not(:disabled){background:#2c2c2f}
 .mtd button:disabled{opacity:.45;cursor:not-allowed}
 .mtd button.danger{border-color:#7f1d1d;color:#fca5a5}
-.mtd button.danger.armed{background:#7f1d1d;color:#fff}
 .mtd .ghead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer}
 .mtd .gday{color:#7dd3fc;font-size:13px;font-variant-numeric:tabular-nums}
 .mtd .gsrc{font-size:15px;font-weight:600;flex:1;min-width:200px}
@@ -125,9 +125,9 @@ function TodoView({ getToken }: { getToken: () => Promise<string | null> }) {
   const [msg, setMsg] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [openUser, setOpenUser] = useState<Record<string, boolean>>({});
-  /* ปุ่มลบต้องกดสองครั้ง — ครั้งแรกแค่ "ง้าง" ไว้ ครั้งที่สองจึงลบจริง
-     ของที่ลบไปแล้วไม่มีปุ่มเรียกคืนในหน้านี้ */
-  const [armed, setArmed] = useState("");
+  /* ทุกปุ่มที่มีผลกับข้อมูลของคนอื่นเปิดกล่องยืนยันก่อน — บอกว่าทำอะไร กับใคร
+     และผลเป็นอย่างไร ของที่ลบไปแล้วไม่มีปุ่มเรียกคืนในหน้านี้ */
+  const [ask, setAsk] = useState<ConfirmSpec | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -184,7 +184,6 @@ function TodoView({ getToken }: { getToken: () => Promise<string | null> }) {
         setMsg(`ไม่สำเร็จ: ${String(e).slice(0, 180)}`);
       } finally {
         setBusy("");
-        setArmed("");
       }
     },
     [getToken, load]
@@ -213,6 +212,7 @@ function TodoView({ getToken }: { getToken: () => Promise<string | null> }) {
   return (
     <div className="mtd">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <ConfirmDialog spec={ask} onCancel={() => setAsk(null)} />
       <div className="wrap">
         <div className="kick">AI ASSISTANT · TO DO</div>
         <h1>จัดการงานและ Microsoft To Do</h1>
@@ -266,32 +266,40 @@ function TodoView({ getToken }: { getToken: () => Promise<string | null> }) {
                       )}
                     </td>
                     <td>
-                      {/* กดสองครั้งเหมือนปุ่มลบ — ปิดซิงค์ของคนอื่นคือหยุดงานเข้า
-                          To Do ของเขาโดยที่เขาไม่รู้ ไม่ควรพลาดด้วยการกดครั้งเดียว */}
+                      {/* ปิดซิงค์ของคนอื่นคือหยุดงานเข้า To Do ของเขาโดยที่เขาไม่รู้
+                          จึงต้องยืนยันก่อน ไม่ใช่กดครั้งเดียวแล้วเปลี่ยนเลย */}
                       <button
-                        className={armed === `t${u.upn}` ? "danger armed" : ""}
                         disabled={!!busy || !u.consent}
-                        onClick={() => {
-                          if (armed !== `t${u.upn}`) {
-                            setArmed(`t${u.upn}`);
-                            return;
-                          }
-                          void act(
-                            `t${u.upn}`,
-                            { action: "toggle", upn: u.upn, on: !u.on },
-                            () => `${u.on ? "ปิด" : "เปิด"}การซิงค์ของ ${shortUpn(u.upn)} แล้ว`
-                          );
-                        }}
+                        onClick={() =>
+                          setAsk({
+                            title: u.on ? "ปิดการซิงค์ To Do" : "เปิดการซิงค์ To Do",
+                            target: u.upn,
+                            lines: u.on
+                              ? [
+                                  "งานใหม่จะหยุดเข้า To Do ของเขา",
+                                  "การ์ดที่อยู่ในลิสต์ KTIS X แล้วยังอยู่ ไม่ถูกลบ",
+                                  "เจ้าตัวเปิดกลับเองได้โดยพิมพ์ «เปิด todo» ในไลน์",
+                                ]
+                              : [
+                                  "งานค้างของเขาจะถูกส่งเข้าลิสต์ KTIS X ใน To Do",
+                                  "ติ๊กเสร็จใน To Do แล้วงานฝั่งนี้จะปิดตามให้",
+                                ],
+                            confirmLabel: u.on ? "ยืนยันปิดซิงค์" : "ยืนยันเปิดซิงค์",
+                            danger: u.on,
+                            onConfirm: () =>
+                              void act(
+                                `t${u.upn}`,
+                                { action: "toggle", upn: u.upn, on: !u.on },
+                                () => `${u.on ? "ปิด" : "เปิด"}การซิงค์ของ ${shortUpn(u.upn)} แล้ว`
+                              ),
+                          })
+                        }
                       >
                         {busy === `t${u.upn}`
                           ? "กำลังทำ…"
-                          : armed === `t${u.upn}`
-                            ? u.on
-                              ? "ยืนยันปิดซิงค์"
-                              : "ยืนยันเปิดซิงค์"
-                            : u.on
-                              ? "เปิดอยู่ · กดเพื่อปิด"
-                              : "ปิดอยู่ · กดเพื่อเปิด"}
+                          : u.on
+                            ? "เปิดอยู่ · กดเพื่อปิด"
+                            : "ปิดอยู่ · กดเพื่อเปิด"}
                       </button>
                     </td>
                     <td className="num">{u.tasks}</td>
@@ -359,22 +367,34 @@ function TodoView({ getToken }: { getToken: () => Promise<string | null> }) {
                                   <td>{it.inTodo ? "✅" : "—"}</td>
                                   <td>
                                     <button
-                                      className={`danger${armed === `one${it.id}` ? " armed" : ""}`}
+                                      className="danger"
                                       disabled={!!busy}
-                                      onClick={() => {
-                                        if (armed !== `one${it.id}`) {
-                                          setArmed(`one${it.id}`);
-                                          return;
-                                        }
-                                        void act(
-                                          `one${it.id}`,
-                                          { action: "delete", upn: u.upn, ids: [it.id] },
-                                          (d) =>
-                                            `ลบงาน #${it.id} แล้ว · การ์ดใน To Do ${d.cardsRemoved ?? 0} ใบ`
-                                        );
-                                      }}
+                                      onClick={() =>
+                                        setAsk({
+                                          title: "ลบงานนี้ทิ้ง",
+                                          target: `#${it.id} ${it.title}`,
+                                          lines: [
+                                            `เจ้าของงาน: ${u.upn}`,
+                                            it.inTodo
+                                              ? "ลบการ์ดใน Microsoft To Do ของเขาด้วย"
+                                              : "งานนี้ยังไม่มีการ์ดใน To Do",
+                                            "ลบแล้วเรียกคืนจากหน้านี้ไม่ได้",
+                                          ],
+                                          confirmLabel: "ยืนยันลบงาน",
+                                          danger: true,
+                                          onConfirm: () =>
+                                            void act(
+                                              `one${it.id}`,
+                                              { action: "delete", upn: u.upn, ids: [it.id] },
+                                              (d) =>
+                                                `ลบงาน #${it.id} แล้ว · การ์ดใน To Do ${
+                                                  d.cardsRemoved ?? 0
+                                                } ใบ`
+                                            ),
+                                        })
+                                      }
                                     >
-                                      {armed === `one${it.id}` ? "ยืนยันลบ" : "ลบ"}
+                                      {busy === `one${it.id}` ? "กำลังลบ…" : "ลบ"}
                                     </button>
                                   </td>
                                 </tr>
@@ -407,26 +427,30 @@ function TodoView({ getToken }: { getToken: () => Promise<string | null> }) {
                 <span className="gowner">{shortUpn(g.owner)}</span>
                 <span className="gn">{g.n} งาน</span>
                 <button
-                  className={`danger${armed === g.key ? " armed" : ""}`}
+                  className="danger"
                   disabled={!!busy}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (armed !== g.key) {
-                      setArmed(g.key);
-                      return;
-                    }
-                    void act(
-                      `d${g.key}`,
-                      { action: "delete", upn: g.owner, ids: g.ids },
-                      (d) => `ลบ ${d.removed ?? 0} งาน และการ์ดใน To Do ${d.cardsRemoved ?? 0} ใบ`
-                    );
+                    setAsk({
+                      title: `ลบทั้งกลุ่ม ${g.n} งาน`,
+                      target: `${g.day} · ${g.source}`,
+                      lines: [
+                        `เจ้าของงาน: ${g.owner}`,
+                        "ลบการ์ดใน Microsoft To Do ของเขาด้วยทุกใบที่ผูกไว้",
+                        "ลบแล้วเรียกคืนจากหน้านี้ไม่ได้",
+                      ],
+                      confirmLabel: `ยืนยันลบ ${g.n} งาน`,
+                      danger: true,
+                      onConfirm: () =>
+                        void act(
+                          `d${g.key}`,
+                          { action: "delete", upn: g.owner, ids: g.ids },
+                          (d) => `ลบ ${d.removed ?? 0} งาน และการ์ดใน To Do ${d.cardsRemoved ?? 0} ใบ`
+                        ),
+                    });
                   }}
                 >
-                  {busy === `d${g.key}`
-                    ? "กำลังลบ…"
-                    : armed === g.key
-                      ? `ยืนยันลบ ${g.n} งาน`
-                      : "ลบทั้งกลุ่ม"}
+                  {busy === `d${g.key}` ? "กำลังลบ…" : "ลบทั้งกลุ่ม"}
                 </button>
               </div>
               {open[g.key] && (
