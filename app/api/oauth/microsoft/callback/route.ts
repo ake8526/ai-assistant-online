@@ -19,6 +19,16 @@ export async function GET(req: Request) {
     if (state.back?.startsWith("/")) back = state.back;
   } catch { /* bad state */ }
 
+  /* ปลายทางของการ "อนุญาตให้ทั้งองค์กร" (v2.0/adminconsent) ด้วย
+     
+     ปลายทางนั้นต้องเป็น redirect_uri ที่ลงทะเบียนไว้แล้วเท่านั้น จึงใช้ตัวนี้
+     ร่วมกัน — แต่มันไม่ส่ง code กลับมา ส่ง admin_consent=True มาแทน ถ้าไม่ดัก
+     ไว้จะไปตกที่ "missing_code" แล้วดูเหมือนล้มเหลวทั้งที่อนุมัติสำเร็จ */
+  if (url.searchParams.get("admin_consent")) {
+    const ok = url.searchParams.get("admin_consent") === "True" && !err;
+    return NextResponse.redirect(`${url.origin}/todo/admin${ok ? "" : `?error=${encodeURIComponent(errDesc || err || "denied")}`}`);
+  }
+
   const dest = (q: string, detail?: string) => {
     const u = new URL(`${url.origin}${back}`);
     u.searchParams.set("ms", q);
