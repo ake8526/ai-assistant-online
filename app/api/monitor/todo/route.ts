@@ -62,14 +62,16 @@ export async function GET(req: Request) {
   rows.forEach((r) => people.add(r.owner_upn.toLowerCase()));
 
   const users = [...people].sort().map((upn) => {
-    let cards = 0;
+    let map: Record<string, string> = {};
     try {
-      cards = Object.keys(JSON.parse(setOf(upn, "todo_map") || "{}")).length;
+      map = JSON.parse(setOf(upn, "todo_map") || "{}") as Record<string, string>;
     } catch {
-      cards = 0;
+      map = {};
     }
+    const cards = Object.keys(map).length;
     const scope = (tokens || []).find((t) => String(t.owner_upn).toLowerCase() === upn)?.scope || "";
     const last = Number(setOf(upn, "todo_last_sync")) || 0;
+    const mine = rows.filter((r) => r.owner_upn.toLowerCase() === upn);
     return {
       upn,
       on: setOf(upn, "todo_sync") === "on",
@@ -78,8 +80,21 @@ export async function GET(req: Request) {
       consent: /Tasks\.ReadWrite/i.test(scope),
       linked: !!scope,
       cards,
-      tasks: rows.filter((r) => r.owner_upn.toLowerCase() === upn).length,
+      tasks: mine.length,
       lastSync: last ? new Date(last).toISOString() : null,
+      /* รายการของคนนั้น — หน้าเว็บกางดูได้ว่ามีงานอะไร เข้ามาเมื่อไร มาจากไหน
+         และอยู่ใน To Do แล้วหรือยัง ก่อนหน้านี้เห็นแต่ตัวเลขรวม ซึ่งบอกไม่ได้ว่า
+         ตัวเลขนั้นมาจากอะไร */
+      items: mine.map((r) => ({
+        id: r.id,
+        title: r.title,
+        source: r.source || "",
+        responsible: r.responsible || "",
+        status: r.status,
+        due: r.due,
+        createdAt: r.created_at,
+        inTodo: !!map[String(r.id)],
+      })),
     };
   });
 

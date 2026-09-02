@@ -22,8 +22,10 @@ type UserRow = {
   cards: number;
   tasks: number;
   lastSync: string | null;
+  items: UserItem[];
 };
 type Item = { id: number; title: string; responsible: string; status: string; due: string | null };
+type UserItem = Item & { source: string; createdAt: string; inTodo: boolean };
 type Group = {
   key: string;
   owner: string;
@@ -71,6 +73,11 @@ body{background:#0e0e0f}
 .mtd li:last-child{border-bottom:none}
 .mtd li .id{color:#6f6f6f;font-variant-numeric:tabular-nums;min-width:46px}
 .mtd li .resp{color:#7dd3fc;font-size:13px;white-space:nowrap}
+.mtd button.plain{background:none;border:none;padding:0;color:#ececec;font-size:14px}
+.mtd button.plain:hover{background:none;color:#7dd3fc}
+.mtd table.inner{min-width:0;font-size:13px;margin-top:4px}
+.mtd table.inner th{font-size:11px;padding:4px 8px 4px 0;border-bottom:1px solid #2a2a2c}
+.mtd table.inner td{padding:5px 8px 5px 0;border-bottom:1px solid #1c1c1e;vertical-align:top}
 .mtd .msg{font-size:13.5px;color:#fbbf24;margin-top:10px}
 .mtd .center{min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center}
 .mtd .link{color:#7dd3fc;text-decoration:none}
@@ -87,6 +94,26 @@ function fmtAgo(iso: string | null): string {
 
 const shortUpn = (u: string) => u.replace(/@ktisgroup\.com$/i, "");
 
+const TZ_MS = 7 * 3600_000;
+
+/** เวลาไทยแบบอ่านเร็ว — วัน/เดือน ชม.:นาที */
+function stamp(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(new Date(iso).getTime() + TZ_MS);
+  if (Number.isNaN(d.getTime())) return "—";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+
+/** ที่มาของงาน — ชื่อประชุมยาว ๆ ตัดให้พออ่าน ส่วนค่าที่ระบบใช้เองแปลเป็นคำไทย */
+function sourceLabel(src: string): string {
+  const s = (src || "").trim();
+  if (!s || s === "manual") return "เพิ่มเอง";
+  if (s === "todo") return "พิมพ์ใน To Do";
+  if (s === "meeting_auto") return "จากสรุปประชุม";
+  return s;
+}
+
 function TodoView({ getToken }: { getToken: () => Promise<string | null> }) {
   const [data, setData] = useState<Resp | null>(null);
   const [err, setErr] = useState("");
@@ -94,6 +121,7 @@ function TodoView({ getToken }: { getToken: () => Promise<string | null> }) {
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [openUser, setOpenUser] = useState<Record<string, boolean>>({});
   /* ปุ่มลบต้องกดสองครั้ง — ครั้งแรกแค่ "ง้าง" ไว้ ครั้งที่สองจึงลบจริง
      ของที่ลบไปแล้วไม่มีปุ่มเรียกคืนในหน้านี้ */
   const [armed, setArmed] = useState("");
@@ -214,8 +242,17 @@ function TodoView({ getToken }: { getToken: () => Promise<string | null> }) {
               </thead>
               <tbody>
                 {users.map((u) => (
-                  <tr key={u.upn}>
-                    <td>{shortUpn(u.upn)}</td>
+                  <React.Fragment key={u.upn}>
+                  <tr>
+                    <td>
+                      <button
+                        className="plain"
+                        onClick={() => setOpenUser((o) => ({ ...o, [u.upn]: !o[u.upn] }))}
+                        title="กางดูงานของคนนี้"
+                      >
+                        {openUser[u.upn] ? "▾" : "▸"} {shortUpn(u.upn)}
+                      </button>
+                    </td>
                     <td>
                       {u.consent ? (
                         <span className="tag ok">อนุญาตแล้ว</span>
@@ -262,6 +299,75 @@ function TodoView({ getToken }: { getToken: () => Promise<string | null> }) {
                       </button>
                     </td>
                   </tr>
+                  {openUser[u.upn] && (
+                    <tr>
+                      <td colSpan={7} style={{ background: "#101011", padding: "4px 8px 12px" }}>
+                        {!u.items.length ? (
+                          <div style={{ color: "#8a8a8a", fontSize: 13.5, padding: "6px 2px" }}>
+                            ไม่มีงานค้าง
+                          </div>
+                        ) : (
+                          <table className="inner">
+                            <thead>
+                              <tr>
+                                <th>#</th>
+                                <th>งาน</th>
+                                <th>เข้ามาเมื่อ</th>
+                                <th>มาจาก</th>
+                                <th>กำหนดส่ง</th>
+                                <th>ใน To Do</th>
+                                <th />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {u.items.map((it) => (
+                                <tr key={it.id}>
+                                  <td style={{ color: "#6f6f6f" }}>{it.id}</td>
+                                  <td>
+                                    {it.title}
+                                    {it.responsible && <span className="resp"> · {it.responsible}</span>}
+                                    {/* ต้องมี {" "} คั่น ไม่งั้นชื่อผู้รับผิดชอบกับป้ายสถานะติดกันเป็นคำเดียว
+                                        ("บอลเกินกำหนด") */}
+                                    {it.status === "overdue" && (
+                                      <>
+                                        {" "}
+                                        <span className="tag warn">เกินกำหนด</span>
+                                      </>
+                                    )}
+                                  </td>
+                                  <td style={{ whiteSpace: "nowrap" }}>{stamp(it.createdAt)}</td>
+                                  <td style={{ maxWidth: 260 }}>{sourceLabel(it.source)}</td>
+                                  <td style={{ whiteSpace: "nowrap" }}>{stamp(it.due)}</td>
+                                  <td>{it.inTodo ? "✅" : "—"}</td>
+                                  <td>
+                                    <button
+                                      className={`danger${armed === `one${it.id}` ? " armed" : ""}`}
+                                      disabled={!!busy}
+                                      onClick={() => {
+                                        if (armed !== `one${it.id}`) {
+                                          setArmed(`one${it.id}`);
+                                          return;
+                                        }
+                                        void act(
+                                          `one${it.id}`,
+                                          { action: "delete", upn: u.upn, ids: [it.id] },
+                                          (d) =>
+                                            `ลบงาน #${it.id} แล้ว · การ์ดใน To Do ${d.cardsRemoved ?? 0} ใบ`
+                                        );
+                                      }}
+                                    >
+                                      {armed === `one${it.id}` ? "ยืนยันลบ" : "ลบ"}
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
