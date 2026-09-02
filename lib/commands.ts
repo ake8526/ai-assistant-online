@@ -63,7 +63,7 @@ import {
   todoSyncOn,
 } from "@/lib/todoSync";
 import { bookMeetingWithLineHold } from "@/lib/meetingInvite";
-import { busyRanges, findCommonSlots, formatBusy, freeRangesReply, isWeekendWindow, outsideWorkHours, wantsLunchIncluded, workHoursLabel, workingHoursRemain } from "@/lib/scheduling";
+import { busyRanges, findCommonSlots, formatBusy, freeRanges, freeRangesReply, isWeekendWindow, outsideWorkHours, wantsLunchIncluded, workHoursLabel, workingHoursRemain } from "@/lib/scheduling";
 import {
   addPlace,
   addTask,
@@ -74,6 +74,8 @@ import {
   incrementVisit,
   listPlaces,
   listTasks,
+  listTasksVisibleTo,
+  getTaskById,
   loadPendingLineLocation,
   allSettings,
   setSetting,
@@ -81,6 +83,7 @@ import {
   updateTaskStatus,
   type Task,
 } from "@/lib/store";
+import { notifyOwnerTasksClosed } from "@/lib/taskCloseNotify";
 import {
   listManagedFeeds,
   previewFeed,
@@ -264,7 +267,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
 
 {
-  "intent": "<หนึ่งใน: who_are_you | get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | add_task | complete_task | summarize_meetings | find_meeting_time | book_self_calendar | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
+  "intent": "<หนึ่งใน: who_are_you | get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | list_delegated_tasks | room_availability | add_task | complete_task | summarize_meetings | find_meeting_time | book_self_calendar | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
   "params": { ... }
 }
 
@@ -282,7 +285,10 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
   params: { "date": "YYYY-MM-DD", "all_day": true/false, "at": "HH:MM (ถ้าระบุเวลาเริ่ม)", "duration_min": ตัวเลขนาที (ถ้าระบุ), "subject": "เหตุผล/กิจกรรม เช่น ออกรายการ, ลาพักร้อน, ติดธุระ" }
 - list_meetings = ดู "รายการประชุม/นัด" ในปฏิทิน (วันนี้/พรุ่งนี้/สัปดาห์นี้/เดือนนี้)
 - my_availability = ดู "เวลาว่างของตัวเอง" ในปฏิทิน (ช่วงไหนว่าง/ตารางว่าง)
-- list_tasks = ดูงานที่ต้องติดตาม (ไม่ใช่ประชุม)
+- list_tasks = ดูงานที่ต้องติดตาม (ไม่ใช่ประชุม) — รวมงานที่ตัวเองสั่งและงานที่คนอื่นมอบให้
+- list_delegated_tasks = ดูเฉพาะ "งานที่เรามอบให้คนอื่นทำ" และใครค้างอยู่บ้าง — เช่น "งานที่มอบให้คนอื่น", "งานที่สั่งไป", "ใครค้างงานบ้าง"
+- room_availability = ถามว่ามีห้องประชุมว่างไหม "โดยไม่ระบุชื่อห้อง" — เช่น "มีห้องว่างไหม", "พรุ่งนี้ห้องไหนว่างบ้าง", "ห้องประชุมว่างกี่โมง" (ถ้าระบุชื่อห้องให้ใช้ find_meeting_time)
+  params: { "weekday": "mon..sun (ถ้าระบุ)", "period": "today/tomorrow (ถ้าระบุ)" }
 - add_sample_tasks = สร้างงานติดตามทดสอบ/สมมติ — เช่น "เพิ่มงานติดตามให้ 2 งานที", "สร้างงานทดสอบ 2 งาน", "เพิ่มงาน 2 งาน", "ขอเพิ่มงาน"
 - summarize_meetings = สรุป "ประชุมที่จบไปแล้ว" จาก transcript
 - summarize_file = อ่านหรือสรุปเนื้อหาในไฟล์ที่ค้นพบ หรือไฟล์ที่ผู้ใช้อ้างถึง (เช่น "อ่านและสรุป", "สรุปไฟล์นี้", "อ่านอันแรก", "สรุปให้ฟัง")
@@ -323,7 +329,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - complete_task: { "task_id": <number ถ้าผู้ใช้พิมพ์เลขงาน>, "title": "ชื่องานถ้าผู้ใช้พิมพ์ชื่อ เช่น «test meeting ปิดงานเลย» → title=test meeting" }
 - find_meeting_time: { "attendees": ["email หรือชื่อ"], "duration_min": 30, "weekday": "mon|tue|… (ถ้าพูดชื่อวัน เช่น วันจันทร์นี้)", "date": "YYYY-MM-DD หรือ 31 (ถ้าเจาะจงวันที่)", "period": "today|tomorrow|week (ถ้าไม่ได้เจาะจงวัน)", "after": "HH:MM (เช้า/บ่าย/เย็น หรือหลัง…)", "before": "HH:MM", "note": "...", "file_index": 3 }
 - cancel_meeting: { "person": "ชื่อ/อีเมลคนในนัด ถ้าผู้ใช้ระบุ เช่น ยกเลิกนัดกับเบส (ถ้าไม่ระบุ = โชว์รายการทั้งหมด)" }
-- get_brief / get_news / list_tasks / summarize_meetings / list_feeds: {}
+- get_brief / get_news / list_tasks / list_delegated_tasks / summarize_meetings / list_feeds: {}
 - prep_meeting: { "meeting_index": 1 }  หรือ { "subject": "ชื่อนัดถ้าพิมพ์ชื่อ" }
 - add_feed: { "url": "ลิงก์เพจหรือ RSS", "kind": "rss|facebook (ถ้าชัดเจน)", "label": "ชื่อย่อ (ถ้ามี)" }
 - remove_feed: { "feed_index": 1, "feed_id": null }  (ถ้ายังไม่ระบุหมายเลข ปล่อยว่าง — ระบบจะให้เลือก)
@@ -943,15 +949,16 @@ function quickFeedIntent(text: string): { intent: string; params: Record<string,
       : undefined;
     const period = /พรุ่งนี้/.test(t) ? "tomorrow" : /วันนี้/.test(t) ? "today" : undefined;
     const matchingRooms = findMatchingRooms(t);
-    const roomEmails = matchingRooms.length > 0 ? matchingRooms.map((r) => r.email) : [KNOWN_MEETING_ROOMS[0].email];
-    return {
-      intent: "find_meeting_time",
-      params: {
-        attendees: roomEmails,
-        weekday,
-        period,
-      },
-    };
+    /* ถามเจาะจงห้อง = หาเวลาว่างของห้องนั้น (เหมือนเดิม)
+       ถามลอย ๆ ว่า "มีห้องว่างไหม" = ต้องกวาดทุกห้องแล้วบอกทีละห้อง
+       ของเดิมยัดห้องแรกในลิสต์ให้เสมอ คำตอบจึงพูดถึงห้องเดียวโดยที่คนถามไม่รู้ตัว */
+    if (matchingRooms.length > 0) {
+      return {
+        intent: "find_meeting_time",
+        params: { attendees: matchingRooms.map((r) => r.email), weekday, period },
+      };
+    }
+    return { intent: "room_availability", params: { weekday, period } };
   }
 
   // Month agenda check — e.g. "เดือน10มีนัดไหม", "ตารางเดือนตุลา", "เดือนนี้มีประชุมอะไรบ้าง"
@@ -2324,6 +2331,18 @@ async function parseIntent(
   }
 
 
+
+  /* "งานที่มอบให้คนอื่น" — ต้องมาก่อน list_tasks ด้านล่าง ไม่งั้นคำว่า "งาน"
+     ในประโยคจะถูกรายการรวมกินไปก่อน ตัวจับต้องมีคำว่ามอบ/สั่งเสมอ จึงไม่ไปแย่ง
+     "ดูงานที่ต้องติดตาม" หรือ "เพิ่มงาน ... ให้เบส" ที่ขึ้นต้นด้วยคำอื่น */
+  if (
+    /^(?:ดู|เช็ค|เช็ก|ขอดู|ตาม|ติดตาม)?\s*(?:งาน|รายการงาน)?\s*(?:ที่)?\s*(?:ฉัน|เรา|ผม|ดิฉัน)?\s*(?:มอบหมาย|มอบ|สั่ง)\s*(?:งาน)?\s*(?:ให้)?\s*(?:คนอื่น|ใคร|ทีม|ลูกน้อง|ไว้|ไป)\s*(?:บ้าง)?[!?.\s]*$/i.test(
+      textClean
+    ) ||
+    /^(?:ใคร)\s*(?:ค้างงาน|ยังไม่ปิดงาน|ทำงานค้าง|ค้างงานอยู่)\s*(?:บ้าง)?[!?.\s]*$/i.test(textClean)
+  ) {
+    return { intent: "list_delegated_tasks", params: {}, source: "quick" };
+  }
 
   // "ดูงานที่ต้องติดตาม" / "/รายการ" / "รายการ" / "งานค้าง" / "ดูงาน" / "/งาน"
   if (/^(?:\/รายการ|รายการ|\/งาน|ดูงาน|ดูงานที่ต้องติดตาม|งานค้าง|ดูงานค้าง|รายการเตือน|ดูรายการเตือน|งานที่ต้องติดตาม)$/i.test(textClean)) {
@@ -4695,6 +4714,37 @@ export async function handleCommand(
 // completes in one step without stored conversation context.
 /** Match a typed task name against pending titles: exact, then either side
  *  containing the other (people paraphrase and drop words). */
+/**
+ * ชื่อ "คนสั่ง" ของงานที่คนอื่นมอบให้ upn คนนี้ — คืนเป็น map ตาม id ของงาน
+ *
+ * งานที่ตัวเองเป็นคนสั่งจะไม่อยู่ใน map เลย ผู้เรียกจึงแยกสองกรณีได้ด้วย has()
+ * โดยไม่ต้องเทียบ upn ซ้ำอีกรอบ ชื่อถามจาก Graph ครั้งเดียวต่อคน (มีแคชในตัว)
+ */
+async function ownerNames(upn: string, tasks: Task[]): Promise<Map<number, string>> {
+  const me = (upn || "").toLowerCase();
+  const out = new Map<number, string>();
+  const owners = [
+    ...new Set(tasks.map((t) => (t.owner_upn || "").toLowerCase()).filter((o) => o && o !== me)),
+  ];
+  if (!owners.length) return out;
+  const nameByUpn = new Map<string, string>();
+  for (const o of owners) {
+    let name = o.split("@")[0] || o;
+    try {
+      const info = await resolveUserInfo(o);
+      if (info?.displayName) name = info.displayName;
+    } catch {
+      /* ไม่รู้ชื่อก็ยังต้องแสดงรายการได้ */
+    }
+    nameByUpn.set(o, name);
+  }
+  for (const t of tasks) {
+    const o = (t.owner_upn || "").toLowerCase();
+    if (o && o !== me) out.set(t.id, nameByUpn.get(o) || o);
+  }
+  return out;
+}
+
 export function matchTasksByTitle(tasks: Task[], wanted: string): Task[] {
   const norm = (v: string) => v.toLowerCase().replace(/\s+/g, " ").trim();
   const w = norm(wanted);
@@ -4743,7 +4793,20 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
     if (a === "done") {
       const tid = Number(data.get("t") || "");
       if (!tid) return { intent: "error", reply: "ข้อมูลไม่ครบ ลองใหม่อีกครั้งครับ" };
+      /* ปุ่มนี้มาจากข้อความเตือน ซึ่งส่งถึงทั้งคนสั่งและคนรับงาน — จึงต้องดูใบงานก่อน
+         ว่าใครกด ถ้าเป็นคนรับงาน ปิดเสร็จต้องวิ่งไปบอกคนสั่งด้วย ไม่งั้นเขาไม่มีทางรู้ */
+      const task = await getTaskById(tid);
+      if (!task) return { intent: "complete_task", reply: "ไม่พบงานนี้ครับ อาจถูกลบไปแล้ว" };
+      const me = userUpn.toLowerCase();
+      const mine =
+        (task.owner_upn || "").toLowerCase() === me ||
+        (task.responsible_upn || "").toLowerCase() === me;
+      if (!mine) return { intent: "complete_task", reply: "งานนี้ไม่ใช่ของคุณครับ ปิดให้ไม่ได้" };
+      if (task.status === "done") {
+        return { intent: "complete_task", reply: `งาน “${task.title}” ปิดไปแล้วครับ ✅` };
+      }
       const ok = await updateTaskStatus(tid, "done");
+      if (ok) await notifyOwnerTasksClosed(userUpn, [task]).catch(() => {});
       return { intent: "complete_task", reply: ok ? "ปิดงานแล้วครับ ✅" : "งานนี้ถูกปิดไปแล้ว หรือไม่พบครับ" };
     }
     // Ask before closing. The task list is a card now, and a row on a card is
@@ -4753,7 +4816,7 @@ export async function handleSelection(userUpn: string, data: URLSearchParams): P
     if (a === "doneask") {
       const tid = Number(data.get("t") || "");
       if (!tid) return { intent: "error", reply: "ข้อมูลไม่ครบ ลองใหม่อีกครั้งครับ" };
-      const task = (await listTasks(userUpn)).find((t) => t.id === tid);
+      const task = (await listTasksVisibleTo(userUpn)).find((t) => t.id === tid);
       if (!task) return { intent: "complete_task", reply: "ไม่พบงานนี้ครับ อาจถูกปิดไปแล้ว" };
       if (task.status === "done") {
         return { intent: "complete_task", reply: `งาน “${task.title}” ปิดไปแล้วครับ ✅` };
@@ -5192,16 +5255,20 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
       const taskIds = await loadCloseTaskPending(userUpn);
       if (taskIds && taskIds.length > 0) {
         await clearCloseTaskPending(userUpn);
-        const pending = (await listTasks(userUpn)).filter(
+        const pending = (await listTasksVisibleTo(userUpn)).filter(
           (t) => t.status === "pending" || t.status === "overdue" || t.status === "done"
         );
         const closedTitles: string[] = [];
+        const closedTasks: Task[] = [];
         for (const tid of taskIds) {
           const t = pending.find((p) => p.id === tid);
           if (await updateTaskStatus(tid, "done")) {
             closedTitles.push(`• ${t?.title || `งาน #${tid}`}`);
+            // ปิดซ้ำใบเดิมไม่ต้องไปกวนคนสั่งอีกรอบ
+            if (t && t.status !== "done") closedTasks.push(t);
           }
         }
+        await notifyOwnerTasksClosed(userUpn, closedTasks).catch(() => {});
         if (closedTitles.length > 0) {
           return {
             intent: "complete_task",
@@ -8021,15 +8088,20 @@ async function handleParsed(
        รายการนี้ ถ้าเพิ่งติ๊กเสร็จใน To Do แล้วยังโชว์ว่าค้างอยู่ ก็ไม่มีประโยชน์
        ที่จะแสดง (มีเพดานเวลาในตัว ช้าเกินก็แสดงของที่มีไปก่อน) */
     await syncTodoBeforeRead(userUpn);
-    const tasks = await listTasks(userUpn);
+    /* งานที่คนอื่นมอบให้เราต้องอยู่ในรายการนี้ด้วย — ไม่งั้นเราถูกเตือนทุกวัน
+       แต่เปิดรายการมากลับไม่เห็น และ "ปิดงาน 1" ก็นับคนละใบกับที่ตาเห็น */
+    const tasks = await listTasksVisibleTo(userUpn);
     const pending = tasks.filter((t) => t.status === "pending" || t.status === "overdue");
     if (!pending.length) {
       return { intent, reply: "ไม่มีงานติดตามค้างอยู่ครับ 👍", suggestions: TASK_FOLLOW_UPS };
     }
+    const fromName = await ownerNames(userUpn, pending);
     const lines = [`📌 งานที่ต้องติดตามค้างอยู่ (${pending.length} รายการ):`, ""];
     pending.forEach((t, i) => {
       const dueStr = t.due ? ` (กำหนดส่ง: ${dueLabel(t.due)})` : "";
-      const resp = t.responsible ? ` [ผู้รับผิดชอบ: ${t.responsible}]` : "";
+      const from = fromName.get(t.id);
+      // งานของเราเองบอกว่ามอบให้ใคร งานที่คนอื่นมอบมาบอกว่าใครสั่ง
+      const resp = from ? ` [สั่งโดย: ${from}]` : t.responsible ? ` [ผู้รับผิดชอบ: ${t.responsible}]` : "";
       const stTag = t.status === "overdue" ? " ⚠️ เกินกำหนด" : "";
       const srcTag = t.source === "meeting_auto" ? " 🤖 (จากสรุปการประชุม)" : t.source === "manual" ? " 👤 (เพิ่มเอง)" : "";
       lines.push(`${i + 1}) ${t.title}${dueStr}${resp}${srcTag}${stTag}`);
@@ -8042,9 +8114,10 @@ async function handleParsed(
     const rows: object[] = [];
     pending.slice(0, 11).forEach((t, i) => {
       const n = i + 1;
+      const from = fromName.get(t.id);
       const bits = [
         t.due ? `⏰ ${dueLabel(t.due)}` : "",
-        t.responsible ? `👤 ${t.responsible}` : "",
+        from ? `📥 สั่งโดย ${from}` : t.responsible ? `👤 ${t.responsible}` : "",
         t.status === "overdue" ? "⚠️ เกินกำหนด" : "",
         t.source === "meeting_auto" ? "🤖 จากสรุปประชุม" : "",
       ].filter(Boolean);
@@ -8062,6 +8135,9 @@ async function handleParsed(
       .slice(0, 3)
       .map((t, i) => ({ label: `✅ ปิดงาน ${i + 1}`, text: `ปิดงาน ${i + 1}` }));
     if (pending.length > 1) taskChips.push({ label: "✅ ปิดงานทั้งหมด", text: "ปิดงานทั้งหมด" });
+    // มอบงานให้คนอื่นไว้ก็มีรายการของตัวเองให้ดู — เสนอเฉพาะคนที่มอบไว้จริง
+    if (pending.some((t) => (t.owner_upn || "").toLowerCase() === userUpn.toLowerCase() && t.responsible))
+      taskChips.push({ label: "📤 งานที่มอบให้คนอื่น", text: "งานที่มอบให้คนอื่น" });
     taskChips.push({ label: "🗓 ตารางวันนี้", text: "ตารางวันนี้" });
 
     return {
@@ -8074,6 +8150,139 @@ async function handleParsed(
         `ค้างอยู่ ${pending.length} รายการ — แตะงานที่ทำเสร็จแล้ว`,
         rows,
         "งานที่ต้องติดตาม — แตะงานที่ทำเสร็จแล้ว"
+      ),
+    };
+  }
+
+  /**
+   * "มีห้องว่างไหม" — กวาดทุกห้องแล้วตอบทีละห้อง
+   *
+   * เดิมคำถามแบบไม่ระบุชื่อห้องถูกส่งไปหา find_meeting_time พร้อมห้องแรกในลิสต์
+   * เสมอ (lib/meetingRooms.ts ตัวแรก) คำตอบจึงพูดถึงห้องเดียวโดยที่คนถามเข้าใจว่า
+   * ตอบครบทุกห้องแล้ว — ห้องอื่นที่ว่างอยู่จริงไม่เคยถูกเสนอเลย
+   */
+  if (intent === "room_availability") {
+    const win = resolveFindWindow(params, text);
+    const start = win?.start || startOfDay(nowWall());
+    const end = win?.end || endOfDay(nowWall());
+    const label = win?.label || "วันนี้";
+    const rooms = KNOWN_MEETING_ROOMS;
+    const found = await Promise.all(
+      rooms.map(async (r) => {
+        try {
+          return { room: r, free: await freeRanges(r.email, start, end, userUpn) };
+        } catch (e) {
+          console.warn("[rooms] getSchedule", r.email, String(e).slice(0, 120));
+          return { room: r, free: null as null | Awaited<ReturnType<typeof freeRanges>> };
+        }
+      })
+    );
+    const lines = [`🚪 ห้องประชุม (${label})`, ""];
+    const chips: { label: string; text: string }[] = [];
+    let anyFree = false;
+    for (const { room, free } of found) {
+      if (free === null) {
+        lines.push(`❔ ${room.name} — เช็กไม่ได้ (สิทธิ์ปฏิทินห้องอาจไม่เปิดให้)`);
+        continue;
+      }
+      if (!free.length) {
+        lines.push(`🚫 ${room.name} — ไม่ว่างเลยในช่วงนี้`);
+        continue;
+      }
+      anyFree = true;
+      const slots = free.slice(0, 3).map((f) => `${fmtTime(f.start)}-${fmtTime(f.end)}`).join(" · ");
+      const more = free.length > 3 ? ` (+อีก ${free.length - 3} ช่วง)` : "";
+      lines.push(`✅ ${room.name} — ว่าง ${slots}${more}`);
+      if (chips.length < 3) chips.push({ label: `จอง${room.name}`.slice(0, 20), text: `จองห้อง ${room.aliases[0] || room.name}` });
+    }
+    if (!anyFree) {
+      lines.push("", "ลองถามเป็นวันอื่นดูไหมครับ เช่น “พรุ่งนี้มีห้องว่างไหม”");
+    } else {
+      lines.push("", "จองได้เลยครับ เช่น “จองห้อง KTISX พรุ่งนี้ 10 โมง 1 ชั่วโมง”");
+    }
+    chips.push({ label: "🗓 ตารางวันนี้", text: "ตารางวันนี้" });
+    return { intent, reply: lines.join("\n"), suggestions: chips };
+  }
+
+  /**
+   * งานที่เราสั่งคนอื่นไว้ — แยกจาก "งานที่ต้องติดตาม" ที่ปนกันทุกใบ
+   *
+   * ระบบเตือนผู้รับงานให้อยู่แล้วทุกวัน (lib/followup.ts) แต่คนสั่งไม่มีที่ดูว่า
+   * ใครค้างอะไรอยู่ ต้องกวาดสายตาหาเองจากรายการรวม พอเกิน 5-6 ใบก็เลิกดู
+   */
+  if (intent === "list_delegated_tasks") {
+    const me = userUpn.toLowerCase();
+    const mineToOthers = (await listTasks(userUpn)).filter(
+      (t) =>
+        (t.status === "pending" || t.status === "overdue") &&
+        (t.owner_upn || "").toLowerCase() === me &&
+        ((t.responsible_upn && t.responsible_upn.toLowerCase() !== me) ||
+          (!t.responsible_upn && !!t.responsible))
+    );
+    if (!mineToOthers.length) {
+      return {
+        intent,
+        reply:
+          "ยังไม่มีงานที่คุณมอบให้คนอื่นค้างอยู่ครับ 👍\n\n" +
+          "มอบงานได้โดยพิมพ์ เช่น “เพิ่มงาน ส่งรายงาน ให้เบส วันศุกร์ 17:00”",
+        suggestions: [
+          { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+          { label: "🗓 ตารางวันนี้", text: "ตารางวันนี้" },
+        ],
+      };
+    }
+    const dueTxt = (iso: string | null): string => {
+      if (!iso) return "ไม่มีกำหนด";
+      const wall = utcIsoToWall(iso);
+      if (!wall) return iso;
+      let t = fmtTime(wall);
+      if (t === "00:00") t = "06:00";
+      return `${fmtDate(wall)} ${t}`;
+    };
+    // จัดกลุ่มตามคน — คำถามจริงของคนสั่งคือ "ใครค้างอยู่บ้าง" ไม่ใช่ "งานอะไรค้าง"
+    const byPerson = new Map<string, Task[]>();
+    for (const t of mineToOthers) {
+      const who = (t.responsible || t.responsible_upn || "ไม่ระบุผู้รับผิดชอบ").trim();
+      if (!byPerson.has(who)) byPerson.set(who, []);
+      byPerson.get(who)!.push(t);
+    }
+    const overdueAll = mineToOthers.filter((t) => t.status === "overdue").length;
+    const lines = [
+      `📤 งานที่คุณมอบให้คนอื่น (${mineToOthers.length} งาน · ${byPerson.size} คน)` +
+        (overdueAll ? ` — เกินกำหนด ${overdueAll} งาน ⚠️` : ""),
+      "",
+    ];
+    for (const [who, list] of byPerson) {
+      const late = list.filter((t) => t.status === "overdue").length;
+      lines.push(`👤 ${who} — ${list.length} งาน${late ? ` (เกินกำหนด ${late}) ⚠️` : ""}`);
+      list.forEach((t) => lines.push(`   • ${t.title} — ${dueTxt(t.due)}${t.status === "overdue" ? " ⚠️" : ""}`));
+      lines.push("");
+    }
+    lines.push("ระบบเตือนผู้รับผิดชอบให้อยู่แล้วทุกวัน และจะแจ้งคุณทันทีที่เขาปิดงานครับ");
+
+    /* แถวคนเป็นข้อมูล ไม่ใช่ปุ่ม — ยังไม่มีคำสั่ง "งานของ <ชื่อ>" ให้กดไปหา
+       แถวที่กดแล้วได้ "ไม่เข้าใจครับ" แย่กว่าแถวที่กดไม่ได้ */
+    const { pickerCard, messageRow, noteRow } = await import("@/lib/lineCards");
+    const rows: object[] = [];
+    for (const [who, list] of byPerson) {
+      const late = list.filter((t) => t.status === "overdue").length;
+      rows.push(noteRow(`👤 ${who} — ${list.length} งาน${late ? ` · เกินกำหนด ${late} ⚠️` : ""}`));
+    }
+    rows.push(messageRow("📌 ดูงานทั้งหมดของฉัน", "ดูงานที่ต้องติดตาม", "รวมงานที่คนอื่นมอบให้เราด้วย"));
+    rows.push(noteRow("ระบบเตือนเขาให้เองทุกวัน — คุณจะได้รับแจ้งทันทีที่เขาปิดงาน"));
+    return {
+      intent,
+      reply: lines.join("\n").trim(),
+      data: mineToOthers,
+      suggestions: [
+        { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+        { label: "เพิ่มงาน", text: "เพิ่มงาน" },
+      ],
+      flex: pickerCard(
+        "📤 งานที่มอบให้คนอื่น",
+        `${mineToOthers.length} งาน · ${byPerson.size} คน${overdueAll ? ` · เกินกำหนด ${overdueAll}` : ""}`,
+        rows,
+        "งานที่มอบให้คนอื่น"
       ),
     };
   }
@@ -8171,7 +8380,7 @@ async function handleParsed(
     // "ทั้งหมด" means whatever is pending right now, so the ids are read here
     // instead of carried over from a listing that may be stale.
     const allIds = params.all
-      ? (await listTasks(userUpn))
+      ? (await listTasksVisibleTo(userUpn))
           .filter((t) => t.status === "pending" || t.status === "overdue")
           .map((t) => t.id)
       : [];
@@ -8185,7 +8394,8 @@ async function handleParsed(
           : [];
 
     if (targetNumbers.length > 0) {
-      const pending = (await listTasks(userUpn)).filter(
+      /* ต้องเป็นชุดเดียวกับที่ list_tasks แสดง ไม่งั้นเลข N ที่ผู้ใช้เห็นกับที่เราปิดคนละใบ */
+      const pending = (await listTasksVisibleTo(userUpn)).filter(
         (t) => t.status === "pending" || t.status === "overdue"
       );
       const matchedTasks: { id: number; title: string }[] = [];
@@ -8230,11 +8440,15 @@ async function handleParsed(
       // Confirmed: Execute the status updates
       await clearCloseTaskPending(userUpn);
       const closedTitles: string[] = [];
+      const closedTasks: Task[] = [];
       for (const t of matchedTasks) {
         if (await updateTaskStatus(t.id, "done")) {
           closedTitles.push(`• ${t.title}`);
+          const full = pending.find((p) => p.id === t.id);
+          if (full) closedTasks.push(full);
         }
       }
+      await notifyOwnerTasksClosed(userUpn, closedTasks).catch(() => {});
 
       if (closedTitles.length > 0) {
         return {
@@ -8248,7 +8462,7 @@ async function handleParsed(
     // The overdue reminder shows task TITLES, so that is what people type back
     // ("test meeting ปิดงานเลย") — match on the title instead of demanding a number.
     const wanted = String(params.title || "").trim();
-    const pending = (await listTasks(userUpn)).filter(
+    const pending = (await listTasksVisibleTo(userUpn)).filter(
       (t) => t.status === "pending" || t.status === "overdue"
     );
     if (!pending.length) return { intent, reply: "ไม่มีงานค้างอยู่ครับ" };
@@ -8256,6 +8470,7 @@ async function handleParsed(
     const hit = matchTasksByTitle(pending, wanted);
     if (hit.length === 1) {
       await updateTaskStatus(hit[0].id, "done");
+      await notifyOwnerTasksClosed(userUpn, [hit[0]]).catch(() => {});
       return { intent, reply: `ปิดงาน «${hit[0].title}» แล้วครับ ✅` };
     }
     if (hit.length > 1) {

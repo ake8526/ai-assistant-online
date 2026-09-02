@@ -62,6 +62,37 @@ export async function listTasks(ownerUpn?: string, status?: string): Promise<Tas
   return data || [];
 }
 
+/**
+ * งานที่คนนี้เกี่ยวข้องด้วย — ที่ตัวเองสั่ง หรือถูกคนอื่นมอบหมายให้ทำ
+ *
+ * listTasks() กรองด้วย owner_upn อย่างเดียว ซึ่งถูกสำหรับงานเบื้องหลัง (To Do
+ * ของใครก็ของคนนั้น) แต่ผิดสำหรับรายการที่คนเปิดดูในไลน์: งานที่หัวหน้ามอบให้
+ * ระบบเตือนเจ้าตัวทุกวันอยู่แล้ว (lib/followup.ts recipientsFor) แต่พอเขาพิมพ์
+ * "ดูงานที่ต้องติดตาม" กลับไม่เห็นงานนั้น และ "ปิดงาน 1" ก็ไม่ตรงกับที่เห็น
+ *
+ * ใช้ ilike เพราะ upn ที่บันทึกไว้มีทั้งตัวพิมพ์เล็กและใหญ่ปนกัน (ค่าเก่าจาก
+ * สรุปประชุมบันทึกตามที่ Graph ส่งมา) — ilike ไม่มี % คือเท่ากันแบบไม่สนตัวพิมพ์
+ */
+export async function listTasksVisibleTo(upn: string, status?: string): Promise<Task[]> {
+  const who = (upn || "").trim().toLowerCase();
+  if (!who) return [];
+  let q = admin.from("tasks").select("*").or(`owner_upn.ilike.${who},responsible_upn.ilike.${who}`);
+  if (status) q = q.eq("status", status);
+  const { data, error } = await q
+    .order("due", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`listTasksVisibleTo: ${error.message}`);
+  return data || [];
+}
+
+/** งานใบเดียวตาม id — ใช้ตอนปิดงานจากปุ่มในข้อความเตือน ที่ถือมาแต่ id */
+export async function getTaskById(taskId: number): Promise<Task | null> {
+  if (!Number.isInteger(taskId) || taskId <= 0) return null;
+  const { data, error } = await admin.from("tasks").select("*").eq("id", taskId).maybeSingle();
+  if (error) throw new Error(`getTaskById: ${error.message}`);
+  return (data as Task) || null;
+}
+
 export async function updateTaskStatus(taskId: number, status: string): Promise<boolean> {
   const { data, error } = await admin.from("tasks").update({ status }).eq("id", taskId).select("id");
   if (error) throw new Error(`updateTaskStatus: ${error.message}`);
