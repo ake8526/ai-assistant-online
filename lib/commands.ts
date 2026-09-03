@@ -86,6 +86,14 @@ import {
 import { notifyOwnerTasksClosed } from "@/lib/taskCloseNotify";
 import { collectPeriod, formatCatchUp, formatWeekly } from "@/lib/periodSummary";
 import {
+  applySickDay,
+  clearPlan as clearSickPlan,
+  collectTodayMeetings,
+  loadPlan as loadSickPlan,
+  savePlan as saveSickPlan,
+  MAX_MEETINGS as SICK_MAX_MEETINGS,
+} from "@/lib/sickDay";
+import {
   listManagedFeeds,
   previewFeed,
   upsertFeed,
@@ -268,7 +276,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
 
 {
-  "intent": "<หนึ่งใน: who_are_you | get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | list_delegated_tasks | weekly_report | weekly_report_toggle | catch_up | room_availability | add_task | complete_task | summarize_meetings | find_meeting_time | book_self_calendar | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
+  "intent": "<หนึ่งใน: who_are_you | get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | list_delegated_tasks | sick_day | weekly_report | weekly_report_toggle | catch_up | room_availability | add_task | complete_task | summarize_meetings | find_meeting_time | book_self_calendar | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
   "params": { ... }
 }
 
@@ -288,6 +296,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - my_availability = ดู "เวลาว่างของตัวเอง" ในปฏิทิน (ช่วงไหนว่าง/ตารางว่าง)
 - list_tasks = ดูงานที่ต้องติดตาม (ไม่ใช่ประชุม) — รวมงานที่ตัวเองสั่งและงานที่คนอื่นมอบให้
 - list_delegated_tasks = ดูเฉพาะ "งานที่เรามอบให้คนอื่นทำ" และใครค้างอยู่บ้าง — เช่น "งานที่มอบให้คนอื่น", "งานที่สั่งไป", "ใครค้างงานบ้าง"
+- sick_day = ผู้ใช้บอกว่าวันนี้ป่วย/ไปไม่ไหว และอยากให้จัดการนัดของวันนี้ให้ — เช่น "วันนี้ลาป่วย จัดการนัดให้ที", "ไปไม่ไหววันนี้" (ถ้าเป็นการขอกันเวลาในปฏิทินเฉย ๆ ให้ใช้ book_self_calendar)
 - weekly_report = ขอสรุป/รายงานประจำสัปดาห์ของตัวเอง (ประชุมกี่ชม. งานปิด/ค้างเท่าไร สัปดาห์หน้าหนักไหม) — เช่น "สรุปสัปดาห์นี้", "รายงานประจำสัปดาห์"
 - weekly_report_toggle = เปิด/ปิดการส่งรายงานสัปดาห์อัตโนมัติทุกศุกร์ — params: { "on": true/false }
 - catch_up = สรุปสิ่งที่เกิดขึ้นตอนที่ผู้ใช้ไม่อยู่ (ลา/ไปต่างจังหวัด/ประชุมยาว) — เช่น "ช่วงที่ผมไม่อยู่มีอะไรบ้าง", "3 วันที่ผ่านมามีอะไรบ้าง", "เพิ่งกลับมา"
@@ -2339,6 +2348,16 @@ async function parseIntent(
   }
 
 
+
+  /* "วันนี้ไปไม่ไหว" — ห้ามขึ้นต้นด้วย จอง/กัน/บล็อก เพราะนั่นคือการกันเวลา
+     ในปฏิทินตัวเอง (book_self_calendar) ซึ่งมีเส้นทางของมันอยู่แล้ว */
+  if (
+    /^(?!จอง|กัน|บล็อก)(?:วันนี้)?\s*(?:ขอ)?\s*(?:ลาป่วย|ป่วย|ไปไม่ไหว|ไม่สบาย|ไม่ไหวแล้ว|ลาวันนี้)\s*(?:วันนี้)?\s*(?:ช่วย)?\s*(?:จัดการ|แจ้ง|เลื่อน|ยกเลิก)?\s*(?:นัด|ประชุม|ตาราง)?\s*(?:ทั้งหมด)?\s*(?:ให้ที|ให้หน่อย|ให้ด้วย|ให้|ที)?[!?.\s]*$/i.test(
+      textClean
+    )
+  ) {
+    return { intent: "sick_day", params: {}, source: "quick" };
+  }
 
   /* รายงานสัปดาห์ + เปิด/ปิดรอบอัตโนมัติ — ต้องมีคำว่าสัปดาห์/อาทิตย์เสมอ
      จึงไม่ไปแย่ง "สรุปประชุม" หรือ "สรุปตารางเช้า" ที่ขึ้นต้นด้วยสรุปเหมือนกัน */
@@ -5283,6 +5302,57 @@ async function handle(userUpn: string, text: string, context?: CommandContext, l
     };
   }
 
+  /* วันนี้ป่วย — ลงมือตามแผนที่เพิ่งทวนให้ดู
+     รับเฉพาะคำเฉพาะสองคำนี้เท่านั้น "ยืนยัน" ลอย ๆ ต้องไม่มาถึงตรงนี้เด็ดขาด
+     เพราะปลายทางคือลบนัดของจริงและยิงข้อความหาคนอื่น (ดู AGENTS.md) */
+  {
+    const sickNotifyOnly = /^ยืนยันแจ้งลาวันนี้$/.test(text.trim());
+    const sickCancelToo = /^ยืนยันยกเลิกนัดวันนี้$/.test(text.trim());
+    if (sickNotifyOnly || sickCancelToo) {
+      const plan = await loadSickPlan(userUpn);
+      if (!plan) {
+        return {
+          intent: "sick_day_expired",
+          reply:
+            "ไม่มีแผนจัดการนัดที่ค้างอยู่ครับ (เก็บให้ 10 นาที และหมดอายุเมื่อข้ามวัน)\n" +
+            "พิมพ์ “วันนี้ลาป่วย จัดการนัดให้ที” ใหม่ได้เลย",
+        };
+      }
+      await clearSickPlan(userUpn);
+      const info = await resolveUserInfo(userUpn).catch(() => null);
+      const displayName = info?.displayName || userUpn.split("@")[0];
+      const res = await applySickDay({
+        upn: userUpn,
+        displayName,
+        plan,
+        cancelOwn: sickCancelToo,
+        createEventFn: (subject, startIso, endIso) =>
+          createEvent(userUpn, subject, startIso, endIso, [], false, "แจ้งลาผ่านผู้ช่วยงาน", true),
+      });
+      const lines = ["จัดการให้แล้วครับ ✅", ""];
+      if (res.cancelled.length) {
+        lines.push(`❌ ยกเลิกนัดที่คุณเป็นผู้จัด ${res.cancelled.length} นัด`);
+        res.cancelled.forEach((c) => lines.push(`   • ${c}`));
+      }
+      lines.push(`📣 แจ้งผู้เกี่ยวข้องทาง LINE ${res.notified} คน`);
+      if (res.couldNotNotify.length) {
+        const who = [...new Set(res.couldNotNotify)];
+        lines.push(
+          `⚠️ อีก ${who.length} คนยังไม่ได้ผูก LINE (หรือโควตาหมด) ต้องแจ้งเองครับ:`,
+          ...who.slice(0, 5).map((m) => `   • ${m}`)
+        );
+      }
+      if (res.blocked) lines.push("🛡 กันเวลาทั้งวันในปฏิทินเป็น “ลาป่วย” แล้ว");
+      if (res.errors.length) lines.push("", "มีบางอย่างไม่สำเร็จ:", ...res.errors.map((e) => `   • ${e}`));
+      lines.push("", "พักผ่อนเถอะครับ 🙏");
+      return {
+        intent: "sick_day_done",
+        reply: lines.join("\n"),
+        suggestions: [{ label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" }],
+      };
+    }
+  }
+
   const closeConfirmSpecific = /^(?:ยืนยันปิดงาน|ปิดเลย)$/i.test(text);
   const closeConfirmShort =
     context?.last_intent === "confirm_complete_task" &&
@@ -8188,6 +8258,79 @@ async function handleParsed(
         rows,
         "งานที่ต้องติดตาม — แตะงานที่ทำเสร็จแล้ว"
       ),
+    };
+  }
+
+  /**
+   * "วันนี้ไปไม่ไหว" — ทวนแผนให้ดูก่อนเสมอ ยังไม่แตะอะไรทั้งนั้น
+   *
+   * แยกสองปุ่มโดยตั้งใจ: แจ้งอย่างเดียว (ย้อนกลับได้) กับยกเลิกนัดที่เราเป็น
+   * ผู้จัดด้วย (เรียกคืนไม่ได้) — คนละคำยืนยัน จะได้ไม่มีใครกดพลาด
+   */
+  if (intent === "sick_day") {
+    const meetings = await collectTodayMeetings(userUpn);
+    if (!meetings.length) {
+      return {
+        intent,
+        reply:
+          "วันนี้ไม่มีนัดที่มีคนอื่นเกี่ยวข้องแล้วครับ ไม่ต้องแจ้งใคร 👍\n\n" +
+          "ถ้าอยากกันเวลาทั้งวันไว้ในปฏิทิน พิมพ์ “จองตารางให้เราวันนี้ทั้งวัน ลาป่วย” ได้เลย",
+        suggestions: [
+          { label: "กันเวลาทั้งวัน", text: "จองตารางให้เราวันนี้ทั้งวัน ลาป่วย" },
+          { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+        ],
+      };
+    }
+    if (meetings.length > SICK_MAX_MEETINGS) {
+      return {
+        intent,
+        reply:
+          `วันนี้มีถึง ${meetings.length} นัดที่มีคนอื่นเกี่ยวข้องครับ ผมไม่กล้าจัดการรวดเดียว\n` +
+          `ลองจัดการทีละนัดจะปลอดภัยกว่า — พิมพ์ “ยกเลิกนัดวันนี้” แล้วเลือกทีละรายการได้เลย`,
+        suggestions: [{ label: "ยกเลิกนัดวันนี้", text: "ยกเลิกนัดวันนี้" }],
+      };
+    }
+    await saveSickPlan(userUpn, meetings);
+    const mine = meetings.filter((m) => m.organized);
+    const joined = meetings.filter((m) => !m.organized);
+    const people = new Set(meetings.flatMap((m) => m.notify));
+    const lines = [`🤒 วันนี้มี ${meetings.length} นัดที่มีคนอื่นเกี่ยวข้อง`, ""];
+    meetings.forEach((m, i) =>
+      lines.push(
+        `${i + 1}) ${m.timeLabel} · ${m.subject}` +
+          (m.organized ? " — คุณเป็นผู้จัด" : " — คุณเป็นผู้เข้าร่วม") +
+          ` (แจ้ง ${m.notify.length} คน)`
+      )
+    );
+    lines.push(
+      "",
+      `จะแจ้งทั้งหมด ${people.size} คน` + (mine.length ? ` · ยกเลิกได้ ${mine.length} นัดที่คุณเป็นผู้จัด` : ""),
+      "ยังไม่ได้ทำอะไรจนกว่าจะกดยืนยันครับ"
+    );
+    const { pickerCard, messageRow, noteRow } = await import("@/lib/lineCards");
+    const rows: object[] = [];
+    rows.push(
+      messageRow("✅ ยืนยันแจ้งลาวันนี้", "ยืนยันแจ้งลาวันนี้", "แจ้งทุกคน + กันเวลาในปฏิทิน · ไม่ยกเลิกนัดใคร")
+    );
+    if (mine.length) {
+      rows.push(
+        messageRow(
+          "❌ ยืนยันยกเลิกนัดวันนี้",
+          "ยืนยันยกเลิกนัดวันนี้",
+          `แจ้งทุกคน + ยกเลิก ${mine.length} นัดที่คุณเป็นผู้จัด (เรียกคืนไม่ได้)`
+        )
+      );
+    }
+    if (joined.length) rows.push(noteRow(`นัดที่คุณเป็นแค่ผู้เข้าร่วม ${joined.length} นัด ระบบจะแจ้งผู้จัดให้ ไม่ยกเลิกแทน`));
+    rows.push(noteRow("ไม่ทำอะไรก็ปล่อยไว้ได้ แผนนี้หมดอายุใน 10 นาที"));
+    return {
+      intent,
+      reply: lines.join("\n"),
+      suggestions: [
+        { label: "✅ ยืนยันแจ้งลาวันนี้", text: "ยืนยันแจ้งลาวันนี้" },
+        ...(mine.length ? [{ label: "❌ ยืนยันยกเลิกนัดวันนี้", text: "ยืนยันยกเลิกนัดวันนี้" }] : []),
+      ],
+      flex: pickerCard("🤒 วันนี้ไปไม่ไหว", `${meetings.length} นัด · แจ้ง ${people.size} คน`, rows, "จัดการนัดวันนี้"),
     };
   }
 
