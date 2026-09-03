@@ -1763,21 +1763,10 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     try {
       await sendResult(ev.replyToken, res, upn);
       trace("reply", `ตอบกลับ (${res.intent})`);
-      if (res.reply?.trim()) {
-        let fullLogged = res.reply;
-        const extra = detailText(res, upn, false);
-        if (extra) fullLogged += extra;
-        after(async () => {
-          await logChatTurn({
-            session_id: upn,
-            user_upn: upn,
-            channel: "line",
-            role: "assistant",
-            content: fullLogged,
-            metadata: { intent: res.intent },
-          });
-        });
-      }
+      /* ไม่ต้องบันทึกคำตอบตรงนี้ — saveCtx() ท้ายฟังก์ชันบันทึกให้อยู่แล้วทุกเส้นทาง
+         (ดู saveCtx ในไฟล์นี้) ของเดิมบันทึกทั้งสองที่ ทุกครั้งที่กดปุ่มจึงได้
+         คำตอบซ้ำสองแถวใน chat_logs — เห็นชัดใน /monitor/log และทำให้ชุดข้อมูล
+         ที่ export ไปเทรนมีข้อความซ้ำ ส่วนข้อความที่พิมพ์เองไม่ซ้ำเพราะมีที่เดียว */
     } catch (replyErr) {
       console.warn("[line] postback reply failed, pushing:", String(replyErr).slice(0, 120));
       await pushLineToId(userId, (res.reply || "รับทราบครับ") + detailText(res, upn));

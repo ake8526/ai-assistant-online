@@ -345,18 +345,36 @@ function collectBusy(data: { scheduleId?: string; scheduleItems?: unknown[] }[],
 
 type Range = { start: Date; end: Date };
 
+/**
+ * สิ่งที่รู้เพิ่มจากการอ่านตารางครั้งนั้น — ผู้เรียกส่งอ็อบเจ็กต์เปล่ามา แล้วรับค่ากลับ
+ *
+ * `unavailable` สำคัญกว่าที่คิด: Graph ตอบ 200 พร้อม error รายคน หรือไม่มี
+ * availabilityView เลย เมื่ออ่านสถานะว่างของคนนั้นไม่ได้ (ไม่ได้แชร์ / ไม่มีสิทธิ์ /
+ * เป็นบัญชีที่ไม่มีเมลบ็อกซ์) ของเดิมได้ view = "" แล้วคำนวณออกมาเป็น "ไม่มีเวลาว่าง
+ * เลย (คิวแน่นมาก!)" ซึ่งไม่ใช่แค่ไม่มีประโยชน์ — มันเป็นการยืนยันเรื่องที่เราไม่รู้
+ */
+export type FreeMeta = {
+  unavailable?: boolean;
+  busy?: { start?: string; end?: string; subject: string; status?: string }[];
+};
+
 async function availabilityRanges(
   targetUpn: string,
   start: Date,
   end: Date,
   requesterUpn: string | undefined,
   keepFree: boolean,
-  includeLunch = false
+  includeLunch = false,
+  meta?: FreeMeta
 ): Promise<Range[]> {
   if (start.getTime() >= end.getTime()) return [];
   const caller = requesterUpn || targetUpn;
   const data = await getSchedule(caller, [targetUpn], wallIso(start), wallIso(end), INTERVAL);
   const view = data[0]?.availabilityView || "";
+  if (meta) {
+    meta.unavailable = !!data[0]?.error || !view;
+    meta.busy = collectBusy(data, start)[data[0]?.scheduleId || ""] || [];
+  }
 
   const ranges: Range[] = [];
   let cur: Range | null = null;
@@ -386,14 +404,15 @@ export async function freeRanges(
   start: Date,
   end: Date,
   requesterUpn?: string,
-  includeLunch = false
+  includeLunch = false,
+  meta?: FreeMeta
 ): Promise<Range[]> {
   const now = nowWall();
   if (start < now) {
     start = new Date(now);
     start.setUTCMinutes(0, 0, 0);
   }
-  return availabilityRanges(targetUpn, start, end, requesterUpn, true, includeLunch);
+  return availabilityRanges(targetUpn, start, end, requesterUpn, true, includeLunch, meta);
 }
 
 /** Busy time blocks for targetUpn (when they're tied up — never meeting subjects). */
@@ -452,6 +471,20 @@ export function workingHoursRemain(start: Date, end: Date): boolean {
  * free in — the calendar was empty, not packed. Asking after 17:00 on a weekday
  * had the same shape and the same wrong answer.
  */
+/** ช่วงที่ถูกจองอยู่ เขียนสั้น ๆ ต่อท้ายคำตอบ "ไม่ว่างเลย" — ชื่อเรื่องมักไม่ถูกแชร์มา */
+function formatBusyBlocks(busy?: FreeMeta["busy"]): string {
+  const items = (busy || []).filter((b) => b.start && b.end).slice(0, 4);
+  if (!items.length) return "";
+  const lines = items.map((b) => {
+    const s = parseWallLabel(String(b.start).replace(/\.\d+/, "").replace(/Z$/, ""));
+    const e = parseWallLabel(String(b.end).replace(/\.\d+/, "").replace(/Z$/, ""));
+    const when = s && e ? `${fmtTime(s)}-${fmtTime(e)}` : "?";
+    const what = b.subject && b.subject !== "(ไม่ระบุ)" ? ` · ${b.subject}` : "";
+    return `  ${when}${what}`;
+  });
+  return `\n\nติดอยู่:\n${lines.join("\n")}`;
+}
+
 export function formatFree(
   ranges: Range[],
   label: string,
@@ -507,9 +540,26 @@ export async function freeRangesReply(opts: {
 }): Promise<{ ranges: Range[]; reply: string }> {
   const { targetUpn, start, end, requesterUpn, label, includeLunch = false } = opts;
   const who = opts.who || "คุณ";
-  const ranges = await freeRanges(targetUpn, start, end, requesterUpn, includeLunch);
+  const meta: FreeMeta = {};
+  const ranges = await freeRanges(targetUpn, start, end, requesterUpn, includeLunch, meta);
+
+  /* อ่านสถานะว่างของเขาไม่ได้ ≠ เขาไม่ว่าง — ต้องพูดให้ตรงว่าเราไม่รู้
+     ไม่ใช่ตอบว่า "คิวแน่นมาก" ซึ่งฟังเหมือนเราเห็นปฏิทินเขาแล้ว */
+  if (meta.unavailable) {
+    return {
+      ranges: [],
+      reply:
+        `ดูสถานะว่างของ${who === "คุณ" ? "คุณ" : ` ${who}`} ไม่ได้ครับ 🔒\n\n` +
+        `ปฏิทินของเขาอาจไม่ได้เปิดให้เห็นสถานะว่าง หรือระบบยังไม่มีสิทธิ์อ่าน\n` +
+        `ลองเปิดดูใน Outlook หรือถามเจ้าตัวโดยตรงจะชัวร์กว่าครับ`,
+    };
+  }
+
   if (ranges.length || !isWeekendWindow(start, end)) {
-    return { ranges, reply: formatFree(ranges, label, who, { start, end }) };
+    /* ไม่ว่างเลยทั้งวัน — บอกด้วยว่าอะไรบัง เรามีข้อมูลอยู่แล้วจากการอ่านรอบเดียวกัน
+       "คิวแน่นมาก!" เฉย ๆ ทำให้คนสงสัยว่าระบบอ่านถูกหรือเปล่า */
+    const busyNote = !ranges.length ? formatBusyBlocks(meta.busy) : "";
+    return { ranges, reply: formatFree(ranges, label, who, { start, end }) + busyNote };
   }
 
   const day = dayLabel(start, end, label);
