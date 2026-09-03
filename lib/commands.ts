@@ -7797,7 +7797,7 @@ async function handleParsed(
         reply: res.ok
           ? `เปิดการส่งงานเข้า To Do แล้วครับ ✅\nส่งเข้าลิสต์ «KTIS X» รอบแรก ${res.created} งาน`
           : `เปิดสวิตช์ให้แล้ว แต่รอบแรกยังไม่ผ่าน: ${res.reason || "ไม่ทราบสาเหตุ"}`,
-        suggestions: [{ label: "ซิงค์ todo", text: "ซิงค์ todo" }],
+        suggestions: [{ label: "ซิงค์ todo", text: "ซิงค์ todo" }, { label: "📌 ดูงานที่ค้าง", text: "ดูงานที่ต้องติดตาม" }],
       };
     }
 
@@ -7809,6 +7809,7 @@ async function handleParsed(
         "สั่งซิงค์เดี๋ยวนี้พิมพ์ «ซิงค์ todo» · หยุดพิมพ์ «ปิด todo»",
       suggestions: [
         { label: "ซิงค์ todo", text: "ซิงค์ todo" },
+        { label: "📌 ดูงานที่ค้าง", text: "ดูงานที่ต้องติดตาม" },
         { label: "ปิด todo", text: "ปิด todo" },
       ],
     };
@@ -7830,7 +7831,11 @@ async function handleParsed(
       if (res.completedInTodo) parts.push(`ปิดใน To Do ตาม ${res.completedInTodo} งาน`);
       if (res.closedFromTodo) parts.push(`ปิดฝั่งนี้ตามที่ติ๊กใน To Do ${res.closedFromTodo} งาน`);
       if (res.importedFromTodo) parts.push(`ดึงงานที่พิมพ์ใน To Do เข้ามา ${res.importedFromTodo} งาน`);
-      return { intent, reply: `ซิงค์เรียบร้อยครับ ✅\n${parts.join("\n")}` };
+      return {
+        intent,
+        reply: `ซิงค์เรียบร้อยครับ ✅\n${parts.join("\n")}`,
+        suggestions: [{ label: "📌 ดูงานที่ค้าง", text: "ดูงานที่ต้องติดตาม" }, { label: "ซิงค์ todo", text: "ซิงค์ todo" }],
+      };
     } catch (e) {
       return { intent, reply: `ซิงค์ไม่สำเร็จครับ: ${String(e).slice(0, 180)}` };
     }
@@ -7846,7 +7851,7 @@ async function handleParsed(
         "หยุดส่งงานเข้า To Do แล้วครับ\n" +
         "งานที่อยู่ในลิสต์ «KTIS X» ยังอยู่ตามเดิม ลบทิ้งเองได้ที่แอป To Do\n\n" +
         "อยากเปิดใหม่พิมพ์ «เปิด todo»",
-      suggestions: [{ label: "เปิด todo", text: "เปิด todo" }],
+      suggestions: [{ label: "เปิด todo", text: "เปิด todo" }, { label: "📌 ดูงานที่ค้าง", text: "ดูงานที่ต้องติดตาม" }],
     };
   }
 
