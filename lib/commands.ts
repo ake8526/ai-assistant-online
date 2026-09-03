@@ -84,6 +84,7 @@ import {
   type Task,
 } from "@/lib/store";
 import { notifyOwnerTasksClosed } from "@/lib/taskCloseNotify";
+import { collectPeriod, formatCatchUp, formatWeekly } from "@/lib/periodSummary";
 import {
   listManagedFeeds,
   previewFeed,
@@ -267,7 +268,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
 
 {
-  "intent": "<หนึ่งใน: who_are_you | get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | list_delegated_tasks | room_availability | add_task | complete_task | summarize_meetings | find_meeting_time | book_self_calendar | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
+  "intent": "<หนึ่งใน: who_are_you | get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | list_delegated_tasks | weekly_report | weekly_report_toggle | catch_up | room_availability | add_task | complete_task | summarize_meetings | find_meeting_time | book_self_calendar | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
   "params": { ... }
 }
 
@@ -287,6 +288,10 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - my_availability = ดู "เวลาว่างของตัวเอง" ในปฏิทิน (ช่วงไหนว่าง/ตารางว่าง)
 - list_tasks = ดูงานที่ต้องติดตาม (ไม่ใช่ประชุม) — รวมงานที่ตัวเองสั่งและงานที่คนอื่นมอบให้
 - list_delegated_tasks = ดูเฉพาะ "งานที่เรามอบให้คนอื่นทำ" และใครค้างอยู่บ้าง — เช่น "งานที่มอบให้คนอื่น", "งานที่สั่งไป", "ใครค้างงานบ้าง"
+- weekly_report = ขอสรุป/รายงานประจำสัปดาห์ของตัวเอง (ประชุมกี่ชม. งานปิด/ค้างเท่าไร สัปดาห์หน้าหนักไหม) — เช่น "สรุปสัปดาห์นี้", "รายงานประจำสัปดาห์"
+- weekly_report_toggle = เปิด/ปิดการส่งรายงานสัปดาห์อัตโนมัติทุกศุกร์ — params: { "on": true/false }
+- catch_up = สรุปสิ่งที่เกิดขึ้นตอนที่ผู้ใช้ไม่อยู่ (ลา/ไปต่างจังหวัด/ประชุมยาว) — เช่น "ช่วงที่ผมไม่อยู่มีอะไรบ้าง", "3 วันที่ผ่านมามีอะไรบ้าง", "เพิ่งกลับมา"
+  params: { "days": จำนวนวันย้อนหลัง (ถ้าระบุ) }
 - room_availability = ถามว่ามีห้องประชุมว่างไหม "โดยไม่ระบุชื่อห้อง" — เช่น "มีห้องว่างไหม", "พรุ่งนี้ห้องไหนว่างบ้าง", "ห้องประชุมว่างกี่โมง" (ถ้าระบุชื่อห้องให้ใช้ find_meeting_time)
   params: { "weekday": "mon..sun (ถ้าระบุ)", "period": "today/tomorrow (ถ้าระบุ)" }
 - add_sample_tasks = สร้างงานติดตามทดสอบ/สมมติ — เช่น "เพิ่มงานติดตามให้ 2 งานที", "สร้างงานทดสอบ 2 งาน", "เพิ่มงาน 2 งาน", "ขอเพิ่มงาน"
@@ -655,6 +660,9 @@ function calendarSuggestions(
     { label: "💬 ช่วยเรื่องอื่น", text: "ช่วยเรื่องอื่น" },
   ];
 }
+
+/** เปิด/ปิดรายงานสัปดาห์รายคน — เก็บใน settings เพราะ migration ยังค้างอยู่หลายตัว */
+export const WEEKLY_REPORT_KEY = "weekly_report";
 
 /** ปุ่มต่อจากเรื่องงาน — ใช้ทั้งใน LINE และแถวเหนือช่องพิมพ์ของแอป */
 const TASK_FOLLOW_UPS = [
@@ -2331,6 +2339,35 @@ async function parseIntent(
   }
 
 
+
+  /* รายงานสัปดาห์ + เปิด/ปิดรอบอัตโนมัติ — ต้องมีคำว่าสัปดาห์/อาทิตย์เสมอ
+     จึงไม่ไปแย่ง "สรุปประชุม" หรือ "สรุปตารางเช้า" ที่ขึ้นต้นด้วยสรุปเหมือนกัน */
+  if (/^(?:เปิด|ขอเปิด)\s*(?:รายงาน|สรุป)\s*(?:ประจำ)?\s*(?:สัปดาห์|อาทิตย์)\s*(?:อัตโนมัติ)?[!?.\s]*$/i.test(textClean)) {
+    return { intent: "weekly_report_toggle", params: { on: true }, source: "quick" };
+  }
+  if (/^(?:ปิด|ยกเลิก)\s*(?:รายงาน|สรุป)\s*(?:ประจำ)?\s*(?:สัปดาห์|อาทิตย์)\s*(?:อัตโนมัติ)?[!?.\s]*$/i.test(textClean)) {
+    return { intent: "weekly_report_toggle", params: { on: false }, source: "quick" };
+  }
+  if (
+    /^(?:ขอ|ดู)?\s*(?:สรุป|รายงาน)\s*(?:ผล)?\s*(?:งาน)?\s*(?:ประจำ)?\s*(?:สัปดาห์|อาทิตย์)\s*(?:นี้|ที่ผ่านมา|ที่แล้ว)?[!?.\s]*$/i.test(
+      textClean
+    )
+  ) {
+    return { intent: "weekly_report", params: {}, source: "quick" };
+  }
+
+  /* "ช่วงที่ไม่อยู่มีอะไรบ้าง" — ต้องมีทั้งคำว่าไม่อยู่/ลา/พลาด และคำถามว่ามีอะไร
+     ไม่งั้นจะไปกิน "วันนี้มีอะไรบ้าง" ที่หมายถึงตารางวันนี้ */
+  if (
+    /^(?:ช่วง|ตอน|ระหว่าง)?\s*(?:ที่)?\s*(?:ผม|ฉัน|เรา|ดิฉัน)?\s*(?:ไม่อยู่|ลา|ไม่ได้เข้า|ไม่ได้มา)\s*(?:\d+\s*วัน)?\s*(?:มีอะไร|เกิดอะไร|พลาดอะไร)\s*(?:บ้าง|ไหม)?[!?.\s]*$/i.test(
+      textClean
+    ) ||
+    /^(?:\d+\s*วันที่ผ่านมา|สัปดาห์ที่ผ่านมา)\s*(?:มีอะไร|เกิดอะไร|พลาดอะไร)\s*(?:บ้าง)?[!?.\s]*$/i.test(textClean) ||
+    /^(?:ตามงานที่พลาด|กลับจากลาแล้ว|เพิ่งกลับมา|ขอสรุปช่วงที่ไม่อยู่)[!?.\s]*$/i.test(textClean) ||
+    /^(?:ช่วง)?\s*\d+\s*วันที่ผมไม่อยู่\s*(?:มีอะไร)?\s*(?:บ้าง)?[!?.\s]*$/i.test(textClean)
+  ) {
+    return { intent: "catch_up", params: {}, source: "quick" };
+  }
 
   /* "งานที่มอบให้คนอื่น" — ต้องมาก่อน list_tasks ด้านล่าง ไม่งั้นคำว่า "งาน"
      ในประโยคจะถูกรายการรวมกินไปก่อน ตัวจับต้องมีคำว่ามอบ/สั่งเสมอ จึงไม่ไปแย่ง
@@ -8151,6 +8188,69 @@ async function handleParsed(
         rows,
         "งานที่ต้องติดตาม — แตะงานที่ทำเสร็จแล้ว"
       ),
+    };
+  }
+
+  /**
+   * รายงานสัปดาห์ — ย้อนหลัง 7 วัน แล้วชี้ว่า 7 วันข้างหน้าหนักแค่ไหน
+   *
+   * สั่งเองได้ตลอด (reply ไม่กินโควตา) ส่วนรอบอัตโนมัติศุกร์เย็นส่งเฉพาะคนที่
+   * เปิดไว้เอง — โควตา push 300/เดือนใช้ร่วมกับบรีฟเช้าและการเตือนงาน
+   */
+  if (intent === "weekly_report") {
+    const today = startOfDay(nowWall());
+    const [past, ahead] = await Promise.all([
+      collectPeriod(userUpn, addDays(today, -6), endOfDay(today)),
+      collectPeriod(userUpn, addDays(today, 1), addDays(today, 8)),
+    ]);
+    const label = `สรุป 7 วันที่ผ่านมา (${fmtDate(addDays(today, -6))} – ${fmtDate(today)})`;
+    const on = (await getSetting(userUpn, WEEKLY_REPORT_KEY)) === "on";
+    return {
+      intent,
+      reply:
+        formatWeekly(past, ahead, label) +
+        (on ? "\n\n🔔 ส่งให้อัตโนมัติทุกศุกร์ 17:00" : "\n\nอยากให้ส่งเองทุกศุกร์เย็น พิมพ์ “เปิดรายงานสัปดาห์” ครับ"),
+      suggestions: [
+        { label: on ? "ปิดรายงานสัปดาห์" : "เปิดรายงานสัปดาห์", text: on ? "ปิดรายงานสัปดาห์" : "เปิดรายงานสัปดาห์" },
+        { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+      ],
+    };
+  }
+
+  if (intent === "weekly_report_toggle") {
+    const on = !!params.on;
+    await setSetting(userUpn, WEEKLY_REPORT_KEY, on ? "on" : "off");
+    return {
+      intent,
+      reply: on
+        ? "เปิดรายงานสัปดาห์แล้วครับ ✅ จะส่งให้ทุกศุกร์ 17:00\n(สั่งดูเองเมื่อไรก็ได้ด้วย “สรุปสัปดาห์นี้”)"
+        : "ปิดรายงานสัปดาห์อัตโนมัติแล้วครับ — ยังสั่งดูเองได้ด้วย “สรุปสัปดาห์นี้”",
+      suggestions: [{ label: "สรุปสัปดาห์นี้", text: "สรุปสัปดาห์นี้" }],
+    };
+  }
+
+  /**
+   * "ช่วงที่ผมไม่อยู่มีอะไรบ้าง" — รวมของที่เคยทักไปทีละเรื่องให้ดูย้อนหลังได้
+   *
+   * ของเดิมทักตอนที่มันเกิดอย่างเดียว (สรุปประชุมจบ / นัดใหม่เข้า / เตือนงาน)
+   * ไม่ได้เปิดไลน์ตอนนั้นก็เลื่อนผ่านไปแล้ว อ่านอย่างเดียวล้วน ๆ ไม่แตะอะไรเลย
+   */
+  if (intent === "catch_up") {
+    const m = /(\d+)\s*วัน/.exec(text || "");
+    const days = Math.min(30, Math.max(1, Number(params.days) || (m ? Number(m[1]) : 0) || 3));
+    const today = startOfDay(nowWall());
+    const [past, ahead] = await Promise.all([
+      collectPeriod(userUpn, addDays(today, -days), nowWall()),
+      collectPeriod(userUpn, nowWall(), addDays(today, 4)),
+    ]);
+    return {
+      intent,
+      reply: formatCatchUp(past, ahead, ` ${days} วันที่ผ่านมา `),
+      suggestions: [
+        { label: "สรุปประชุม", text: "สรุปประชุม" },
+        { label: "ดูงานที่ต้องติดตาม", text: "ดูงานที่ต้องติดตาม" },
+        { label: "🗓 ตารางวันนี้", text: "ตารางวันนี้" },
+      ],
     };
   }
 

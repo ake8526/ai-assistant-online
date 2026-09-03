@@ -86,6 +86,12 @@ export function planFor(bkk) {
     jobs.push({ label: "calendar notify", path: "/api/calendar/notify", timeoutMs: 110_000, background: true });
   }
 
+  // ศุกร์ 17:00 — รายงานสัปดาห์ ส่งเฉพาะคนที่เปิดสวิตช์ไว้เอง (ฝั่งแอปกันส่งซ้ำเอง
+  // ด้วยวันที่ล่าสุดที่ส่ง จึงยิงซ้ำในนาทีเดียวกันได้โดยไม่มีใครได้ข้อความสองรอบ)
+  if (dow === 5 && minOfDay === 17 * 60) {
+    jobs.push({ label: "weekly report", path: "/api/report/weekly", timeoutMs: 110_000, background: true });
+  }
+
   return jobs;
 }
 
