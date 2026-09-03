@@ -1802,7 +1802,7 @@ const OFFHOURS_CONFIRM_SUGGESTIONS = [
 const ADD_TASK_DRAFT_KEY = "_pending_add_tasks";
 const ADD_TASK_DRAFT_TTL_MS = 15 * 60_000;
 
-type AddTaskDraftItem = { title: string; responsible: string; duePhrase: string };
+export type AddTaskDraftItem = { title: string; responsible: string; duePhrase: string };
 type AddTaskDraft = { ts: number; items: AddTaskDraftItem[] };
 
 /** กำหนดส่งที่เก็บเป็น UTC — เขียนเป็นเวลาไทยแบบที่ผู้ช่วยใช้ทั้งระบบ */
@@ -1832,7 +1832,7 @@ async function pushTodoAfterReply(upn: string): Promise<void> {
   }
 }
 
-async function saveAddTaskDraft(userUpn: string, items: AddTaskDraftItem[]): Promise<void> {
+export async function saveAddTaskDraft(userUpn: string, items: AddTaskDraftItem[]): Promise<void> {
   await setSetting(userUpn.toLowerCase(), ADD_TASK_DRAFT_KEY, JSON.stringify({ ts: Date.now(), items }));
 }
 
@@ -1901,7 +1901,7 @@ async function clearCloseTaskPending(userUpn: string): Promise<void> {
 }
 
 /** ข้อความทวนรายการ — โชว์กำหนดส่งที่ตีความแล้ว ผู้ใช้จึงเห็นตอนที่อ่านเพี้ยน */
-function addTaskRecap(items: AddTaskDraftItem[]): string {
+export function addTaskRecap(items: AddTaskDraftItem[]): string {
   const lines: string[] = [`ทวนก่อนนะครับ จะเพิ่มงาน ${items.length} รายการ`, ""];
   items.forEach((it, i) => {
     const due = normalizeDue(it.duePhrase);
@@ -1915,7 +1915,7 @@ function addTaskRecap(items: AddTaskDraftItem[]): string {
   return lines.join(NEWLINE);
 }
 
-const ADD_TASK_CONFIRM_SUGGESTIONS = [
+export const ADD_TASK_CONFIRM_SUGGESTIONS = [
   { label: "ยืนยันเพิ่มงาน", text: "ยืนยันเพิ่มงาน" },
   { label: "ไม่เพิ่มงาน", text: "ไม่เพิ่มงาน" },
 ];

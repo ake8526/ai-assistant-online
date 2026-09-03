@@ -148,6 +148,7 @@ export async function attachLineImageToMeeting(
     return {
       intent: "link_meeting_file",
       reply: photoSavedReply(name),
+      savedOnly: true,
     };
   }
 
@@ -196,6 +197,8 @@ export type LinkCmdContext = {
 export type LinkCmdResult = {
   intent: string;
   reply: string;
+  /** รูปนี้ไม่มีนัดให้แนบ เก็บไว้เฉย ๆ — ผู้เรียกเอาไปทำอย่างอื่นต่อได้ (เช่น อ่านเป็นงาน) */
+  savedOnly?: boolean;
   files?: { id?: string; name?: string; url?: string; is_folder?: boolean }[];
   choices?: { index: number; event_id: string; label: string }[];
   suggestions?: { label: string; text: string }[];

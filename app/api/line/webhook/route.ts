@@ -1,6 +1,6 @@
 import { NextResponse, after } from "next/server";
 import crypto from "crypto";
-import { handleCommand, handleSelection, type CommandContext, type CommandResult } from "@/lib/commands";
+import { handleCommand, handleSelection, saveAddTaskDraft, ADD_TASK_CONFIRM_SUGGESTIONS, type CommandContext, type CommandResult } from "@/lib/commands";
 import { getUpnByLineId, getLineId, replyLine, replyLineMessages, showLineLoading, pushLineToId, downloadLineMessageContent } from "@/lib/line";
 import { llmUserErrorMessage } from "@/lib/llm";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/lib/newsOnboarding";
 import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting, savePendingLineLocation, logChatTurn } from "@/lib/store";
+import { readImage } from "@/lib/mediaRead";
 import { createEvent, pushMaterialToOutlookEvent, attachBytesToOutlookEvent, resolveUser, resolveUserInfo } from "@/lib/graph";
 import { calendarConsentNeededMessage, withDelegatedGraph } from "@/lib/msGraphOAuth";
 import { respondMeetingInvite, handleMeetingInviteChoice, handleHostRescheduleChoice, tryHandleMeetingRsvpText, tryHandleMeetingRescheduleText, tryHandleHostEditText, isMeetingRsvpText, isMeetingRescheduleText, getPendingRsvp, bookMeetingWithLineHold, findLinkedLineAttendees } from "@/lib/meetingInvite";
@@ -1294,6 +1295,79 @@ async function handleDraftInput(upn: string, text: string, replyToken: string): 
   return true;
 }
 
+/**
+ * อ่านรูปที่ส่งมาลอย ๆ แล้วเสนอเป็นรายการงาน
+ *
+ * ไม่สร้างงานเองเด็ดขาด — ต่อเข้า flow ทวนรายการเดิม (saveAddTaskDraft) ซึ่งรอคำว่า
+ * "ยืนยันเพิ่มงาน" อยู่แล้ว เหตุผลไม่ใช่แค่มารยาท: ทดสอบแล้วโมเดลอ่านชื่อเฉพาะพลาดได้
+ * (ห้อง KTISX เคยกลายเป็น KTIS 3) งานที่ผิดคนหรือผิดวันแย่กว่าไม่มีงาน
+ *
+ * รูปยังถูกเก็บไว้ตามเดิมทุกกรณี ("แนบรูปเพิ่ม" ยังใช้ได้) การอ่านเป็นของแถม ไม่ใช่ของแทน
+ */
+async function handlePhotoRead(
+  upn: string,
+  replyToken: string,
+  buffer: Buffer,
+  contentType: string,
+  savedReply: string
+): Promise<void> {
+  let read: Awaited<ReturnType<typeof readImage>>;
+  try {
+    read = await readImage(buffer, contentType);
+  } catch (e) {
+    /* อ่านไม่ได้ไม่ควรทำให้ผู้ใช้เสียรูป — ตอบแบบเดิมแล้วบอกตรง ๆ ว่าอ่านไม่ได้ */
+    console.warn("[line] readImage", String(e).slice(0, 160));
+    trace("reply", "อ่านรูปไม่สำเร็จ", "error");
+    await replyLine(replyToken, savedReply + "\n\n(ลองอ่านข้อความในรูปแล้วแต่ไม่สำเร็จครับ)");
+    return;
+  }
+
+  if (read.kind === "tasks" && read.tasks.length) {
+    const items = read.tasks.slice(0, 10).map((t) => ({
+      title: t.title,
+      responsible: t.owner || "",
+      duePhrase: t.due || "",
+    }));
+    await saveAddTaskDraft(upn, items);
+    const lines = [
+      `📷 อ่านรูปแล้ว เจอ ${items.length} งานครับ`,
+      "",
+      ...items.map((t, i) => {
+        const bits = [t.responsible ? `ผู้รับผิดชอบ: ${t.responsible}` : "", t.duePhrase ? `กำหนด: ${t.duePhrase}` : ""].filter(Boolean);
+        return `${i + 1}) ${t.title}${bits.length ? " — " + bits.join(" · ") : ""}`;
+      }),
+      "",
+      "ตรวจดูก่อนนะครับ ชื่อคนหรือวันที่อาจอ่านเพี้ยนได้",
+      "ถูกแล้วกด “ยืนยันเพิ่มงาน” ด้านล่าง",
+    ];
+    await replyLineMessages(replyToken, [
+      { type: "text", text: lines.join("\n"), quickReply: { items: ADD_TASK_CONFIRM_SUGGESTIONS.map((s) => ({ type: "action", action: { type: "message", label: s.label, text: s.text } })) } },
+    ]);
+    trace("reply", `อ่านรูปเป็นงาน ${items.length} รายการ`);
+    return;
+  }
+
+  if (read.kind === "document" && read.summary) {
+    await replyLineMessages(replyToken, [
+      {
+        type: "text",
+        text: `📷 อ่านรูปแล้วครับ\n\n${read.summary}\n\nถ้าอยากให้เก็บเป็นงาน พิมพ์ได้เลย เช่น “เพิ่มงาน <ชื่องาน> พรุ่งนี้ 17:00”`,
+        quickReply: {
+          items: [
+            { type: "action", action: { type: "message", label: "ดูงานที่ค้าง", text: "ดูงานที่ต้องติดตาม" } },
+            { type: "action", action: { type: "message", label: "แนบรูปเข้านัด", text: "แนบรูปเพิ่ม" } },
+          ],
+        },
+      },
+    ]);
+    trace("reply", "อ่านรูปเป็นเอกสาร");
+    return;
+  }
+
+  await replyLine(replyToken, savedReply + "\n\n(ในรูปไม่มีข้อความที่อ่านออกครับ)");
+  trace("reply", "รูปไม่มีข้อความ");
+}
+
 async function handleImageMessage(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
   const messageId = ev.message?.id;
@@ -1324,6 +1398,15 @@ async function handleImageMessage(ev: LineEvent): Promise<void> {
     const { result: res } = await withDelegatedGraph(upn, () =>
       attachLineImageToMeeting(upn, buffer, contentType)
     );
+
+    /* ไม่มีนัดให้แนบ = รูปนี้ถูกส่งมาลอย ๆ ซึ่งเกือบทุกครั้งคือใบสั่งงาน ใบเสนอราคา
+       หรือไวท์บอร์ดหลังประชุม — อ่านให้เลยดีกว่าตอบว่า "รับรูปแล้ว" แล้วจบ
+       ถ้ามีนัดรออยู่ พฤติกรรมเดิมมาก่อนเสมอ ของใหม่ไม่แย่งทาง */
+    if (res.savedOnly) {
+      await handlePhotoRead(upn, ev.replyToken, buffer, contentType, res.reply);
+      return;
+    }
+
     await replyLine(ev.replyToken, res.reply || "แนบรูปแล้วครับ");
     trace("reply", "แนบรูปเข้านัด");
   } catch (e) {
