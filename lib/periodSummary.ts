@@ -120,15 +120,21 @@ function busiestDay(events: GraphEvent[]): { label: string; count: number } | nu
 
 /** รายงานสัปดาห์ — มองย้อนหลังหนึ่งช่วง แล้วชี้ว่าช่วงถัดไปหนักแค่ไหน */
 export function formatWeekly(past: PeriodData, ahead: PeriodData, label: string): string {
+  /* สถานะในตารางมีสามค่า: done / pending / cancelled (overdue คือ pending ที่เลยเวลา)
+     ของเดิมนับ "ไม่ใช่ done" เป็นค้างทั้งหมด งานที่ยกเลิกไปแล้วจึงถูกรายงานว่า
+     "ยังค้าง ⚠️" — ตรวจกับข้อมูลจริงพบ 5 ใบเป็น cancelled ล้วน ๆ และย้อนแย้งกับ
+     บรรทัดถัดไปที่บอกว่าค้างอยู่ 2 งาน */
   const closedInRange = past.dueInRange.filter((t) => t.status === "done").length;
-  const stillOpen = past.dueInRange.length - closedInRange;
+  const stillOpen = past.dueInRange.filter((t) => t.status === "pending" || t.status === "overdue").length;
+  const cancelledInRange = past.dueInRange.filter((t) => t.status === "cancelled").length;
   const lines = [`📈 ${label}`, ""];
 
   lines.push(`🗓 ประชุม ${past.meetings.length} นัด · รวม ${hoursLabel(past.meetingMinutes)}`);
   if (past.dueInRange.length) {
     lines.push(
       `✅ งานที่ครบกำหนดช่วงนี้ ${past.dueInRange.length} งาน — ปิดแล้ว ${closedInRange}` +
-        (stillOpen ? ` · ยังค้าง ${stillOpen} ⚠️` : "")
+        (stillOpen ? ` · ยังค้าง ${stillOpen} ⚠️` : "") +
+        (cancelledInRange ? ` · ยกเลิก ${cancelledInRange}` : "")
     );
   }
   lines.push(
