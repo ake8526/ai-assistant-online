@@ -360,6 +360,11 @@ async function clearSession(upn: string): Promise<void> {
   } catch {
     /* ignore */
   }
+  try {
+    await clearSurveyEphemeral(upn);
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function hasActiveSurvey(upn: string): Promise<boolean> {
@@ -782,34 +787,106 @@ export async function handleLineSurveyText(
   return takeSurveyLog();
 }
 
-const CLAIM_WAIT_MS = 180;
+const RATE_DEBOUNCE_MS = 500;
+const TRY_DEBOUNCE_MS = 400;
+const SETTLE_MS = 120;
 
-/**
- * Last writer wins across Vercel instances. Only the tap whose token still
- * matches after a short wait may reply — everyone else stays silent.
- */
-async function claimSurveyReply(upn: string, step: string): Promise<boolean> {
-  const owner = upn.toLowerCase();
-  const key = `_sv_claim_${step}`;
-  const token = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  try {
-    await setSetting(owner, key, token);
-    await new Promise((r) => setTimeout(r, CLAIM_WAIT_MS));
-    const raw = await getSetting(owner, key);
-    return raw === token;
-  } catch {
-    return true;
-  }
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-/** true if this postback is for the question currently on screen (or no qid = legacy). */
+/** Drop in-flight mash state + per-question done locks (not channel/start locks). */
+async function clearSurveyQuestionEphemeral(upn: string): Promise<void> {
+  const owner = upn.toLowerCase();
+  const keys = ["_sv_pend_rate", "_sv_pend_try", "_sv_pend_star", "_sv_pend_submit"];
+  for (const q of SURVEY_Q) {
+    keys.push(
+      `_sv_done_${q.id}`,
+      `_sv_done_try_${q.id}`,
+      `_sv_claim_rate:${q.id}`,
+      `_sv_claim_try:${q.id}`,
+      `_sv_claim_star:${q.id}`
+    );
+  }
+  await Promise.all(keys.map((k) => deleteSetting(owner, k).catch(() => undefined)));
+}
+
+/** Full wipe — new survey / cancel. Includes start/channel done locks. */
+async function clearSurveyEphemeral(upn: string): Promise<void> {
+  const owner = upn.toLowerCase();
+  await clearSurveyQuestionEphemeral(upn);
+  const keys = [
+    "_sv_pend_start",
+    "_sv_pend_web",
+    "_sv_pend_line",
+    "_sv_pend_restart",
+    "_sv_done_start",
+    "_sv_done_web",
+    "_sv_done_line",
+    "_sv_done_restart",
+    "_sv_done_star",
+    "_sv_done_submit",
+    "_sv_claim_svstart",
+    "_sv_claim_svweb",
+    "_sv_claim_svline",
+    "_sv_claim_restart",
+    "_sv_claim_submit",
+  ];
+  await Promise.all(keys.map((k) => deleteSetting(owner, k).catch(() => undefined)));
+}
+
+/**
+ * Mash → keep latest payload only. Losers return null (no LINE reply).
+ * Winner returns the latest pending payload after a permanent done-lock.
+ */
+async function winDebouncedStep(
+  upn: string,
+  pendKey: string,
+  doneKey: string,
+  payload: Record<string, unknown>,
+  debounceMs: number
+): Promise<Record<string, unknown> | null> {
+  const owner = upn.toLowerCase();
+  if (await getSetting(owner, doneKey)) return null;
+
+  const token = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const body = { ...payload, token };
+  await setSetting(owner, pendKey, JSON.stringify(body));
+  await sleep(debounceMs);
+
+  let pend: (Record<string, unknown> & { token?: string }) | null = null;
+  try {
+    const raw = await getSetting(owner, pendKey);
+    pend = raw ? (JSON.parse(raw) as Record<string, unknown> & { token?: string }) : null;
+  } catch {
+    return null;
+  }
+  if (!pend || pend.token !== token) return null; // superseded by a newer tap
+
+  if (await getSetting(owner, doneKey)) return null;
+
+  await setSetting(owner, doneKey, token);
+  await sleep(SETTLE_MS);
+  const done = await getSetting(owner, doneKey);
+  if (done !== token) return null;
+
+  try {
+    await deleteSetting(owner, pendKey);
+  } catch {
+    /* ignore */
+  }
+  const { token: _t, ...rest } = pend;
+  return rest;
+}
+
 function matchesCurrentQuestion(sess: Session, data: URLSearchParams): boolean {
   const qid = decodeURIComponent(data.get("qid") || "").trim();
   const iRaw = data.get("i");
-  if (!qid && iRaw === null) return true;
   const q = SURVEY_Q[sess.idx];
   if (!q) return false;
-  if (qid && qid !== q.id) return false;
+  // Require qid — old buttons without it are ignored (caused multi-advance)
+  if (!qid) return false;
+  if (qid !== q.id) return false;
   if (iRaw !== null && iRaw !== "") {
     const i = parseInt(iRaw, 10);
     if (Number.isFinite(i) && i !== sess.idx) return false;
@@ -818,8 +895,8 @@ function matchesCurrentQuestion(sess: Session, data: URLSearchParams): boolean {
 }
 
 /**
- * Postback handler. Returns assistant log text, or null if ignored
- * (duplicate / stale — only one reply; latest claim wins).
+ * Postback handler. Returns assistant log, or null if ignored.
+ * Rapid taps: keep latest value, reply exactly once.
  */
 export async function handleLineSurveyPostback(
   upn: string,
@@ -831,24 +908,26 @@ export async function handleLineSurveyPostback(
 
   if (act === "svcancel") {
     await clearSession(upn);
+    await clearSurveyEphemeral(upn);
     await send("reply", upn, [{ type: "text", text: "ยกเลิกแบบสำรวจแล้วครับ" }], replyToken);
     return takeSurveyLog();
   }
 
   if (act === "svagain") {
     await clearSession(upn);
+    await clearSurveyEphemeral(upn);
     await startLineSurvey(upn, "reply", replyToken);
     return takeSurveyLog();
   }
 
   if (act === "svstart") {
-    if (!(await claimSurveyReply(upn, "svstart"))) return null;
+    if (!(await winDebouncedStep(upn, "_sv_pend_start", "_sv_done_start", { act }, 400))) return null;
     await askChannel(upn, "reply", replyToken);
     return takeSurveyLog();
   }
 
   if (act === "svweb") {
-    if (!(await claimSurveyReply(upn, "svweb"))) return null;
+    if (!(await winDebouncedStep(upn, "_sv_pend_web", "_sv_done_web", { act }, 400))) return null;
     await clearSession(upn);
     await send(
       "reply",
@@ -866,7 +945,9 @@ export async function handleLineSurveyPostback(
   }
 
   if (act === "svline") {
-    if (!(await claimSurveyReply(upn, "svline"))) return null;
+    if (!(await winDebouncedStep(upn, "_sv_pend_line", "_sv_done_line", { act }, 400))) return null;
+    // Clear question locks only — keep _sv_done_line so parallel taps stay silent
+    await clearSurveyQuestionEphemeral(upn);
     const sess: Session = { phase: "try", idx: 0, answers: {}, star: null, ts: Date.now() };
     await saveSession(upn, sess);
     const q0 = SURVEY_Q[0]!;
@@ -887,7 +968,7 @@ export async function handleLineSurveyPostback(
 
   let sess = await loadSession(upn);
   if (!sess) {
-    if (!(await claimSurveyReply(upn, "restart"))) return null;
+    if (!(await winDebouncedStep(upn, "_sv_pend_restart", "_sv_done_restart", { act }, 400))) return null;
     await startLineSurvey(upn, "reply", replyToken);
     return takeSurveyLog();
   }
@@ -897,11 +978,21 @@ export async function handleLineSurveyPostback(
     if (sess.phase !== "try" || !matchesCurrentQuestion(sess, data)) return null;
     const q = SURVEY_Q[sess.idx];
     if (!q) return null;
-    if (!(await claimSurveyReply(upn, `try:${q.id}`))) return null;
+
+    const won = await winDebouncedStep(
+      upn,
+      "_sv_pend_try",
+      `_sv_done_try_${q.id}`,
+      { act, qid: q.id },
+      TRY_DEBOUNCE_MS
+    );
+    if (!won) return null;
+
     sess = (await loadSession(upn)) || sess;
     if (sess.phase !== "try" || SURVEY_Q[sess.idx]?.id !== q.id) return null;
 
-    if (act === "svtry") {
+    const lastAct = String(won.act || act);
+    if (lastAct === "svtry") {
       const demoCmd = q.demoU || q.say || "ตัวอย่างคำสั่ง";
       const demoAns = clip(q.demoB || "(ตัวอย่าง)", 4500);
       sess.phase = "rate";
@@ -936,23 +1027,34 @@ export async function handleLineSurveyPostback(
     if (!q) return null;
     if (Object.prototype.hasOwnProperty.call(sess.answers, q.id)) return null;
 
-    if (!(await claimSurveyReply(upn, `rate:${q.id}`))) return null;
+    const won = await winDebouncedStep(
+      upn,
+      "_sv_pend_rate",
+      `_sv_done_${q.id}`,
+      { qid: q.id, v, i: sess.idx },
+      RATE_DEBOUNCE_MS
+    );
+    if (!won) return null;
+
+    // Latest score from the winning (last) tap — not this request's v
+    const finalV =
+      typeof won.v === "number" && Number.isFinite(won.v) ? (won.v as number) : v;
 
     sess = (await loadSession(upn)) || sess;
-    if (sess.phase !== "rate" || SURVEY_Q[sess.idx]?.id !== q.id) return null;
     if (Object.prototype.hasOwnProperty.call(sess.answers, q.id)) return null;
+    if (sess.phase !== "rate" || SURVEY_Q[sess.idx]?.id !== q.id) return null;
 
-    sess.answers[q.id] = v;
+    sess.answers[q.id] = finalV;
     sess.idx += 1;
     const ack =
-      v >= 5
+      finalV >= 5
         ? "รับทราบครับ — อยากได้มาก 🔥"
-        : v >= 4
+        : finalV >= 4
           ? "จดไว้แล้วครับ 👍"
-          : v <= 0
+          : finalV <= 0
             ? "โอเคครับ จะไม่เร่งอันนี้"
             : "รับทราบครับ";
-    const scored = `${ack}\n(บันทึก: ${q.t} → ${v}/5)`;
+    const scored = `${ack}\n(บันทึก: ${q.t} → ${finalV}/5)`;
 
     if (sess.idx >= SURVEY_Q.length) {
       sess.phase = "star";
@@ -980,11 +1082,13 @@ export async function handleLineSurveyPostback(
 
   if (act === "svstar") {
     const id = decodeURIComponent(data.get("id") || "");
-    if (!SURVEY_Q.some((q) => q.id === id)) return null;
-    if (!(await claimSurveyReply(upn, `star:${id}`))) return null;
+    if (!SURVEY_Q.some((x) => x.id === id)) return null;
+    const won = await winDebouncedStep(upn, "_sv_pend_star", `_sv_done_star`, { id }, 500);
+    if (!won) return null;
+    const starId = String(won.id || id);
     sess = (await loadSession(upn)) || sess;
     if (sess.phase === "done" && sess.star) return null;
-    sess.star = id;
+    sess.star = starId;
     sess.phase = "done";
     await saveSession(upn, sess);
     await send("reply", upn, [doneMessage(sess)], replyToken);
@@ -992,7 +1096,8 @@ export async function handleLineSurveyPostback(
   }
 
   if (act === "svsubmit") {
-    if (!(await claimSurveyReply(upn, "submit"))) return null;
+    const won = await winDebouncedStep(upn, "_sv_pend_submit", "_sv_done_submit", { act }, 500);
+    if (!won) return null;
     sess = (await loadSession(upn)) || sess;
     await submitSession(upn, sess, replyToken);
     return takeSurveyLog();
