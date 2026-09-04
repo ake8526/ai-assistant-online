@@ -783,17 +783,27 @@ export async function handleLineSurveyText(
 }
 
 const BUSY_KEY = "_survey_busy";
-const BUSY_MS = 2800;
+const BUSY_MS = 2200;
+/** Process-local lock — beats settings race on double-tap in the same instance. */
+const memBusy = new Map<string, number>();
 
-/** Returns false if another survey tap is still being handled. */
+/** Returns false if another survey tap is still being handled. Silent on failure. */
 async function trySurveyBusy(upn: string): Promise<boolean> {
   const owner = upn.toLowerCase();
   const now = Date.now();
+  const memUntil = memBusy.get(owner) || 0;
+  if (memUntil > now) return false;
+  memBusy.set(owner, now + BUSY_MS);
+
   try {
     const raw = await getSetting(owner, BUSY_KEY);
     if (raw) {
       const until = parseInt(raw, 10);
-      if (Number.isFinite(until) && until > now) return false;
+      if (Number.isFinite(until) && until > now) {
+        // Another instance holds the lock
+        memBusy.set(owner, until);
+        return false;
+      }
     }
     await setSetting(owner, BUSY_KEY, String(now + BUSY_MS));
     return true;
@@ -803,8 +813,10 @@ async function trySurveyBusy(upn: string): Promise<boolean> {
 }
 
 async function clearSurveyBusy(upn: string): Promise<void> {
+  const owner = upn.toLowerCase();
+  memBusy.delete(owner);
   try {
-    await deleteSetting(upn.toLowerCase(), BUSY_KEY);
+    await deleteSetting(owner, BUSY_KEY);
   } catch {
     /* ignore */
   }
@@ -875,18 +887,8 @@ export async function handleLineSurveyPostback(
     return takeSurveyLog();
   }
 
-  // Double-tap / rapid-fire: keep only the first in-flight action
+  // Double-tap / rapid-fire: keep only one in-flight action — no reply on drop
   if (!(await trySurveyBusy(upn))) {
-    try {
-      await send(
-        "reply",
-        upn,
-        [{ type: "text", text: "รับคำตอบล่าสุดแล้วครับ — เดี๋ยวข้อถัดไปขึ้นเอง" }],
-        replyToken
-      );
-    } catch {
-      /* reply token may already be used */
-    }
     return null;
   }
 
@@ -894,6 +896,7 @@ export async function handleLineSurveyPostback(
     if (act === "svline") {
       const sess: Session = { phase: "try", idx: 0, answers: {}, star: null, ts: Date.now() };
       await saveSession(upn, sess);
+      const q0 = SURVEY_Q[0]!;
       await send(
         "reply",
         upn,
@@ -902,10 +905,10 @@ export async function handleLineSurveyPostback(
             type: "text",
             text: "โอเคครับ — ทำในแชทนี้เลย\nแต่ละข้อจะให้ลองคำสั่งตัวอย่างก่อน แล้วค่อยให้คะแนน",
           },
+          tryMessage(q0, 0),
         ],
         replyToken
       );
-      await askTry(upn, "push");
       return takeSurveyLog();
     }
 
@@ -916,18 +919,10 @@ export async function handleLineSurveyPostback(
     }
 
     if (act === "svtry" || act === "svskip") {
+      // Reload against concurrent taps
+      sess = (await loadSession(upn)) || sess;
       if (sess.phase !== "try" || !matchesCurrentQuestion(sess, data)) {
-        try {
-          await send(
-            "reply",
-            upn,
-            [{ type: "text", text: "ข้อนี้ตอบไปแล้วครับ — ใช้คำตอบล่าสุด" }],
-            replyToken
-          );
-        } catch {
-          /* ignore */
-        }
-        return null;
+        return null; // stale — silent, no extra bubbles
       }
       if (act === "svtry") {
         const q = SURVEY_Q[sess.idx];
@@ -937,6 +932,8 @@ export async function handleLineSurveyPostback(
         }
         const demoCmd = q.demoU || q.say || "ตัวอย่างคำสั่ง";
         const demoAns = clip(q.demoB || "(ตัวอย่าง)", 4500);
+        sess.phase = "rate";
+        await saveSession(upn, sess);
         await send(
           "reply",
           upn,
@@ -945,12 +942,14 @@ export async function handleLineSurveyPostback(
               type: "text",
               text: clip(`ตัวอย่าง (จำลอง):\nคุณพิมพ์ → ${demoCmd}\n\nผู้ช่วยตอบ:\n${demoAns}`, 4900),
             },
+            rateMessage(q, sess.idx),
           ],
           replyToken
         );
-        await askRate(upn, "push");
         return takeSurveyLog();
       }
+      sess.phase = "rate";
+      await saveSession(upn, sess);
       await askRate(upn, "reply", replyToken);
       return takeSurveyLog();
     }
@@ -961,30 +960,17 @@ export async function handleLineSurveyPostback(
         await askRate(upn, "reply", replyToken);
         return takeSurveyLog();
       }
-      // Reload so concurrent taps see the latest idx
       sess = (await loadSession(upn)) || sess;
       if (sess.phase !== "rate" || !matchesCurrentQuestion(sess, data)) {
-        try {
-          await send(
-            "reply",
-            upn,
-            [{ type: "text", text: "รับคะแนนล่าสุดแล้วครับ" }],
-            replyToken
-          );
-        } catch {
-          /* ignore */
-        }
-        return null;
+        return null; // stale / already answered — silent
       }
       const q = SURVEY_Q[sess.idx];
       if (!q) {
         await askTry(upn, "reply", replyToken);
         return takeSurveyLog();
       }
-      // Overwrite answer for this question (latest tap wins if lock allowed two through)
       sess.answers[q.id] = v;
       sess.idx += 1;
-      await saveSession(upn, sess);
       const ack =
         v >= 5
           ? "รับทราบครับ — อยากได้มาก 🔥"
@@ -993,7 +979,8 @@ export async function handleLineSurveyPostback(
             : v <= 0
               ? "โอเคครับ จะไม่เร่งอันนี้"
               : "รับทราบครับ";
-      const scored = `${ack}\n(บันทึก: ข้อ ${q.id} · ${q.t} → ${v}/5)`;
+      const scored = `${ack}\n(บันทึก: ${q.t} → ${v}/5)`;
+
       if (sess.idx >= SURVEY_Q.length) {
         sess.phase = "star";
         await saveSession(upn, sess);
@@ -1005,8 +992,17 @@ export async function handleLineSurveyPostback(
         );
         return takeSurveyLog();
       }
-      await send("reply", upn, [{ type: "text", text: scored + "\nต่อไปข้อถัดไป…" }], replyToken);
-      await askTry(upn, "push");
+
+      sess.phase = "try";
+      await saveSession(upn, sess);
+      const next = SURVEY_Q[sess.idx]!;
+      // One reply only: ack + next question card (no extra push)
+      await send(
+        "reply",
+        upn,
+        [{ type: "text", text: scored }, tryMessage(next, sess.idx)],
+        replyToken
+      );
       return takeSurveyLog();
     }
 
@@ -1016,7 +1012,6 @@ export async function handleLineSurveyPostback(
         await send("reply", upn, [starMessage(sess)], replyToken);
         return takeSurveyLog();
       }
-      // Latest star wins
       sess.star = id;
       sess.phase = "done";
       await saveSession(upn, sess);
@@ -1038,8 +1033,7 @@ export async function handleLineSurveyPostback(
     else await startLineSurvey(upn, "reply", replyToken);
     return takeSurveyLog();
   } finally {
-    // Keep busy a bit after reply so a second tap in the same second is dropped
-    // (timer already set in trySurveyBusy; no early clear)
+    await clearSurveyBusy(upn);
   }
 }
 
