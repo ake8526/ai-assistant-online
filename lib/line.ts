@@ -1,6 +1,7 @@
 // LINE Messaging API helpers — ported from morning_brief/notify.py.
 // Uses env LINE_CHANNEL_ACCESS_TOKEN; recipient lookup via Supabase line_links.
 import { admin } from "@/lib/supabaseServer";
+import { lineTurnAllowsSend } from "@/lib/lineDebounce";
 
 const LINE_TEXT_LIMIT = 4900; // LINE hard limit is 5000 chars/message; keep headroom
 const PUSH_URL = "https://api.line.me/v2/bot/message/push";
@@ -168,6 +169,9 @@ export async function showLineLoading(lineUserId: string, seconds = 60): Promise
 
 /** Low-level push to a raw LINE userId. */
 export async function pushLineToId(lineUserId: string, text: string, essential = false): Promise<void> {
+  // Webhook turns: drop if a newer tap/message superseded this one.
+  // Cron / proactive pushes have no turn context and always send.
+  if (!(await lineTurnAllowsSend())) return;
   await assertQuota(essential);
   const messages = chunk(text).slice(0, 5).map((c) => ({ type: "text", text: c }));
   await linePost(PUSH_URL, { to: lineUserId, messages });
@@ -179,6 +183,7 @@ export async function pushLineMessages(
   messages: object[],
   essential = false
 ): Promise<void> {
+  if (!(await lineTurnAllowsSend())) return;
   await assertQuota(essential);
   await linePost(PUSH_URL, { to: lineUserId, messages: messages.slice(0, 5) });
 }
@@ -199,16 +204,19 @@ export async function downloadLineMessageContent(
 
 /** Reply via replyToken (free — no push quota). Tokens are single-use, short-lived. */
 export async function replyLine(replyToken: string, text: string): Promise<void> {
+  if (!(await lineTurnAllowsSend())) return;
   const messages = chunk(text).slice(0, 5).map((c) => ({ type: "text", text: c }));
   await linePost(REPLY_URL, { replyToken, messages });
 }
 
 /** Reply with arbitrary message objects (Flex, templates, ...). */
 export async function replyLineMessages(replyToken: string, messages: object[]): Promise<void> {
+  if (!(await lineTurnAllowsSend())) return;
   await linePost(REPLY_URL, { replyToken, messages });
 }
 
 export async function pushLineFlex(lineUserId: string, altText: string, flexContents: object): Promise<void> {
+  if (!(await lineTurnAllowsSend())) return;
   await linePost(PUSH_URL, { to: lineUserId, messages: [{ type: "flex", altText, contents: flexContents }] });
 }
 

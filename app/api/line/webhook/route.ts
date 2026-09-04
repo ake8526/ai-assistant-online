@@ -16,6 +16,13 @@ import {
   isSurveyAction,
   surveyActionLabel,
 } from "@/lib/lineSurvey";
+import {
+  beginLineTurn,
+  runLineTurn,
+  LINE_DEBOUNCE_TEXT_MS,
+  LINE_DEBOUNCE_POSTBACK_MS,
+  LINE_DEBOUNCE_MEDIA_MS,
+} from "@/lib/lineDebounce";
 import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting, savePendingLineLocation, logChatTurn } from "@/lib/store";
 import { readImage } from "@/lib/mediaRead";
@@ -1378,15 +1385,20 @@ async function handlePhotoRead(
 async function handleImageMessage(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
   const messageId = ev.message?.id;
-  if (!ev.replyToken || !userId || !messageId) return;
+  const replyToken = ev.replyToken;
+  if (!replyToken || !userId || !messageId) return;
 
   const upn = await getUpnByLineId(userId);
   if (!upn) {
-    await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
+    await replyLineMessages(replyToken, [linkPromptMessage()]);
     return;
   }
-  if (await blockedHere(upn, ev.replyToken)) return;
+  if (await blockedHere(upn, replyToken)) return;
   setTraceUser(upn);
+
+  const turn = await beginLineTurn(upn, LINE_DEBOUNCE_MEDIA_MS);
+  if (!turn) return;
+  await runLineTurn(upn, turn.token, async () => {
   trace("receive", "รูปจาก LINE");
   try {
     await showLineLoading(userId, 30);
@@ -1395,7 +1407,7 @@ async function handleImageMessage(ev: LineEvent): Promise<void> {
     const draft = await loadDraft(upn);
     if (draft?.attachLinePhoto) {
       const name = await savePendingLinePhoto(upn, buffer, contentType);
-      await replyLineMessages(ev.replyToken, [
+      await replyLineMessages(replyToken, [
         await confirmCardMessage(draft, `รับรูปแล้ว 📷 (${name})\n`, upn),
       ]);
       trace("reply", "รับรูปสำหรับ draft");
@@ -1410,35 +1422,41 @@ async function handleImageMessage(ev: LineEvent): Promise<void> {
        หรือไวท์บอร์ดหลังประชุม — อ่านให้เลยดีกว่าตอบว่า "รับรูปแล้ว" แล้วจบ
        ถ้ามีนัดรออยู่ พฤติกรรมเดิมมาก่อนเสมอ ของใหม่ไม่แย่งทาง */
     if (res.savedOnly) {
-      await handlePhotoRead(upn, ev.replyToken, buffer, contentType, res.reply);
+      await handlePhotoRead(upn, replyToken, buffer, contentType, res.reply);
       return;
     }
 
-    await replyLine(ev.replyToken, res.reply || "แนบรูปแล้วครับ");
+    await replyLine(replyToken, res.reply || "แนบรูปแล้วครับ");
     trace("reply", "แนบรูปเข้านัด");
   } catch (e) {
     console.error("[line] handleImageMessage", String(e).slice(0, 200));
     await replyLine(
-      ev.replyToken,
+      replyToken,
       `⚠️ แนบรูปไม่สำเร็จ: ${String(e).slice(0, 120)}\nลองพิมพ์ “แนบรูปเพิ่ม” แล้วส่งรูปอีกครั้ง`
     );
   }
+  });
 }
 
 async function handleLocationMessage(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
-  if (!ev.replyToken || !userId) return;
+  const replyToken = ev.replyToken;
+  if (!replyToken || !userId) return;
   const upn = await getUpnByLineId(userId);
   if (!upn) {
-    await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
+    await replyLineMessages(replyToken, [linkPromptMessage()]);
     return;
   }
-  if (await blockedHere(upn, ev.replyToken)) return;
+  if (await blockedHere(upn, replyToken)) return;
   setTraceUser(upn);
+
+  const turn = await beginLineTurn(upn, LINE_DEBOUNCE_MEDIA_MS);
+  if (!turn) return;
+  await runLineTurn(upn, turn.token, async () => {
   const lat = Number(ev.message?.latitude);
   const lng = Number(ev.message?.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    await replyLine(ev.replyToken, "อ่านตำแหน่งไม่สำเร็จครับ ลองส่งใหม่อีกครั้งได้เลย");
+    await replyLine(replyToken, "อ่านตำแหน่งไม่สำเร็จครับ ลองส่งใหม่อีกครั้งได้เลย");
     return;
   }
   const title = (ev.message?.title || "").trim();
@@ -1446,7 +1464,7 @@ async function handleLocationMessage(ev: LineEvent): Promise<void> {
   try {
     await savePendingLineLocation(upn, { title, address, lat, lng });
     const preview = address || title || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-    await replyLineMessages(ev.replyToken, [
+    await replyLineMessages(replyToken, [
       {
         type: "text",
         text: `รับตำแหน่งแล้วครับ 📍\n${preview}\n\nบันทึกเป็นอะไรดีครับ?`,
@@ -1471,14 +1489,16 @@ async function handleLocationMessage(ev: LineEvent): Promise<void> {
     trace("reply", "รับตำแหน่ง LINE");
   } catch (e) {
     console.error("[line] handleLocationMessage", String(e).slice(0, 200));
-    await replyLine(ev.replyToken, "รับตำแหน่งไม่สำเร็จชั่วคราว — ลองส่งใหม่อีกครั้งครับ");
+    await replyLine(replyToken, "รับตำแหน่งไม่สำเร็จชั่วคราว — ลองส่งใหม่อีกครั้งครับ");
   }
+  });
 }
 
 async function handleTextMessage(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
+  const replyToken = ev.replyToken;
   let text = sanitizeMenuText(ev.message?.text || "");
-  if (!ev.replyToken || !userId || !text) return;
+  if (!replyToken || !userId || !text) return;
 
   // LINE wraps long SharePoint URLs — collapse whitespace so quick-intent can match
   {
@@ -1490,11 +1510,16 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
 
   const upn = await getUpnByLineId(userId);
   if (!upn) {
-    await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
+    await replyLineMessages(replyToken, [linkPromptMessage()]);
     return;
   }
-  if (await blockedHere(upn, ev.replyToken)) return;
+  if (await blockedHere(upn, replyToken)) return;
   setTraceUser(upn);
+
+  // Mash / double-send → keep latest only; superseded turns never reply.
+  const turn = await beginLineTurn(upn, LINE_DEBOUNCE_TEXT_MS);
+  if (!turn) return;
+  await runLineTurn(upn, turn.token, async () => {
   trace("receive", "ข้อความเข้าจาก LINE");
   try {
     // Classic LINE 3-dot bubble (same as clip) — await so it starts before work.
@@ -1520,7 +1545,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         const head = (body.split(/\s+/)[0] || "").toLowerCase();
         if (head === "แบบสอบถาม" || head === "แบบสำรวจ" || head === "survey") {
           const { startLineSurvey } = await import("@/lib/lineSurvey");
-          const surveyLog = await startLineSurvey(upn, "reply", ev.replyToken);
+          const surveyLog = await startLineSurvey(upn, "reply", replyToken);
           after(async () => {
             await logChatTurn({
               session_id: upn,
@@ -1538,7 +1563,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
 
     // LINE chat survey (pilot) — before RSVP so short confirms / taps stay in survey
     {
-      const surveyLog = await handleLineSurveyText(upn, text, ev.replyToken);
+      const surveyLog = await handleLineSurveyText(upn, text, replyToken);
       if (surveyLog !== null) {
         after(async () => {
           await logChatTurn({
@@ -1565,7 +1590,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     if (!awaitingOwnConfirm) {
       const hostEdit = await tryHandleHostEditText(upn, text);
       if (hostEdit) {
-        await replyLineMessages(ev.replyToken, [
+        await replyLineMessages(replyToken, [
           {
             type: "text",
             text: hostEdit.reply,
@@ -1585,7 +1610,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       }
       const reschedule = await tryHandleMeetingRescheduleText(upn, text);
       if (reschedule) {
-        await replyLine(ev.replyToken, reschedule.reply);
+        await replyLine(replyToken, reschedule.reply);
         after(async () => {
           await logChatTurn({
             session_id: upn,
@@ -1599,7 +1624,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       }
       const rsvp = await tryHandleMeetingRsvpText(upn, text);
       if (rsvp) {
-        await replyLineMessages(ev.replyToken, [
+        await replyLineMessages(replyToken, [
           {
             type: "text",
             text: rsvp.reply,
@@ -1622,7 +1647,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         const prefs = await getNewsPrefs(upn);
         if (!prefs.onboardingDone) {
           await replyLine(
-            ev.replyToken,
+            replyToken,
             isMeetingRescheduleText(text)
               ? "รับทราบว่าอยากเปลี่ยนเวลาครับ แต่ยังผูกกับนัดล่าสุดไม่เจอในระบบ\nให้เจ้าของนัดส่งคำเชิญใหม่ หรือแจ้งโดยตรงได้ครับ"
               : "รับทราบครับ แต่ยังผูกกับนัดล่าสุดไม่เจอในระบบ\nให้กดปุ่ม ❌ ไม่สะดวก จากข้อความเชิญนัด หรือให้เจ้าของนัดส่งคำเชิญใหม่ได้ครับ"
@@ -1647,14 +1672,14 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
 
     // Slash commands always win over booking drafts / onboarding text input
     if (isSlashMenu(text)) {
-      await replyAndLog(upn, ev.replyToken, slashMenuMessage(await menuCmds()), { intent: "slash_menu" });
+      await replyAndLog(upn, replyToken, slashMenuMessage(await menuCmds()), { intent: "slash_menu" });
       return;
     }
 
     // Rich Menu taps (exact labels) — show submenus / settings URI without LLM
     const richMsgs = richMenuReply(text);
     if (richMsgs) {
-      await replyLineMessages(ev.replyToken, richMsgs);
+      await replyLineMessages(replyToken, richMsgs);
       trace("reply", "ตอบกลับ (rich_menu)");
       return;
     }
@@ -1667,7 +1692,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       if (!cmd) {
         await replyAndLog(
           upn,
-          ev.replyToken,
+          replyToken,
           {
             type: "text",
             text: `ไม่รู้จักคำสั่ง /${slashBody} ครับ\nพิมพ์ / เพื่อดูรายการคำสั่ง`,
@@ -1692,7 +1717,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         } catch { /* ignore */ }
         await replyAndLog(
           upn,
-          ev.replyToken,
+          replyToken,
           {
             type: "text",
             text: "ล้างความจำการสนทนาแล้วครับ — เริ่มเรื่องใหม่ได้เลย 🧹\n(ยกเลิกงานจองนัดที่ค้างไว้ด้วย)",
@@ -1708,7 +1733,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
           const rsvp = await respondMeetingInvite(upn, pending.organizerUpn, pending.inviteId, false);
           await replyAndLog(
             upn,
-            ev.replyToken,
+            replyToken,
             {
               type: "text",
               text: rsvp.reply,
@@ -1721,7 +1746,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         await clearDraft(upn);
         await replyAndLog(
           upn,
-          ev.replyToken,
+          replyToken,
           "ยกเลิกงานที่ค้างไว้แล้วครับ — พิมพ์คำสั่งใหม่หรือพิมพ์ / เพื่อเลือกคำสั่ง",
           { intent: "cancel_draft" }
         );
@@ -1729,8 +1754,8 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       }
       if (cmd.cmd === "ตั้งค่าข่าว") {
         const prefs = await getNewsPrefs(upn);
-        if (prefs.onboardingDone) await openNewsSettings(upn, "reply", ev.replyToken);
-        else await startNewsOnboarding(upn, "reply", ev.replyToken);
+        if (prefs.onboardingDone) await openNewsSettings(upn, "reply", replyToken);
+        else await startNewsOnboarding(upn, "reply", replyToken);
         return;
       }
       // Map other slash cmds to normal assistant text
@@ -1740,22 +1765,22 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
 
     // A pending booking draft awaiting subject/attendee input takes priority
     // (only after slash commands were checked).
-    if (await handleDraftInput(upn, text, ev.replyToken)) return;
+    if (await handleDraftInput(upn, text, replyToken)) return;
     // News onboarding (custom topic text / resume)
-    if (await handleNewsOnboardingText(upn, text, ev.replyToken)) return;
+    if (await handleNewsOnboardingText(upn, text, replyToken)) return;
     if (/^(ตั้งค่าข่าว|ตั้งค่าติดตามข่าว|เริ่มติดตามข่าว)$/i.test(text)) {
       const prefs = await getNewsPrefs(upn);
       if (prefs.onboardingDone) {
-        await openNewsSettings(upn, "reply", ev.replyToken);
+        await openNewsSettings(upn, "reply", replyToken);
       } else {
-        await startNewsOnboarding(upn, "reply", ev.replyToken);
+        await startNewsOnboarding(upn, "reply", replyToken);
       }
       return;
     }
     const ctx = await loadCtx(upn);
     const { result: res } = await withDelegatedGraph(upn, () => handleCommand(upn, text, ctx, true));
     try {
-      await sendResult(ev.replyToken, res, upn);
+      await sendResult(replyToken, res, upn);
       if (res.newsPending) {
         trace("reply", "📰 รอสรุปข่าว");
       } else {
@@ -1805,26 +1830,32 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     console.error("[line] handleMessage", String(e).slice(0, 300));
     const msg = `ขออภัยครับ ${llmUserErrorMessage(e)}`;
     try {
-      await replyLine(ev.replyToken, msg);
+      await replyLine(replyToken, msg);
     } catch {
       try {
         await pushLineToId(userId, msg);
       } catch { /* give up */ }
     }
   }
+  });
 }
 
 // User tapped a quick-reply button → complete that selection.
 async function handlePostback(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
-  if (!ev.replyToken || !userId) return;
+  const replyToken = ev.replyToken;
+  if (!replyToken || !userId) return;
   const upn = await getUpnByLineId(userId);
   if (!upn) {
-    await replyLineMessages(ev.replyToken, [linkPromptMessage()]);
+    await replyLineMessages(replyToken, [linkPromptMessage()]);
     return;
   }
-  if (await blockedHere(upn, ev.replyToken)) return;
+  if (await blockedHere(upn, replyToken)) return;
   setTraceUser(upn);
+
+  const turn = await beginLineTurn(upn, LINE_DEBOUNCE_POSTBACK_MS);
+  if (!turn) return;
+  await runLineTurn(upn, turn.token, async () => {
   try {
     // Show 3-dot loading for any real work (not just prep).
     // Survey: load after we know the tap isn't a silent duplicate.
@@ -1858,7 +1889,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
 
     // LINE chat survey — ignore duplicate taps silently (one reply only)
     if (isSurveyAction(act)) {
-      const surveyLog = await handleLineSurveyPostback(upn, data, ev.replyToken);
+      const surveyLog = await handleLineSurveyPostback(upn, data, replyToken);
       if (surveyLog === null) return;
       after(async () => {
         try {
@@ -1912,7 +1943,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
         (await respondMeetingInvite(upn, oid, id, act === "mtaccept"));
       await replyAndLog(
         upn,
-        ev.replyToken,
+        replyToken,
         {
           type: "text",
           text: result.reply,
@@ -1924,16 +1955,16 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     }
     // Booking confirmation flow (tap slot → draft → confirm) is handled here.
     if (BOOKING_ACTIONS.has(act)) {
-      await handleBookingFlow(upn, act, data, ev.replyToken);
+      await handleBookingFlow(upn, act, data, replyToken);
       return;
     }
     if (isNewsOnboardingAction(act)) {
-      await handleNewsOnboardingPostback(upn, data, ev.replyToken);
+      await handleNewsOnboardingPostback(upn, data, replyToken);
       return;
     }
     const { result: res } = await withDelegatedGraph(upn, () => handleSelection(upn, data));
     try {
-      await sendResult(ev.replyToken, res, upn);
+      await sendResult(replyToken, res, upn);
       trace("reply", `ตอบกลับ (${res.intent})`);
       /* ไม่ต้องบันทึกคำตอบตรงนี้ — saveCtx() ท้ายฟังก์ชันบันทึกให้อยู่แล้วทุกเส้นทาง
          (ดู saveCtx ในไฟล์นี้) ของเดิมบันทึกทั้งสองที่ ทุกครั้งที่กดปุ่มจึงได้
@@ -1950,13 +1981,14 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     console.error("[line] handlePostback", String(e).slice(0, 300));
     const msg = `ขออภัยครับ ${llmUserErrorMessage(e)}`;
     try {
-      await replyAndLog(upn, ev.replyToken, msg, { error: String(e).slice(0, 200) });
+      await replyAndLog(upn, replyToken, msg, { error: String(e).slice(0, 200) });
     } catch {
       try {
         await pushLineToId(userId, msg);
       } catch { /* give up */ }
     }
   }
+  });
 }
 
 export async function POST(req: Request) {

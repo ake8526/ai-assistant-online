@@ -787,9 +787,9 @@ export async function handleLineSurveyText(
   return takeSurveyLog();
 }
 
-const RATE_DEBOUNCE_MS = 500;
-const TRY_DEBOUNCE_MS = 400;
-const SETTLE_MS = 120;
+const RATE_DEBOUNCE_MS = 50; // webhook already debounces; keep tiny settle for done-lock
+const TRY_DEBOUNCE_MS = 50;
+const SETTLE_MS = 50;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -921,13 +921,13 @@ export async function handleLineSurveyPostback(
   }
 
   if (act === "svstart") {
-    if (!(await winDebouncedStep(upn, "_sv_pend_start", "_sv_done_start", { act }, 400))) return null;
+    if (!(await winDebouncedStep(upn, "_sv_pend_start", "_sv_done_start", { act }, 50))) return null;
     await askChannel(upn, "reply", replyToken);
     return takeSurveyLog();
   }
 
   if (act === "svweb") {
-    if (!(await winDebouncedStep(upn, "_sv_pend_web", "_sv_done_web", { act }, 400))) return null;
+    if (!(await winDebouncedStep(upn, "_sv_pend_web", "_sv_done_web", { act }, 50))) return null;
     await clearSession(upn);
     await send(
       "reply",
@@ -945,7 +945,7 @@ export async function handleLineSurveyPostback(
   }
 
   if (act === "svline") {
-    if (!(await winDebouncedStep(upn, "_sv_pend_line", "_sv_done_line", { act }, 400))) return null;
+    if (!(await winDebouncedStep(upn, "_sv_pend_line", "_sv_done_line", { act }, 50))) return null;
     // Clear question locks only — keep _sv_done_line so parallel taps stay silent
     await clearSurveyQuestionEphemeral(upn);
     const sess: Session = { phase: "try", idx: 0, answers: {}, star: null, ts: Date.now() };
@@ -968,7 +968,7 @@ export async function handleLineSurveyPostback(
 
   let sess = await loadSession(upn);
   if (!sess) {
-    if (!(await winDebouncedStep(upn, "_sv_pend_restart", "_sv_done_restart", { act }, 400))) return null;
+    if (!(await winDebouncedStep(upn, "_sv_pend_restart", "_sv_done_restart", { act }, 50))) return null;
     await startLineSurvey(upn, "reply", replyToken);
     return takeSurveyLog();
   }
@@ -1083,7 +1083,7 @@ export async function handleLineSurveyPostback(
   if (act === "svstar") {
     const id = decodeURIComponent(data.get("id") || "");
     if (!SURVEY_Q.some((x) => x.id === id)) return null;
-    const won = await winDebouncedStep(upn, "_sv_pend_star", `_sv_done_star`, { id }, 500);
+    const won = await winDebouncedStep(upn, "_sv_pend_star", `_sv_done_star`, { id }, 50);
     if (!won) return null;
     const starId = String(won.id || id);
     sess = (await loadSession(upn)) || sess;
@@ -1096,7 +1096,7 @@ export async function handleLineSurveyPostback(
   }
 
   if (act === "svsubmit") {
-    const won = await winDebouncedStep(upn, "_sv_pend_submit", "_sv_done_submit", { act }, 500);
+    const won = await winDebouncedStep(upn, "_sv_pend_submit", "_sv_done_submit", { act }, 50);
     if (!won) return null;
     sess = (await loadSession(upn)) || sess;
     await submitSession(upn, sess, replyToken);
