@@ -2,6 +2,7 @@
 // LLM_PROVIDER supports a comma-separated chain, e.g. "qwen,groq,gemini"
 // (try first, fall back on failure). Always replies in Thai (primary) / English only.
 import { trace, type TraceStep } from "@/lib/trace";
+import { recordUsage } from "@/lib/llmUsage";
 
 const LANGUAGE_RULE =
   "\n\nกติกาภาษา: ตอบเป็นภาษาไทยเป็นหลักเสมอ ใช้อังกฤษเฉพาะศัพท์เทคนิค/ชื่อเฉพาะ ห้ามตอบภาษาอื่นเด็ดขาด";
@@ -124,7 +125,7 @@ async function callProvider(
   provider: Provider,
   system: string,
   user: string,
-  opts?: { json?: boolean; temperature?: number; timeoutMs?: number; fast?: boolean }
+  opts?: { json?: boolean; temperature?: number; timeoutMs?: number; fast?: boolean; task?: string }
 ): Promise<string> {
   const cfg = settings(provider);
   if (!cfg) throw new Error(`${provider} not configured`);
@@ -203,6 +204,16 @@ async function callProvider(
       throw lastErr;
     }
     const data = await res.json();
+    /* usage มาพร้อมคำตอบทุกครั้ง แต่โค้ดเดิมอ่านแค่ content แล้วทิ้งที่เหลือ
+       จึงไม่มีใครตอบได้ว่าเดือนนี้ใช้ไปเท่าไหร่ — เก็บตรงนี้ที่เดียวครบทุกทาง */
+    const u = data.usage || {};
+    recordUsage({
+      provider,
+      model,
+      task: opts?.task || (opts?.fast ? "intent" : opts?.json ? "parse" : "chat"),
+      promptTokens: Number(u.prompt_tokens || u.input_tokens || 0),
+      completionTokens: Number(u.completion_tokens || u.output_tokens || 0),
+    });
     return (data.choices?.[0]?.message?.content ?? "").trim();
   }
   throw lastErr || new Error(`${provider} failed`);
@@ -242,6 +253,8 @@ export async function chat(
     traceStep?: TraceStep;
     /** Prefix for monitor labels — use "📰 …" for the news room. */
     tracePrefix?: string;
+    /* ชื่องานสำหรับหน้านับค่า AI: news / meeting / ocr / intent / chat */
+    task?: string;
   }
 ): Promise<string> {
   let chain: Provider[];

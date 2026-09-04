@@ -223,6 +223,7 @@ async function askSummary(
     temperature: 0.2,
     json: true,
     timeoutMs: 60000,
+    task: "meeting",
     traceStep: "compose",
     tracePrefix: label,
   });

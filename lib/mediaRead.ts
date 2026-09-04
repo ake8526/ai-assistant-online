@@ -15,6 +15,7 @@
  * จึงมีลิสต์สำรอง และเปลี่ยนได้จาก env โดยไม่ต้องแก้โค้ด
  */
 import { trace } from "@/lib/trace";
+import { recordUsage } from "@/lib/llmUsage";
 
 const MEDIA_MODELS = [
   process.env.GEMINI_MEDIA_MODEL || "gemini-3.1-flash-lite",
@@ -128,6 +129,13 @@ export async function readImage(buffer: Buffer, mimeType: string): Promise<ReadI
 
       const kind = tasks.length ? "tasks" : seen.length < 8 ? "unreadable" : "document";
       const usage = json.usageMetadata || {};
+      recordUsage({
+        provider: "gemini",
+        model,
+        task: "ocr",
+        promptTokens: Number(usage.promptTokenCount || 0),
+        completionTokens: Number(usage.candidatesTokenCount || 0) + Number(usage.thoughtsTokenCount || 0),
+      });
       const dropped = (parsed.tasks || []).length - tasks.length;
       trace(
         "compose",

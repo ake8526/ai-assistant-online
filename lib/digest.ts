@@ -469,7 +469,7 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
           `เลือกเรื่องที่มีประเด็นชัด มีผลกระทบ มีตัวเลข/เหตุการณ์เด่น หรือน่าติดตาม — ไม่ใช่แค่หัวข้อทั่วไป\n` +
           `ให้ความสำคัญกับรายการที่มีแท็ก [หัวข้อ] ก่อน — YouTube เลือกได้ไม่เกิน ${ytCap} อัน`,
         listing,
-        { json: true, temperature: 0, timeoutMs: 15000, traceStep: "fetch", tracePrefix: "📰 เลือกเด่น" }
+        { json: true, task: "news", temperature: 0, timeoutMs: 15000, traceStep: "fetch", tracePrefix: "📰 เลือกเด่น" }
       );
       const d = JSON.parse(raw);
       picks = [...(d.highlights || [])].filter(
@@ -696,6 +696,7 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
         json: true,
         temperature: 0.2,
         timeoutMs: quality ? 28000 : 14000,
+        task: "news",
         traceStep: "compose",
         tracePrefix: "📰 สรุปประเด็น",
       });
