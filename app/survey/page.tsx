@@ -139,8 +139,8 @@ function SurveyShell() {
             fontWeight: 600,
           }}
         >
-          ตอบในชื่อ {account.name || account.username}
-          {sent ? " · จะบันทึกชื่อนี้ตอนกดส่ง" : ""}
+          เชื่อมบัญชีแล้ว — คำตอบจะบันทึกอัตโนมัติตอนกดส่ง
+          {sent ? "" : ""}
         </div>
       )}
       <iframe

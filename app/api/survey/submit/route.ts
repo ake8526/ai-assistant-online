@@ -196,7 +196,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return json({ ok: true, id: saved.id, createdAt: saved.created_at, name: saved.name });
+    return json({ ok: true, id: saved.id, createdAt: saved.created_at });
   } catch (e) {
     return json({ error: String(e).slice(0, 200) }, { status: 500 });
   }

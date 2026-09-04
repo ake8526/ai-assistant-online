@@ -819,7 +819,7 @@ async function submitSurvey(){
     });
     const d=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
-    toast('ส่งคำตอบแล้ว ขอบคุณครับ'+(d.name?' · '+d.name:''));
+    toast('ส่งคำตอบแล้ว ขอบคุณครับ');
     /* ล้างคำตอบในเครื่องหลังส่งสำเร็จ — ไม่ให้ค้างเป็น 15 ข้อตอนเปิดใหม่ */
     try{ localStorage.removeItem(KEY); }catch(e){}
     A={a:{},c:{},star:null,who:{},note:''}; bonusDone=false;
@@ -830,7 +830,7 @@ async function submitSurvey(){
       start.querySelectorAll('.card').forEach(el=>el.remove());
       start.insertAdjacentHTML('beforeend',
         `<div class="card" style="margin-top:12px"><h3>✅ ส่งคำตอบแล้ว ขอบคุณครับ</h3>
-         <p class="sub">ทีมพัฒนาเห็นในหน้า admin แล้ว`+(d.name?' · '+esc(d.name):'')+(d.id?' · รหัส '+String(d.id).slice(0,8)+'…':'')+`</p>
+         <p class="sub">บันทึกเรียบร้อยแล้ว`+(d.id?' · รหัส '+String(d.id).slice(0,8)+'…':'')+`</p>
          <div class="tools"><button class="primary" onclick="location.reload()">ตอบใหม่อีกครั้ง</button></div></div>`);
     }
     window.scrollTo(0,0);
