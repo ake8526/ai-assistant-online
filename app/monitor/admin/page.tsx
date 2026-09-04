@@ -221,6 +221,9 @@ function AdminView({ getToken }: { getToken: () => Promise<string | null> }) {
           AI ASSISTANT · <em>จัดการสิทธิ์</em>
         </h1>
         <div className="spacer" />
+        <a className="link" href="/monitor/survey">
+          ผลสำรวจ →
+        </a>
         <a className="link" href="/monitor/log">
           ดู log →
         </a>

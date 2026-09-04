@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>แบบสำรวจ LINE v2 — อยากได้อันไหนมากที่สุด</title>
+<style>
+:root{
+  --bg:#eef2f5; --panel:#fff; --ink:#0f172a; --ink2:#475569; --ink3:#94a3b8;
+  --line:#e2e8f0; --brand:#0f766e; --brand2:#14b8a6; --brand-soft:#e0f2f1;
+  --hot:#e11d48; --hot-soft:#fff1f2; --ok:#16a34a; --mid:#f59e0b;
+  --font:"Noto Sans Thai","IBM Plex Sans Thai",-apple-system,"Segoe UI",Tahoma,sans-serif;
+  --shadow:0 1px 2px rgba(15,23,42,.06),0 10px 30px rgba(15,23,42,.09);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;line-height:1.3}
+button{font-family:inherit}
+
+.app{max-width:1000px;margin:0 auto;padding:14px 14px 22px;min-height:100%;display:flex;flex-direction:column;gap:12px}
+
+/* ---- แถบความคืบหน้า ---- */
+.bar-top{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:11px 15px;box-shadow:var(--shadow)}
+.bar-row{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink2)}
+.bar-row b{color:var(--ink);font-size:13px}
+.bar-row .sp{margin-inline-start:auto;font-size:11.5px;color:var(--ink3)}
+.track{height:7px;background:#e9eef3;border-radius:999px;margin-top:8px;overflow:hidden}
+.track i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,var(--brand2),var(--brand));transition:width .35s cubic-bezier(.3,1,.4,1)}
+.dots{display:flex;gap:4px;margin-top:8px;flex-wrap:wrap}
+.dots span{width:100%;max-width:22px;height:4px;border-radius:2px;background:#dbe3ea;flex:1}
+.dots span.done{background:var(--brand2)}
+.dots span.now{background:var(--brand)}
+
+/* ---- เนื้อหาแต่ละข้อ ---- */
+.stage{display:grid;grid-template-columns:330px minmax(0,1fr);gap:16px;align-items:start;flex:1}
+@media (max-width:820px){ .stage{grid-template-columns:1fr} }
+
+.phone{background:#111827;border-radius:30px;padding:8px;box-shadow:0 18px 44px rgba(15,23,42,.26);margin:0 auto;width:100%;max-width:330px}
+.screen{background:#8fb0d3;border-radius:23px;overflow:hidden;position:relative;display:flex;flex-direction:column;height:clamp(330px,52vh,470px)}
+.ph-head{background:#fff;border-bottom:1px solid #e5e7eb;padding:6px 11px;display:flex;align-items:center;gap:8px}
+.ph-head .av{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#0f766e,#14b8a6);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:800}
+.ph-head .nm{font-size:13px;font-weight:700;line-height:1.15}
+.ph-head .st{font-size:9.5px;color:var(--ink3)}
+.chat{flex:1;overflow-y:auto;padding:10px 9px 14px;display:flex;flex-direction:column;gap:8px}
+.chat::-webkit-scrollbar{width:0}
+.row{display:flex;gap:6px;align-items:flex-end;animation:pop .24s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes pop{from{opacity:0;transform:translateY(9px) scale(.97)}to{opacity:1;transform:none}}
+.row.me{flex-direction:row-reverse}
+.row .bav{width:23px;height:23px;flex:0 0 23px;border-radius:50%;background:linear-gradient(135deg,#0f766e,#14b8a6);color:#fff;display:grid;place-items:center;font-size:9px;font-weight:800}
+.bub{max-width:225px;padding:7px 10px;border-radius:15px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 1px rgba(0,0,0,.08)}
+.bub.bot{background:#fff;border-top-left-radius:5px}
+.bub.me{background:#8de055;border-top-right-radius:5px}
+.divider{align-self:center;background:rgba(15,23,42,.42);color:#fff;font-size:9.5px;padding:2px 10px;border-radius:999px}
+.pushtag{align-self:flex-start;margin-inline-start:29px;font-size:9px;background:#4f46e5;color:#fff;padding:1px 7px;border-radius:999px}
+.typing{background:#fff;border-radius:15px;border-top-left-radius:5px;padding:9px 12px;display:flex;gap:4px}
+.typing i{width:5px;height:5px;border-radius:50%;background:#cbd5e1;animation:bl 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes bl{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+.fcard{background:#fff;border-radius:13px;overflow:hidden;width:233px;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.fcard .fh{padding:9px 11px 7px;border-bottom:1px solid #eef2f5}
+.fcard .fh b{font-size:12px;display:block}
+.fcard .fh span{font-size:10px;color:var(--ink3)}
+.frow{padding:7px 11px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:7px}
+.frow:last-child{border-bottom:0}
+.frow .fl{font-size:11.5px;font-weight:600}
+.frow .fs{font-size:10px;color:var(--ink3)}
+.frow .ch{margin-inline-start:auto;color:#cbd5e1;font-size:11px}
+.frow.tapped{background:var(--brand-soft)}
+.linkcard{background:#fff;border-radius:13px;width:233px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.linkcard .lt{background:linear-gradient(120deg,#0f766e,#14b8a6);color:#fff;padding:9px 11px;font-size:11.5px;font-weight:700}
+.linkcard .lb{padding:8px 11px;font-size:11px;color:var(--ink2);white-space:pre-wrap}
+.linkcard .la{border-top:1px solid #eef2f5;padding:7px;text-align:center;color:var(--brand);font-size:11.5px;font-weight:700}
+.pointer{position:absolute;width:26px;height:26px;border-radius:50%;background:rgba(15,23,42,.28);border:2px solid rgba(255,255,255,.85);z-index:30;pointer-events:none;opacity:0;transform:translate(-50%,-50%);transition:left .4s cubic-bezier(.3,.9,.3,1),top .4s cubic-bezier(.3,.9,.3,1),opacity .2s}
+.pointer.on{opacity:1}
+.pointer.tap{animation:tp .3s ease}
+@keyframes tp{50%{transform:translate(-50%,-50%) scale(.6);background:rgba(15,118,110,.55)}}
+.replay{display:block;margin:8px auto 0;border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 14px;font-size:12px;color:var(--ink2);cursor:pointer}
+.replay:hover{border-color:var(--brand2);color:var(--brand)}
+
+/* ---- คำถาม ---- */
+.q{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px}
+.q .tag{font-size:11px;font-weight:800;letter-spacing:.4px;color:var(--brand);background:var(--brand-soft);border:1px solid #99f6e4;border-radius:999px;padding:2px 10px;align-self:flex-start}
+.q .tag.idea{color:#be185d;background:#fdf2f8;border-color:#fbcfe8}
+.q .tag.proto{color:#b45309;background:#fffbeb;border-color:#fcd34d}
+.q h2{font-size:21px;font-weight:800;letter-spacing:-.3px}
+.q .what{font-size:14px;color:var(--ink2)}
+.q .why{background:#f8fafc;border:1px solid var(--line);border-radius:13px;padding:11px 13px;font-size:13.2px;color:var(--ink2)}
+.q .why b{color:var(--ink)}
+.q .say{font-size:12px;font-family:ui-monospace,Menlo,monospace;background:var(--brand-soft);border:1px solid #99f6e4;border-radius:8px;padding:3px 9px;color:#0f5f59;display:inline-block}
+.ans{display:grid;gap:9px;margin-top:2px}
+.askline{font-size:13px;font-weight:800;color:var(--ink2);margin-top:2px}
+.qnote{margin-top:2px}
+.qnote label{display:block;font-size:11.5px;font-weight:700;color:var(--ink3);margin-bottom:3px}
+.qnote textarea{width:100%;border:1px dashed var(--line);border-radius:11px;padding:8px 11px;font-size:13px;font-family:inherit;background:#fbfdfe;resize:vertical}
+.qnote textarea:focus{border-style:solid;border-color:var(--brand2);outline:none}
+.rw{border-bottom:1px solid #f1f5f9}
+.rw .r{border-bottom:0}
+.rc{font-size:11.5px;color:var(--ink2);background:#f8fafc;border-inline-start:3px solid #cbd5e1;padding:5px 10px;margin:0 0 7px 72px;border-radius:0 8px 8px 0;white-space:pre-wrap}
+.ans button{display:flex;align-items:center;gap:11px;text-align:start;border:1.5px solid var(--line);background:#fff;border-radius:14px;padding:12px 15px;font-size:14.5px;font-weight:700;cursor:pointer;transition:.14s}
+.ans button:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(15,23,42,.08)}
+.ans button .e{font-size:20px}
+.ans button small{display:block;font-size:11.5px;font-weight:500;color:var(--ink3);margin-top:1px}
+.ans button.a5:hover,.ans button.a5.on{border-color:var(--hot);background:var(--hot-soft);color:#9f1239}
+.ans button.a4:hover,.ans button.a4.on{border-color:#f97316;background:#fff7ed;color:#9a3412}
+.ans button.a3:hover,.ans button.a3.on{border-color:var(--mid);background:#fffbeb;color:#92400e}
+.ans button.a2:hover,.ans button.a2.on{border-color:#64748b;background:#f8fafc;color:#475569}
+.ans button.a1:hover,.ans button.a1.on{border-color:#94a3b8;background:#f1f5f9;color:#64748b}
+.ans button.a0:hover,.ans button.a0.on{border-color:#b91c1c;background:#fef2f2;color:#991b1b}
+.ans button{padding:10px 14px;font-size:14px}
+.ans{gap:7px}
+.qnav{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--ink3);margin-top:4px}
+.qnav button{border:1px solid var(--line);background:#fff;border-radius:9px;padding:5px 12px;font-size:12.5px;cursor:pointer;color:var(--ink2)}
+.qnav button:hover{border-color:var(--brand2);color:var(--brand)}
+.qnav .sp{margin-inline-start:auto}
+
+/* ---- หน้าเปิด / หน้าสรุป ---- */
+.hero{background:linear-gradient(135deg,#0f766e,#134e4a 62%,#1e293b);color:#fff;border-radius:22px;padding:26px 24px;box-shadow:var(--shadow)}
+.hero h1{font-size:25px;font-weight:800;letter-spacing:-.4px}
+.hero p{color:#bfe3df;margin:9px 0 0;font-size:14.5px}
+.hero .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}
+.hero .chips div{background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.18);border-radius:11px;padding:7px 12px;font-size:12.5px}
+.hero button{margin-top:18px;background:#fff;color:#0f766e;border:0;border-radius:13px;padding:12px 26px;font-size:15.5px;font-weight:800;cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.18)}
+.hero button:hover{transform:translateY(-1px)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:var(--shadow)}
+.card h3{font-size:17px;font-weight:800;margin-bottom:4px}
+.card p.sub{margin:0 0 14px;font-size:13.3px;color:var(--ink2)}
+.pick{display:grid;gap:8px}
+.pick .p{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);border-radius:13px;padding:10px 13px;cursor:pointer;transition:.13s;background:#fff}
+.pick .p:hover{border-color:var(--brand2)}
+.pick .p.on{border-color:#f59e0b;background:#fffbeb}
+.pick .p .st{font-size:18px;filter:grayscale(1);opacity:.45}
+.pick .p.on .st{filter:none;opacity:1}
+.pick .p .tx{font-size:13.8px;font-weight:700}
+.pick .p .tx small{display:block;font-size:11.5px;font-weight:500;color:var(--ink3)}
+.who{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:6px}
+.who label{font-size:11.5px;font-weight:700;color:var(--ink3);display:block;margin-bottom:3px}
+.who input,textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:13.5px;font-family:inherit;background:#fbfdfe}
+.res{display:grid;gap:7px;margin-top:4px}
+.res .r{display:flex;align-items:center;gap:9px;font-size:13.4px;border-bottom:1px solid #f1f5f9;padding:6px 2px}
+.res .r .b{width:64px;height:7px;border-radius:999px;background:#eef2f5;overflow:hidden;flex:0 0 64px}
+.res .r .b i{display:block;height:100%;background:linear-gradient(90deg,var(--brand2),var(--brand))}
+.res .r .n{margin-inline-start:auto;font-size:11.5px;color:var(--ink3);white-space:nowrap}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.tools button{border:1px solid var(--line);background:#fff;border-radius:11px;padding:9px 15px;font-size:13.5px;font-weight:700;cursor:pointer}
+.tools button.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+.tools button.primary:disabled{opacity:.65;cursor:default}
+.tools button.ghost{color:var(--ink2)}
+.note-min{font-size:12px;color:var(--ink3);margin-top:12px}
+.hidden{display:none !important}
+
+/* ---- popup ของหน้านี้เอง ---- */
+.modal-wrap{position:fixed;inset:0;z-index:300;background:rgba(15,23,42,.5);backdrop-filter:blur(3px);display:none;place-items:center;padding:18px}
+.modal-wrap.on{display:grid;animation:fadein .16s ease}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.modal{background:#fff;border-radius:20px;max-width:400px;width:100%;padding:24px 22px 18px;box-shadow:0 30px 70px rgba(15,23,42,.35);text-align:center;animation:popin .22s cubic-bezier(.2,.9,.3,1.25)}
+@keyframes popin{from{opacity:0;transform:translateY(14px) scale(.95)}to{opacity:1;transform:none}}
+.modal-ic{width:50px;height:50px;border-radius:15px;background:#fef3c7;display:grid;place-items:center;font-size:24px;margin:0 auto 11px}
+.modal h4{font-size:16.5px;font-weight:800;margin-bottom:5px}
+.modal p{margin:0;font-size:13.5px;color:var(--ink2);white-space:pre-wrap;line-height:1.65}
+.modal-btns{display:flex;gap:9px;justify-content:center;margin-top:17px;flex-wrap:wrap}
+.modal-btns button{border-radius:11px;padding:9px 17px;font-size:13.5px;font-weight:700;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink2)}
+.modal-btns .mb-yes{background:var(--brand);border-color:var(--brand);color:#fff}
+.toast{position:fixed;inset-block-end:20px;inset-inline-start:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:9px 18px;border-radius:999px;font-size:13px;opacity:0;transition:.25s;z-index:400;pointer-events:none}
+.toast.on{opacity:1;transform:translateX(-50%)}
+footer{text-align:center;font-size:11.5px;color:var(--ink3);padding:6px 0 10px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="bar-top hidden" id="bar">
+    <div class="bar-row"><b id="barNow">ข้อ 1</b><span id="barOf">/ 12</span><span class="sp" id="barTime">เหลืออีกประมาณ 3 นาที</span></div>
+    <div class="track"><i id="barFill"></i></div>
+    <div class="dots" id="barDots"></div>
+  </div>
+
+  <!-- หน้าเปิด -->
+  <section id="scStart">
+    <div class="hero">
+      <h1>ผู้ช่วยงานใน LINE — คุณอยากได้อันไหนมากที่สุด</h1>
+      <p><b>ฉบับ v2</b> — แยกชัดว่าอะไร <b>ใช้ได้เลยใน LINE</b> อะไร <b>ทดลองโมเดลแล้วแต่ยังไม่เปิด</b> และอะไรเป็น <b>ข้อเสนอ</b>
+         ดูภาพเคลื่อนไหวจำลองทีละเรื่อง แล้วตอบปุ่มเดียวว่าอยากได้แค่ไหน
+         คำตอบใช้เลือกว่าจะพัฒนาเรื่องไหนให้จบก่อน</p>
+      <div class="chips">
+        <div>⏱ ~15 ข้อ · ประมาณ 4 นาที</div>
+        <div>👆 ตอบด้วยการกดปุ่ม ไม่ต้องพิมพ์</div>
+        <div>🔒 คำตอบอยู่ในเครื่องคุณ</div>
+      </div>
+      <button onclick="start()">เริ่มเลย →</button>
+    </div>
+    <p class="note-min">อยากดูฟังก์ชันครบแบบละเอียด เปิดไฟล์ <b>แบบประเมินฟังก์ชัน-LINE-คู่มือเต็ม-v2.html</b></p>
+  </section>
+
+  <!-- หน้าคำถาม -->
+  <section class="stage hidden" id="scQ">
+    <div>
+      <div class="phone"><div class="screen" id="screen">
+        <div class="ph-head"><div class="av">AI</div><div><div class="nm">KTIS X · ผู้ช่วยงาน</div><div class="st">ตัวอย่างการใช้งานจริง</div></div></div>
+        <div class="chat" id="chat"></div>
+        <div class="pointer" id="pointer"></div>
+      </div></div>
+      <button class="replay" onclick="replay()">↻ ดูอีกครั้ง</button>
+    </div>
+    <div class="q" id="qBox"></div>
+  </section>
+
+  <!-- หน้าสรุป -->
+  <section class="hidden" id="scEnd"></section>
+
+  <footer id="foot">แบบสำรวจภายใน KTIS Group · ฉบับสั้น v2 · ก.ย. 2026</footer>
+</div>
+<div class="modal-wrap" id="modalWrap" onclick="if(event.target===this)modalClose(false)">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-ic" id="modalIc">⭐</div>
+    <h4 id="modalTitle"></h4><p id="modalMsg"></p>
+    <div class="modal-btns">
+      <button class="mb-no" id="modalNo" onclick="modalClose(false)">ยกเลิก</button>
+      <button class="mb-yes" id="modalYes" onclick="modalClose(true)">ตกลง</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   ข้อมูลคำถาม — 12 ข้อหลัก + 6 ข้อเสริม (ไอเดียใหม่)
+   ============================================================ */
+const CORE=[
+{id:'q1',kind:'มีอยู่แล้ว',t:'ถามตารางนัดของตัวเอง',
+ what:'พิมพ์ถามปฏิทิน Outlook ของตัวเองด้วยภาษาพูด — วันนี้ พรุ่งนี้ ทั้งเดือน หรือเจาะเวลาว่า “10 โมงติดอะไร”',
+ why:'<b>ได้อะไร:</b> ตอบได้ทันทีว่าว่างไหม โดยไม่ต้องเปิดแอป Outlook แล้วเลื่อนหาวัน',
+ say:'ตารางวันนี้',
+ sc:[{u:'ตารางวันนี้'},
+  {b:'🗓️ ประชุมวันนี้ (3 รายการ):\n\n  09:00-09:30 · Daily stand-up IT 💻 ออนไลน์\n  13:30-15:00 · ทบทวนงบลงทุน Q4 📍 ห้อง KTISX ชั้น 3\n  16:00-16:30 · คุยผู้รับเหมาระบบไฟฟ้า'},
+  {u:'ว่างกี่โมงพรุ่งนี้'},
+  {b:'พุธ 3 ก.ย. ช่วงที่ว่างครับ\n • 08:00 - 10:00\n • 11:30 - 17:00'}]},
+
+{id:'q2',kind:'มีอยู่แล้ว',t:'ดูว่าคนอื่นว่างไหม',
+ what:'ถามตารางเพื่อนร่วมงานด้วยชื่อเล่น ชื่อจริง หรืออีเมล เห็นได้เท่าที่ปฏิทินเขาเปิดให้ (เท่ากับที่เปิดดูใน Outlook เองได้)',
+ why:'<b>ได้อะไร:</b> ไม่ต้องเดินไปถามหรือทักไลน์ถามว่าว่างไหม รู้คำตอบก่อนรบกวนเขา',
+ say:'ดูตารางเบสพรุ่งนี้',
+ sc:[{u:'ดูตารางเบสพรุ่งนี้'},
+  {b:'🗓️ ตารางของ เบส (ณัฐกฤต) — พุธ 3 ก.ย.\n  09:00-10:00 · ประชุมฝ่ายผลิต\n  15:00-16:00 · สัมภาษณ์พนักงานใหม่\n\nช่วงที่ว่าง: 10:00-15:00 · หลัง 16:00'},
+  {u:'แล้วของส้มล่ะ'},
+  {b:'🗓️ ตารางของ ส้ม (ศิริพร) — พุธ 3 ก.ย.\n  13:00-14:00 · ปิดบัญชีรายเดือน\n  ที่เหลือว่างครับ'}]},
+
+{id:'q3',kind:'มีอยู่แล้ว',t:'นัดประชุม · หาเวลาว่าง · จองห้อง',
+ what:'บอกชื่อคนกับวัน ระบบเทียบปฏิทินทุกคนแล้วเสนอช่วงว่างพร้อมกัน จองห้องประชุมที่ลงทะเบียนไว้ ส่งคำเชิญ และผู้ถูกเชิญกดรับ/ขอเลื่อนได้ใน LINE',
+ why:'<b>ได้อะไร:</b> ตัดงานไล่ถามว่าใครว่างเมื่อไร และจองห้องพร้อมนัดในคำสั่งเดียว',
+ say:'จองห้อง KTISX พรุ่งนี้ 10 โมง',
+ sc:[{u:'หาเวลาที่เบสกับนนท์ว่างตรงกันวันจันทร์'},
+  {c:{title:'🟢 ช่วงที่ว่างตรงกันทุกคน',sub:'จันทร์ 8 ก.ย. · 3 คน',rows:[['1) 10:00 - 11:00',''],['2) 13:30 - 15:00',''],['3) 16:00 - 17:00','']]}},
+  {u:'2) 13:30 - 15:00'},
+  {c:{title:'📋 ตรวจร่างนัดก่อนส่ง',sub:'ยังไม่ลงปฏิทินจนกว่าจะกดยืนยัน',rows:[['เวลา: จันทร์ 8 ก.ย. 13:30-15:00',''],['ผู้เข้าร่วม: เบส, พี่นนท์',''],['ห้อง: KTISX ชั้น 3',''],['✅ ยืนยันจองเวลา','ส่งคำเชิญและลง Outlook']]}},
+  {u:'✅ ยืนยันจองเวลา'},
+  {b:'จองเรียบร้อยครับ ✅ ส่งคำเชิญให้ 2 คน · จองห้อง KTISX แล้ว'}]},
+
+{id:'q4',kind:'มีอยู่แล้ว',t:'สรุปประชุมให้เอง พร้อมงานที่ต้องตาม',
+ what:'ประชุม Teams ที่เปิดถอดเสียงไว้ พอจบระบบสรุปเป็นลิงก์อ่านบนมือถือ และดึงงานที่ตกลงกันออกมาพร้อมชื่อผู้รับผิดชอบ',
+ why:'<b>ได้อะไร:</b> ไม่ต้องมีคนจดสรุป และงานที่คุยกันไม่หายไปพร้อมกับการปิดห้องประชุม',
+ say:'สรุปประชุม',
+ sc:[{d:'— ประชุมจบ 15:00 —'},
+  {p:'🧾 สรุปประชุมพร้อมแล้วครับ\n“ทบทวนงบลงทุน Q4” · 1 ชม. 28 นาที'},
+  {link:{title:'📄 เปิดอ่านสรุป',body:'• อนุมัติกรอบงบ 12 ล้านสำหรับไลน์ 2\n• เลื่อนจัดซื้อเครื่องอัดไป Q1/69\n✅ งานที่ต้องตาม 3 งาน',action:'อ่านฉบับเต็ม ›'}},
+  {c:{title:'✅ งานจากประชุมนี้',sub:'กดรับเข้าระบบติดตามได้เลย',rows:[['1) ประเมินค่าลิขสิทธิ์ระบบใหม่','เบส · ศุกร์นี้'],['2) ทำสไลด์เปรียบเทียบผู้ขาย','ส้ม · 8 ก.ย.'],['รับงานทั้งหมดเข้าระบบ','']]}}]},
+
+{id:'q5',kind:'มีอยู่แล้ว',t:'ดูงานค้าง + ปิดงาน + ซิงค์ Microsoft To Do',
+ what:'กดปุ่มเมนู “งานที่ต้องตาม” หรือพิมพ์ “ดูงานที่ต้องติดตาม” — เห็นงานค้างทั้งหมด ปิดด้วยเลข และซิงค์กับลิสต์ To Do ชื่อ KTIS X ได้',
+ why:'<b>ได้อะไร:</b> เห็นงานค้างใน LINE ได้ทันที · ปิดงานบนมือถือหรือในแอป To Do ก็อัปเดตถึงกัน · ไม่ต้องมีสมุดจดอีกเล่ม',
+ say:'ดูงานที่ต้องติดตาม',
+ sc:[{u:'ดูงานที่ต้องติดตาม'},
+  {b:'✅ งานที่ต้องติดตาม (4 งาน)\n\n1. ⚠️ ส่งตัวเลขค่าไฟไลน์ 2 — เลยกำหนด 1 วัน\n2. 🤖 ประเมินค่าลิขสิทธิ์ระบบใหม่ — ศุกร์ (เบส)\n3. ทำสลิปการประชุม — พรุ่งนี้ 17:00\n4. ตรวจสัญญา — จ. หน้า'},
+  {u:'ปิดงาน 1'},
+  {b:'ปิดงานแล้วครับ ✅ เหลืออีก 3 งาน'},
+  {u:'todo'},
+  {b:'📋 เชื่อม Microsoft To Do แล้ว\nลิสต์: KTIS X\nงานใหม่จะถูกเพิ่มเข้าลิสต์นี้ให้อัตโนมัติ\nติ๊กเสร็จใน To Do → ปิดงานในผู้ช่วยด้วย'},
+  {c:{title:'To Do',sub:'แตะคำสั่ง',rows:[['ซิงค์ todo',''],['ปิด todo','']]}}]},
+
+{id:'q6',kind:'มีอยู่แล้ว',t:'ค้นและสรุปไฟล์ใน OneDrive',
+ what:'ค้นไฟล์จากมือถือ ให้ช่วยอ่านสรุป และผูกไฟล์ไว้กับนัดประชุม พอถึงเวลาประชุมก็เรียกอ่านได้เลย',
+ why:'<b>ได้อะไร:</b> หาไฟล์ได้ตอนอยู่หน้างาน และเข้าประชุมโดยรู้ว่าเอกสารเขียนว่าอะไร',
+ say:'หาไฟล์ งบ Q3',
+ sc:[{u:'หาไฟล์ งบ Q3'},
+  {c:{title:'📂 เจอ 2 ไฟล์',sub:'คำค้น: งบ Q3',rows:[['1) งบลงทุน Q3-2568.xlsx','แก้ล่าสุด 28 ส.ค. · Finance'],['2) สรุปงบ Q3 ฝ่ายผลิต.pdf','แก้ล่าสุด 21 ส.ค.']]}},
+  {u:'สรุปอัน 1'},
+  {b:'📑 สรุป: งบลงทุน Q3-2568.xlsx\n • งบอนุมัติรวม 42.6 ล้าน ใช้ไป 31.2 ล้าน (73%)\n • ใช้เกินแผน: ซ่อมบำรุงไลน์ 2 (+8%)\n • ยังไม่เบิก: เครื่องอัด 6.4 ล้าน'}]},
+
+{id:'q7',kind:'มีอยู่แล้ว',t:'บรีฟเช้า — สรุปทั้งวันก่อนเริ่มงาน',
+ what:'ทุกเช้าตามเวลาที่ตั้งไว้ ระบบส่งสรุปนัดของวัน งานค้าง และงานที่เลยกำหนด มาให้เอง ไม่ต้องสั่ง',
+ why:'<b>ได้อะไร:</b> เปิดมือถือปุ๊บรู้ทั้งวัน ไม่ต้องไล่เปิดปฏิทินกับรายการงานทีละอัน',
+ say:'สรุปตารางเช้า',
+ sc:[{d:'— 07:30 น. —'},
+  {p:'☀️ สวัสดีตอนเช้าครับ — อังคาร 2 ก.ย.\n\nวันนี้มี 3 นัด\n 09:00 Daily stand-up IT (ออนไลน์)\n 13:30 ทบทวนงบลงทุน Q4 (ห้อง KTISX ชั้น 3)\n 16:00 คุยผู้รับเหมาระบบไฟฟ้า\n\n⚠️ งานเลยกำหนด 1 งาน\nงานที่ครบกำหนดวันนี้: 1 งาน'}]},
+
+{id:'q8',kind:'มีอยู่แล้ว',t:'เตือนก่อนประชุม & แจ้งเมื่อมีนัดใหม่',
+ what:'เตือนล่วงหน้าก่อนประชุมเริ่มพร้อมลิงก์เข้าห้อง และทักมาบอกเมื่อมีคนส่งนัดใหม่เข้าปฏิทินคุณ หรือนัดถูกยกเลิก',
+ why:'<b>ได้อะไร:</b> ไม่พลาดประชุมเพราะไม่ได้เปิดเมล และรู้ทันทีว่ามีใครมาจองเวลาทับ',
+ say:'(ระบบส่งให้เอง)',
+ sc:[{d:'— 13:15 น. —'},
+  {p:'🔔 อีก 15 นาทีจะถึงประชุม\n\nทบทวนงบลงทุน Q4\n🕐 13:30 - 15:00\n📍 ห้อง KTISX ชั้น 3\n📎 มีเอกสารผูกไว้ 2 ไฟล์'},
+  {d:'— 14:22 น. —'},
+  {p:'📥 มีนัดใหม่เข้าปฏิทินคุณ\nประชุมด่วน: แผนรับมือฝนตกหนัก\n🗓 พรุ่งนี้ 08:30\n⚠️ ชนกับ “ตรวจรับงานระบบไฟฟ้า”'}]},
+
+{id:'q9',kind:'มีอยู่แล้ว',t:'สรุปข่าวที่ติดตาม',
+ what:'เลือกแหล่งข่าวเอง (เว็บ · YouTube · เพจ) ระบบสรุปเป็นหัวข้อย่อยภาษาไทยส่งให้ตามเวลาที่ตั้ง',
+ why:'<b>ได้อะไร:</b> ตามข่าวที่เกี่ยวกับงานได้โดยไม่ต้องไล่เปิดหลายเว็บตอนเช้า',
+ say:'ข่าววันนี้',
+ sc:[{u:'ข่าววันนี้'},
+  {b:'📰 ข่าววันนี้ — 2 เรื่องที่คุณติดตาม\n\n1) ราคาน้ำตาลทรายดิบขยับขึ้น 2.1%\n • แรงซื้อจากจีนกลับมาหลังสต๊อกลด\n\n2) ครม. เคาะช่วยเหลือชาวไร่อ้อย 8,000 ล้าน\n • จ่ายตามผลผลิตจริง เริ่มเดือนหน้า'}]},
+
+{id:'q10',kind:'ทดลองแล้ว',t:'สั่งงานด้วยเสียง',
+ what:'อัดเสียงส่งเข้า LINE แทนการพิมพ์ ระบบถอดเสียง ให้ตรวจก่อน แล้วทำตามคำสั่ง — <b>ยังไม่เปิดใน LINE OA</b> (webhook ยังไม่รับไฟล์เสียง)',
+ why:'<b>ได้อะไรถ้าเปิด:</b> คนหน้างาน/ในรถสั่งงานได้โดยไม่พิมพ์ไทยยาว ๆ<br><b>สถานะจริง:</b> ทดลองกับโมเดลแล้ว — ประโยคสั่งงานไทย 3 ประโยค ถอดตรง 3/3 และแยก intent ได้ · <b>ยังไม่ได้ต่อเข้า LINE</b> และยังไม่ทดสอบเสียงคนจริงในที่ดัง',
+ say:'🎙 (ข้อความเสียง) — ยังใช้ใน LINE ไม่ได้',
+ sc:[{u:'🎙 ข้อความเสียง 0:06'},
+  {b:'ถอดเสียงได้ว่า:\n“เพิ่มงานส่งรายงานค่าไฟให้เบส ศุกร์นี้ห้าโมงเย็น”\nถูกต้องไหมครับ\n\n(⚠️ ตัวอย่างเมื่อเปิดใช้แล้ว — ตอนนี้ส่งเสียงใน LINE ยังไม่ทำงาน)'},
+  {u:'ใช่ ทำเลย'},
+  {b:'เพิ่มงานแล้วครับ ✅ ส่งรายงานค่าไฟ · เบส · ศุกร์ 5 ก.ย. 17:00'}]},
+
+{id:'q12',kind:'ทดลองแล้ว',t:'ถาม-ตอบระเบียบและคู่มือภายในองค์กร',
+ what:'เอาระเบียบบริษัท คู่มือ HR เข้าคลัง แล้วถามเป็นภาษาพูด — <b>ยังไม่มีคลังเอกสารในระบบ</b> มีแค่การทดลองโมเดลกับเอกสารตัวอย่าง',
+ why:'<b>ได้อะไรถ้าเปิด:</b> ไม่ต้องโทรถาม HR/IT เรื่องเดิมซ้ำ ๆ ได้คำตอบอ้างอิงหน้าเอกสาร<br><b>สถานะจริง:</b> ทดลองใส่ระเบียบเบิกค่าเดินทางแล้วถาม 4 ข้อ — ตอบถูก+อ้างข้อ 3/3 และข้อนอกเอกสารตอบว่าไม่พบ (ไม่มั่ว) · งานจริงคือรวบรวมเอกสารและอัปเดตคลัง',
+ say:'เบิกค่าเดินทางใช้เอกสารอะไรบ้าง — ยังไม่มีใน LINE',
+ sc:[{u:'เบิกค่าเดินทางใช้เอกสารอะไรบ้าง'},
+  {b:'📚 ตามระเบียบการเบิกจ่าย (ปรับปรุง 2567) ข้อ 4.2\n\nต้องแนบ\n • ใบเสร็จรับเงินตัวจริง\n • แบบฟอร์ม กจ.03 ที่หัวหน้างานเซ็น\n • สำเนาใบอนุญาตเดินทาง (กรณีข้ามจังหวัด)\n\nยื่นภายใน 15 วันนับจากวันเดินทางกลับ\n🔗 ระเบียบการเบิกจ่าย_2567.pdf หน้า 12\n\n(⚠️ ตัวอย่างเมื่อมีคลังเอกสารแล้ว — ตอนนี้ยังไม่มีในระบบ)'}]},
+
+{id:'b1',kind:'ทดลองแล้ว',t:'ถ่ายรูปเอกสาร แล้วให้กลายเป็นงาน',
+ what:'ถ่ายใบสั่งงานหรือไวท์บอร์ด ระบบอ่านตัวอักษรแล้วเปลี่ยนเป็นรายการงาน — <b>ยังไม่เปิด</b> (ส่งรูปใน LINE ตอนนี้ใช้แนบเข้านัด ไม่ได้อ่าน OCR สร้างงาน)',
+ why:'<b>ได้อะไรถ้าเปิด:</b> กระดาษหน้างานเข้าระบบได้เลย ไม่ต้องคีย์ใหม่<br><b>สถานะจริง:</b> ทดลองโมเดลอ่านใบสั่งงานไทยได้ครบ 4/4 แถวแม้ภาพเอียง · แสงน้อย+เบลออาจเพี้ยนชื่อสั้น ๆ จึงต้องให้ตรวจก่อนยืนยัน · <b>ยังไม่ได้ต่อเข้า LINE เป็นฟีเจอร์นี้</b>',
+ say:'📷 (รูปถ่าย) — ยังไม่สร้างงานจากรูป',
+ sc:[{u:'📷 [รูปถ่าย] ไวท์บอร์ดสรุปงาน.jpg'},
+  {b:'อ่านข้อความในรูปได้ 6 บรรทัด — จะให้ทำอะไรดีครับ\n\n(⚠️ ตัวอย่างเมื่อเปิดใช้แล้ว — ตอนนี้ส่งรูป = แนบเข้านัดเท่านั้น)'},
+  {u:'สร้างเป็นรายการงาน'},
+  {c:{title:'✅ พบงาน 3 รายการในรูป',sub:'ตรวจแล้วกดยืนยัน',rows:[['1) สั่งอะไหล่ปั๊มน้ำ','ภายในพุธ'],['2) นัดช่างเข้าตรวจไลน์ 2','ศุกร์'],['✅ ยืนยันเพิ่มทั้งหมด','']]}}]},
+
+{id:'b4',kind:'มีอยู่แล้ว',t:'“วันนี้ไปไม่ไหว” — จัดการนัดทั้งวันทีเดียว',
+ what:'บอกครั้งเดียวว่าวันนี้ไปไม่ไหว ระบบยกนัดของวันนี้ที่มีคนอื่นเกี่ยวข้องมาให้ดูก่อน แล้วเลือกได้ว่าจะ “แจ้งอย่างเดียว” หรือ “ยกเลิกนัดที่คุณเป็นผู้จัดด้วย”',
+ why:'<b>ได้อะไร:</b> ตอนป่วยไม่ต้องไล่แจ้งทีละคน ไม่มีใครนั่งรอเก้อ · ทวนให้ดูก่อนเสมอ ยังไม่แตะอะไรจนกว่าจะกดยืนยัน',
+ say:'วันนี้ลาป่วย จัดการนัดให้ที',
+ sc:[{u:'วันนี้ลาป่วย จัดการนัดให้ที'},
+  {b:'🤒 วันนี้มี 2 นัดที่มีคนอื่นเกี่ยวข้อง\n\n1) 13:30-15:00 · ทบทวนงบลงทุน Q4 — คุณเป็นผู้จัด (แจ้ง 2 คน)\n2) 16:00-16:30 · ตรวจรับงานระบบไฟฟ้า — คุณเป็นผู้เข้าร่วม (แจ้ง 1 คน)\n\nจะแจ้งทั้งหมด 3 คน · ยกเลิกได้ 1 นัดที่คุณเป็นผู้จัด\nยังไม่ได้ทำอะไรจนกว่าจะกดยืนยันครับ'},
+  {c:{title:'🤒 วันนี้ไปไม่ไหว',sub:'2 นัด · แจ้ง 3 คน',rows:[['✅ ยืนยันแจ้งลาวันนี้','แจ้งทุกคน + กันเวลาในปฏิทิน · ไม่ยกเลิกนัดใคร'],['❌ ยืนยันยกเลิกนัดวันนี้','แจ้งทุกคน + ยกเลิก 1 นัดที่คุณเป็นผู้จัด (เรียกคืนไม่ได้)'],['ไม่ทำอะไรก็ปล่อยไว้ได้ แผนหมดอายุใน 10 นาที','','note']]}},
+  {u:'✅ ยืนยันแจ้งลาวันนี้'},
+  {b:'จัดการให้แล้วครับ ✅\n\n📣 แจ้งผู้เกี่ยวข้องทาง LINE 3 คน\n🛡 กันเวลาทั้งวันในปฏิทินเป็น “ลาป่วย” แล้ว\n\nพักผ่อนเถอะครับ 🙏'}]},
+
+{id:'b7',kind:'มีอยู่แล้ว',t:'สรุป “ตอนที่คุณไม่อยู่”',
+ what:'กลับจากลา ประชุมยาว หรือออกต่างจังหวัด — พิมพ์ครั้งเดียวได้ครบว่าช่วงที่ไม่อยู่มีอะไรเกิดขึ้น: ประชุมที่พลาดพร้อมสรุป งานใหม่ที่ถูกมอบให้ นัดที่เข้ามาใหม่ และอะไรเลยกำหนดไปแล้ว',
+ why:'<b>ได้อะไร:</b> ทุกวันนี้ระบบทักมาบอกทีละเรื่องตอนที่มันเกิด ถ้าไม่ได้เปิดไลน์ตอนนั้นก็เลื่อนผ่านไปแล้ว — อันนี้คือปุ่ม “ตามให้ที” ที่ไม่ต้องไล่หาเอง',
+ say:'ช่วงที่ผมไม่อยู่มีอะไรบ้าง',
+ sc:[{u:'ช่วง 3 วันที่ผมไม่อยู่ มีอะไรบ้าง'},
+  {b:'📋 สรุปช่วง 1-3 ก.ย. ที่คุณไม่อยู่\n\n🗓 ประชุมที่พลาด 2 นัด\n • ทบทวนงบลงทุน Q4 (1 ก.ย.) — มีสรุปแล้ว\n • Kick-off ระบบ WMS (2 ก.ย.) — มีสรุปแล้ว\n\n✅ งานใหม่ที่ถูกมอบให้คุณ 2 งาน\n • ส่งตัวเลขค่าไฟไลน์ 2 — เลยกำหนด 1 วัน ⚠️\n • ทำสไลด์เปรียบเทียบผู้ขาย — 8 ก.ย.\n\n📥 นัดใหม่ที่เข้ามา 1 นัด\n • ประชุมด่วนแผนรับมือฝนตกหนัก — พรุ่งนี้ 08:30'},
+  {c:{title:'อยากดูอันไหนก่อน',sub:'แตะเพื่ออ่านต่อ',rows:[['อ่านสรุปประชุมที่พลาด',''],['ดูงานที่ต้องติดตาม',''],['ตารางวันนี้','']]}}]},
+
+{id:'b6',kind:'มีอยู่แล้ว',t:'รายงานสรุปประจำสัปดาห์',
+ what:'สั่งดูเมื่อไรก็ได้ด้วย “สรุปสัปดาห์นี้” หรือเปิดสวิตช์ครั้งเดียวให้ส่งเองทุกศุกร์ 17:00 — ประชุมไปกี่ชั่วโมง งานที่ครบกำหนดปิดไปแล้วกี่ใบ ค้างกี่ใบ และสัปดาห์หน้าหนักวันไหน',
+ why:'<b>ได้อะไร:</b> เห็นภาพรวมของตัวเองโดยไม่ต้องทำรายงานเอง และรู้ล่วงหน้าว่าสัปดาห์หน้าแน่นแค่ไหน',
+ say:'สรุปสัปดาห์นี้',
+ sc:[{d:'— ศุกร์ 17:00 —'},
+  {p:'📈 สรุปสัปดาห์นี้ (31/08/2569 – 04/09/2569)\n\n🗓 ประชุม 11 นัด · รวม 14 ชม. 20 นาที\n✅ งานที่ครบกำหนดช่วงนี้ 5 งาน — ปิดแล้ว 3 · ยังค้าง 2 ⚠️\n📌 ตอนนี้ค้างอยู่ 4 งาน (เกินกำหนด 1 ⚠️)\n📤 มอบให้คนอื่นแล้วยังค้าง 2 งาน · 1 คน\n🕰 ค้างนานสุด: “ส่งตัวเลขค่าไฟไลน์ 2” (9 วัน)\n\n— ช่วงถัดไป —\n🗓 มีนัดแล้ว 6 นัด\n   หนักสุด วันอังคาร 08/09/2569 (3 นัด)\n✅ งานครบกำหนด 2 งาน'}]}
+];
+
+const BONUS=[];   /* รวมเข้าชุดหลักแล้ว — ถามรอบเดียวจบ */
+const ALL=CORE.concat(BONUS);
+const byId=id=>ALL.find(x=>x.id===id);
+</script>
+
+<script>
+/* ============================================================
+   เครื่องเล่นภาพจำลองในมือถือ (ย่อจากไฟล์ฉบับเต็ม)
+   ============================================================ */
+const chat=()=>document.getElementById('chat');
+let token=0;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function add(html){const d=document.createElement('div');d.innerHTML=html.trim();const el=d.firstElementChild;chat().appendChild(el);chat().scrollTop=chat().scrollHeight;return el;}
+function addUser(t){add(`<div class="row me"><div class="bub me">${esc(t)}</div></div>`);}
+function addBot(t){add(`<div class="row"><div class="bav">AI</div><div class="bub bot">${esc(t)}</div></div>`);}
+function addDiv(t){add(`<div class="divider">${esc(t)}</div>`);}
+function addPush(t){add('<div class="pushtag">ระบบส่งให้เองอัตโนมัติ</div>');addBot(t);}
+function addCard(c){
+  const rows=(c.rows||[]).map(r=>`<div class="frow" data-send="${esc(r[0])}"><div><div class="fl">${esc(r[0])}</div>${r[1]?`<div class="fs">${esc(r[1])}</div>`:''}</div><div class="ch">›</div></div>`).join('');
+  add(`<div class="row"><div class="bav">AI</div><div class="fcard"><div class="fh"><b>${esc(c.title)}</b>${c.sub?`<span>${esc(c.sub)}</span>`:''}</div>${rows}</div></div>`);
+}
+function addLink(l){add(`<div class="row"><div class="bav">AI</div><div class="linkcard"><div class="lt">${esc(l.title)}</div><div class="lb">${esc(l.body||'')}</div><div class="la">${esc(l.action||'เปิดอ่าน ›')}</div></div></div>`);}
+async function typing(){const el=add('<div class="row"><div class="bav">AI</div><div class="typing"><i></i><i></i><i></i></div></div>');await sleep(780);el.remove();}
+async function pointTo(el){
+  const p=document.getElementById('pointer'), sc=document.getElementById('screen').getBoundingClientRect(), b=el.getBoundingClientRect();
+  p.style.left=(b.left-sc.left+b.width/2)+'px'; p.style.top=(b.top-sc.top+b.height/2)+'px';
+  p.classList.add('on'); await sleep(420); p.classList.add('tap'); await sleep(300); p.classList.remove('tap');
+}
+async function tapInChat(text){
+  const el=[...chat().querySelectorAll('[data-send]')].reverse().find(e=>e.getAttribute('data-send')===text);
+  if(!el) return; await pointTo(el); el.classList.add('tapped');
+  document.getElementById('pointer').classList.remove('on'); await sleep(160);
+}
+async function playSteps(steps){
+  const my=++token; chat().innerHTML=''; document.getElementById('pointer').classList.remove('on');
+  for(const st of steps){
+    if(my!==token) return;
+    if(st.d!==undefined){ addDiv(st.d); await sleep(480); continue; }
+    if(st.u!==undefined){ await tapInChat(st.u); addUser(st.u); await sleep(480); continue; }
+    if(st.p!==undefined){ addPush(st.p); await sleep(900); continue; }
+    if(st.b!==undefined){ await typing(); addBot(st.b); await sleep(740); continue; }
+    if(st.c!==undefined){ await typing(); addCard(st.c); await sleep(880); continue; }
+    if(st.link!==undefined){ await typing(); addLink(st.link); await sleep(900); continue; }
+  }
+}
+
+/* ============================================================
+   popup ของหน้านี้เอง (ไม่ใช้ alert/confirm ของเบราว์เซอร์)
+   ============================================================ */
+let modalCb=null;
+function showModal(o){
+  document.getElementById('modalIc').textContent=o.icon||'⭐';
+  document.getElementById('modalTitle').textContent=o.title||'';
+  document.getElementById('modalMsg').textContent=o.msg||'';
+  const yes=document.getElementById('modalYes'), no=document.getElementById('modalNo');
+  yes.textContent=o.yes||'ตกลง'; no.textContent=o.no||'ยกเลิก';
+  no.style.display=o.onYes?'':'none';
+  modalCb=o.onYes||null;
+  document.getElementById('modalWrap').classList.add('on');
+  setTimeout(()=>yes.focus(),60);
+}
+function modalClose(ok){
+  document.getElementById('modalWrap').classList.remove('on');
+  const cb=modalCb; modalCb=null; if(ok&&cb) cb();
+}
+const say=(t,m,i)=>showModal({title:t,msg:m,icon:i||'ℹ️',yes:'เข้าใจแล้ว'});
+const ask=(t,m,cb)=>showModal({title:t,msg:m,icon:'⭐',yes:'ใช่ เลือกอันนี้',no:'ไม่ ใช้อันเดิม',onYes:cb});
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1800);}
+
+/* ============================================================
+   ตัวแบบสำรวจ
+   ============================================================ */
+const KEY='ktis-line-quick-v2';
+function statusTag(kind){
+  if(kind==='ทดลองแล้ว') return '<span class="tag proto">🧪 ทดลองโมเดลแล้ว — ยังไม่เปิดใน LINE</span>';
+  if(kind==='ข้อเสนอ'||kind==='ไอเดียใหม่') return '<span class="tag idea">💡 ข้อเสนอ — ยังไม่มีในระบบ</span>';
+  return '<span class="tag">✅ มีแล้ว ใช้ได้เลยใน LINE</span>';
+}
+/* 5 ระดับ และถามคนละคำถามตามชนิดของข้อ —
+   ของที่ "มีอยู่แล้ว" ถามว่าใช้บ่อยแค่ไหน (คำตอบว่า "ไม่รู้ว่ามี" มีค่ากับเรามาก)
+   ส่วนของที่ยังไม่มี ถามว่าอยากได้แค่ไหน */
+/* สเกลเดียวทุกข้อ — ตอนนี้ยังเป็นช่วงทดสอบ ยังไม่มีใครใช้จนเป็นกิจวัตร
+   จึงไม่ถามว่า "ใช้บ่อยไหม" แต่ถามว่าอยากได้แค่ไหน เพื่อเลือกว่าจะทำอันไหนให้จบก่อน */
+const SCALE_ANS=[
+  {v:5,e:'🔥',t:'อยากได้มากที่สุด',s:'รีบทำอันนี้ให้จบก่อนเลย'},
+  {v:4,e:'👍',t:'ชอบ อยากได้',s:'ได้ใช้กับงานที่ทำอยู่แน่'},
+  {v:3,e:'🙂',t:'มีก็ดี',s:'ใช้บ้างเป็นครั้งคราว'},
+  {v:2,e:'🤔',t:'เฉย ๆ',s:'ยังไม่เห็นภาพว่าจะใช้ตอนไหน'},
+  {v:1,e:'🙅',t:'ไม่ต้องมีก็ได้',s:'ไม่เกี่ยวกับงานผม'},
+  {v:0,e:'⛔',t:'ไม่มีดีกว่า',s:'มีแล้วรกเปล่า ๆ อย่าทำเลย'}
+];
+const scaleOf=()=>SCALE_ANS;
+const labelOf=(id,v)=>{const o=SCALE_ANS.find(x=>x.v===v);return o?o.t:String(v);};
+let A={a:{},c:{},star:null,who:{},note:''};
+let queue=CORE, idx=0, mode='core', bonusDone=false;
+function save(){ try{ A.who=readWho(); localStorage.setItem(KEY,JSON.stringify(A)); }catch(e){} }
+function loadA(){ try{ const raw=localStorage.getItem(KEY); if(raw) A=Object.assign(A,JSON.parse(raw)); }catch(e){} if(!A.c) A.c={}; }
+function readWho(){
+  const g=id=>{const el=document.getElementById(id); return el?el.value.trim():((A.who&&A.who[id])||'');};
+  return {wName:g('wName'),wDept:g('wDept'),wRole:g('wRole'),wNote:g('wNote')};
+}
+const show=id=>document.getElementById(id).classList.remove('hidden');
+const hide=id=>document.getElementById(id).classList.add('hidden');
+
+function start(){ queue=CORE; idx=0; mode='core'; hide('scStart'); hide('scEnd'); show('bar'); show('scQ'); showQ(); }
+function startBonus(){ queue=BONUS; idx=0; mode='bonus'; hide('scEnd'); show('bar'); show('scQ'); showQ(); window.scrollTo(0,0); }
+
+function showQ(){
+  const q=queue[idx], n=queue.length;
+  document.getElementById('barNow').textContent=(mode==='bonus'?'ข้อเสริม ':'ข้อ ')+(idx+1);
+  document.getElementById('barOf').textContent='/ '+n;
+  const left=Math.max(1,Math.round((n-idx)*0.25));
+  document.getElementById('barTime').textContent='เหลืออีกประมาณ '+left+' นาที';
+  document.getElementById('barFill').style.width=Math.round(idx/n*100)+'%';
+  document.getElementById('barDots').innerHTML=queue.map((_,i)=>`<span class="${i<idx?'done':i===idx?'now':''}"></span>`).join('');
+  const cur=(q.id in A.a)?A.a[q.id]:null;   /* 0 = "ไม่มีดีกว่า" ซึ่งต่างจากยังไม่ตอบ */
+  const note=(A.c||{})[q.id]||'';
+  document.getElementById('qBox').innerHTML=`
+    ${statusTag(q.kind)}
+    <h2>${q.t}</h2>
+    <div class="what">${q.what}</div>
+    <div class="why">${q.why}</div>
+    <div><span class="say">พิมพ์ว่า: ${q.say}</span></div>
+    <div class="askline">อยากได้ฟังก์ชันนี้แค่ไหน${(q.kind==='มีอยู่แล้ว')?' — อยากให้ทำต่อให้สมบูรณ์แค่ไหน':''}</div>
+    <div class="ans">
+      ${scaleOf().map(o=>`<button class="a${o.v}${cur===o.v?' on':''}" onclick="answer(${o.v})"><span class="e">${o.e}</span><span>${o.t}<small>${o.s}</small></span></button>`).join('')}
+    </div>
+    <div class="qnote">
+      <label for="qNote">อยากบอกอะไรเพิ่มเติมเรื่องนี้ไหม (ไม่บังคับ)</label>
+      <textarea id="qNote" rows="2" placeholder="เช่น อยากให้เพิ่ม… / ติดตรงไหน / ใช้แล้วสะดุดอะไร">${esc(note)}</textarea>
+    </div>
+    <div class="qnav">
+      ${idx>0?'<button onclick="prevQ()">← ย้อนกลับ</button>':''}
+      <button onclick="answer(null)">ข้ามข้อนี้</button>
+      <span class="sp">ตอบแล้ว ${Object.keys(A.a).length} ข้อ</span>
+    </div>`;
+  playSteps(q.sc);
+}
+function replay(){ playSteps(queue[idx].sc); }
+function prevQ(){ if(idx>0){ idx--; showQ(); } }
+function answer(v){
+  const q=queue[idx];
+  /* เก็บหมายเหตุที่พิมพ์ไว้ก่อนเปลี่ยนข้อ — ข้ามข้อก็ยังเก็บให้ */
+  const box=document.getElementById('qNote');
+  if(box){ const t=box.value.trim(); A.c=A.c||{}; if(t) A.c[q.id]=t; else delete A.c[q.id]; }
+  if(v===null||v===undefined) delete A.a[q.id]; else A.a[q.id]=v;
+  /* คำตอบเปลี่ยน ดาวอาจไม่ใช่อันดับหนึ่งแล้ว — ปลดออกแล้วบอกด้วย ไม่ให้หายเงียบ ๆ */
+  let dropped=null;
+  if(A.star&&!eligibleIds().includes(A.star)){ dropped=A.star; A.star=null; }
+  save();
+  if(idx<queue.length-1){ idx++; showQ(); }
+  else { if(mode==='bonus') bonusDone=true; token++; hide('scQ'); hide('bar'); showEnd(); window.scrollTo(0,0); }
+  if(dropped){
+    say('ดาวถูกปลดออกแล้ว',
+      `“${byId(dropped).t}” ไม่ใช่เรื่องที่คุณให้คำตอบสูงสุดแล้ว ดาวจึงถูกปลดออกให้อัตโนมัติ\n\nเลือกใหม่ได้ที่หน้าสรุปครับ`,'⭐');
+  }
+}
+
+/* ---- ดาว: เลือกได้ 1 เรื่อง และต้องเป็นคำตอบที่สูงสุด ---- */
+function maxAns(){ const v=Object.values(A.a); return v.length?Math.max.apply(null,v):0; }
+function eligibleIds(){ const mx=maxAns(); return mx>0?Object.keys(A.a).filter(id=>A.a[id]===mx):[]; }
+function pickStar(id){
+  const mx=maxAns();
+  if(A.a[id]===undefined){ say('ยังไม่ได้ตอบข้อนี้','ต้องตอบข้อนี้ก่อน ถึงจะเลือกเป็นเรื่องที่อยากให้ทำก่อนได้ครับ','✋'); return; }
+  if(!mx){ say('ยังไม่มีข้อไหนที่อยากได้เลย','ดาวใช้เลือกเรื่องที่อยากให้ทำก่อนที่สุด — ถ้าทุกข้อตอบว่าไม่ต้องมี ก็ไม่ต้องเลือกดาวครับ','⭐'); return; }
+  if(A.a[id]<mx){
+    say('เลือกข้อนี้ไม่ได้',
+      `“${byId(id).t}” คุณตอบว่า “${labelOf(id,A.a[id])}” แต่มีเรื่องที่คุณให้คะแนนสูงกว่าอยู่\n\nดาวใช้เลือกเรื่องที่อยากให้ทำก่อนที่สุด จึงเลือกได้เฉพาะเรื่องที่คุณให้คำตอบสูงสุดเท่านั้นครับ`,'🚫');
+    return;
+  }
+  if(A.star===id){ A.star=null; save(); showEnd(); return; }
+  if(A.star){
+    const old=byId(A.star).t;
+    ask('เลือกได้แค่ 1 เรื่อง',
+      `ตอนนี้คุณเลือก “${old}” ไว้อยู่\n\nต้องการเลือก “${byId(id).t}” แทน ใช่ไหมครับ`,
+      ()=>{ A.star=id; save(); showEnd(); toast('เปลี่ยนเป็น “'+byId(id).t+'” แล้ว'); });
+    return;
+  }
+  A.star=id; save(); showEnd();
+}
+
+/* ---- หน้าสรุป ---- */
+function showEnd(){
+  const answered=ALL.filter(q=>q.id in A.a).sort((a,b)=>A.a[b.id]-A.a[a.id]);
+  const hot=answered.filter(q=>A.a[q.id]===5).length;
+  const elig=eligibleIds();
+  const who=A.who||{};
+  document.getElementById('scEnd').innerHTML=`
+    <div class="hero" style="padding:22px 24px">
+      <h1>ขอบคุณมากครับ 🎉</h1>
+      <p>ตอบไปทั้งหมด <b>${answered.length}</b> ข้อ · ให้ 5 คะแนน <b>${hot}</b> เรื่อง — เลือกเรื่องที่อยากให้ทำก่อนที่สุด แล้วกด <b>ส่งคำตอบ</b> ให้ทีมพัฒนา</p>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>⭐ เลือก 1 เรื่องที่อยากให้ทำให้สมบูรณ์ก่อน</h3>
+      <p class="sub">เลือกได้เรื่องเดียว และเลือกได้เฉพาะเรื่องที่คุณให้คะแนนสูงสุด (${maxAns()||'-'} จาก 5)</p>
+      ${elig.length?`<div class="pick">${elig.map(id=>{const q=byId(id);return `<div class="p${A.star===id?' on':''}" onclick="pickStar('${id}')"><span class="st">⭐</span><span class="tx">${q.t}<small>${q.kind}</small></span></div>`;}).join('')}</div>`
+        :'<p class="sub">ยังไม่มีข้อที่ตอบไว้ — ย้อนกลับไปตอบก่อนนะครับ</p>'}
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>คำตอบของคุณ</h3>
+      <p class="sub">เรียงจากอยากได้มากที่สุด</p>
+      <div class="res">${answered.map(q=>{const c=(A.c||{})[q.id];return `<div class="rw"><div class="r"><span class="b"><i style="width:${Math.max(3,A.a[q.id]/5*100)}%"></i></span><span>${A.star===q.id?'⭐ ':''}${q.t}</span><span class="n">${labelOf(q.id,A.a[q.id])}</span></div>${c?`<div class="rc">💬 ${esc(c)}</div>`:''}</div>`;}).join('')||'<p class="sub">ยังไม่มีคำตอบ</p>'}</div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>บอกเราหน่อย (ไม่บังคับ)</h3>
+      <div class="who">
+        <div><label>ชื่อ–สกุล</label><input id="wName" value="${(who.wName||'').replace(/"/g,'&quot;')}" placeholder="เช่น วีรศักดิ์ ..."></div>
+        <div><label>ฝ่าย / หน่วยงาน</label><input id="wDept" value="${(who.wDept||'').replace(/"/g,'&quot;')}" placeholder="เช่น IT, บัญชี"></div>
+        <div><label>ตำแหน่ง</label><input id="wRole" value="${(who.wRole||'').replace(/"/g,'&quot;')}" placeholder="เช่น หัวหน้าแผนก"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:11.5px;font-weight:700;color:var(--ink3);display:block;margin-bottom:3px">อยากให้เพิ่มหรือแก้อะไรอีกไหม</label>
+      <textarea id="wNote" rows="3" placeholder="เขียนสั้น ๆ ได้เลยครับ">${(who.wNote||'').replace(/</g,'&lt;')}</textarea></div>
+      <div class="tools">
+        <input type="text" name="website" id="hpWebsite" value="" autocomplete="off" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;opacity:0;height:0;width:0" />
+        <button class="primary" id="btnSubmit" onclick="submitSurvey()">ส่งคำตอบให้ทีมพัฒนา</button>
+        <button onclick="copySummary()">📋 คัดลอกเป็นข้อความ</button>
+        <button onclick="window.print()">🖨 พิมพ์ / PDF</button>
+      </div>
+      <div class="tools">
+        <button class="ghost" onclick="reviewCore()">↩ กลับไปแก้คำตอบ</button>
+        <button class="ghost" onclick="resetAll()">ล้างคำตอบทั้งหมด</button>
+      </div>
+      <p class="note-min" id="submitNote">กดปุ่มส่งเพื่อบันทึกคำตอบเข้าสู่ระบบ — ทีมพัฒนาดูได้ที่หน้า admin · คัดลอก/พิมพ์ยังใช้ได้ถ้าต้องการเก็บไว้เอง</p>
+    </div>`;
+  ['wName','wDept','wRole','wNote'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.addEventListener('input',save);
+  });
+  show('scEnd');
+}
+function reviewCore(){ queue=CORE; idx=0; mode='core'; hide('scEnd'); show('bar'); show('scQ'); showQ(); window.scrollTo(0,0); }
+function resetAll(){
+  showModal({icon:'🧹',title:'ล้างคำตอบทั้งหมด',msg:'คำตอบ ดาว และข้อมูลที่กรอกไว้ในเครื่องนี้จะถูกลบทั้งหมด\n\nยืนยันจะล้างใช่ไหมครับ',
+    yes:'ใช่ ล้างทั้งหมด',no:'ไม่ล้าง',onYes:()=>{
+      A={a:{},c:{},star:null,who:{},note:''}; bonusDone=false; save();
+      hide('scEnd'); hide('bar'); hide('scQ'); show('scStart'); toast('ล้างคำตอบแล้ว'); window.scrollTo(0,0);
+    }});
+}
+
+/* ---- ส่งเข้าเซิร์ฟเวอร์ ---- */
+const SURVEY_ID='line-short-v2';
+const SURVEY_API=(()=>{
+  if(location.protocol==='http:'||location.protocol==='https:'){
+    if(location.pathname.indexOf('/survey')>=0||location.hostname.indexOf('vercel')>=0||location.hostname==='localhost')
+      return location.origin+'/api/survey/submit';
+  }
+  return 'https://ktis-ai-assistant.vercel.app/api/survey/submit';
+})();
+
+async function submitSurvey(){
+  const w=readWho();
+  save();
+  if(!Object.keys(A.a).length){ toast('ยังไม่มีคำตอบให้ส่ง'); return; }
+  const hp=document.getElementById('hpWebsite');
+  if(hp&&hp.value){ toast('ส่งแล้ว ขอบคุณครับ'); return; }
+  const btn=document.getElementById('btnSubmit');
+  if(btn){ btn.disabled=true; btn.textContent='กำลังส่ง…'; }
+  const labels={}, kinds={};
+  ALL.forEach(f=>{ labels[f.id]=f.t; kinds[f.id]=f.kind; });
+  try{
+    const r=await fetch(SURVEY_API,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        surveyId:SURVEY_ID,
+        answers:A.a,
+        comments:A.c||{},
+        starId:A.star||null,
+        who:w,
+        labels, kinds,
+        website: hp?hp.value:''
+      })
+    });
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
+    A.submittedAt=new Date().toISOString();
+    A.submittedId=d.id||null;
+    save();
+    toast('ส่งคำตอบแล้ว ขอบคุณครับ');
+    const note=document.getElementById('submitNote');
+    if(note) note.innerHTML='✅ ส่งคำตอบเรียบร้อยแล้ว'+(d.id?' (รหัส '+String(d.id).slice(0,8)+'…)':'')+' — ทีมพัฒนาเห็นในหน้า admin แล้ว';
+    if(btn){ btn.textContent='✓ ส่งแล้ว'; }
+  }catch(e){
+    toast('ส่งไม่สำเร็จ — '+String(e.message||e).slice(0,80));
+    if(btn){ btn.disabled=false; btn.textContent='ส่งคำตอบให้ทีมพัฒนา'; }
+  }
+}
+
+function download(name,text,type){
+  const b=new Blob([text],{type:type||'text/plain;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+function copySummary(){
+  const w=readWho();
+  const rows=ALL.filter(f=>f.id in A.a).sort((a,b)=>A.a[b.id]-A.a[a.id]);
+  const txt=['ผลสำรวจผู้ช่วยงานใน LINE (ฉบับสั้น)',
+    `ชื่อ: ${w.wName||'-'} · ฝ่าย: ${w.wDept||'-'} · ตำแหน่ง: ${w.wRole||'-'}`,'',
+    ...rows.map((f,i)=>(`${i+1}. ${f.t} [${f.kind}] — ${A.a[f.id]}/5 ${labelOf(f.id,A.a[f.id])}${A.star===f.id?' ⭐ อยากให้ทำก่อน':''}`) + ((A.c||{})[f.id] ? `\n     💬 ${A.c[f.id]}` : '')),
+    '', 'ข้อเสนอแนะ: '+(w.wNote||'-')].join('\n');
+  navigator.clipboard.writeText(txt).then(()=>toast('คัดลอกแล้ว')).catch(()=>toast('คัดลอกไม่สำเร็จ'));
+}
+
+/* ---- เริ่มทำงาน ---- */
+(function init(){
+  loadA();
+  if(A.star && !eligibleIds().includes(A.star)) A.star=null;
+  document.addEventListener('keydown',e=>{
+    const open=document.getElementById('modalWrap').classList.contains('on');
+    if(open){ if(e.key==='Escape') modalClose(false); if(e.key==='Enter') modalClose(true); return; }
+    if(document.getElementById('scQ').classList.contains('hidden')) return;
+    const k=Number(e.key); if(k>=1&&k<=5) answer(6-k);   /* กด 1 = ตัวเลือกบนสุด */
+  });
+  if(Object.keys(A.a).length){
+    document.getElementById('scStart').insertAdjacentHTML('beforeend',
+      `<div class="card" style="margin-top:12px"><h3>มีคำตอบค้างอยู่ ${Object.keys(A.a).length} ข้อ</h3>
+       <p class="sub">ทำต่อจากเดิม หรือดูสรุปที่ตอบไว้ก็ได้ครับ</p>
+       <div class="tools"><button class="primary" onclick="showEndOnly()">ดูสรุปคำตอบเดิม</button></div></div>`);
+  }
+})();
+function showEndOnly(){ hide('scStart'); hide('scQ'); hide('bar'); showEnd(); window.scrollTo(0,0); }
+</script>
+</body>
+</html>

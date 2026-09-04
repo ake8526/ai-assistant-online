@@ -203,6 +203,10 @@ function UsersView({ getToken }: { getToken: () => Promise<string | null> }) {
             To Do
           </a>{" "}
           ·{" "}
+          <a className="link" href="/monitor/survey">
+            ผลสำรวจ
+          </a>{" "}
+          ·{" "}
           <a className="link" href="/monitor/admin">
             สิทธิ์
           </a>

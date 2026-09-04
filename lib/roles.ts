@@ -23,6 +23,7 @@ export type Perm =
   | "test.cmds"
   | "todo.manage"
   | "account.switch"
+  | "survey.view"
   | "admin";
 
 export const PERMS: { key: Perm; label: string; hint: string }[] = [
@@ -44,6 +45,11 @@ export const PERMS: { key: Perm; label: string; hint: string }[] = [
     key: "account.switch",
     label: "เปลี่ยนบัญชี",
     hint: "เห็นปุ่มเลือกบัญชีในตั้งค่า — สลับไปอีเมลอื่นได้ (บัญชีแรกบนเครื่องเป็นบัญชีหลัก)",
+  },
+  {
+    key: "survey.view",
+    label: "ดูผลสำรวจ LINE",
+    hint: "เปิดหน้า /monitor/survey — ดูคำตอบแบบประเมินฟังก์ชันที่พนักงานส่งมา",
   },
   { key: "admin", label: "จัดการสิทธิ์", hint: "เพิ่ม/ลบสิทธิ์ของคนอื่น" },
 ];
