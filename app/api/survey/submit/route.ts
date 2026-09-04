@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { admin, assertConfigured } from "@/lib/supabaseServer";
+import { assertConfigured } from "@/lib/supabaseServer";
+import { insertSurveyResponse } from "@/lib/surveyResponses";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +59,6 @@ export async function POST(req: Request) {
       return json({ error: "too many answers" }, { status: 400 });
     }
 
-    // Normalize scores to numbers 0–5
     const cleanAnswers: Record<string, number> = {};
     for (const [k, v] of Object.entries(answers)) {
       const n = typeof v === "number" ? v : parseInt(String(v), 10);
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
     }
 
     const who = asObject((body as { who?: unknown }).who);
-    const row = {
+    const saved = await insertSurveyResponse({
       survey_id: surveyId,
       name: clip(who.wName ?? (body as { name?: string }).name, 120) || null,
       dept: clip(who.wDept ?? (body as { dept?: string }).dept, 120) || null,
@@ -91,23 +91,9 @@ export async function POST(req: Request) {
         labels: asObject((body as { labels?: unknown }).labels),
         kinds: asObject((body as { kinds?: unknown }).kinds),
       },
-    };
+    });
 
-    const { data, error } = await admin.from("survey_responses").insert(row).select("id,created_at").single();
-    if (error) {
-      if (error.code === "42P01" || /survey_responses/i.test(error.message)) {
-        return json(
-          {
-            error:
-              "ตาราง survey_responses ยังไม่ถูกสร้าง — รันไฟล์ supabase/migration_survey_responses.sql ใน Supabase SQL Editor",
-          },
-          { status: 503 }
-        );
-      }
-      return json({ error: error.message }, { status: 500 });
-    }
-
-    return json({ ok: true, id: data.id, createdAt: data.created_at });
+    return json({ ok: true, id: saved.id, createdAt: saved.created_at });
   } catch (e) {
     return json({ error: String(e).slice(0, 200) }, { status: 500 });
   }
