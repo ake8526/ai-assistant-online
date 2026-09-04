@@ -1832,7 +1832,8 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     const act = data.get("a") || "";
     trace("receive", `กดปุ่ม: ${act || "?"}`);
 
-    // Log incoming user postback action synchronously
+    // Log incoming user postback — survey logs only after we accept the tap
+    // (duplicate/stale survey taps are dropped so monitor isn't flooded).
     const surveyLabel = isSurveyAction(act) ? surveyActionLabel(act, data) : null;
     const userActionText =
       ev.postback?.displayText ||
@@ -1856,6 +1857,39 @@ async function handlePostback(ev: LineEvent): Promise<void> {
         : act === "backdraft"
         ? "กลับไปหน้ายืนยัน"
         : act ? `กดปุ่ม: ${act}` : "กดปุ่มตัวเลือก");
+
+    // LINE chat survey — before meeting/booking; ignore duplicate taps
+    if (isSurveyAction(act)) {
+      const surveyLog = await handleLineSurveyPostback(upn, data, ev.replyToken);
+      if (surveyLog === null) {
+        // Stale/duplicate — already replied briefly inside handler; skip chat_logs spam
+        return;
+      }
+      after(async () => {
+        try {
+          await logChatTurn({
+            session_id: upn,
+            user_upn: upn,
+            channel: "line",
+            role: "user",
+            content: userActionText,
+            metadata: { postback: ev.postback?.data },
+          });
+        } catch {
+          /* ignore */
+        }
+        await logChatTurn({
+          session_id: upn,
+          user_upn: upn,
+          channel: "line",
+          role: "assistant",
+          content: surveyLog,
+          metadata: { intent: "survey_chat", action: act },
+        });
+      });
+      return;
+    }
+
     try {
       await logChatTurn({
         session_id: upn,
@@ -1867,22 +1901,6 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       });
     } catch {
       /* ignore log write error */
-    }
-
-    // LINE chat survey (pilot) — before meeting/booking so taps stay in survey
-    if (isSurveyAction(act)) {
-      const surveyLog = await handleLineSurveyPostback(upn, data, ev.replyToken);
-      after(async () => {
-        await logChatTurn({
-          session_id: upn,
-          user_upn: upn,
-          channel: "line",
-          role: "assistant",
-          content: surveyLog,
-          metadata: { intent: "survey_chat", action: act },
-        });
-      });
-      return;
     }
 
     // Attendee RSVP on LINE after being invited
