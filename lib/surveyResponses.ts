@@ -7,7 +7,7 @@
  */
 import { randomUUID } from "crypto";
 import { admin } from "@/lib/supabaseServer";
-import { allSettings, setSetting } from "@/lib/store";
+import { allSettings, deleteSetting, setSetting } from "@/lib/store";
 
 const OWNER = "_survey";
 const KEY_PREFIX = "resp_";
@@ -126,4 +126,39 @@ export async function listSurveyResponses(
   }
 
   throw new Error(error.message);
+}
+
+/** ลบคำตอบตาม survey_id — ว่าง = ลบทั้งหมด */
+export async function clearSurveyResponses(
+  surveyId: string | null
+): Promise<{ deleted: number; storage: "table" | "settings" }> {
+  // Table path
+  {
+    let q = admin.from("survey_responses").delete({ count: "exact" });
+    if (surveyId) q = q.eq("survey_id", surveyId);
+    else q = q.neq("id", "00000000-0000-0000-0000-000000000000"); // delete all rows
+    const { error, count } = await q;
+    if (!error) {
+      return { deleted: count ?? 0, storage: "table" };
+    }
+    if (!isMissingTable(error)) throw new Error(error.message);
+  }
+
+  // Settings fallback
+  const all = await allSettings(OWNER);
+  let deleted = 0;
+  for (const [key, value] of Object.entries(all)) {
+    if (!key.startsWith(KEY_PREFIX)) continue;
+    if (surveyId) {
+      try {
+        const parsed = JSON.parse(value) as SurveyResponse;
+        if (parsed.survey_id !== surveyId) continue;
+      } catch {
+        continue;
+      }
+    }
+    await deleteSetting(OWNER, key);
+    deleted += 1;
+  }
+  return { deleted, storage: "settings" };
 }

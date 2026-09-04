@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/guard";
 import { assertConfigured } from "@/lib/supabaseServer";
-import { listSurveyResponses } from "@/lib/surveyResponses";
+import { clearSurveyResponses, listSurveyResponses } from "@/lib/surveyResponses";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +25,30 @@ export async function GET(req: Request) {
       total,
       storage,
     });
+  } catch (e) {
+    return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 500 });
+  }
+}
+
+/** DELETE /api/survey/responses?survey=…&confirm=ล้างผลสำรวจ */
+export async function DELETE(req: Request) {
+  const gate = await guard(req, "survey.view");
+  if (!gate.ok) return gate.response;
+
+  try {
+    assertConfigured();
+    const url = new URL(req.url);
+    const surveyId = (url.searchParams.get("survey") || "").trim() || null;
+    const confirm = (url.searchParams.get("confirm") || "").trim();
+    if (confirm !== "ล้างผลสำรวจ") {
+      return NextResponse.json(
+        { error: "ต้องส่ง confirm=ล้างผลสำรวจ เพื่อยืนยัน" },
+        { status: 400 }
+      );
+    }
+
+    const result = await clearSurveyResponses(surveyId);
+    return NextResponse.json({ ok: true, ...result, by: gate.upn });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 500 });
   }
