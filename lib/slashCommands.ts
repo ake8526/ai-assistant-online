@@ -29,6 +29,11 @@ export type SlashCommand = {
    * ไม่งั้นซ่อนไปก็เท่านั้น ใครเห็นคนอื่นพิมพ์ก็พิมพ์ตามได้
    */
   restricted?: boolean;
+  /**
+   * ไม่โชว์ในเมนู / และคู่มือคำสั่ง — แต่พิมพ์ตรง ๆ แล้วยังจับคู่ได้
+   * (เช่น /แบบสอบถาม สำหรับส่งเชิญสำรวจไปลองบนเครื่องอื่น)
+   */
+  hidden?: boolean;
 };
 
 export const SLASH_COMMANDS: SlashCommand[] = [
@@ -55,14 +60,28 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     arg: "ชื่อเรื่องหรือเลขที่",
     restricted: true,
   },
+  {
+    cmd: "แบบสอบถาม",
+    label: "/แบบสอบถาม",
+    message: "/แบบสอบถาม",
+    hint: "ส่งเชิญแบบสำรวจใน LINE (ซ่อนจากเมนู)",
+    aliases: ["แบบสำรวจ", "survey"],
+    hidden: true,
+  },
 ];
 
 /**
- * คำสั่งที่ผู้ใช้คนนี้เห็นได้ — ทุกที่ที่โชว์หรือรับคำสั่งต้องเรียกผ่านตัวนี้
- * ทั้งเมนูในเว็บ ปุ่มลัด ปุ่มใน LINE และการจับคู่ตอนพิมพ์เอง
+ * คำสั่งที่จับคู่ตอนพิมพ์ได้ — รวมคำสั่งที่ซ่อนจากเมนู
+ */
+export function matchableCommands(canTest: boolean): SlashCommand[] {
+  return canTest ? SLASH_COMMANDS : SLASH_COMMANDS.filter((c) => !c.restricted);
+}
+
+/**
+ * คำสั่งที่ผู้ใช้คนนี้เห็นในเมนู / — ไม่รวม hidden
  */
 export function visibleCommands(canTest: boolean): SlashCommand[] {
-  return canTest ? SLASH_COMMANDS : SLASH_COMMANDS.filter((c) => !c.restricted);
+  return matchableCommands(canTest).filter((c) => !c.hidden);
 }
 
 export function isSlashMenu(text: string): boolean {

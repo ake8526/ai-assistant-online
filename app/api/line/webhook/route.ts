@@ -37,6 +37,7 @@ import {
 import {
   isSlashMenu,
   matchSlashCommand,
+  matchableCommands,
   parseSlashCommand,
   slashMenuMessage,
   slashToUserText,
@@ -1512,6 +1513,29 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       /* ignore log write error */
     }
 
+    // /แบบสอบถาม — ส่งเชิญสำรวจ (ซ่อนจากเมนู) · ต้องมาก่อนดัก session แบบสำรวจ
+    {
+      const body = parseSlashCommand(text);
+      if (body) {
+        const head = (body.split(/\s+/)[0] || "").toLowerCase();
+        if (head === "แบบสอบถาม" || head === "แบบสำรวจ" || head === "survey") {
+          const { startLineSurvey } = await import("@/lib/lineSurvey");
+          await startLineSurvey(upn, "reply", ev.replyToken);
+          after(async () => {
+            await logChatTurn({
+              session_id: upn,
+              user_upn: upn,
+              channel: "line",
+              role: "assistant",
+              content: "แบบสอบถาม · ส่งเชิญเริ่มสำรวจใน LINE",
+              metadata: { intent: "survey_invite" },
+            });
+          });
+          return;
+        }
+      }
+    }
+
     // LINE chat survey (pilot) — before RSVP so short confirms / taps stay in survey
     {
       const surveyLog = await handleLineSurveyText(upn, text, ev.replyToken);
@@ -1610,15 +1634,20 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
 
     /* คำสั่งทดสอบเห็นเฉพาะคนในกลุ่ม (สิทธิ์ test.cmds) — ทั้งเมนูและตอนพิมพ์เอง
        ถามสิทธิ์ครั้งเดียวต่อข้อความ ไม่ใช่ทุกจุดที่ต้องใช้รายการคำสั่ง */
-    let cmdsCache: SlashCommand[] | null = null;
-    const cmds = async () => {
-      if (!cmdsCache) cmdsCache = visibleCommands(await can(upn, "test.cmds"));
-      return cmdsCache;
+    let menuCmdsCache: SlashCommand[] | null = null;
+    let matchCmdsCache: SlashCommand[] | null = null;
+    const menuCmds = async () => {
+      if (!menuCmdsCache) menuCmdsCache = visibleCommands(await can(upn, "test.cmds"));
+      return menuCmdsCache;
+    };
+    const matchCmds = async () => {
+      if (!matchCmdsCache) matchCmdsCache = matchableCommands(await can(upn, "test.cmds"));
+      return matchCmdsCache;
     };
 
     // Slash commands always win over booking drafts / onboarding text input
     if (isSlashMenu(text)) {
-      await replyAndLog(upn, ev.replyToken, slashMenuMessage(await cmds()), { intent: "slash_menu" });
+      await replyAndLog(upn, ev.replyToken, slashMenuMessage(await menuCmds()), { intent: "slash_menu" });
       return;
     }
 
@@ -1634,7 +1663,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
 
     const slashBody = parseSlashCommand(text);
     if (slashBody) {
-      const cmd = matchSlashCommand(slashBody, await cmds());
+      const cmd = matchSlashCommand(slashBody, await matchCmds());
       if (!cmd) {
         await replyAndLog(
           upn,
@@ -1642,7 +1671,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
           {
             type: "text",
             text: `ไม่รู้จักคำสั่ง /${slashBody} ครับ\nพิมพ์ / เพื่อดูรายการคำสั่ง`,
-            quickReply: (slashMenuMessage(await cmds()) as { quickReply: object }).quickReply,
+            quickReply: (slashMenuMessage(await menuCmds()) as { quickReply: object }).quickReply,
           },
           { intent: "unknown_slash" }
         );
@@ -1667,7 +1696,7 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
           {
             type: "text",
             text: "ล้างความจำการสนทนาแล้วครับ — เริ่มเรื่องใหม่ได้เลย 🧹\n(ยกเลิกงานจองนัดที่ค้างไว้ด้วย)",
-            quickReply: (slashMenuMessage(await cmds()) as { quickReply: object }).quickReply,
+            quickReply: (slashMenuMessage(await menuCmds()) as { quickReply: object }).quickReply,
           },
           { intent: "clear_memory" }
         );
