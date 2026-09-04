@@ -3,6 +3,7 @@
  * Session lives in settings; short confirms never reach RSVP while active.
  */
 import { getLineId, pushLineMessages, replyLineMessages } from "@/lib/line";
+import { card, postbackRow } from "@/lib/lineCards";
 import { deleteSetting, getSetting, setSetting } from "@/lib/store";
 import { insertSurveyResponse } from "@/lib/surveyResponses";
 
@@ -178,13 +179,17 @@ export const SURVEY_Q: SurveyQ[] = [
 ];
 
 const SCALE = [
-  { v: 5, label: "🔥 อยากได้มากสุด", full: "🔥 อยากได้มากที่สุด" },
-  { v: 4, label: "👍 ชอบอยากได้", full: "👍 ชอบ อยากได้" },
-  { v: 3, label: "🙂 มีก็ดี", full: "🙂 มีก็ดี" },
-  { v: 2, label: "🤔 เฉย ๆ", full: "🤔 เฉย ๆ" },
-  { v: 1, label: "🙅 ไม่ต้องมี", full: "🙅 ไม่ต้องมีก็ได้" },
-  { v: 0, label: "⛔ ไม่มีดีกว่า", full: "⛔ ไม่มีดีกว่า" },
+  { v: 5, e: "🔥", t: "อยากได้มากที่สุด", s: "รีบทำอันนี้ให้จบก่อนเลย" },
+  { v: 4, e: "👍", t: "ชอบ อยากได้", s: "ได้ใช้กับงานที่ทำอยู่แน่" },
+  { v: 3, e: "🙂", t: "มีก็ดี", s: "ใช้บ้างเป็นครั้งคราว" },
+  { v: 2, e: "🤔", t: "เฉย ๆ", s: "ยังไม่เห็นภาพว่าจะใช้ตอนไหน" },
+  { v: 1, e: "🙅", t: "ไม่ต้องมีก็ได้", s: "ไม่เกี่ยวกับงานผม" },
+  { v: 0, e: "⛔", t: "ไม่มีดีกว่า", s: "มีแล้วรกเปล่า ๆ อย่าทำเลย" },
 ] as const;
+
+function scaleLabel(s: (typeof SCALE)[number]): string {
+  return `${s.e} ${s.t}`;
+}
 
 type Phase = "intro" | "try" | "rate" | "star" | "done";
 
@@ -220,6 +225,47 @@ function statusLine(kind: string): string {
   if (kind === "ทดลองแล้ว") return "🧪 ทดลองโมเดลแล้ว — ยังไม่เปิดใน LINE";
   if (kind === "ข้อเสนอ" || kind === "ไอเดียใหม่") return "💡 ข้อเสนอ — ยังไม่มีในระบบ";
   return "✅ มีแล้ว ใช้ได้เลยใน LINE";
+}
+
+function statusBadge(kind: string): object {
+  const text = statusLine(kind);
+  const proto = kind === "ทดลองแล้ว";
+  const idea = kind === "ข้อเสนอ" || kind === "ไอเดียใหม่";
+  return {
+    type: "box",
+    layout: "vertical",
+    backgroundColor: proto ? "#fff7ed" : idea ? "#eef2ff" : "#e8f8ee",
+    cornerRadius: "999px",
+    paddingAll: "6px",
+    margin: "none",
+    contents: [
+      {
+        type: "text",
+        text,
+        size: "xxs",
+        color: proto ? "#c2410c" : idea ? "#4338ca" : "#06753a",
+        weight: "bold",
+        wrap: true,
+        align: "center",
+      },
+    ],
+  };
+}
+
+function flexMsg(
+  altText: string,
+  contents: object,
+  extraQr?: { label: string; data: string; displayText?: string }[]
+): object {
+  return {
+    type: "flex",
+    altText: altText.slice(0, 400),
+    contents,
+    quickReply: qr([
+      ...(extraQr || []),
+      { label: "ยกเลิกสำรวจ", data: "a=svcancel", displayText: "ยกเลิกแบบสำรวจ" },
+    ]),
+  };
 }
 
 function qr(
@@ -349,34 +395,53 @@ function questionBody(q: SurveyQ, idx: number): string {
 
 function tryMessage(q: SurveyQ, idx: number): object {
   const cmd = (q.say || q.demoU || "ลองคำสั่ง").slice(0, 40);
-  return {
-    type: "text",
-    text:
-      questionBody(q, idx) +
-      "\n\nลองกดคำสั่งตัวอย่างด้านล่างก่อนได้ครับ (เป็นตัวอย่างจำลอง ไม่สั่งงานจริง)",
-    quickReply: qr([
-      { label: clip("➤ " + cmd, 20), data: "a=svtry", displayText: cmd },
-      { label: "ให้คะแนนเลย", data: "a=svskip", displayText: "ให้คะแนนเลย" },
-      { label: "ยกเลิกสำรวจ", data: "a=svcancel", displayText: "ยกเลิกแบบสำรวจ" },
-    ]),
-  };
+  const rows: object[] = [
+    statusBadge(q.kind),
+    {
+      type: "text",
+      text: clip(q.what, 400),
+      size: "sm",
+      color: "#111111",
+      wrap: true,
+      margin: "md",
+    },
+  ];
+  if (q.why) {
+    rows.push({
+      type: "text",
+      text: clip(q.why, 350),
+      size: "xs",
+      color: "#555555",
+      wrap: true,
+      margin: "sm",
+    });
+  }
+  rows.push({ type: "separator", margin: "lg" });
+  const tryRow = postbackRow(
+    clip("➤ " + cmd, 40),
+    "a=svtry",
+    cmd,
+    "ตัวอย่างจำลอง — ไม่สั่งงานจริง"
+  );
+  const skipRow = postbackRow("ให้คะแนนเลย", "a=svskip", "ให้คะแนนเลย");
+  if (tryRow) rows.push(tryRow);
+  if (skipRow) rows.push(skipRow);
+  return flexMsg(
+    `ข้อ ${idx + 1}/${SURVEY_Q.length} · ${q.t}`,
+    card(`ข้อ ${idx + 1}/${SURVEY_Q.length}`, q.t, rows)
+  );
 }
 
 function rateMessage(q: SurveyQ, idx: number): object {
-  return {
-    type: "text",
-    text: clip(
-      `ข้อ ${idx + 1}/${SURVEY_Q.length} · ${q.t}\n${statusLine(q.kind)}\n\nอยากได้ฟังก์ชันนี้แค่ไหน — อยากให้ทำจบแค่ไหนครับ?`,
-      4800
-    ),
-    quickReply: qr(
-      SCALE.map((s) => ({
-        label: s.label,
-        data: `a=svrate&v=${s.v}`,
-        displayText: s.full,
-      }))
-    ),
-  };
+  const rows: object[] = [statusBadge(q.kind)];
+  for (const s of SCALE) {
+    const row = postbackRow(scaleLabel(s), `a=svrate&v=${s.v}`, scaleLabel(s), s.s);
+    if (row) rows.push(row);
+  }
+  return flexMsg(
+    `ข้อ ${idx + 1}/${SURVEY_Q.length} · ให้คะแนน · ${q.t}`,
+    card(`ข้อ ${idx + 1}/${SURVEY_Q.length} · ให้คะแนน`, q.t, rows)
+  );
 }
 
 function starMessage(sess: Session): object {
@@ -386,23 +451,26 @@ function starMessage(sess: Session): object {
   const max = Math.max(0, ...scored.map((q) => sess.answers[q.id] ?? 0));
   const elig = scored.filter((q) => (sess.answers[q.id] ?? 0) === max && max > 0);
   if (!elig.length) {
-    return {
-      type: "text",
-      text: "ยังไม่มีคะแนนให้เลือกดาวครับ — กดเริ่มใหม่ได้",
-      quickReply: qr([{ label: "เริ่มใหม่", data: "a=svagain", displayText: "เริ่มสำรวจใหม่" }]),
-    };
+    const again = postbackRow("เริ่มใหม่", "a=svagain", "เริ่มสำรวจใหม่");
+    return flexMsg(
+      "เลือกดาว",
+      card("เลือกดาว", "ยังไม่มีคะแนน", again ? [again] : [])
+    );
   }
-  return {
-    type: "text",
-    text: `ขอบคุณที่ตอบครบแล้วครับ 🎉\nเลือก 1 เรื่องที่อยากให้ทำก่อน (คะแนนสูงสุด = ${max})`,
-    quickReply: qr(
-      elig.slice(0, 12).map((q) => ({
-        label: clip("⭐ " + q.t, 20),
-        data: `a=svstar&id=${encodeURIComponent(q.id)}`,
-        displayText: "⭐ " + q.t,
-      }))
-    ),
-  };
+  const rows: object[] = [];
+  for (const q of elig.slice(0, 12)) {
+    const row = postbackRow(
+      clip("⭐ " + q.t, 40),
+      `a=svstar&id=${encodeURIComponent(q.id)}`,
+      "⭐ " + q.t,
+      `คะแนน ${sess.answers[q.id]}`
+    );
+    if (row) rows.push(row);
+  }
+  return flexMsg(
+    `เลือกเรื่องที่อยากให้ทำก่อน (คะแนน ${max})`,
+    card("เลือก 1 เรื่องที่อยากให้ทำก่อน", `เฉพาะเรื่องที่ได้คะแนนสูงสุด (${max})`, rows)
+  );
 }
 
 function doneMessage(sess: Session): object {
