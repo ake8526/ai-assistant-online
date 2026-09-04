@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>ลองกด · แบบสำรวจใน LINE (แชท)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap');
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#1a1d24;color:#e8eaed;font-family:'IBM Plex Sans Thai',system-ui,sans-serif}
+.page{max-width:1100px;margin:0 auto;padding:20px 16px 40px;display:grid;grid-template-columns:minmax(300px,390px) 1fr;gap:28px;align-items:start;min-height:100%}
+@media(max-width:900px){.page{grid-template-columns:1fr;padding:12px 10px 28px}.phone{margin:0 auto}}
+h1{font-size:22px;margin:0 0 6px;letter-spacing:-.02em}
+.sub{color:#9aa3b2;font-size:13.5px;line-height:1.65;margin:0 0 18px}
+.sub b{color:#fff}
+.badge{display:inline-block;background:#06c75522;color:#33d17a;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:700;margin-bottom:10px}
+
+.phone{background:#0b0b0b;border-radius:36px;padding:10px;box-shadow:0 24px 60px rgba(0,0,0,.55);width:100%;max-width:390px}
+.notch{height:10px}
+.screen{background:#8cabd8;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;height:min(760px,calc(100vh - 48px))}
+.top{background:#f7f8fa;color:#111;padding:10px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e3e6ea}
+.top .av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#06c755,#00a344);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:800}
+.top .nm{font-size:14px;font-weight:700;line-height:1.15}
+.top .st{font-size:11px;color:#8b929c;font-weight:500}
+.top .prog{margin-left:auto;font-size:11px;color:#06c755;font-weight:700;background:#e8f8ee;padding:4px 8px;border-radius:999px}
+
+.chat{flex:1;overflow-y:auto;padding:12px 10px 8px;display:flex;flex-direction:column;gap:9px;-webkit-overflow-scrolling:touch}
+.chat::-webkit-scrollbar{width:0}
+.row{display:flex;gap:6px;align-items:flex-end;animation:in .22s ease}
+@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.row.me{justify-content:flex-end}
+.bav{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#06c755,#00a344);color:#fff;display:grid;place-items:center;font-size:10px;font-weight:800;flex:0 0 28px}
+.bub{max-width:78%;padding:9px 12px;border-radius:16px;font-size:13.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.bub.bot{background:#fff;color:#111;border-bottom-left-radius:4px}
+.bub.me{background:#06c755;color:#fff;border-bottom-right-radius:4px}
+.divd{align-self:center;background:rgba(15,23,42,.35);color:#fff;font-size:10.5px;padding:3px 10px;border-radius:999px}
+
+.card{background:#fff;border-radius:14px;overflow:hidden;width:min(272px,78vw);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.card .hd{background:#06c755;color:#fff;padding:11px 12px}
+.card .hd b{display:block;font-size:13.5px;line-height:1.35}
+.card .hd small{display:block;color:#e6fff0;font-size:11px;margin-top:3px;line-height:1.45}
+.card .bd{padding:8px}
+.crow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:1px solid transparent;background:#f4f6f8;border-radius:9px;padding:9px 10px;margin-bottom:6px;cursor:pointer;font-family:inherit}
+.crow:last-child{margin-bottom:0}
+.crow:active,.crow:hover{border-color:#06c755;background:#eef8f1}
+.crow .tx{flex:1;min-width:0}
+.crow .tx b{display:block;font-size:12.8px;color:#111;font-weight:700;line-height:1.35}
+.crow .tx small{display:block;font-size:10.5px;color:#8b93a3;margin-top:2px}
+.crow .ar{color:#9aa3b2;font-size:15px}
+.tagrow{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 6px}
+.pill{font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:#e8f8ee;color:#06753a}
+.pill.proto{background:#fff7ed;color:#c2410c}
+.pill.idea{background:#eef2ff;color:#4338ca}
+
+.qr{display:flex;gap:7px;overflow-x:auto;padding:6px 10px 10px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.25));scrollbar-width:none}
+.qr::-webkit-scrollbar{display:none}
+.qr button{flex:0 0 auto;background:#fff;color:#06c755;border:1.5px solid #06c755;border-radius:999px;padding:8px 13px;font-size:12.5px;font-family:inherit;cursor:pointer;font-weight:700;white-space:nowrap}
+.qr button:active{background:#06c755;color:#fff}
+.qr button:disabled{opacity:.4;cursor:default}
+
+.composer{background:#f7f8fa;border-top:1px solid #e3e6ea;padding:8px 10px;display:flex;gap:8px;align-items:center}
+.composer input{flex:1;border:1px solid #dfe3e8;border-radius:999px;padding:9px 12px;font-size:13.5px;font-family:inherit;background:#fff;color:#111}
+.composer button{background:#06c755;color:#fff;border:0;border-radius:999px;width:36px;height:36px;font-size:15px;cursor:pointer}
+
+.side{background:#12151c;border:1px solid #242936;border-radius:16px;padding:18px 18px 16px}
+.side h2{font-size:15px;margin:0 0 10px}
+.side ol{margin:0;padding-left:18px;color:#b9c0cc;font-size:13.5px;line-height:1.75}
+.side li{margin-bottom:6px}
+.side .foot{margin-top:14px;font-size:12px;color:#69707d;line-height:1.55}
+.side a{color:#33d17a}
+.typing{background:#fff;border-radius:14px;padding:10px 12px;display:flex;gap:4px;align-items:center}
+.typing i{width:6px;height:6px;border-radius:50%;background:#cbd5e1;animation:bl 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}
+.typing i:nth-child(3){animation-delay:.3s}
+@keyframes bl{0%,80%,100%{opacity:.3}40%{opacity:1}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+        <div class="top">
+          <div class="av">AI</div>
+          <div>
+            <div class="nm">KTIS X · ผู้ช่วยงาน</div>
+            <div class="st">เดโมแชท — เหมือนตอบใน LINE</div>
+          </div>
+          <div class="prog" id="prog">—</div>
+        </div>
+        <div class="chat" id="chat"></div>
+        <div class="qr" id="qr"></div>
+        <div class="composer">
+          <input id="box" placeholder="พิมพ์ก็ได้ หรือกดปุ่มด้านบน…" autocomplete="off">
+          <button type="button" id="send" title="ส่ง">➤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="badge">PROTOTYPE · LINE CHAT SURVEY</div>
+    <h1>แบบสำรวจใน LINE — กดเล่นผ่านแชท</h1>
+    <p class="sub">จำลองว่าพนักงานตอบแบบสำรวจในแชท OA จริง: บอทส่งคำถาม → กดปุ่มคะแนน (Quick Reply) หรือแตะการ์ด → เลือกดาว → ส่งคำตอบ<br>
+    <b>ยังไม่ใช่ LINE จริง</b> แต่ flow นี้เอาไปทำ Flex Message + Quick Reply ใน OA ได้เลย</p>
+
+    <div class="side">
+      <h2>วิธีลอง</h2>
+      <ol>
+        <li>กดปุ่มเขียวใต้แชท หรือพิมพ์ <b>เริ่มสำรวจ</b></li>
+        <li>อ่านคำถาม แล้วกดคะแนน 0–5</li>
+        <li>จบแล้วเลือก 1 เรื่องที่อยากให้ทำก่อน (ดาว)</li>
+        <li>กด <b>ส่งคำตอบ</b> — ถ้าอยู่บนโดเมนจริงจะยิงเข้า API เดียวกับแบบเว็บ</li>
+      </ol>
+      <p class="foot">
+        หน้ารายงาน: <a href="/monitor/survey">/monitor/survey</a><br>
+        แบบเว็บ: <a href="/survey">/survey</a><br>
+        รีเซ็ตเดโม: พิมพ์ <b>ล้าง</b> ในแชท
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+const Q=[
+{id:'q1',kind:'มีอยู่แล้ว',t:'ถามตารางนัดของตัวเอง',what:'พิมพ์ถามปฏิทิน Outlook ของตัวเองด้วยภาษาพูด'},
+{id:'q2',kind:'มีอยู่แล้ว',t:'ดูว่าคนอื่นว่างไหม',what:'ถามตารางเพื่อนร่วมงานด้วยชื่อเล่น/ชื่อจริง'},
+{id:'q3',kind:'มีอยู่แล้ว',t:'นัดประชุม · หาเวลาว่าง · จองห้อง',what:'หาช่วงว่างตรงกัน จองห้อง ส่งคำเชิญใน LINE'},
+{id:'q4',kind:'มีอยู่แล้ว',t:'สรุปประชุมให้เอง พร้อมงานที่ต้องตาม',what:'สรุป Teams + ดึงงานที่ตกลงกันออกมา'},
+{id:'q5',kind:'มีอยู่แล้ว',t:'ดูงานค้าง + ปิดงาน + ซิงค์ Microsoft To Do',what:'ดูงานค้าง ปิดด้วยเลข ซิงค์ To Do'},
+{id:'q6',kind:'มีอยู่แล้ว',t:'ค้นและสรุปไฟล์ใน OneDrive',what:'ค้นไฟล์จากมือถือ แล้วให้สรุปเนื้อหา'},
+{id:'q7',kind:'มีอยู่แล้ว',t:'บรีฟเช้า — สรุปทั้งวันก่อนเริ่มงาน',what:'ทุกเช้าส่งนัด+งานค้างให้อัตโนมัติ'},
+{id:'q8',kind:'มีอยู่แล้ว',t:'เตือนก่อนประชุม & แจ้งเมื่อมีนัดใหม่',what:'เตือนก่อนประชุม และบอกเมื่อมีนัดใหม่'},
+{id:'q9',kind:'มีอยู่แล้ว',t:'สรุปข่าวที่ติดตาม',what:'สรุปข่าวจากแหล่งที่เลือก เป็นภาษาไทย'},
+{id:'q10',kind:'ทดลองแล้ว',t:'สั่งงานด้วยเสียง',what:'อัดเสียงแทนพิมพ์ — ยังไม่เปิดใน LINE OA'},
+{id:'q12',kind:'ทดลองแล้ว',t:'ถาม-ตอบระเบียบและคู่มือภายในองค์กร',what:'ถามระเบียบบริษัทเป็นภาษาพูด — ยังไม่มีคลังเอกสาร'},
+{id:'b1',kind:'ทดลองแล้ว',t:'ถ่ายรูปเอกสาร แล้วให้กลายเป็นงาน',what:'OCR จากรูป → รายการงาน — ยังไม่เปิด'},
+{id:'b4',kind:'มีอยู่แล้ว',t:'“วันนี้ไปไม่ไหว” — จัดการนัดทั้งวันทีเดียว',what:'ลาป่วยแล้วแจ้ง/ยกเลิกนัดทั้งวันในครั้งเดียว'},
+{id:'b7',kind:'มีอยู่แล้ว',t:'สรุป “ตอนที่คุณไม่อยู่”',what:'กลับจากลาแล้วถามว่าช่วงนั้นมีอะไรบ้าง'},
+{id:'b6',kind:'มีอยู่แล้ว',t:'รายงานสรุปประจำสัปดาห์',what:'สรุปสัปดาห์นี้ / ส่งเองทุกศุกร์'}
+];
+
+const SCALE=[
+  {v:5,label:'🔥 อยากได้มากที่สุด'},
+  {v:4,label:'👍 ชอบ อยากได้'},
+  {v:3,label:'🙂 มีก็ดี'},
+  {v:2,label:'🤔 เฉย ๆ'},
+  {v:1,label:'🙅 ไม่ต้องมีก็ได้'},
+  {v:0,label:'⛔ ไม่มีดีกว่า'}
+];
+
+const KEY='ktis-line-chat-demo-v1';
+const SURVEY_ID='line-short-v2';
+const API=(()=>{
+  if(location.protocol==='http:'||location.protocol==='https:'){
+    if(location.hostname.indexOf('vercel')>=0||location.hostname==='localhost'||location.pathname.indexOf('/survey')>=0)
+      return location.origin+'/api/survey/submit';
+  }
+  return 'https://ktis-ai-assistant.vercel.app/api/survey/submit';
+})();
+
+let answers={};
+let star=null;
+let idx=-1; // -1 = intro, 0..Q.length-1 = questions, Q.length = star, Q.length+1 = done
+let busy=false;
+
+const chatEl=()=>document.getElementById('chat');
+const qrEl=()=>document.getElementById('qr');
+const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+function save(){ try{ localStorage.setItem(KEY,JSON.stringify({answers,star,idx})); }catch(e){} }
+function load(){
+  try{
+    const raw=localStorage.getItem(KEY); if(!raw) return;
+    const o=JSON.parse(raw);
+    if(o&&o.answers) answers=o.answers;
+    if(o&&o.star) star=o.star;
+  }catch(e){}
+}
+
+function scrollBottom(){ const c=chatEl(); c.scrollTop=c.scrollHeight; }
+function addHtml(html){
+  const d=document.createElement('div'); d.innerHTML=html.trim();
+  const el=d.firstElementChild; chatEl().appendChild(el); scrollBottom(); return el;
+}
+function addBot(t){ return addHtml(`<div class="row"><div class="bav">AI</div><div class="bub bot">${esc(t)}</div></div>`); }
+function addMe(t){ return addHtml(`<div class="row me"><div class="bub me">${esc(t)}</div></div>`); }
+function addDiv(t){ return addHtml(`<div class="divd">${esc(t)}</div>`); }
+async function typing(){
+  const el=addHtml(`<div class="row"><div class="bav">AI</div><div class="typing"><i></i><i></i><i></i></div></div>`);
+  await sleep(550+Math.random()*350);
+  el.remove();
+}
+
+function setQR(btns){
+  const q=qrEl();
+  q.innerHTML='';
+  (btns||[]).forEach(b=>{
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.textContent=b.label;
+    btn.disabled=!!b.disabled;
+    btn.onclick=()=>void handleTap(b.value, b.label);
+    q.appendChild(btn);
+  });
+}
+
+function setProg(){
+  const el=document.getElementById('prog');
+  const n=Object.keys(answers).length;
+  if(idx<0) el.textContent='เริ่ม';
+  else if(idx<Q.length) el.textContent=`${idx+1}/${Q.length}`;
+  else if(idx===Q.length) el.textContent='เลือกดาว';
+  else el.textContent=`ส่งแล้ว ${n}`;
+}
+
+function kindPill(kind){
+  if(kind==='ทดลองแล้ว') return '<span class="pill proto">ทดลองแล้ว</span>';
+  if(kind==='ข้อเสนอ') return '<span class="pill idea">ข้อเสนอ</span>';
+  return '<span class="pill">มีแล้ว</span>';
+}
+
+function addQuestionCard(q, num){
+  const rows=SCALE.map(s=>`
+    <button type="button" class="crow" data-v="${s.v}" data-label="${esc(s.label)}">
+      <div class="tx"><b>${esc(s.label)}</b></div><div class="ar">›</div>
+    </button>`).join('');
+  const el=addHtml(`<div class="row"><div class="bav">AI</div><div class="card">
+    <div class="hd"><b>ข้อ ${num}/${Q.length} · ${esc(q.t)}</b><small>${esc(q.what)}</small></div>
+    <div class="bd">
+      <div class="tagrow">${kindPill(q.kind)}</div>
+      ${rows}
+    </div>
+  </div></div>`);
+  el.querySelectorAll('.crow').forEach(btn=>{
+    btn.onclick=()=>void handleTap(String(btn.dataset.v), btn.dataset.label);
+  });
+}
+
+function addStarCard(){
+  const scored=Q.filter(q=>q.id in answers).sort((a,b)=>answers[b.id]-answers[a.id]);
+  const max=Math.max(...scored.map(q=>answers[q.id]),0);
+  const elig=scored.filter(q=>answers[q.id]===max && max>0);
+  if(!elig.length){
+    addBot('ยังไม่มีคะแนนให้เลือกดาวครับ — พิมพ์ “เริ่มสำรวจ” เพื่อตอบใหม่');
+    setQR([{label:'เริ่มสำรวจ',value:'__start__'}]);
+    return;
+  }
+  const rows=elig.map(q=>`
+    <button type="button" class="crow" data-id="${q.id}" data-label="${esc(q.t)}">
+      <div class="tx"><b>⭐ ${esc(q.t)}</b><small>${esc(q.kind)} · คะแนน ${answers[q.id]}</small></div><div class="ar">›</div>
+    </button>`).join('');
+  const el=addHtml(`<div class="row"><div class="bav">AI</div><div class="card">
+    <div class="hd"><b>เลือก 1 เรื่องที่อยากให้ทำก่อน</b><small>เลือกได้เฉพาะเรื่องที่ให้คะแนนสูงสุด (${max})</small></div>
+    <div class="bd">${rows}</div>
+  </div></div>`);
+  el.querySelectorAll('.crow').forEach(btn=>{
+    btn.onclick=()=>void handleTap('__star__:'+btn.dataset.id, '⭐ '+btn.dataset.label);
+  });
+  setQR(elig.slice(0,4).map(q=>({label:'⭐ '+q.t.slice(0,14), value:'__star__:'+q.id})));
+}
+
+async function bootIntro(){
+  idx=-1; setProg();
+  await typing();
+  addBot('สวัสดีครับ 🙏\nขอรบกวนตอบแบบสำรวจสั้น ๆ ว่าอยากได้ฟังก์ชันไหนใน LINE มากที่สุด\n\nประมาณ 15 ข้อ · กดปุ่มอย่างเดียว ไม่ต้องพิมพ์ยาว');
+  await sleep(350);
+  await typing();
+  addBot('กด “เริ่มสำรวจ” ด้านล่างได้เลยครับ');
+  setQR([
+    {label:'เริ่มสำรวจ', value:'__start__'},
+    {label:'ดูตัวอย่างคำถาม', value:'__peek__'}
+  ]);
+}
+
+async function askNext(){
+  if(idx>=Q.length){ await askStar(); return; }
+  const q=Q[idx];
+  setProg();
+  await typing();
+  addQuestionCard(q, idx+1);
+  setQR(SCALE.map(s=>({label:s.label, value:String(s.v)})));
+}
+
+async function askStar(){
+  idx=Q.length; setProg();
+  await typing();
+  addBot('ขอบคุณที่ตอบครบแล้วครับ 🎉\nเลือก 1 เรื่องที่อยากให้ทีมพัฒนาทำให้สมบูรณ์ก่อนได้เลย');
+  await sleep(200);
+  addStarCard();
+}
+
+async function finishReady(){
+  idx=Q.length+1; setProg();
+  await typing();
+  const n=Object.keys(answers).length;
+  const starQ=Q.find(x=>x.id===star);
+  addBot(`สรุปแล้ว ${n} ข้อ`+(starQ?`\n⭐ ทำก่อน: ${starQ.t}`:'')+`\n\nกด “ส่งคำตอบ” เพื่อบันทึกเข้าสู่ระบบ (เหมือนแบบเว็บ)`);
+  setQR([
+    {label:'ส่งคำตอบ', value:'__submit__'},
+    {label:'ตอบใหม่', value:'__reset__'}
+  ]);
+}
+
+async function handleTap(value, label){
+  if(busy) return;
+  busy=true;
+  try{
+    if(value==='__start__' || value==='เริ่มสำรวจ'){
+      addMe(label||'เริ่มสำรวจ');
+      answers={}; star=null; idx=0; save();
+      setQR([]);
+      await sleep(300);
+      await askNext();
+      return;
+    }
+    if(value==='__peek__'){
+      addMe(label||'ดูตัวอย่าง');
+      await typing();
+      addBot('ตัวอย่างคำถาม:\n• '+Q.slice(0,3).map(q=>q.t).join('\n• ')+'\n\n…และอีก '+(Q.length-3)+' ข้อ');
+      setQR([{label:'เริ่มสำรวจ', value:'__start__'}]);
+      return;
+    }
+    if(value==='__reset__' || value==='ล้าง'){
+      addMe(label||'ล้าง');
+      answers={}; star=null; idx=-1; save();
+      try{ localStorage.removeItem(KEY); }catch(e){}
+      setQR([]);
+      await sleep(200);
+      chatEl().innerHTML='';
+      await bootIntro();
+      return;
+    }
+    if(value==='__submit__'){
+      addMe(label||'ส่งคำตอบ');
+      setQR([]);
+      await submitNow();
+      return;
+    }
+    if(String(value).startsWith('__star__:')){
+      const id=String(value).slice(9);
+      star=id; save();
+      addMe(label||'เลือกดาว');
+      setQR([]);
+      await sleep(250);
+      await finishReady();
+      return;
+    }
+
+    // score answer
+    if(idx>=0 && idx<Q.length && /^-?\d+$/.test(String(value))){
+      const v=parseInt(value,10);
+      const q=Q[idx];
+      answers[q.id]=v; save();
+      addMe(label||SCALE.find(s=>s.v===v)?.label||String(v));
+      setQR([]);
+      await sleep(280);
+      await typing();
+      const ack=v>=5?'รับทราบครับ — อยากได้มาก 🔥':v>=4?'จดไว้แล้วครับ 👍':v>=3?'รับทราบครับ':v<=0?'โอเคครับ จะไม่เร่งอันนี้':'รับทราบครับ';
+      addBot(ack+(idx+1<Q.length?'\nต่อไปข้อถัดไป…':'\nเหลือเลือกดาวอีกนิดเดียว'));
+      idx+=1; save(); setProg();
+      await sleep(350);
+      await askNext();
+      return;
+    }
+
+    // free text fallbacks
+    const t=String(value).trim();
+    addMe(t);
+    if(/เริ่ม|สำรวจ|survey/i.test(t)){
+      setQR([]); answers={}; star=null; idx=0; save(); await askNext(); return;
+    }
+    await typing();
+    addBot('กดปุ่มใต้แชทได้เลยครับ หรือพิมพ์ “เริ่มสำรวจ”');
+    if(idx<0) setQR([{label:'เริ่มสำรวจ',value:'__start__'}]);
+    else if(idx<Q.length) setQR(SCALE.map(s=>({label:s.label,value:String(s.v)})));
+    else if(idx===Q.length) addStarCard();
+    else setQR([{label:'ส่งคำตอบ',value:'__submit__'},{label:'ตอบใหม่',value:'__reset__'}]);
+  } finally {
+    busy=false;
+  }
+}
+
+async function submitNow(){
+  if(!Object.keys(answers).length){
+    await typing(); addBot('ยังไม่มีคำตอบให้ส่งครับ'); return;
+  }
+  await typing();
+  addBot('กำลังส่งคำตอบ…');
+  const labels={}, kinds={};
+  Q.forEach(q=>{ labels[q.id]=q.t; kinds[q.id]=q.kind; });
+  try{
+    const r=await fetch(API,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        surveyId:SURVEY_ID,
+        answers, comments:{}, starId:star,
+        who:{wName:'',wDept:'',wRole:'',wNote:'(ส่งจากเดโมแชท LINE)'},
+        labels, kinds, website:''
+      })
+    });
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
+    await typing();
+    addBot('✅ ส่งเรียบร้อยแล้ว ขอบคุณมากครับ\nทีมพัฒนาเห็นในหน้า admin ได้เลย'+(d.id?'\nรหัส '+String(d.id).slice(0,8)+'…':''));
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    answers={}; star=null; idx=-1; save();
+    setQR([{label:'ตอบใหม่อีกครั้ง', value:'__start__'}]);
+    setProg();
+  }catch(e){
+    await typing();
+    addBot('ส่งไม่สำเร็จ: '+String(e.message||e).slice(0,80)+'\n\nลองใหม่ได้ หรือเปิดแบบเว็บที่ /survey');
+    setQR([{label:'ส่งอีกครั้ง',value:'__submit__'},{label:'ตอบใหม่',value:'__reset__'}]);
+  }
+}
+
+document.getElementById('send').onclick=()=>{
+  const box=document.getElementById('box');
+  const t=box.value.trim(); if(!t) return;
+  box.value='';
+  void handleTap(t,t);
+};
+document.getElementById('box').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ e.preventDefault(); document.getElementById('send').click(); }
+});
+
+(async function init(){
+  load();
+  await bootIntro();
+})();
+</script>
+</body>
+</html>

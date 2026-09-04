@@ -378,6 +378,10 @@ function SurveyAdmin({ getToken }: { getToken: () => Promise<string | null> }) {
           <a href="/survey" target="_blank" rel="noreferrer">
             เปิดแบบสำรวจ
           </a>{" "}
+          ·{" "}
+          <a href="/survey-line-chat-demo.html" target="_blank" rel="noreferrer">
+            ลองกดในแชท LINE
+          </a>{" "}
           · <a href="/monitor">ห้องทำงาน</a> · <a href="/monitor/admin">สิทธิ์</a>
         </p>
 
