@@ -1,5 +1,5 @@
 // Pluggable LLM client with provider fallback.
-// LLM_PROVIDER supports a comma-separated chain, e.g. "qwen,groq,gemini"
+// LLM_PROVIDER supports a comma-separated chain, e.g. "groq,gemini,ark"
 // (try first, fall back on failure). Always replies in Thai (primary) / English only.
 import { trace, type TraceStep } from "@/lib/trace";
 import { recordUsage } from "@/lib/llmUsage";
@@ -12,11 +12,18 @@ function withLanguageRule(system: string): string {
   return system.includes("กติกาภาษา:") ? system : system + LANGUAGE_RULE;
 }
 
-type Provider = "qwen" | "groq" | "gemini";
+type Provider = "qwen" | "groq" | "gemini" | "ark";
 
 /** Skip a provider briefly after 429 so the next LINE message hits a healthy one first. */
 const rateLimitedUntil = new Map<Provider, number>();
 
+/**
+ * พักผู้ให้บริการที่กำลังมีปัญหา คนที่สุขภาพดีจะได้ตอบก่อน
+ *
+ * เดิมใช้กับ 429 อย่างเดียว ซึ่งไม่พอ: 4 ก.ย. 2569 โควตาฟรีของ Qwen หมด คืน 403
+ * ทุกครั้ง แต่ Qwen เป็นตัวแรกในลูกโซ่ ทุกคำสั่งจึงยิงทิ้งหนึ่งรอบก่อนตกไปตัวถัดไป
+ * ระบบไม่พังเพราะมีตัวสำรอง แต่ช้าลงโดยไม่จำเป็น และเงียบจนกว่าจะไปอ่าน log เอง
+ */
 function markRateLimited(provider: Provider, ms = 45_000) {
   rateLimitedUntil.set(provider, Date.now() + ms);
 }
@@ -31,11 +38,12 @@ function isRateLimited(provider: Provider): boolean {
 }
 
 function providerChain(fast = false): Provider[] {
-  const raw = (process.env.LLM_PROVIDER || "qwen,groq,gemini").toLowerCase();
+  const raw = (process.env.LLM_PROVIDER || "groq,gemini").toLowerCase();
   const wanted = raw.split(",").map((s) => s.trim()).filter(Boolean) as Provider[];
-  const known: Provider[] = ["qwen", "groq", "gemini"];
+  const known: Provider[] = ["qwen", "groq", "gemini", "ark"];
   let chain = wanted.filter((p) => known.includes(p));
-  if (!chain.length) chain = fast ? ["groq", "qwen", "gemini"] : ["qwen", "groq", "gemini"];
+  // ค่าตั้งต้นไม่มี qwen แล้ว โควตาฟรีหมดตั้งแต่ ก.ย. 2569 (403 AllocationQuota.FreeTierOnly)
+  if (!chain.length) chain = ["groq", "gemini"];
   // Latency-sensitive calls (e.g. intent parsing on every LINE message) prefer
   // groq: it classifies in ~0.5s vs ~5s for qwen. Quality-sensitive generation
   // keeps the configured order. Gemini is a solid mid/fallback.
@@ -53,6 +61,15 @@ const GROQ_MODELS = ["openai/gpt-oss-120b", "qwen/qwen3.6-27b", "openai/gpt-oss-
 /** Latency-sensitive calls (intent parsing) — smaller model, same JSON quality. */
 const GROQ_FAST_MODEL = "qwen/qwen3.6-27b";
 
+/**
+ * รุ่นบน BytePlus Ark เรียงตามลำดับที่อยากให้เป็นคนตอบ
+ *
+ * ทั้งสามรองรับ response_format JSON ซึ่งระบบนี้ใช้ทั้งตอนแยกเจตนาและตอนสรุป
+ * (deepseek กับ gpt-oss บน Ark ไม่รองรับ json_object จึงไม่เอามาเป็นตัวหลัก)
+ * เปลี่ยนได้ที่ env ARK_MODEL / ARK_MODEL_FALLBACK โดยไม่ต้องแก้โค้ด
+ */
+const ARK_MODELS = ["seed-2-0-lite-260428", "seed-2-0-mini-260428", "glm-5-2-260617"];
+
 function settings(provider: Provider): { baseUrl: string; key: string; model: string } | null {
   if (provider === "qwen") {
     const key = process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || "";
@@ -61,6 +78,18 @@ function settings(provider: Provider): { baseUrl: string; key: string; model: st
       baseUrl: process.env.QWEN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
       key,
       model: process.env.QWEN_MODEL || "qwen3-max",
+    };
+  }
+  if (provider === "ark") {
+    /* BytePlus ModelArk (ภูมิภาค ap-southeast) พูดภาษา OpenAI ได้ตรง ๆ
+       ข้อควรรู้: ทุกรุ่นต้องกดเปิดใช้ใน Ark Console ก่อน ไม่งั้นคืน 404 ModelNotOpen
+       ทั้งที่คีย์ถูก — ลิสต์สำรองด้านล่างจึงมีไว้เผื่อเปิดมาไม่ครบทุกรุ่น */
+    const key = process.env.ARK_API_KEY || "";
+    if (!key) return null;
+    return {
+      baseUrl: process.env.ARK_BASE_URL || "https://ark.ap-southeast.bytepluses.com/api/v3",
+      key,
+      model: process.env.ARK_MODEL || ARK_MODELS[0],
     };
   }
   if (provider === "gemini") {
@@ -131,7 +160,9 @@ async function callProvider(
   if (!cfg) throw new Error(`${provider} not configured`);
 
   const models =
-    provider === "gemini"
+    provider === "ark"
+      ? Array.from(new Set([cfg.model, process.env.ARK_MODEL_FALLBACK || "", ...ARK_MODELS].filter(Boolean)))
+      : provider === "gemini"
       ? Array.from(
           new Set(
             [
@@ -191,13 +222,16 @@ async function callProvider(
     if (!res.ok) {
       const text = (await res.text()).slice(0, 240);
       if (res.status === 429) markRateLimited(provider);
+      /* 401/403 = คีย์ผิด หมดโควตา หรือถูกปิดสิทธิ์ — ลองอีกสิบวินาทีก็ไม่หาย
+         พักยาวหน่อยแล้วให้คนที่ยังดีขึ้นมาก่อน ไม่งั้นทุกข้อความเสียรอบยิงทิ้ง */
+      if (res.status === 401 || res.status === 403) markRateLimited(provider, 30 * 60_000);
       lastErr = new ProviderHttpError(provider, res.status, text);
       // Model gone / renamed / decommissioned → try the next alias before failing
       // the whole provider (Groq retired llama-3.3-70b-versatile on 2026-08-16).
       const modelGone =
         res.status === 404 ||
         /not found|no longer available|decommission|deprecat|does not exist|model_not_found/i.test(text);
-      if ((provider === "gemini" || provider === "groq") && modelGone) {
+      if ((provider === "gemini" || provider === "groq" || provider === "ark") && modelGone) {
         console.warn(`[llm] ${provider} model ${model} → ${res.status}; trying next alias`);
         continue;
       }
@@ -216,6 +250,9 @@ async function callProvider(
     });
     return (data.choices?.[0]?.message?.content ?? "").trim();
   }
+  /* ไล่ครบทุกชื่อรุ่นแล้วยังไม่มีอันไหนตอบ — ฝั่งนั้นยังไม่ได้เปิดใช้ หรือเปลี่ยนชื่อยกชุด
+     พักไว้สิบนาที จะได้ไม่ต้องไล่ยิงทุกชื่อใหม่ทุกข้อความ */
+  if (lastErr?.status === 404) markRateLimited(provider, 10 * 60_000);
   throw lastErr || new Error(`${provider} failed`);
 }
 
@@ -342,14 +379,15 @@ export function llmMonitorInfo(): {
   chain: string[];
   ready: { id: string; model: string; keyEnv: string }[];
 } {
-  const known: Provider[] = ["qwen", "groq", "gemini"];
-  const raw = (process.env.LLM_PROVIDER || "qwen,groq,gemini").toLowerCase();
+  const known: Provider[] = ["qwen", "groq", "gemini", "ark"];
+  const raw = (process.env.LLM_PROVIDER || "groq,gemini").toLowerCase();
   const chain = raw.split(",").map((s) => s.trim()).filter((p) => known.includes(p as Provider));
   const order = chain.length ? chain : known;
   const keyEnv: Record<Provider, string> = {
     qwen: process.env.QWEN_API_KEY ? "QWEN_API_KEY" : process.env.DASHSCOPE_API_KEY ? "DASHSCOPE_API_KEY" : "QWEN_API_KEY",
     groq: "GROQ_API_KEY",
     gemini: process.env.GEMINI_API_KEY ? "GEMINI_API_KEY" : process.env.GOOGLE_API_KEY ? "GOOGLE_API_KEY" : "GEMINI_API_KEY",
+    ark: "ARK_API_KEY",
   };
   const ready = (order as Provider[])
     .map((id) => {
