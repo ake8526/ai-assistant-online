@@ -664,16 +664,14 @@ function showQ(){
   document.getElementById('barDots').innerHTML=queue.map((_,i)=>`<span class="${i<idx?'done':i===idx?'now':''}"></span>`).join('');
   const cur=(q.id in A.a)?A.a[q.id]:null;
   const note=(A.c||{})[q.id]||'';
-  const tried=!!Atry[q.id];
   document.getElementById('qBox').innerHTML=`
     ${statusTag(q.kind)}
     <h2>${q.t}</h2>
     <div class="what">${q.what}</div>
     <div class="why">${q.why}</div>
-    <div><span class="say">คำสั่งตัวอย่าง: ${q.say}</span></div>
-    ${tried?'':'<div class="try-banner" id="tryBanner">① ลองกดคำสั่งในมือถือด้านซ้ายก่อน ② แล้วค่อยให้คะแนนด้านล่าง</div>'}
+    <div><span class="say">พิมพ์ว่า: ${q.say}</span></div>
     <div class="askline">อยากได้ฟังก์ชันนี้แค่ไหน${(q.kind==='มีอยู่แล้ว')?' — อยากให้ทำต่อให้สมบูรณ์แค่ไหน':''}</div>
-    <div class="ans${tried?'':' locked'}" id="ansBox">
+    <div class="ans">
       ${scaleOf().map(o=>`<button class="a${o.v}${cur===o.v?' on':''}" onclick="answer(${o.v})"><span class="e">${o.e}</span><span>${o.t}<small>${o.s}</small></span></button>`).join('')}
     </div>
     <div class="qnote">
@@ -682,12 +680,11 @@ function showQ(){
     </div>
     <div class="qnav">
       ${idx>0?'<button onclick="prevQ()">← ย้อนกลับ</button>':''}
-      ${tried?'':'<button type="button" onclick="skipTry()">ข้ามการลอง → ให้คะแนน</button>'}
       <span class="sp">ตอบแล้ว ${Object.keys(A.a).length} ข้อ</span>
     </div>`;
-  startInteractive(q);
+  playSteps(q.sc);
 }
-function replay(){ if(queue[idx]) startInteractive(queue[idx]); }
+function replay(){ playSteps(queue[idx].sc); }
 function prevQ(){ if(idx>0){ idx--; showQ(); } }
 function answer(v){
   const q=queue[idx];
@@ -861,15 +858,12 @@ function copySummary(){
 /* ---- เริ่มทำงาน ---- */
 (function init(){
   loadA();
-  loadTry();
   void loadM365Quiet();
   if(A.star && !eligibleIds().includes(A.star)) A.star=null;
   document.addEventListener('keydown',e=>{
     const open=document.getElementById('modalWrap').classList.contains('on');
     if(open){ if(e.key==='Escape') modalClose(false); if(e.key==='Enter') modalClose(true); return; }
     if(document.getElementById('scQ').classList.contains('hidden')) return;
-    const ans=document.getElementById('ansBox');
-    if(ans&&ans.classList.contains('locked')) return;
     const k=Number(e.key); if(k>=1&&k<=5) answer(6-k);
   });
   if(Object.keys(A.a).length){
