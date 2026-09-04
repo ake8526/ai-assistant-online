@@ -77,6 +77,7 @@ function SurveyAdmin({ getToken }: { getToken: () => Promise<string | null> }) {
   const [denied, setDenied] = useState(false);
   const [note, setNote] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [liveAt, setLiveAt] = useState("");
 
   const headers = useCallback(async () => {
     const token = await getToken();
@@ -85,31 +86,54 @@ function SurveyAdmin({ getToken }: { getToken: () => Promise<string | null> }) {
     return h;
   }, [getToken]);
 
-  const load = useCallback(async () => {
-    setBusy(true);
-    setErr("");
-    try {
-      const q = new URLSearchParams({ limit: "100", survey });
-      const r = await fetch(`/api/survey/responses?${q}`, { headers: await headers(), cache: "no-store" });
-      if (r.status === 401 || r.status === 403) {
-        setDenied(true);
-        return;
+  const load = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = !!opts?.silent;
+      if (!silent) {
+        setBusy(true);
+        setErr("");
       }
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-      setDenied(false);
-      setRows(d.rows || []);
-      setTotal(d.total || 0);
-      setNote(d.note || "");
-    } catch (e) {
-      setErr(String(e).replace(/^Error:\s*/, ""));
-    } finally {
-      setBusy(false);
-    }
-  }, [headers, survey]);
+      try {
+        const q = new URLSearchParams({ limit: "100", survey });
+        const r = await fetch(`/api/survey/responses?${q}`, { headers: await headers(), cache: "no-store" });
+        if (r.status === 401 || r.status === 403) {
+          setDenied(true);
+          return;
+        }
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        setDenied(false);
+        setRows(d.rows || []);
+        setTotal(d.total || 0);
+        setNote(d.note || "");
+        setLiveAt(
+          new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+        );
+        if (silent) setErr("");
+      } catch (e) {
+        if (!silent) setErr(String(e).replace(/^Error:\s*/, ""));
+      } finally {
+        if (!silent) setBusy(false);
+      }
+    },
+    [headers, survey]
+  );
 
   useEffect(() => {
     void load();
+    const tick = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      void load({ silent: true });
+    };
+    const id = window.setInterval(tick, 5000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load({ silent: true });
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [load]);
 
   const avgByFeature = useMemo(() => {
