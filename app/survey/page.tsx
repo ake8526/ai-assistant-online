@@ -9,7 +9,6 @@ import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 function SurveyShell() {
   const { ready, account, login, getToken, getGraphToken } = useM365Auth();
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [sent, setSent] = useState(false);
 
   const buildPayload = useCallback(async () => {
     if (!account) return null;
