@@ -3,9 +3,15 @@
  * Session lives in settings; short confirms never reach RSVP while active.
  */
 import { getLineId, pushLineMessages, replyLineMessages } from "@/lib/line";
-import { card, postbackRow } from "@/lib/lineCards";
+import { card, postbackRow, uriRow } from "@/lib/lineCards";
 import { deleteSetting, getSetting, setSetting } from "@/lib/store";
 import { insertSurveyResponse } from "@/lib/surveyResponses";
+
+const APP_BASE = (process.env.NEXT_PUBLIC_APP_BASE_URL || "https://ktis-ai-assistant.vercel.app").replace(
+  /\/$/,
+  ""
+);
+const WEB_SURVEY_URL = `${APP_BASE}/survey`;
 
 const SURVEY_ID = "line-short-v2";
 const SESSION_KEY = "_survey_chat";
@@ -191,7 +197,7 @@ function scaleLabel(s: (typeof SCALE)[number]): string {
   return `${s.e} ${s.t}`;
 }
 
-type Phase = "intro" | "try" | "rate" | "star" | "done";
+type Phase = "intro" | "channel" | "try" | "rate" | "star" | "done";
 
 type Session = {
   phase: Phase;
@@ -203,6 +209,8 @@ type Session = {
 
 const SURVEY_ACTIONS = new Set([
   "svstart",
+  "svline",
+  "svweb",
   "svtry",
   "svskip",
   "svrate",
@@ -385,11 +393,57 @@ function introMessage(): object {
   };
 }
 
-function questionBody(q: SurveyQ, idx: number): string {
-  const why = q.why ? "\n\n" + q.why : "";
-  return clip(
-    `ข้อ ${idx + 1}/${SURVEY_Q.length} · ${q.t}\n${q.what}${why}\n\n${statusLine(q.kind)}`,
-    4800
+function channelMessage(): object {
+  const rows: object[] = [];
+  const lineRow = postbackRow(
+    "💬 ตอบในแชท LINE",
+    "a=svline",
+    "ตอบในแชท LINE",
+    "ลองคำสั่งตัวอย่าง + ให้คะแนนในแชทนี้"
+  );
+  const webUri = uriRow("🌐 เปิดแบบบนเว็บ", WEB_SURVEY_URL, "หน้าเว็บเต็ม · มีเดโมเลื่อนอัตโนมัติ");
+  const webPb = postbackRow(
+    "ส่งลิงก์เว็บมาในแชท",
+    "a=svweb",
+    "เปิดแบบบนเว็บ",
+    WEB_SURVEY_URL.replace(/^https?:\/\//, "").slice(0, 40)
+  );
+  if (lineRow) rows.push(lineRow);
+  if (webUri) rows.push(webUri);
+  if (webPb) rows.push(webPb);
+  return flexMsg(
+    "เลือกช่องทางทำแบบสำรวจ",
+    card("เลือกช่องทางทำแบบสำรวจ", "เลือกอย่างใดอย่างหนึ่งได้เลย", rows),
+    [
+      { label: "💬 แชท LINE", data: "a=svline", displayText: "ตอบในแชท LINE" },
+      { label: "🌐 เปิดเว็บ", data: "a=svweb", displayText: "เปิดแบบบนเว็บ" },
+    ]
+  );
+}
+
+function webLinkMessage(): object {
+  return {
+    type: "template",
+    altText: "เปิดแบบสำรวจบนเว็บ",
+    template: {
+      type: "buttons",
+      text: "เปิดแบบสำรวจบนเว็บได้ที่ปุ่มด้านล่างครับ — ทำเสร็จแล้วกลับมาใช้คำสั่งในแชทได้ปกติ",
+      actions: [{ type: "uri", label: "เปิดแบบบนเว็บ", uri: WEB_SURVEY_URL }],
+    },
+  };
+}
+
+async function askChannel(upn: string, via: "push" | "reply", replyToken?: string): Promise<void> {
+  const sess: Session = { phase: "channel", idx: 0, answers: {}, star: null, ts: Date.now() };
+  await saveSession(upn, sess);
+  await send(
+    via,
+    upn,
+    [
+      { type: "text", text: "ต้องการทำแบบสำรวจผ่านช่องทางไหนครับ?" },
+      channelMessage(),
+    ],
+    replyToken
   );
 }
 
@@ -576,7 +630,9 @@ export async function handleLineSurveyText(
 
   if (isStartText(t)) {
     if (!(await isSurveyPilot(upn))) return false;
-    await startLineSurvey(upn, "reply", replyToken);
+    const sess: Session = { phase: "channel", idx: 0, answers: {}, star: null, ts: Date.now() };
+    await saveSession(upn, sess);
+    await askChannel(upn, "reply", replyToken);
     return true;
   }
 
@@ -585,6 +641,11 @@ export async function handleLineSurveyText(
   // Active survey: don't leak into RSVP / booking / LLM
   if (sess.phase === "intro") {
     await send("reply", upn, [introMessage()], replyToken);
+    return true;
+  }
+  if (sess.phase === "channel") {
+    // User may have opened web via URI — don't trap free-text forever
+    await send("reply", upn, [channelMessage()], replyToken);
     return true;
   }
   if (sess.phase === "try") {
@@ -639,9 +700,42 @@ export async function handleLineSurveyPostback(
   }
 
   if (act === "svstart") {
+    await askChannel(upn, "reply", replyToken);
+    return;
+  }
+
+  if (act === "svline") {
     const sess: Session = { phase: "try", idx: 0, answers: {}, star: null, ts: Date.now() };
     await saveSession(upn, sess);
-    await askTry(upn, "reply", replyToken);
+    await send(
+      "reply",
+      upn,
+      [
+        {
+          type: "text",
+          text: "โอเคครับ — ทำในแชทนี้เลย\nแต่ละข้อจะให้ลองคำสั่งตัวอย่างก่อน แล้วค่อยให้คะแนน",
+        },
+      ],
+      replyToken
+    );
+    await askTry(upn, "push");
+    return;
+  }
+
+  if (act === "svweb") {
+    await clearSession(upn);
+    await send(
+      "reply",
+      upn,
+      [
+        {
+          type: "text",
+          text: "เปิดแบบสำรวจบนเว็บได้ที่ปุ่มด้านล่างครับ\nทำเสร็จแล้วกลับมาใช้คำสั่งในแชทได้ปกติ",
+        },
+        webLinkMessage(),
+      ],
+      replyToken
+    );
     return;
   }
 
@@ -726,7 +820,8 @@ export async function handleLineSurveyPostback(
   }
 
   // unknown — re-prompt
-  if (sess.phase === "try") await askTry(upn, "reply", replyToken);
+  if (sess.phase === "channel") await askChannel(upn, "reply", replyToken);
+  else if (sess.phase === "try") await askTry(upn, "reply", replyToken);
   else if (sess.phase === "rate") await askRate(upn, "reply", replyToken);
   else if (sess.phase === "star") await send("reply", upn, [starMessage(sess)], replyToken);
   else if (sess.phase === "done") await send("reply", upn, [doneMessage(sess)], replyToken);
