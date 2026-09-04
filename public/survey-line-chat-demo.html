@@ -102,16 +102,16 @@ h1{font-size:22px;margin:0 0 6px;letter-spacing:-.02em}
   <div>
     <div class="badge">PROTOTYPE · LINE CHAT SURVEY</div>
     <h1>แบบสำรวจใน LINE — กดเล่นผ่านแชท</h1>
-    <p class="sub">จำลองแชท OA จริง: <b>ลองกดคำสั่งตัวอย่างก่อน</b> → ให้คะแนน → เลือกดาว → ส่งคำตอบ<br>
+    <p class="sub">จำลองแชท OA จริง: กด <b>เริ่มสำรวจ</b> → <b>เลือกช่องทาง</b> (แชท LINE หรือเว็บ) → ลองคำสั่ง → ให้คะแนน → เลือกดาว → ส่ง<br>
     กด “ลองตัวอย่างคำถาม” จะได้เห็นเดโมคำสั่งในแชทก่อนเริ่มทั้งชุด</p>
 
     <div class="side">
       <h2>วิธีลอง</h2>
       <ol>
-        <li>กด <b>ลองตัวอย่างคำถาม</b> เพื่อเห็นว่าคำสั่งตอบยังไง</li>
-        <li>หรือกด <b>เริ่มสำรวจ</b> — แต่ละข้อมีปุ่มลองคำสั่งก่อนให้คะแนน</li>
-        <li>จบแล้วเลือก 1 เรื่องที่อยากให้ทำก่อน (ดาว)</li>
-        <li>กด <b>ส่งคำตอบ</b> เข้าสู่ระบบได้เหมือนแบบเว็บ</li>
+        <li>กด <b>เริ่มสำรวจ</b> แล้วเลือกทำผ่าน <b>แชท LINE</b> หรือ <b>เว็บ</b></li>
+        <li>หรือกด <b>ลองตัวอย่างคำถาม</b> เพื่อเห็นว่าคำสั่งตอบยังไง</li>
+        <li>ถ้าเลือกแชท — แต่ละข้อมีปุ่มลองคำสั่งก่อนให้คะแนน</li>
+        <li>จบแล้วเลือก 1 เรื่องที่อยากให้ทำก่อน (ดาว) แล้วส่งคำตอบ</li>
       </ol>
       <p class="foot">
         หน้ารายงาน: <a href="/monitor/survey">/monitor/survey</a><br>
@@ -224,7 +224,7 @@ const API=(()=>{
 let answers={};
 let star=null;
 let idx=-1;
-let phase='intro'; /* intro | try | rate | star | done */
+let phase='intro'; /* intro | channel | try | rate | star | done */
 let busy=false;
 
 const chatEl=()=>document.getElementById('chat');
@@ -271,7 +271,7 @@ function setQR(btns){
 
 function setProg(){
   const el=document.getElementById('prog');
-  if(idx<0) el.textContent='เริ่ม';
+  if(idx<0) el.textContent=phase==='channel'?'เลือกช่องทาง':'เริ่ม';
   else if(idx<Q.length) el.textContent=`${idx+1}/${Q.length}`+(phase==='try'?' · ลอง':phase==='rate'?' · ให้คะแนน':'');
   else if(idx===Q.length) el.textContent='เลือกดาว';
   else el.textContent='ส่ง';
@@ -335,6 +335,43 @@ async function bootIntro(){
   setQR([
     {label:'เริ่มสำรวจ', value:'__start__'},
     {label:'ลองตัวอย่างคำถาม', value:'__peek__'}
+  ]);
+}
+
+const WEB_SURVEY_URL=(()=>{
+  if(location.protocol==='http:'||location.protocol==='https:'){
+    return location.origin+'/survey';
+  }
+  return 'https://ktis-ai-assistant.vercel.app/survey';
+})();
+
+function addChannelCard(){
+  const el=addHtml(`<div class="row"><div class="bav">AI</div><div class="card">
+    <div class="hd"><b>เลือกช่องทางทำแบบสำรวจ</b><small>เลือกอย่างใดอย่างหนึ่งได้เลย</small></div>
+    <div class="bd">
+      <button type="button" class="crow" data-v="__via_line__" data-label="ตอบในแชท LINE">
+        <div class="tx"><b>💬 ตอบในแชท LINE</b><small>ลองคำสั่งตัวอย่าง + ให้คะแนนในแชทนี้</small></div><div class="ar">›</div>
+      </button>
+      <button type="button" class="crow" data-v="__via_web__" data-label="เปิดแบบบนเว็บ">
+        <div class="tx"><b>🌐 เปิดแบบบนเว็บ</b><small>หน้าเว็บเต็ม · มีเดโมเลื่อนอัตโนมัติ</small></div><div class="ar">›</div>
+      </button>
+    </div>
+  </div></div>`);
+  el.querySelectorAll('.crow').forEach(btn=>{
+    btn.onclick=()=>void handleTap(btn.dataset.v, btn.dataset.label);
+  });
+}
+
+/** หลังกดเริ่มสำรวจ — ถามว่าทำผ่าน LINE หรือเว็บ */
+async function askChannel(){
+  idx=-1; phase='channel'; setProg(); save();
+  await typing();
+  addBot('ต้องการทำแบบสำรวจผ่านช่องทางไหนครับ?');
+  addChannelCard();
+  setQR([
+    {label:'💬 แชท LINE', value:'__via_line__'},
+    {label:'🌐 เปิดเว็บ', value:'__via_web__'},
+    {label:'ยกเลิก', value:'__reset__'}
   ]);
 }
 
@@ -417,10 +454,34 @@ async function handleTap(value, label){
   try{
     if(value==='__start__' || value==='เริ่มสำรวจ'){
       addMe(label||'เริ่มสำรวจ');
-      answers={}; star=null; idx=0; phase='try'; save();
+      answers={}; star=null; idx=-1; phase='channel'; save();
       setQR([]);
       await sleep(250);
+      await askChannel();
+      return;
+    }
+    if(value==='__via_line__'){
+      addMe(label||'ตอบในแชท LINE');
+      answers={}; star=null; idx=0; phase='try'; save();
+      setQR([]);
+      await sleep(200);
+      await typing();
+      addBot('โอเคครับ — ทำในแชทนี้เลย\nแต่ละข้อจะให้ลองคำสั่งตัวอย่างก่อน แล้วค่อยให้คะแนน');
+      await sleep(200);
       await askTry();
+      return;
+    }
+    if(value==='__via_web__'){
+      addMe(label||'เปิดแบบบนเว็บ');
+      setQR([]);
+      await typing();
+      addBot('เปิดแบบสำรวจบนเว็บให้แล้วครับ\nถ้าหน้าต่างไม่ขึ้น กดลิงก์ด้านล่างได้เลย\n\n'+WEB_SURVEY_URL);
+      setQR([
+        {label:'เปิดเว็บอีกครั้ง', value:'__via_web__'},
+        {label:'ตอบในแชทแทน', value:'__via_line__'},
+        {label:'กลับหน้าแรก', value:'__reset__'}
+      ]);
+      try{ window.open(WEB_SURVEY_URL,'_blank','noopener'); }catch(e){}
       return;
     }
     if(value==='__peek__'){
@@ -507,11 +568,12 @@ async function handleTap(value, label){
     const t=String(value).trim();
     addMe(t);
     if(/เริ่ม|สำรวจ/i.test(t)){
-      setQR([]); answers={}; star=null; idx=0; await askTry(); return;
+      setQR([]); answers={}; star=null; idx=-1; await askChannel(); return;
     }
     await typing();
     addBot('กดปุ่มใต้แชทได้เลยครับ');
-    if(idx<0) setQR([{label:'เริ่มสำรวจ',value:'__start__'},{label:'ลองตัวอย่างคำถาม',value:'__peek__'}]);
+    if(idx<0 && phase==='channel') setQR([{label:'💬 แชท LINE',value:'__via_line__'},{label:'🌐 เปิดเว็บ',value:'__via_web__'}]);
+    else if(idx<0) setQR([{label:'เริ่มสำรวจ',value:'__start__'},{label:'ลองตัวอย่างคำถาม',value:'__peek__'}]);
     else if(phase==='try') setQR([{label:'➤ '+(Q[idx].say||'ลอง'),value:'__try__'},{label:'ข้ามไปให้คะแนน',value:'__skiptry__'}]);
     else if(phase==='rate') setQR(SCALE.map(s=>({label:scaleLabel(s),value:String(s.v)})));
     else if(phase==='star') addStarCard();
