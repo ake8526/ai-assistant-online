@@ -1827,13 +1827,11 @@ async function handlePostback(ev: LineEvent): Promise<void> {
   setTraceUser(upn);
   try {
     // Show 3-dot loading for any real work (not just prep).
-    await showLineLoading(userId, 60);
+    // Survey: load after we know the tap isn't a silent duplicate.
     const data = new URLSearchParams(ev.postback?.data || "");
     const act = data.get("a") || "";
     trace("receive", `กดปุ่ม: ${act || "?"}`);
 
-    // Log incoming user postback — survey logs only after we accept the tap
-    // (duplicate/stale survey taps are dropped so monitor isn't flooded).
     const surveyLabel = isSurveyAction(act) ? surveyActionLabel(act, data) : null;
     const userActionText =
       ev.postback?.displayText ||
@@ -1858,13 +1856,10 @@ async function handlePostback(ev: LineEvent): Promise<void> {
         ? "กลับไปหน้ายืนยัน"
         : act ? `กดปุ่ม: ${act}` : "กดปุ่มตัวเลือก");
 
-    // LINE chat survey — before meeting/booking; ignore duplicate taps
+    // LINE chat survey — ignore duplicate taps silently (one reply only)
     if (isSurveyAction(act)) {
       const surveyLog = await handleLineSurveyPostback(upn, data, ev.replyToken);
-      if (surveyLog === null) {
-        // Stale/duplicate — already replied briefly inside handler; skip chat_logs spam
-        return;
-      }
+      if (surveyLog === null) return;
       after(async () => {
         try {
           await logChatTurn({
@@ -1889,6 +1884,8 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       });
       return;
     }
+
+    await showLineLoading(userId, 60);
 
     try {
       await logChatTurn({
