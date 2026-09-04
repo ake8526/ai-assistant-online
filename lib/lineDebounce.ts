@@ -5,18 +5,23 @@
  * window only the latest token may run. While it runs, newer events wait (or
  * supersede). Reply/push helpers check AsyncLocalStorage and stay silent when
  * this turn is no longer current — so one mash → one reply across the bot.
+ *
+ * Also: when LINE batches many events in one webhook, keepLatestLineEvents()
+ * drops all but the newest user action per user (sequential handling used to
+ * answer every one).
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getSetting, setSetting, deleteSetting } from "@/lib/store";
 
 const PEND_KEY = "_line_turn";
 const BUSY_KEY = "_line_busy";
-const SETTLE_MS = 80;
+const SETTLE_MS = 100;
 const BUSY_WAIT_MS = 45_000;
 
-export const LINE_DEBOUNCE_TEXT_MS = 300;
-export const LINE_DEBOUNCE_POSTBACK_MS = 450;
-export const LINE_DEBOUNCE_MEDIA_MS = 400;
+/** Quiet window after the latest text before we answer (catches mash sends). */
+export const LINE_DEBOUNCE_TEXT_MS = 900;
+export const LINE_DEBOUNCE_POSTBACK_MS = 700;
+export const LINE_DEBOUNCE_MEDIA_MS = 700;
 
 type TurnCtx = { upn: string; token: string };
 
@@ -28,6 +33,53 @@ function sleep(ms: number): Promise<void> {
 
 function ownerKey(upn: string): string {
   return upn.toLowerCase();
+}
+
+/** Minimal event shape for collapsing a webhook batch. */
+export type LineEventLike = {
+  type: string;
+  timestamp?: number;
+  source?: { userId?: string };
+  message?: { type?: string };
+};
+
+function isUserActionEvent(ev: LineEventLike): boolean {
+  if (ev.type === "postback") return true;
+  if (ev.type === "message") {
+    const t = ev.message?.type;
+    return t === "text" || t === "image" || t === "location";
+  }
+  return false;
+}
+
+/**
+ * LINE often delivers a mash as many events in one POST. Processing them
+ * one-by-one defeats debounce (each is alone in its quiet window). Keep only
+ * the latest text / postback / image / location per userId; leave follow etc.
+ */
+export function keepLatestLineEvents<T extends LineEventLike>(events: T[]): T[] {
+  if (events.length <= 1) return events;
+
+  const latestIdx = new Map<string, number>();
+  events.forEach((ev, idx) => {
+    const uid = ev.source?.userId;
+    if (!uid || !isUserActionEvent(ev)) return;
+    const prev = latestIdx.get(uid);
+    if (prev === undefined) {
+      latestIdx.set(uid, idx);
+      return;
+    }
+    const prevEv = events[prev]!;
+    const prevTs = typeof prevEv.timestamp === "number" ? prevEv.timestamp : prev;
+    const ts = typeof ev.timestamp === "number" ? ev.timestamp : idx;
+    if (ts >= prevTs) latestIdx.set(uid, idx);
+  });
+
+  const keepAction = new Set(latestIdx.values());
+  return events.filter((ev, idx) => {
+    if (!ev.source?.userId || !isUserActionEvent(ev)) return true;
+    return keepAction.has(idx);
+  });
 }
 
 /** Claim the latest user turn after debounce. null = superseded, stay silent. */

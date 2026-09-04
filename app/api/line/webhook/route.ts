@@ -19,6 +19,7 @@ import {
 import {
   beginLineTurn,
   runLineTurn,
+  keepLatestLineEvents,
   LINE_DEBOUNCE_TEXT_MS,
   LINE_DEBOUNCE_POSTBACK_MS,
   LINE_DEBOUNCE_MEDIA_MS,
@@ -67,6 +68,7 @@ const LIFF_LINK_URL = `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID ||
 
 type LineEvent = {
   type: string;
+  timestamp?: number;
   replyToken?: string;
   source?: { type: string; userId?: string };
   message?: {
@@ -1999,7 +2001,9 @@ export async function POST(req: Request) {
 
   try {
     assertConfigured();
-    const events: LineEvent[] = JSON.parse(rawBody).events || [];
+    const rawEvents: LineEvent[] = JSON.parse(rawBody).events || [];
+    // Mash in one webhook (e.g. "he"×7) → keep only the latest action per user
+    const events = keepLatestLineEvents(rawEvents);
 
     for (const ev of events) {
       try {
