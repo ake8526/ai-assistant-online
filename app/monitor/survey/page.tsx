@@ -230,6 +230,12 @@ function SurveyAdmin({ getToken }: { getToken: () => Promise<string | null> }) {
                   <strong>{row.name || "(ไม่ระบุชื่อ)"}</strong>
                   <div className="meta">
                     {[row.dept, row.role_title].filter(Boolean).join(" · ") || "—"} · {row.survey_id}
+                    {row.meta?.upn || row.meta?.email ? (
+                      <>
+                        <br />
+                        {row.meta.upn || row.meta.email}
+                      </>
+                    ) : null}
                   </div>
                   {row.star_id ? (
                     <div className="star">⭐ ทำก่อน: {labelOf(row, row.star_id)}</div>
