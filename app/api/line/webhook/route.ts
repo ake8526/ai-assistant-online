@@ -10,6 +10,11 @@ import {
   openNewsSettings,
   startNewsOnboarding,
 } from "@/lib/newsOnboarding";
+import {
+  handleLineSurveyPostback,
+  handleLineSurveyText,
+  isSurveyAction,
+} from "@/lib/lineSurvey";
 import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting, savePendingLineLocation, logChatTurn } from "@/lib/store";
 import { readImage } from "@/lib/mediaRead";
@@ -1506,6 +1511,21 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
       /* ignore log write error */
     }
 
+    // LINE chat survey (pilot) — before RSVP so short confirms / taps stay in survey
+    if (await handleLineSurveyText(upn, text, ev.replyToken)) {
+      after(async () => {
+        await logChatTurn({
+          session_id: upn,
+          user_upn: upn,
+          channel: "line",
+          role: "assistant",
+          content: "(แบบสำรวจ LINE)",
+          metadata: { intent: "survey_chat" },
+        });
+      });
+      return;
+    }
+
     // Meeting RSVP / reschedule by text — before news onboarding
     //
     // Short "ยืนยัน" / "ตกลง" / "ใช่" belongs only to the assistant's last
@@ -1633,6 +1653,9 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         } catch { /* ignore */ }
         try {
           await clearMeetingPhotoContext(upn);
+        } catch { /* ignore */ }
+        try {
+          await deleteSetting(upn, "_survey_chat");
         } catch { /* ignore */ }
         await replyAndLog(
           upn,
@@ -1809,6 +1832,22 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       });
     } catch {
       /* ignore log write error */
+    }
+
+    // LINE chat survey (pilot) — before meeting/booking so taps stay in survey
+    if (isSurveyAction(act)) {
+      await handleLineSurveyPostback(upn, data, ev.replyToken);
+      after(async () => {
+        await logChatTurn({
+          session_id: upn,
+          user_upn: upn,
+          channel: "line",
+          role: "assistant",
+          content: "(แบบสำรวจ LINE)",
+          metadata: { intent: "survey_chat", action: act },
+        });
+      });
+      return;
     }
 
     // Attendee RSVP on LINE after being invited
