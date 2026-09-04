@@ -78,14 +78,6 @@ button{font-family:inherit}
 @keyframes tp{50%{transform:translate(-50%,-50%) scale(.6);background:rgba(15,118,110,.55)}}
 .replay{display:block;margin:8px auto 0;border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 14px;font-size:12px;color:var(--ink2);cursor:pointer}
 .replay:hover{border-color:var(--brand2);color:var(--brand)}
-.try-wrap{margin-top:8px}
-.try-hint{font-size:11.5px;color:var(--ink3);text-align:center;margin:0 0 6px;font-weight:600}
-.try-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
-.try-chips button{border:1.5px solid var(--brand);background:#fff;color:var(--brand);border-radius:999px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;max-width:100%}
-.try-chips button:hover{background:var(--brand-soft)}
-.try-chips button.ghost{border-color:var(--line);color:var(--ink2);font-weight:600}
-.ans.locked{opacity:.35;pointer-events:none;filter:grayscale(.4)}
-.try-banner{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:12px;padding:8px 12px;font-size:12.5px;font-weight:600;margin:8px 0 4px}
 
 /* ---- คำถาม ---- */
 .q{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px}
@@ -192,7 +184,7 @@ footer{text-align:center;font-size:11.5px;color:var(--ink3);padding:6px 0 10px}
          คำตอบใช้เลือกว่าจะพัฒนาเรื่องไหนให้จบก่อน</p>
       <div class="chips">
         <div>⏱ ~15 ข้อ · ประมาณ 4 นาที</div>
-        <div>👆 ลองกดคำสั่งในแชทก่อน แล้วค่อยให้คะแนน</div>
+        <div>👆 ตอบด้วยการกดปุ่ม ไม่ต้องพิมพ์</div>
         <div>☁ ส่งเข้าสู่ระบบเมื่อกดส่ง</div>
       </div>
       <button onclick="start()">เริ่มเลย →</button>
@@ -204,15 +196,11 @@ footer{text-align:center;font-size:11.5px;color:var(--ink3);padding:6px 0 10px}
   <section class="stage hidden" id="scQ">
     <div>
       <div class="phone"><div class="screen" id="screen">
-        <div class="ph-head"><div class="av">AI</div><div><div class="nm">KTIS X · ผู้ช่วยงาน</div><div class="st">ลองกดคำสั่งเองก่อนให้คะแนน</div></div></div>
+        <div class="ph-head"><div class="av">AI</div><div><div class="nm">KTIS X · ผู้ช่วยงาน</div><div class="st">ตัวอย่างการใช้งานจริง</div></div></div>
         <div class="chat" id="chat"></div>
         <div class="pointer" id="pointer"></div>
       </div></div>
-      <div class="try-wrap" id="tryWrap">
-        <p class="try-hint" id="tryHint">กดปุ่มด้านล่างเพื่อลองคำสั่งในแชท</p>
-        <div class="try-chips" id="tryChips"></div>
-      </div>
-      <button class="replay" onclick="replay()">↻ ลองใหม่ตั้งแต่ต้น</button>
+      <button class="replay" onclick="replay()">↻ ดูอีกครั้ง</button>
     </div>
     <div class="q" id="qBox"></div>
   </section>
@@ -417,126 +405,6 @@ async function playSteps(steps){
     if(st.c!==undefined){ await typing(); addCard(st.c); await sleep(880); continue; }
     if(st.link!==undefined){ await typing(); addLink(st.link); await sleep(900); continue; }
   }
-}
-
-/* ---- ลองกดเองทีละขั้น ก่อนให้คะแนน ---- */
-let playQ=null, playI=0, playBusy=false;
-let Atry={}; /* q.id -> true เมื่อลองครบหรือข้าม */
-
-function setTryChips(btns, hint){
-  const wrap=document.getElementById('tryWrap');
-  const chips=document.getElementById('tryChips');
-  const h=document.getElementById('tryHint');
-  if(!wrap||!chips) return;
-  if(hint!==undefined && h) h.textContent=hint;
-  chips.innerHTML='';
-  (btns||[]).forEach(b=>{
-    const btn=document.createElement('button');
-    btn.type='button';
-    btn.textContent=b.label;
-    if(b.ghost) btn.className='ghost';
-    btn.onclick=()=>void b.onClick();
-    chips.appendChild(btn);
-  });
-}
-
-async function renderPlayStep(st){
-  if(st.d!==undefined){ addDiv(st.d); await sleep(280); return; }
-  if(st.p!==undefined){ addPush(st.p); await sleep(400); return; }
-  if(st.b!==undefined){ await typing(); addBot(st.b); await sleep(280); return; }
-  if(st.c!==undefined){ await typing(); addCard(st.c); await sleep(320); return; }
-  if(st.link!==undefined){ await typing(); addLink(st.link); await sleep(320); return; }
-}
-
-async function advanceInteractive(){
-  if(!playQ||playBusy) return;
-  playBusy=true;
-  const my=token;
-  try{
-    const steps=playQ.sc||[];
-    while(playI<steps.length){
-      if(my!==token) return;
-      const st=steps[playI];
-      if(st.u!==undefined){
-        /* รอผู้ใช้กดคำสั่งนี้ */
-        setTryChips([
-          {label:'➤ '+st.u, onClick:()=>void tapUserStep(st.u)},
-          {label:'ข้ามไปให้คะแนน', ghost:true, onClick:()=>skipTry()}
-        ], 'ลองกดคำสั่งนี้ในแชท (เหมือนพิมพ์ใน LINE)');
-        return;
-      }
-      playI++;
-      await renderPlayStep(st);
-    }
-    /* จบสถานการณ์ */
-    markTried(playQ.id);
-    setTryChips([
-      {label:'✓ พร้อมให้คะแนนแล้ว', onClick:()=>unlockRate(true)},
-      {label:'↻ ลองใหม่', ghost:true, onClick:()=>replay()}
-    ], 'ลองครบแล้ว — ให้คะแนนด้านขวาได้เลย');
-    unlockRate(true);
-  } finally {
-    playBusy=false;
-  }
-}
-
-async function tapUserStep(text){
-  if(playBusy||!playQ) return;
-  playBusy=true;
-  const my=token;
-  try{
-    addUser(text);
-    playI++;
-    await sleep(220);
-    /* เล่นสเต็ปบอทถัดไปจนกว่าจะเจอ u อีกครั้งหรือจบ */
-    const steps=playQ.sc||[];
-    while(playI<steps.length){
-      if(my!==token) return;
-      const st=steps[playI];
-      if(st.u!==undefined) break;
-      playI++;
-      await renderPlayStep(st);
-    }
-  } finally {
-    playBusy=false;
-  }
-  await advanceInteractive();
-}
-
-function markTried(id){
-  Atry[id]=true;
-  try{ localStorage.setItem(KEY+'-try', JSON.stringify(Atry)); }catch(e){}
-}
-function loadTry(){
-  try{ const raw=localStorage.getItem(KEY+'-try'); if(raw) Atry=JSON.parse(raw)||{}; }catch(e){}
-}
-function skipTry(){
-  if(playQ) markTried(playQ.id);
-  token++; /* หยุด interactive ปัจจุบัน */
-  setTryChips([
-    {label:'↻ ลองกดคำสั่ง', onClick:()=>replay()},
-  ], 'ข้ามการลองแล้ว — ให้คะแนนด้านขวาได้');
-  unlockRate(true);
-}
-function unlockRate(scroll){
-  const ans=document.querySelector('#qBox .ans');
-  const ban=document.getElementById('tryBanner');
-  if(ans) ans.classList.remove('locked');
-  if(ban) ban.remove();
-  if(scroll){
-    const ask=document.querySelector('#qBox .askline');
-    if(ask) ask.scrollIntoView({behavior:'smooth',block:'nearest'});
-  }
-}
-function startInteractive(q){
-  playQ=q; playI=0; playBusy=false;
-  token++; const my=token;
-  chat().innerHTML='';
-  document.getElementById('pointer').classList.remove('on');
-  /* ถ้าเคยลองข้อนี้แล้ว ปลดล็อกคะแนนไว้ แต่ยังให้ลองใหม่ได้ */
-  const already=!!Atry[q.id];
-  setTimeout(()=>{ if(my===token) void advanceInteractive(); }, 40);
-  return already;
 }
 
 /* ============================================================
