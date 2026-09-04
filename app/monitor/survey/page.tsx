@@ -202,7 +202,7 @@ function SurveyAdmin({ getToken }: { getToken: () => Promise<string | null> }) {
     }
     return Object.entries(sum)
       .map(([id, v]) => ({ id, label: v.label, avg: v.s / v.n, n: v.n, hot: v.hot }))
-      .sort((a, b) => b.avg - a.avg || b.n - a.n);
+      .sort((a, b) => b.avg - a.avg || b.hot - a.hot || b.n - a.n);
   }, [rows]);
 
   const starCounts = useMemo(() => {
