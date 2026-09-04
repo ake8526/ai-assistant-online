@@ -174,6 +174,9 @@ function SurveyAdmin({ getToken }: { getToken: () => Promise<string | null> }) {
           <button type="button" className="primary" onClick={() => void load()} disabled={busy}>
             {busy ? "กำลังโหลด…" : "รีเฟรช"}
           </button>
+          <span className="meta" style={{ marginLeft: 4 }}>
+            อัปเดตอัตโนมัติทุก 5 วินาที{liveAt ? ` · ล่าสุด ${liveAt}` : ""}
+          </span>
         </div>
 
         {err ? <div className="err">{err}</div> : null}
