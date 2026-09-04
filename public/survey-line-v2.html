@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>แบบสำรวจ LINE v2 — อยากได้อันไหนมากที่สุด</title>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
 <style>
 :root{
   --bg:#eef2f5; --panel:#fff; --ink:#0f172a; --ink2:#475569; --ink3:#94a3b8;
@@ -459,7 +460,77 @@ function save(){ try{ A.who=readWho(); localStorage.setItem(KEY,JSON.stringify(A
 function loadA(){ try{ const raw=localStorage.getItem(KEY); if(raw) A=Object.assign(A,JSON.parse(raw)); }catch(e){} if(!A.c) A.c={}; }
 function readWho(){
   const g=id=>{const el=document.getElementById(id); return el?el.value.trim():((A.who&&A.who[id])||'');};
-  return {wName:g('wName'),wDept:g('wDept'),wRole:g('wRole'),wNote:g('wNote')};
+  return {
+    wName: g('wName') || (A.who&&A.who.wName) || m365.name || '',
+    wDept: g('wDept') || (A.who&&A.who.wDept) || m365.dept || '',
+    wRole: g('wRole') || (A.who&&A.who.wRole) || m365.jobTitle || '',
+    wNote: g('wNote'),
+    wUpn: m365.upn || (A.who&&A.who.wUpn) || '',
+    wEmail: m365.email || (A.who&&A.who.wEmail) || ''
+  };
+}
+
+/* ---- M365 เงียบ ๆ — ถ้าเคยล็อกอินแอปนี้บนเครื่องนี้ ดึงชื่อมาใส่โดยไม่ถาม ---- */
+const MSAL_CLIENT_ID='e25bc0c0-aea3-4b45-849e-bb165f3b35ac';
+const MSAL_TENANT='6345f4b9-6f43-4fb7-a5c4-44b680b3f3dd';
+let m365={name:'',email:'',upn:'',dept:'',jobTitle:''};
+let m365Ready=null;
+
+function applyM365ToForm(){
+  if(!m365.name&&!m365.dept&&!m365.jobTitle) return;
+  if(!A.who) A.who={};
+  if(m365.name && !A.who.wName) A.who.wName=m365.name;
+  if(m365.dept && !A.who.wDept) A.who.wDept=m365.dept;
+  if(m365.jobTitle && !A.who.wRole) A.who.wRole=m365.jobTitle;
+  if(m365.upn) A.who.wUpn=m365.upn;
+  if(m365.email) A.who.wEmail=m365.email;
+  try{ save(); }catch(e){}
+}
+
+async function loadM365Quiet(){
+  if(m365Ready) return m365Ready;
+  m365Ready=(async()=>{
+    if(typeof msal==='undefined') return;
+    if(location.protocol!=='http:'&&location.protocol!=='https:') return;
+    try{
+      const pca=new msal.PublicClientApplication({
+        auth:{
+          clientId:MSAL_CLIENT_ID,
+          authority:'https://login.microsoftonline.com/'+MSAL_TENANT,
+          redirectUri:location.origin
+        },
+        cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}
+      });
+      await pca.initialize();
+      let acct=pca.getActiveAccount()||pca.getAllAccounts()[0]||null;
+      if(!acct){
+        try{
+          const silent=await pca.ssoSilent({scopes:['openid','profile','User.Read']});
+          acct=silent.account;
+          if(acct) pca.setActiveAccount(acct);
+        }catch(e){ /* ไม่มี session — เงียบไว้ ไม่เด้งล็อกอิน */ }
+      }
+      if(!acct) return;
+      m365.name=acct.name||'';
+      m365.email=acct.username||'';
+      m365.upn=acct.username||'';
+      try{
+        const tok=await pca.acquireTokenSilent({scopes:['User.Read'],account:acct});
+        const me=await fetch('https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName,jobTitle,department',{
+          headers:{Authorization:'Bearer '+tok.accessToken}
+        }).then(r=>r.ok?r.json():null);
+        if(me){
+          if(me.displayName) m365.name=me.displayName;
+          if(me.department) m365.dept=me.department;
+          if(me.jobTitle) m365.jobTitle=me.jobTitle;
+          if(me.userPrincipalName) m365.upn=me.userPrincipalName;
+          if(me.mail) m365.email=me.mail;
+        }
+      }catch(e){ /* มีชื่อจากบัญชีพอแล้ว */ }
+      applyM365ToForm();
+    }catch(e){ /* ไม่พังแบบสำรวจ */ }
+  })();
+  return m365Ready;
 }
 const show=id=>document.getElementById(id).classList.remove('hidden');
 const hide=id=>document.getElementById(id).classList.add('hidden');
@@ -565,28 +636,16 @@ function showEnd(){
     </div>
     <div class="card" style="margin-top:12px">
       <h3>บอกเราหน่อย (ไม่บังคับ)</h3>
-      <div class="who">
-        <div><label>ชื่อ–สกุล</label><input id="wName" value="${(who.wName||'').replace(/"/g,'&quot;')}" placeholder="เช่น วีรศักดิ์ ..."></div>
-        <div><label>ฝ่าย / หน่วยงาน</label><input id="wDept" value="${(who.wDept||'').replace(/"/g,'&quot;')}" placeholder="เช่น IT, บัญชี"></div>
-        <div><label>ตำแหน่ง</label><input id="wRole" value="${(who.wRole||'').replace(/"/g,'&quot;')}" placeholder="เช่น หัวหน้าแผนก"></div>
-      </div>
-      <div style="margin-top:10px"><label style="font-size:11.5px;font-weight:700;color:var(--ink3);display:block;margin-bottom:3px">อยากให้เพิ่มหรือแก้อะไรอีกไหม</label>
+      <div style="margin-top:4px"><label style="font-size:11.5px;font-weight:700;color:var(--ink3);display:block;margin-bottom:3px">อยากให้เพิ่มหรือแก้อะไรอีกไหม</label>
       <textarea id="wNote" rows="3" placeholder="เขียนสั้น ๆ ได้เลยครับ">${(who.wNote||'').replace(/</g,'&lt;')}</textarea></div>
       <div class="tools">
         <input type="text" name="website" id="hpWebsite" value="" autocomplete="off" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;opacity:0;height:0;width:0" />
         <button class="primary" id="btnSubmit" onclick="submitSurvey()">ส่งคำตอบให้ทีมพัฒนา</button>
-        <button onclick="copySummary()">📋 คัดลอกเป็นข้อความ</button>
-        <button onclick="window.print()">🖨 พิมพ์ / PDF</button>
       </div>
-      <div class="tools">
-        <button class="ghost" onclick="reviewCore()">↩ กลับไปแก้คำตอบ</button>
-        <button class="ghost" onclick="resetAll()">ล้างคำตอบทั้งหมด</button>
-      </div>
-      <p class="note-min" id="submitNote">กดปุ่มส่งเพื่อบันทึกคำตอบเข้าสู่ระบบ — ทีมพัฒนาดูได้ที่หน้า admin · คัดลอก/พิมพ์ยังใช้ได้ถ้าต้องการเก็บไว้เอง</p>
+      <p class="note-min" id="submitNote">กดปุ่มส่งเพื่อบันทึกคำตอบเข้าสู่ระบบ — ทีมพัฒนาดูได้ที่หน้า admin</p>
     </div>`;
-  ['wName','wDept','wRole','wNote'].forEach(id=>{
-    const el=document.getElementById(id); if(el) el.addEventListener('input',save);
-  });
+  const noteEl=document.getElementById('wNote'); if(noteEl) noteEl.addEventListener('input',save);
+  applyM365ToForm();
   show('scEnd');
 }
 function reviewCore(){ queue=CORE; idx=0; mode='core'; hide('scEnd'); show('bar'); show('scQ'); showQ(); window.scrollTo(0,0); }
@@ -609,6 +668,7 @@ const SURVEY_API=(()=>{
 })();
 
 async function submitSurvey(){
+  await loadM365Quiet();
   const w=readWho();
   save();
   if(!Object.keys(A.a).length){ toast('ยังไม่มีคำตอบให้ส่ง'); return; }
@@ -629,6 +689,7 @@ async function submitSurvey(){
         starId:A.star||null,
         who:w,
         labels, kinds,
+        m365: m365.upn ? { name:m365.name, email:m365.email, upn:m365.upn, dept:m365.dept, jobTitle:m365.jobTitle } : null,
         website: hp?hp.value:''
       })
     });
@@ -665,6 +726,7 @@ function copySummary(){
 /* ---- เริ่มทำงาน ---- */
 (function init(){
   loadA();
+  void loadM365Quiet();
   if(A.star && !eligibleIds().includes(A.star)) A.star=null;
   document.addEventListener('keydown',e=>{
     const open=document.getElementById('modalWrap').classList.contains('on');

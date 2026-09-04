@@ -77,11 +77,21 @@ export async function POST(req: Request) {
     }
 
     const who = asObject((body as { who?: unknown }).who);
+    const m365 = asObject((body as { m365?: unknown }).m365);
     const saved = await insertSurveyResponse({
       survey_id: surveyId,
-      name: clip(who.wName ?? (body as { name?: string }).name, 120) || null,
-      dept: clip(who.wDept ?? (body as { dept?: string }).dept, 120) || null,
-      role_title: clip(who.wRole ?? (body as { role?: string }).role, 120) || null,
+      name:
+        clip(who.wName ?? (body as { name?: string }).name, 120) ||
+        clip(m365.name, 120) ||
+        null,
+      dept:
+        clip(who.wDept ?? (body as { dept?: string }).dept, 120) ||
+        clip(m365.dept, 120) ||
+        null,
+      role_title:
+        clip(who.wRole ?? (body as { role?: string }).role, 120) ||
+        clip(m365.jobTitle, 120) ||
+        null,
       note: clip(who.wNote ?? (body as { note?: string }).note, 2000) || null,
       star_id: clip((body as { starId?: string }).starId, 40) || null,
       answers: cleanAnswers,
@@ -90,6 +100,17 @@ export async function POST(req: Request) {
         ua: clip(req.headers.get("user-agent"), 240),
         labels: asObject((body as { labels?: unknown }).labels),
         kinds: asObject((body as { kinds?: unknown }).kinds),
+        upn: clip(who.wUpn ?? m365.upn, 120) || null,
+        email: clip(who.wEmail ?? m365.email, 120) || null,
+        m365: Object.keys(m365).length
+          ? {
+              name: clip(m365.name, 120) || null,
+              email: clip(m365.email, 120) || null,
+              upn: clip(m365.upn, 120) || null,
+              dept: clip(m365.dept, 120) || null,
+              jobTitle: clip(m365.jobTitle, 120) || null,
+            }
+          : null,
       },
     });
 

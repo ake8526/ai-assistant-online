@@ -13,7 +13,12 @@ type SurveyRow = {
   star_id: string | null;
   answers: Record<string, number>;
   comments: Record<string, string>;
-  meta: { labels?: Record<string, string>; kinds?: Record<string, string> } | null;
+  meta: {
+    labels?: Record<string, string>;
+    kinds?: Record<string, string>;
+    upn?: string | null;
+    email?: string | null;
+  } | null;
   created_at: string;
 };
 
