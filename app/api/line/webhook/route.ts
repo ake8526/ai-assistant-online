@@ -1520,14 +1520,14 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
         const head = (body.split(/\s+/)[0] || "").toLowerCase();
         if (head === "แบบสอบถาม" || head === "แบบสำรวจ" || head === "survey") {
           const { startLineSurvey } = await import("@/lib/lineSurvey");
-          await startLineSurvey(upn, "reply", ev.replyToken);
+          const surveyLog = await startLineSurvey(upn, "reply", ev.replyToken);
           after(async () => {
             await logChatTurn({
               session_id: upn,
               user_upn: upn,
               channel: "line",
               role: "assistant",
-              content: "แบบสอบถาม · ส่งเชิญเริ่มสำรวจใน LINE",
+              content: surveyLog || "แบบสอบถาม · ส่งเชิญเริ่มสำรวจใน LINE",
               metadata: { intent: "survey_invite" },
             });
           });

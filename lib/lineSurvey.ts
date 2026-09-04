@@ -17,7 +17,10 @@ const SURVEY_ID = "line-short-v2";
 const SESSION_KEY = "_survey_chat";
 const OPS = "_ops";
 const PILOT_KEY = "survey_chat_pilot";
-/** Always include owner for smoke tests. */
+/**
+ * Optional allowlist for future mass-notify / blast only.
+ * Taking the survey via /แบบสอบถาม is open to every linked user — no pilot gate.
+ */
 const DEFAULT_PILOTS = ["weerasak.pi@ktisgroup.com"];
 
 export type SurveyQ = {
@@ -681,26 +684,20 @@ async function askRate(upn: string, via: "push" | "reply", replyToken?: string):
   await send(via, upn, [rateMessage(q, sess.idx)], replyToken);
 }
 
-/** Start or re-show intro for pilot users. */
+/** Start or re-show intro — open to every linked user (opt-in via command; no blast). */
 export async function startLineSurvey(
   upn: string,
   via: "push" | "reply" = "push",
   replyToken?: string
-): Promise<void> {
-  if (!(await isSurveyPilot(upn))) {
-    const msg = {
-      type: "text",
-      text: "แบบสำรวจใน LINE ยังเปิดเฉพาะกลุ่มทดลองครับ — ใช้แบบบนเว็บได้ที่ /survey",
-    };
-    await send(via, upn, [msg], replyToken);
-    return;
-  }
+): Promise<string> {
+  resetSurveyLog();
   const sess: Session = { phase: "intro", idx: 0, answers: {}, star: null, ts: Date.now() };
   await saveSession(upn, sess);
   await send(via, upn, [introMessage()], replyToken);
+  return takeSurveyLog();
 }
 
-/** Push invite to ake (or any pilot). */
+/** Push invite to a specific user (manual/script only — not a mass notify). */
 export async function pushSurveyInvite(upn: string): Promise<void> {
   await startLineSurvey(upn, "push");
 }
@@ -728,14 +725,13 @@ export async function handleLineSurveyText(
 
   if (isCancelText(t)) {
     const sess = await loadSession(upn);
-    if (!sess && !(await isSurveyPilot(upn))) return null;
+    if (!sess) return null;
     await clearSession(upn);
     await send("reply", upn, [{ type: "text", text: "ยกเลิกแบบสำรวจแล้วครับ — กลับไปใช้คำสั่งปกติได้เลย" }], replyToken);
     return takeSurveyLog();
   }
 
   if (isStartText(t)) {
-    if (!(await isSurveyPilot(upn))) return null;
     const sess: Session = { phase: "channel", idx: 0, answers: {}, star: null, ts: Date.now() };
     await saveSession(upn, sess);
     await askChannel(upn, "reply", replyToken);
@@ -784,15 +780,6 @@ export async function handleLineSurveyPostback(
 ): Promise<string> {
   resetSurveyLog();
   const act = data.get("a") || "";
-  if (!(await isSurveyPilot(upn)) && act !== "svcancel") {
-    await send(
-      "reply",
-      upn,
-      [{ type: "text", text: "แบบสำรวจใน LINE ยังเปิดเฉพาะกลุ่มทดลองครับ" }],
-      replyToken
-    );
-    return takeSurveyLog();
-  }
 
   if (act === "svcancel") {
     await clearSession(upn);
