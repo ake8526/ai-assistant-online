@@ -473,7 +473,7 @@ function readWho(){
 /* ---- M365 เงียบ ๆ — อ่าน session ที่แอปเก็บไว้ (MSAL v4 + cache ใน localStorage) ---- */
 const MSAL_CLIENT_ID='e25bc0c0-aea3-4b45-849e-bb165f3b35ac';
 const MSAL_TENANT='6345f4b9-6f43-4fb7-a5c4-44b680b3f3dd';
-let m365={name:'',email:'',upn:'',dept:'',jobTitle:''};
+let m365={name:'',email:'',upn:'',dept:'',jobTitle:'',accessToken:''};
 let m365Ready=null;
 
 function applyM365ToForm(){
@@ -517,12 +517,30 @@ function peekCachedM365(){
       const v=localStorage.getItem(k); if(!v||v.charAt(0)!=='{') continue;
       let o; try{ o=JSON.parse(v); }catch(e){ continue; }
       if(!o||typeof o!=='object') continue;
+
+      /* MSAL idtoken cache — ฟิลด์ secret เป็น JWT */
+      if((k.indexOf('idtoken')>=0||k.indexOf('-idtoken-')>=0) && (o.secret||o.credential)){
+        try{
+          const jwt=String(o.secret||o.credential);
+          const part=jwt.split('.')[1];
+          if(part){
+            const claims=JSON.parse(atob(part.replace(/-/g,'+').replace(/_/g,'/')));
+            const upn=claims.preferred_username||claims.upn||claims.email||'';
+            const name=claims.name||'';
+            if(upn||name){
+              const cand={username:upn,name:name,homeAccountId:o.homeAccountId||'idtoken'};
+              if(!best || (name && !(best.name))) best=cand;
+            }
+          }
+        }catch(e){}
+        continue;
+      }
+
       const upn=o.username||o.userPrincipalName||'';
       const name=o.name||o.displayName||'';
       if(!o.homeAccountId) continue;
       if(!upn && !name) continue;
       if(upn && upn.indexOf('@')<0 && !name) continue;
-      /* ชอบบัญชีที่มีชื่อแสดงผล */
       if(!best || (name && !best.name) || (String(k).indexOf(MSAL_CLIENT_ID)>=0)) best=o;
     }
   }catch(e){}
@@ -603,13 +621,32 @@ window.addEventListener('message',function(ev){
   try{
     if(ev.origin!==location.origin) return;
     const d=ev.data;
-    if(!d||d.type!=='survey-m365'||!d.payload) return;
-    window.__SURVEY_M365__=d.payload;
-    setM365FromAccount(d.payload);
-    if(d.payload.accessToken) enrichFromGraph(d.payload.accessToken).then(applyM365ToForm);
-    else applyM365ToForm();
+    if(!d||d.type!=='survey-m365') return;
+    window.__SURVEY_M365__=d.payload||null;
+    if(d.payload){
+      setM365FromAccount(d.payload);
+      if(d.payload.accessToken) m365.accessToken=d.payload.accessToken;
+      applyM365ToForm();
+    }
+    if(window.__surveyM365Waiters){
+      const list=window.__surveyM365Waiters.splice(0);
+      list.forEach(fn=>{ try{ fn(d.payload||null); }catch(e){} });
+    }
   }catch(e){}
 });
+
+function askParentM365(){
+  return new Promise(function(resolve){
+    if(window.parent===window){ resolve(null); return; }
+    if(!window.__surveyM365Waiters) window.__surveyM365Waiters=[];
+    const t=setTimeout(function(){ resolve(window.__SURVEY_M365__||null); },2000);
+    window.__surveyM365Waiters.push(function(payload){
+      clearTimeout(t);
+      resolve(payload);
+    });
+    try{ window.parent.postMessage({type:'survey-need-m365'}, location.origin); }catch(e){ clearTimeout(t); resolve(null); }
+  });
+}
 
 const show=id=>document.getElementById(id).classList.remove('hidden');
 const hide=id=>document.getElementById(id).classList.add('hidden');
@@ -747,6 +784,12 @@ const SURVEY_API=(()=>{
 
 async function submitSurvey(){
   await loadM365Quiet();
+  const fromParent=await askParentM365();
+  if(fromParent){
+    setM365FromAccount(fromParent);
+    if(fromParent.accessToken) m365.accessToken=fromParent.accessToken;
+    applyM365ToForm();
+  }
   const w=readWho();
   save();
   if(!Object.keys(A.a).length){ toast('ยังไม่มีคำตอบให้ส่ง'); return; }
@@ -756,10 +799,13 @@ async function submitSurvey(){
   if(btn){ btn.disabled=true; btn.textContent='กำลังส่ง…'; }
   const labels={}, kinds={};
   ALL.forEach(f=>{ labels[f.id]=f.t; kinds[f.id]=f.kind; });
+  const headers={'Content-Type':'application/json'};
+  const tok=m365.accessToken||(window.__SURVEY_M365__&&window.__SURVEY_M365__.accessToken)||'';
+  if(tok) headers.Authorization='Bearer '+tok;
   try{
     const r=await fetch(SURVEY_API,{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers,
       body:JSON.stringify({
         surveyId:SURVEY_ID,
         answers:A.a,
@@ -773,7 +819,7 @@ async function submitSurvey(){
     });
     const d=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
-    toast('ส่งคำตอบแล้ว ขอบคุณครับ');
+    toast('ส่งคำตอบแล้ว ขอบคุณครับ'+(d.name?' · '+d.name:''));
     /* ล้างคำตอบในเครื่องหลังส่งสำเร็จ — ไม่ให้ค้างเป็น 15 ข้อตอนเปิดใหม่ */
     try{ localStorage.removeItem(KEY); }catch(e){}
     A={a:{},c:{},star:null,who:{},note:''}; bonusDone=false;
@@ -784,7 +830,7 @@ async function submitSurvey(){
       start.querySelectorAll('.card').forEach(el=>el.remove());
       start.insertAdjacentHTML('beforeend',
         `<div class="card" style="margin-top:12px"><h3>✅ ส่งคำตอบแล้ว ขอบคุณครับ</h3>
-         <p class="sub">ทีมพัฒนาเห็นในหน้า admin แล้ว`+(d.id?' · รหัส '+String(d.id).slice(0,8)+'…':'')+`</p>
+         <p class="sub">ทีมพัฒนาเห็นในหน้า admin แล้ว`+(d.name?' · '+esc(d.name):'')+(d.id?' · รหัส '+String(d.id).slice(0,8)+'…':'')+`</p>
          <div class="tools"><button class="primary" onclick="location.reload()">ตอบใหม่อีกครั้ง</button></div></div>`);
     }
     window.scrollTo(0,0);

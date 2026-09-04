@@ -4,18 +4,15 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 
 /**
- * ห่อแบบสำรวจด้วย MSAL ของแอป — ส่งชื่อ/อีเมลเข้า iframe เงียบ ๆ
- * (ไฟล์ HTML อย่างเดียวใช้ MSAL คนละเวอร์ชันกับแอป จึงอ่าน cache ไม่เจอ)
+ * ห่อแบบสำรวจด้วย MSAL ของแอป — ส่งชื่อ/โทเคนเข้า iframe ตอนโหลดและตอนกดส่ง
  */
 function SurveyShell() {
-  const { ready, account, login, getGraphToken } = useM365Auth();
+  const { ready, account, login, getToken, getGraphToken } = useM365Auth();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [sent, setSent] = useState(false);
 
-  const pushIdentity = useCallback(async () => {
-    const win = iframeRef.current?.contentWindow;
-    if (!win || !account) return;
-
+  const buildPayload = useCallback(async () => {
+    if (!account) return null;
     const payload: Record<string, string> = {
       name: account.name || "",
       username: account.username || "",
@@ -23,12 +20,23 @@ function SurveyShell() {
       email: account.username || "",
     };
 
+    let accessToken = "";
     try {
-      const token = await getGraphToken();
-      if (token) {
+      accessToken = (await getGraphToken()) || (await getToken()) || "";
+    } catch {
+      try {
+        accessToken = (await getToken()) || "";
+      } catch {
+        accessToken = "";
+      }
+    }
+    if (accessToken) payload.accessToken = accessToken;
+
+    if (accessToken) {
+      try {
         const me = await fetch(
           "https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName,jobTitle,department",
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${accessToken}` } }
         ).then((r) => (r.ok ? r.json() : null));
         if (me) {
           if (me.displayName) payload.name = me.displayName;
@@ -39,21 +47,48 @@ function SurveyShell() {
             payload.username = me.userPrincipalName;
           }
           if (me.mail) payload.email = me.mail;
-          payload.accessToken = token;
         }
+      } catch {
+        /* ชื่อจากบัญชีพอ */
       }
-    } catch {
-      /* ชื่อจากบัญชีพอ */
     }
 
+    return payload;
+  }, [account, getGraphToken, getToken]);
+
+  const pushIdentity = useCallback(async () => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win || !account) return;
+    const payload = await buildPayload();
+    if (!payload) return;
     win.postMessage({ type: "survey-m365", payload }, window.location.origin);
     setSent(true);
-  }, [account, getGraphToken]);
+  }, [account, buildPayload]);
 
   useEffect(() => {
     if (!ready || !account) return;
     void pushIdentity();
   }, [ready, account, pushIdentity]);
+
+  useEffect(() => {
+    const onMsg = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      if (!ev.data || ev.data.type !== "survey-need-m365") return;
+      void (async () => {
+        const win = iframeRef.current?.contentWindow;
+        if (!win) return;
+        const payload = await buildPayload();
+        if (!payload) {
+          win.postMessage({ type: "survey-m365", payload: null }, window.location.origin);
+          return;
+        }
+        win.postMessage({ type: "survey-m365", payload }, window.location.origin);
+        setSent(true);
+      })();
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [buildPayload]);
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#eef2f5" }}>
@@ -65,15 +100,17 @@ function SurveyShell() {
             padding: "12px 16px",
             fontFamily: "system-ui",
             fontSize: 13,
-            background: "#fff",
-            borderBottom: "1px solid #e2e8f0",
+            background: "#fff7ed",
+            borderBottom: "1px solid #fed7aa",
             display: "flex",
             gap: 10,
             alignItems: "center",
             flexWrap: "wrap",
           }}
         >
-          <span style={{ color: "#475569" }}>ล็อกอิน Microsoft 365 เพื่อติดชื่อผู้ตอบอัตโนมัติ (ไม่บังคับ)</span>
+          <span style={{ color: "#9a3412", fontWeight: 600 }}>
+            ยังไม่ได้ล็อกอิน — กดเข้าสู่ระบบก่อนส่ง จะได้ติดชื่อในผลสำรวจ
+          </span>
           <button
             type="button"
             onClick={() => void login()}
@@ -87,7 +124,7 @@ function SurveyShell() {
               cursor: "pointer",
             }}
           >
-            เข้าสู่ระบบ
+            เข้าสู่ระบบ Microsoft 365
           </button>
         </div>
       ) : (
@@ -96,13 +133,14 @@ function SurveyShell() {
             padding: "8px 16px",
             fontFamily: "system-ui",
             fontSize: 12,
-            color: "#64748b",
-            background: "#fff",
-            borderBottom: "1px solid #e2e8f0",
+            color: "#0f766e",
+            background: "#ecfdf5",
+            borderBottom: "1px solid #a7f3d0",
+            fontWeight: 600,
           }}
         >
           ตอบในชื่อ {account.name || account.username}
-          {sent ? " · บันทึกอัตโนมัติตอนส่ง" : ""}
+          {sent ? " · จะบันทึกชื่อนี้ตอนกดส่ง" : ""}
         </div>
       )}
       <iframe
