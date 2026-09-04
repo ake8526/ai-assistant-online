@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="th">
 <head>
 <meta charset="utf-8">
@@ -102,16 +102,16 @@ h1{font-size:22px;margin:0 0 6px;letter-spacing:-.02em}
   <div>
     <div class="badge">PROTOTYPE · LINE CHAT SURVEY</div>
     <h1>แบบสำรวจใน LINE — กดเล่นผ่านแชท</h1>
-    <p class="sub">จำลองว่าพนักงานตอบแบบสำรวจในแชท OA จริง: บอทส่งคำถาม → กดปุ่มคะแนน (Quick Reply) หรือแตะการ์ด → เลือกดาว → ส่งคำตอบ<br>
-    <b>ยังไม่ใช่ LINE จริง</b> แต่ flow นี้เอาไปทำ Flex Message + Quick Reply ใน OA ได้เลย</p>
+    <p class="sub">จำลองแชท OA จริง: <b>ลองกดคำสั่งตัวอย่างก่อน</b> → ให้คะแนน → เลือกดาว → ส่งคำตอบ<br>
+    กด “ลองตัวอย่างคำถาม” จะได้เห็นเดโมคำสั่งในแชทก่อนเริ่มทั้งชุด</p>
 
     <div class="side">
       <h2>วิธีลอง</h2>
       <ol>
-        <li>กดปุ่มเขียวใต้แชท หรือพิมพ์ <b>เริ่มสำรวจ</b></li>
-        <li>อ่านคำถาม แล้วกดคะแนน 0–5</li>
+        <li>กด <b>ลองตัวอย่างคำถาม</b> เพื่อเห็นว่าคำสั่งตอบยังไง</li>
+        <li>หรือกด <b>เริ่มสำรวจ</b> — แต่ละข้อมีปุ่มลองคำสั่งก่อนให้คะแนน</li>
         <li>จบแล้วเลือก 1 เรื่องที่อยากให้ทำก่อน (ดาว)</li>
-        <li>กด <b>ส่งคำตอบ</b> — ถ้าอยู่บนโดเมนจริงจะยิงเข้า API เดียวกับแบบเว็บ</li>
+        <li>กด <b>ส่งคำตอบ</b> เข้าสู่ระบบได้เหมือนแบบเว็บ</li>
       </ol>
       <p class="foot">
         หน้ารายงาน: <a href="/monitor/survey">/monitor/survey</a><br>
@@ -124,21 +124,51 @@ h1{font-size:22px;margin:0 0 6px;letter-spacing:-.02em}
 
 <script>
 const Q=[
-{id:'q1',kind:'มีอยู่แล้ว',t:'ถามตารางนัดของตัวเอง',what:'พิมพ์ถามปฏิทิน Outlook ของตัวเองด้วยภาษาพูด'},
-{id:'q2',kind:'มีอยู่แล้ว',t:'ดูว่าคนอื่นว่างไหม',what:'ถามตารางเพื่อนร่วมงานด้วยชื่อเล่น/ชื่อจริง'},
-{id:'q3',kind:'มีอยู่แล้ว',t:'นัดประชุม · หาเวลาว่าง · จองห้อง',what:'หาช่วงว่างตรงกัน จองห้อง ส่งคำเชิญใน LINE'},
-{id:'q4',kind:'มีอยู่แล้ว',t:'สรุปประชุมให้เอง พร้อมงานที่ต้องตาม',what:'สรุป Teams + ดึงงานที่ตกลงกันออกมา'},
-{id:'q5',kind:'มีอยู่แล้ว',t:'ดูงานค้าง + ปิดงาน + ซิงค์ Microsoft To Do',what:'ดูงานค้าง ปิดด้วยเลข ซิงค์ To Do'},
-{id:'q6',kind:'มีอยู่แล้ว',t:'ค้นและสรุปไฟล์ใน OneDrive',what:'ค้นไฟล์จากมือถือ แล้วให้สรุปเนื้อหา'},
-{id:'q7',kind:'มีอยู่แล้ว',t:'บรีฟเช้า — สรุปทั้งวันก่อนเริ่มงาน',what:'ทุกเช้าส่งนัด+งานค้างให้อัตโนมัติ'},
-{id:'q8',kind:'มีอยู่แล้ว',t:'เตือนก่อนประชุม & แจ้งเมื่อมีนัดใหม่',what:'เตือนก่อนประชุม และบอกเมื่อมีนัดใหม่'},
-{id:'q9',kind:'มีอยู่แล้ว',t:'สรุปข่าวที่ติดตาม',what:'สรุปข่าวจากแหล่งที่เลือก เป็นภาษาไทย'},
-{id:'q10',kind:'ทดลองแล้ว',t:'สั่งงานด้วยเสียง',what:'อัดเสียงแทนพิมพ์ — ยังไม่เปิดใน LINE OA'},
-{id:'q12',kind:'ทดลองแล้ว',t:'ถาม-ตอบระเบียบและคู่มือภายในองค์กร',what:'ถามระเบียบบริษัทเป็นภาษาพูด — ยังไม่มีคลังเอกสาร'},
-{id:'b1',kind:'ทดลองแล้ว',t:'ถ่ายรูปเอกสาร แล้วให้กลายเป็นงาน',what:'OCR จากรูป → รายการงาน — ยังไม่เปิด'},
-{id:'b4',kind:'มีอยู่แล้ว',t:'“วันนี้ไปไม่ไหว” — จัดการนัดทั้งวันทีเดียว',what:'ลาป่วยแล้วแจ้ง/ยกเลิกนัดทั้งวันในครั้งเดียว'},
-{id:'b7',kind:'มีอยู่แล้ว',t:'สรุป “ตอนที่คุณไม่อยู่”',what:'กลับจากลาแล้วถามว่าช่วงนั้นมีอะไรบ้าง'},
-{id:'b6',kind:'มีอยู่แล้ว',t:'รายงานสรุปประจำสัปดาห์',what:'สรุปสัปดาห์นี้ / ส่งเองทุกศุกร์'}
+{id:'q1',kind:'มีอยู่แล้ว',t:'ถามตารางนัดของตัวเอง',what:'พิมพ์ถามปฏิทิน Outlook ด้วยภาษาพูด',
+ say:'ตารางวันนี้',
+ demo:[{u:'ตารางวันนี้',b:'🗓️ ประชุมวันนี้ (3 รายการ):\n\n  09:00-09:30 · Daily stand-up IT 💻\n  13:30-15:00 · ทบทวนงบลงทุน Q4 📍 ห้อง KTISX\n  16:00-16:30 · คุยผู้รับเหมา'}]},
+{id:'q2',kind:'มีอยู่แล้ว',t:'ดูว่าคนอื่นว่างไหม',what:'ถามตารางเพื่อนร่วมงานด้วยชื่อเล่น',
+ say:'ดูตารางเบสพรุ่งนี้',
+ demo:[{u:'ดูตารางเบสพรุ่งนี้',b:'🗓️ ตารางของ เบส — พรุ่งนี้\n  09:00-10:00 · ประชุมฝ่ายผลิต\n  15:00-16:00 · สัมภาษณ์พนักงานใหม่\n\nช่วงว่าง: 10:00-15:00 · หลัง 16:00'}]},
+{id:'q3',kind:'มีอยู่แล้ว',t:'นัดประชุม · หาเวลาว่าง · จองห้อง',what:'หาช่วงว่างตรงกัน จองห้อง ส่งคำเชิญ',
+ say:'หาเวลาที่เบสกับนนท์ว่างตรงกันวันจันทร์',
+ demo:[{u:'หาเวลาที่เบสกับนนท์ว่างตรงกันวันจันทร์',b:'🟢 ช่วงที่ว่างตรงกันทุกคน — จันทร์\n1) 10:00-11:00\n2) 13:30-15:00\n3) 16:00-17:00\n\nแตะเลขเพื่อจองได้ครับ'}]},
+{id:'q4',kind:'มีอยู่แล้ว',t:'สรุปประชุมให้เอง พร้อมงานที่ต้องตาม',what:'สรุป Teams + ดึงงานที่ตกลงกัน',
+ say:'สรุปประชุม',
+ demo:[{u:'สรุปประชุม',b:'🧾 สรุปพร้อมแล้ว — “ทบทวนงบลงทุน Q4”\n• อนุมัติกรอบงบ 12 ล้าน\n✅ งานที่ต้องตาม 3 งาน'}]},
+{id:'q5',kind:'มีอยู่แล้ว',t:'ดูงานค้าง + ปิดงาน + ซิงค์ To Do',what:'ดูงานค้าง ปิดด้วยเลข ซิงค์ To Do',
+ say:'ดูงานที่ต้องติดตาม',
+ demo:[{u:'ดูงานที่ต้องติดตาม',b:'✅ งานที่ต้องติดตาม (4 งาน)\n1. ⚠️ ส่งตัวเลขค่าไฟ — เลยกำหนด\n2. ประเมินค่าลิขสิทธิ์ — ศุกร์\n3. ทำสลิปการประชุม — พรุ่งนี้\n\nพิมพ์ “ปิดงาน 1” เพื่อปิดได้'}]},
+{id:'q6',kind:'มีอยู่แล้ว',t:'ค้นและสรุปไฟล์ใน OneDrive',what:'ค้นไฟล์แล้วให้สรุปเนื้อหา',
+ say:'หาไฟล์ งบ Q3',
+ demo:[{u:'หาไฟล์ งบ Q3',b:'📂 เจอ 2 ไฟล์\n1) งบลงทุน Q3-2568.xlsx\n2) สรุปงบ Q3 ฝ่ายผลิต.pdf\n\nพิมพ์ “สรุปอัน 1” เพื่อให้อ่านสรุป'}]},
+{id:'q7',kind:'มีอยู่แล้ว',t:'บรีฟเช้า',what:'ทุกเช้าส่งนัด+งานค้างให้อัตโนมัติ',
+ say:'สรุปตารางเช้า',
+ demo:[{u:'สรุปตารางเช้า',b:'☀️ สวัสดีตอนเช้าครับ\nวันนี้มี 3 นัด · งานเลยกำหนด 1 งาน'}]},
+{id:'q8',kind:'มีอยู่แล้ว',t:'เตือนก่อนประชุม & นัดใหม่',what:'เตือนก่อนประชุม และบอกเมื่อมีนัดใหม่',
+ say:'(ระบบส่งให้เอง)',
+ demo:[{u:'ตัวอย่างการแจ้งเตือน',b:'🔔 อีก 15 นาทีจะถึงประชุม\nทบทวนงบลงทุน Q4\n🕐 13:30-15:00 · ห้อง KTISX'}]},
+{id:'q9',kind:'มีอยู่แล้ว',t:'สรุปข่าวที่ติดตาม',what:'สรุปข่าวจากแหล่งที่เลือก',
+ say:'ข่าววันนี้',
+ demo:[{u:'ข่าววันนี้',b:'📰 ข่าววันนี้ — 2 เรื่อง\n1) ราคาน้ำตาลขึ้น 2.1%\n2) ครม. เคาะช่วยเหลือชาวไร่'}]},
+{id:'q10',kind:'ทดลองแล้ว',t:'สั่งงานด้วยเสียง',what:'อัดเสียงแทนพิมพ์ — ยังไม่เปิดใน LINE',
+ say:'🎙 (ข้อความเสียง)',
+ demo:[{u:'🎙 ข้อความเสียง 0:06',b:'ถอดเสียงได้ว่า:\n“เพิ่มงานส่งรายงานค่าไฟให้เบส ศุกร์นี้”\nถูกต้องไหมครับ\n\n⚠️ ตัวอย่างเมื่อเปิดใช้แล้ว'}]},
+{id:'q12',kind:'ทดลองแล้ว',t:'ถาม-ตอบระเบียบองค์กร',what:'ถามระเบียบบริษัท — ยังไม่มีคลังเอกสาร',
+ say:'เบิกค่าเดินทางใช้เอกสารอะไรบ้าง',
+ demo:[{u:'เบิกค่าเดินทางใช้เอกสารอะไรบ้าง',b:'📚 ตามระเบียบข้อ 4.2 ต้องแนบใบเสร็จ + กจ.03\n\n⚠️ ตัวอย่างเมื่อมีคลังเอกสารแล้ว'}]},
+{id:'b1',kind:'ทดลองแล้ว',t:'ถ่ายรูปแล้วให้กลายเป็นงาน',what:'OCR จากรูป → งาน — ยังไม่เปิด',
+ say:'📷 (รูปถ่าย)',
+ demo:[{u:'📷 [รูป] ไวท์บอร์ด.jpg',b:'อ่านได้ 6 บรรทัด — จะสร้างเป็นรายการงานไหมครับ?\n\n⚠️ ตัวอย่างเมื่อเปิดใช้แล้ว'}]},
+{id:'b4',kind:'มีอยู่แล้ว',t:'“วันนี้ไปไม่ไหว”',what:'ลาป่วยแล้วจัดการนัดทั้งวันทีเดียว',
+ say:'วันนี้ลาป่วย จัดการนัดให้ที',
+ demo:[{u:'วันนี้ลาป่วย จัดการนัดให้ที',b:'🤒 วันนี้มี 2 นัดที่เกี่ยวข้อง\nจะแจ้ง 3 คน · ยกเลิกได้ 1 นัดที่คุณเป็นผู้จัด\nยังไม่ทำอะไรจนกว่าจะกดยืนยัน'}]},
+{id:'b7',kind:'มีอยู่แล้ว',t:'สรุปตอนที่คุณไม่อยู่',what:'กลับจากลาแล้วถามว่าช่วงนั้นมีอะไร',
+ say:'ช่วงที่ผมไม่อยู่มีอะไรบ้าง',
+ demo:[{u:'ช่วงที่ผมไม่อยู่มีอะไรบ้าง',b:'📋 สรุปช่วงที่ไม่อยู่\n🗓 ประชุมพลาด 2 · ✅ งานใหม่ 2 · 📥 นัดใหม่ 1'}]},
+{id:'b6',kind:'มีอยู่แล้ว',t:'รายงานสรุปประจำสัปดาห์',what:'สรุปสัปดาห์นี้ / ส่งเองทุกศุกร์',
+ say:'สรุปสัปดาห์นี้',
+ demo:[{u:'สรุปสัปดาห์นี้',b:'📈 สัปดาห์นี้\n🗓 ประชุม 11 นัด · ✅ ปิดงาน 3 จาก 5 · ค้าง 4 งาน'}]}
 ];
 
 const SCALE=[
@@ -162,7 +192,8 @@ const API=(()=>{
 
 let answers={};
 let star=null;
-let idx=-1; // -1 = intro, 0..Q.length-1 = questions, Q.length = star, Q.length+1 = done
+let idx=-1;
+let phase='intro'; /* intro | try | rate | star | done */
 let busy=false;
 
 const chatEl=()=>document.getElementById('chat');
@@ -170,7 +201,7 @@ const qrEl=()=>document.getElementById('qr');
 const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-function save(){ try{ localStorage.setItem(KEY,JSON.stringify({answers,star,idx})); }catch(e){} }
+function save(){ try{ localStorage.setItem(KEY,JSON.stringify({answers,star,idx,phase})); }catch(e){} }
 function load(){
   try{
     const raw=localStorage.getItem(KEY); if(!raw) return;
@@ -190,7 +221,7 @@ function addMe(t){ return addHtml(`<div class="row me"><div class="bub me">${esc
 function addDiv(t){ return addHtml(`<div class="divd">${esc(t)}</div>`); }
 async function typing(){
   const el=addHtml(`<div class="row"><div class="bav">AI</div><div class="typing"><i></i><i></i><i></i></div></div>`);
-  await sleep(550+Math.random()*350);
+  await sleep(450+Math.random()*280);
   el.remove();
 }
 
@@ -209,16 +240,14 @@ function setQR(btns){
 
 function setProg(){
   const el=document.getElementById('prog');
-  const n=Object.keys(answers).length;
   if(idx<0) el.textContent='เริ่ม';
-  else if(idx<Q.length) el.textContent=`${idx+1}/${Q.length}`;
+  else if(idx<Q.length) el.textContent=`${idx+1}/${Q.length}`+(phase==='try'?' · ลอง':phase==='rate'?' · ให้คะแนน':'');
   else if(idx===Q.length) el.textContent='เลือกดาว';
-  else el.textContent=`ส่งแล้ว ${n}`;
+  else el.textContent='ส่ง';
 }
 
 function kindPill(kind){
   if(kind==='ทดลองแล้ว') return '<span class="pill proto">ทดลองแล้ว</span>';
-  if(kind==='ข้อเสนอ') return '<span class="pill idea">ข้อเสนอ</span>';
   return '<span class="pill">มีแล้ว</span>';
 }
 
@@ -228,7 +257,7 @@ function addQuestionCard(q, num){
       <div class="tx"><b>${esc(s.label)}</b></div><div class="ar">›</div>
     </button>`).join('');
   const el=addHtml(`<div class="row"><div class="bav">AI</div><div class="card">
-    <div class="hd"><b>ข้อ ${num}/${Q.length} · ${esc(q.t)}</b><small>${esc(q.what)}</small></div>
+    <div class="hd"><b>ข้อ ${num}/${Q.length} · ให้คะแนน</b><small>${esc(q.t)}</small></div>
     <div class="bd">
       <div class="tagrow">${kindPill(q.kind)}</div>
       ${rows}
@@ -244,16 +273,16 @@ function addStarCard(){
   const max=Math.max(...scored.map(q=>answers[q.id]),0);
   const elig=scored.filter(q=>answers[q.id]===max && max>0);
   if(!elig.length){
-    addBot('ยังไม่มีคะแนนให้เลือกดาวครับ — พิมพ์ “เริ่มสำรวจ” เพื่อตอบใหม่');
+    addBot('ยังไม่มีคะแนนให้เลือกดาวครับ');
     setQR([{label:'เริ่มสำรวจ',value:'__start__'}]);
     return;
   }
   const rows=elig.map(q=>`
     <button type="button" class="crow" data-id="${q.id}" data-label="${esc(q.t)}">
-      <div class="tx"><b>⭐ ${esc(q.t)}</b><small>${esc(q.kind)} · คะแนน ${answers[q.id]}</small></div><div class="ar">›</div>
+      <div class="tx"><b>⭐ ${esc(q.t)}</b><small>คะแนน ${answers[q.id]}</small></div><div class="ar">›</div>
     </button>`).join('');
   const el=addHtml(`<div class="row"><div class="bav">AI</div><div class="card">
-    <div class="hd"><b>เลือก 1 เรื่องที่อยากให้ทำก่อน</b><small>เลือกได้เฉพาะเรื่องที่ให้คะแนนสูงสุด (${max})</small></div>
+    <div class="hd"><b>เลือก 1 เรื่องที่อยากให้ทำก่อน</b><small>เฉพาะเรื่องที่ได้คะแนนสูงสุด (${max})</small></div>
     <div class="bd">${rows}</div>
   </div></div>`);
   el.querySelectorAll('.crow').forEach(btn=>{
@@ -263,38 +292,66 @@ function addStarCard(){
 }
 
 async function bootIntro(){
-  idx=-1; setProg();
+  idx=-1; phase='intro'; setProg();
   await typing();
-  addBot('สวัสดีครับ 🙏\nขอรบกวนตอบแบบสำรวจสั้น ๆ ว่าอยากได้ฟังก์ชันไหนใน LINE มากที่สุด\n\nประมาณ 15 ข้อ · กดปุ่มอย่างเดียว ไม่ต้องพิมพ์ยาว\n\nกด “เริ่มสำรวจ” ด้านล่างได้เลยครับ');
+  addBot('สวัสดีครับ 🙏\nขอรบกวนตอบแบบสำรวจสั้น ๆ ว่าอยากได้ฟังก์ชันไหนใน LINE มากที่สุด\n\nประมาณ 15 ข้อ · ลองกดคำสั่งตัวอย่างก่อน แล้วค่อยให้คะแนน\n\nกด “เริ่มสำรวจ” หรือ “ลองตัวอย่างคำถาม” ได้เลยครับ');
   setQR([
     {label:'เริ่มสำรวจ', value:'__start__'},
-    {label:'ดูตัวอย่างคำถาม', value:'__peek__'}
+    {label:'ลองตัวอย่างคำถาม', value:'__peek__'}
   ]);
 }
 
-async function askNext(){
+/** ขั้นลองคำสั่งก่อนให้คะแนน */
+async function askTry(){
   if(idx>=Q.length){ await askStar(); return; }
   const q=Q[idx];
-  setProg();
+  phase='try'; setProg(); save();
   await typing();
+  addBot(`ข้อ ${idx+1}/${Q.length} · ${q.t}\n${q.what}\n\n${kindPill(q.kind).replace(/<[^>]+>/g,'')==='ทดลองแล้ว'?'⚠️ ':'✅ '}สถานะ: ${q.kind}\n\nลองกดคำสั่งตัวอย่างด้านล่างก่อนได้ครับ`);
+  const cmd=q.say||(q.demo&&q.demo[0]&&q.demo[0].u)||'ลองคำสั่ง';
+  setQR([
+    {label:'➤ '+cmd, value:'__try__'},
+    {label:'ข้ามไปให้คะแนน', value:'__skiptry__'}
+  ]);
+}
+
+async function runDemo(q){
+  const steps=q.demo||[];
+  if(!steps.length){
+    await typing();
+    addBot('ข้อนี้ยังไม่มีเดโมคำสั่ง — ให้คะแนนได้เลยครับ');
+    return;
+  }
+  for(const st of steps){
+    if(st.u){ addMe(st.u); await sleep(280); }
+    if(st.b){ await typing(); addBot(st.b); await sleep(200); }
+  }
+}
+
+async function askRate(){
+  if(idx>=Q.length){ await askStar(); return; }
+  const q=Q[idx];
+  phase='rate'; setProg(); save();
+  await typing();
+  addBot('ทดลองแล้ว — อยากได้ฟังก์ชันนี้แค่ไหนครับ?');
   addQuestionCard(q, idx+1);
   setQR(SCALE.map(s=>({label:s.label, value:String(s.v)})));
 }
 
 async function askStar(){
-  idx=Q.length; setProg();
+  idx=Q.length; phase='star'; setProg();
   await typing();
-  addBot('ขอบคุณที่ตอบครบแล้วครับ 🎉\nเลือก 1 เรื่องที่อยากให้ทีมพัฒนาทำให้สมบูรณ์ก่อนได้เลย');
-  await sleep(200);
+  addBot('ขอบคุณที่ตอบครบแล้วครับ 🎉\nเลือก 1 เรื่องที่อยากให้ทำก่อนได้เลย');
+  await sleep(150);
   addStarCard();
 }
 
 async function finishReady(){
-  idx=Q.length+1; setProg();
+  idx=Q.length+1; phase='done'; setProg();
   await typing();
   const n=Object.keys(answers).length;
   const starQ=Q.find(x=>x.id===star);
-  addBot(`สรุปแล้ว ${n} ข้อ`+(starQ?`\n⭐ ทำก่อน: ${starQ.t}`:'')+`\n\nกด “ส่งคำตอบ” เพื่อบันทึกเข้าสู่ระบบ (เหมือนแบบเว็บ)`);
+  addBot(`สรุปแล้ว ${n} ข้อ`+(starQ?`\n⭐ ทำก่อน: ${starQ.t}`:'')+`\n\nกด “ส่งคำตอบ” เพื่อบันทึก`);
   setQR([
     {label:'ส่งคำตอบ', value:'__submit__'},
     {label:'ตอบใหม่', value:'__reset__'}
@@ -307,25 +364,57 @@ async function handleTap(value, label){
   try{
     if(value==='__start__' || value==='เริ่มสำรวจ'){
       addMe(label||'เริ่มสำรวจ');
-      answers={}; star=null; idx=0; save();
+      answers={}; star=null; idx=0; phase='try'; save();
       setQR([]);
-      await sleep(300);
-      await askNext();
+      await sleep(250);
+      await askTry();
       return;
     }
     if(value==='__peek__'){
-      addMe(label||'ดูตัวอย่าง');
+      addMe(label||'ลองตัวอย่างคำถาม');
+      setQR([]);
       await typing();
-      addBot('ตัวอย่างคำถาม:\n• '+Q.slice(0,3).map(q=>q.t).join('\n• ')+'\n\n…และอีก '+(Q.length-3)+' ข้อ');
+      addBot('นี่คือตัวอย่างคำถามข้อแรก — กดคำสั่งแล้วจะเห็นคำตอบจำลองในแชท');
+      const q=Q[0];
+      await sleep(200);
+      await runDemo(q);
+      await typing();
+      addBot('ประมาณนี้ครับ · พร้อมเริ่มทำแบบสำรวจทั้งชุดไหม?');
+      setQR([
+        {label:'เริ่มสำรวจ', value:'__start__'},
+        {label:'ลองตัวอย่างอีกข้อ', value:'__peek2__'}
+      ]);
+      return;
+    }
+    if(value==='__peek2__'){
+      addMe(label||'ลองอีกข้อ');
+      setQR([]);
+      await runDemo(Q[1]);
+      await typing();
+      addBot('พร้อมเริ่มทั้งชุดได้เลยครับ');
       setQR([{label:'เริ่มสำรวจ', value:'__start__'}]);
+      return;
+    }
+    if(value==='__try__'){
+      const q=Q[idx];
+      setQR([]);
+      await runDemo(q);
+      await sleep(200);
+      await askRate();
+      return;
+    }
+    if(value==='__skiptry__'){
+      addMe(label||'ข้ามไปให้คะแนน');
+      setQR([]);
+      await askRate();
       return;
     }
     if(value==='__reset__' || value==='ล้าง'){
       addMe(label||'ล้าง');
-      answers={}; star=null; idx=-1; save();
+      answers={}; star=null; idx=-1; phase='intro'; save();
       try{ localStorage.removeItem(KEY); }catch(e){}
       setQR([]);
-      await sleep(200);
+      await sleep(150);
       chatEl().innerHTML='';
       await bootIntro();
       return;
@@ -341,39 +430,38 @@ async function handleTap(value, label){
       star=id; save();
       addMe(label||'เลือกดาว');
       setQR([]);
-      await sleep(250);
+      await sleep(200);
       await finishReady();
       return;
     }
 
-    // score answer
-    if(idx>=0 && idx<Q.length && /^-?\d+$/.test(String(value))){
+    if(phase==='rate' && idx>=0 && idx<Q.length && /^-?\d+$/.test(String(value))){
       const v=parseInt(value,10);
       const q=Q[idx];
       answers[q.id]=v; save();
       addMe(label||SCALE.find(s=>s.v===v)?.label||String(v));
       setQR([]);
-      await sleep(280);
+      await sleep(220);
       await typing();
       const ack=v>=5?'รับทราบครับ — อยากได้มาก 🔥':v>=4?'จดไว้แล้วครับ 👍':v>=3?'รับทราบครับ':v<=0?'โอเคครับ จะไม่เร่งอันนี้':'รับทราบครับ';
       addBot(ack+(idx+1<Q.length?'\nต่อไปข้อถัดไป…':'\nเหลือเลือกดาวอีกนิดเดียว'));
       idx+=1; save(); setProg();
-      await sleep(350);
-      await askNext();
+      await sleep(280);
+      await askTry();
       return;
     }
 
-    // free text fallbacks
     const t=String(value).trim();
     addMe(t);
-    if(/เริ่ม|สำรวจ|survey/i.test(t)){
-      setQR([]); answers={}; star=null; idx=0; save(); await askNext(); return;
+    if(/เริ่ม|สำรวจ/i.test(t)){
+      setQR([]); answers={}; star=null; idx=0; await askTry(); return;
     }
     await typing();
-    addBot('กดปุ่มใต้แชทได้เลยครับ หรือพิมพ์ “เริ่มสำรวจ”');
-    if(idx<0) setQR([{label:'เริ่มสำรวจ',value:'__start__'}]);
-    else if(idx<Q.length) setQR(SCALE.map(s=>({label:s.label,value:String(s.v)})));
-    else if(idx===Q.length) addStarCard();
+    addBot('กดปุ่มใต้แชทได้เลยครับ');
+    if(idx<0) setQR([{label:'เริ่มสำรวจ',value:'__start__'},{label:'ลองตัวอย่างคำถาม',value:'__peek__'}]);
+    else if(phase==='try') setQR([{label:'➤ '+(Q[idx].say||'ลอง'),value:'__try__'},{label:'ข้ามไปให้คะแนน',value:'__skiptry__'}]);
+    else if(phase==='rate') setQR(SCALE.map(s=>({label:s.label,value:String(s.v)})));
+    else if(phase==='star') addStarCard();
     else setQR([{label:'ส่งคำตอบ',value:'__submit__'},{label:'ตอบใหม่',value:'__reset__'}]);
   } finally {
     busy=false;
@@ -402,14 +490,14 @@ async function submitNow(){
     const d=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
     await typing();
-    addBot('✅ ส่งเรียบร้อยแล้ว ขอบคุณมากครับ\nทีมพัฒนาเห็นในหน้า admin ได้เลย'+(d.id?'\nรหัส '+String(d.id).slice(0,8)+'…':''));
+    addBot('✅ ส่งเรียบร้อยแล้ว ขอบคุณมากครับ'+(d.id?'\nรหัส '+String(d.id).slice(0,8)+'…':''));
     try{ localStorage.removeItem(KEY); }catch(e){}
-    answers={}; star=null; idx=-1; save();
+    answers={}; star=null; idx=-1; phase='intro'; save();
     setQR([{label:'ตอบใหม่อีกครั้ง', value:'__start__'}]);
     setProg();
   }catch(e){
     await typing();
-    addBot('ส่งไม่สำเร็จ: '+String(e.message||e).slice(0,80)+'\n\nลองใหม่ได้ หรือเปิดแบบเว็บที่ /survey');
+    addBot('ส่งไม่สำเร็จ: '+String(e.message||e).slice(0,80));
     setQR([{label:'ส่งอีกครั้ง',value:'__submit__'},{label:'ตอบใหม่',value:'__reset__'}]);
   }
 }
