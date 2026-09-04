@@ -683,6 +683,18 @@ function showQ(){
       <span class="sp">ตอบแล้ว ${Object.keys(A.a).length} ข้อ</span>
     </div>`;
   playSteps(q.sc);
+  scrollToDemo();
+}
+function scrollToDemo(){
+  const el=document.querySelector('#scQ .phone')||document.getElementById('scQ');
+  requestAnimationFrame(()=>{
+    if(el){
+      const top=el.getBoundingClientRect().top+window.scrollY-10;
+      window.scrollTo({top:Math.max(0,top),behavior:'smooth'});
+    }else{
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+  });
 }
 function replay(){ playSteps(queue[idx].sc); }
 function prevQ(){ if(idx>0){ idx--; showQ(); } }
