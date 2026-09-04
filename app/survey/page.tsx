@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { M365AuthProvider, useM365Auth } from "@/components/M365AuthProvider";
 
 /**
@@ -61,7 +61,6 @@ function SurveyShell() {
     const payload = await buildPayload();
     if (!payload) return;
     win.postMessage({ type: "survey-m365", payload }, window.location.origin);
-    setSent(true);
   }, [account, buildPayload]);
 
   useEffect(() => {
@@ -82,7 +81,6 @@ function SurveyShell() {
           return;
         }
         win.postMessage({ type: "survey-m365", payload }, window.location.origin);
-        setSent(true);
       })();
     };
     window.addEventListener("message", onMsg);
