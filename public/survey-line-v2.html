@@ -185,7 +185,7 @@ footer{text-align:center;font-size:11.5px;color:var(--ink3);padding:6px 0 10px}
       <div class="chips">
         <div>⏱ ~15 ข้อ · ประมาณ 4 นาที</div>
         <div>👆 ตอบด้วยการกดปุ่ม ไม่ต้องพิมพ์</div>
-        <div>🔒 คำตอบอยู่ในเครื่องคุณ</div>
+        <div>☁ ส่งเข้าสู่ระบบเมื่อกดส่ง</div>
       </div>
       <button onclick="start()">เริ่มเลย →</button>
     </div>
@@ -773,13 +773,21 @@ async function submitSurvey(){
     });
     const d=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
-    A.submittedAt=new Date().toISOString();
-    A.submittedId=d.id||null;
-    save();
     toast('ส่งคำตอบแล้ว ขอบคุณครับ');
-    const note=document.getElementById('submitNote');
-    if(note) note.innerHTML='✅ ส่งคำตอบเรียบร้อยแล้ว'+(d.id?' (รหัส '+String(d.id).slice(0,8)+'…)':'')+' — ทีมพัฒนาเห็นในหน้า admin แล้ว';
-    if(btn){ btn.textContent='✓ ส่งแล้ว'; }
+    /* ล้างคำตอบในเครื่องหลังส่งสำเร็จ — ไม่ให้ค้างเป็น 15 ข้อตอนเปิดใหม่ */
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    A={a:{},c:{},star:null,who:{},note:''}; bonusDone=false;
+    hide('scEnd'); hide('bar'); hide('scQ');
+    const start=document.getElementById('scStart');
+    show('scStart');
+    if(start){
+      start.querySelectorAll('.card').forEach(el=>el.remove());
+      start.insertAdjacentHTML('beforeend',
+        `<div class="card" style="margin-top:12px"><h3>✅ ส่งคำตอบแล้ว ขอบคุณครับ</h3>
+         <p class="sub">ทีมพัฒนาเห็นในหน้า admin แล้ว`+(d.id?' · รหัส '+String(d.id).slice(0,8)+'…':'')+`</p>
+         <div class="tools"><button class="primary" onclick="location.reload()">ตอบใหม่อีกครั้ง</button></div></div>`);
+    }
+    window.scrollTo(0,0);
   }catch(e){
     toast('ส่งไม่สำเร็จ — '+String(e.message||e).slice(0,80));
     if(btn){ btn.disabled=false; btn.textContent='ส่งคำตอบให้ทีมพัฒนา'; }

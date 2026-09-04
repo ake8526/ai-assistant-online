@@ -39,7 +39,7 @@ const CSS = `
 .msv button:disabled{opacity:.5;cursor:default}
 .msv .stat{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .msv .pill{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:13px}
-.msv .pill b{display:block;font-size:20px;font-weight:700;color:var(--brand)}
+.msv .pill b{display:block;font-size:20px;font-weight:700;color:var(--brand);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msv .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
 .msv .who{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
 .msv .who strong{font-size:15px}
@@ -189,7 +189,7 @@ function SurveyAdmin({ getToken }: { getToken: () => Promise<string | null> }) {
             แสดงในหน้านี้
           </div>
           <div className="pill">
-            <b>{starCounts[0]?.label?.slice(0, 18) || "—"}</b>
+            <b title={starCounts[0]?.label || undefined}>{starCounts[0]?.label || "—"}</b>
             ดาวสูงสุด ({starCounts[0]?.n || 0})
           </div>
         </div>
