@@ -159,7 +159,7 @@ function SurveyAdmin({ getToken }: { getToken: () => Promise<string | null> }) {
         <h1>ผลสำรวจฟังก์ชัน LINE</h1>
         <p className="sub">
           คำตอบที่พนักงานกดส่งจากแบบสำรวจ ·{" "}
-          <a href="/survey-line-v2.html" target="_blank" rel="noreferrer">
+          <a href="/survey" target="_blank" rel="noreferrer">
             เปิดแบบสำรวจ
           </a>{" "}
           · <a href="/monitor">ห้องทำงาน</a> · <a href="/monitor/admin">สิทธิ์</a>

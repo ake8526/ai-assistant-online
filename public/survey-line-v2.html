@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>แบบสำรวจ LINE v2 — อยากได้อันไหนมากที่สุด</title>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@4.30.0/lib/msal-browser.min.js"></script>
 <style>
 :root{
   --bg:#eef2f5; --panel:#fff; --ink:#0f172a; --ink2:#475569; --ink3:#94a3b8;
@@ -470,14 +470,14 @@ function readWho(){
   };
 }
 
-/* ---- M365 เงียบ ๆ — ถ้าเคยล็อกอินแอปนี้บนเครื่องนี้ ดึงชื่อมาใส่โดยไม่ถาม ---- */
+/* ---- M365 เงียบ ๆ — อ่าน session ที่แอปเก็บไว้ (MSAL v4 + cache ใน localStorage) ---- */
 const MSAL_CLIENT_ID='e25bc0c0-aea3-4b45-849e-bb165f3b35ac';
 const MSAL_TENANT='6345f4b9-6f43-4fb7-a5c4-44b680b3f3dd';
 let m365={name:'',email:'',upn:'',dept:'',jobTitle:''};
 let m365Ready=null;
 
 function applyM365ToForm(){
-  if(!m365.name&&!m365.dept&&!m365.jobTitle) return;
+  if(!m365.name&&!m365.upn&&!m365.email&&!m365.dept&&!m365.jobTitle) return;
   if(!A.who) A.who={};
   if(m365.name && !A.who.wName) A.who.wName=m365.name;
   if(m365.dept && !A.who.wDept) A.who.wDept=m365.dept;
@@ -487,51 +487,130 @@ function applyM365ToForm(){
   try{ save(); }catch(e){}
 }
 
+function setM365FromAccount(acct){
+  if(!acct) return false;
+  const name=acct.name||acct.displayName||(acct.idTokenClaims&&(acct.idTokenClaims.name||acct.idTokenClaims.preferred_username))||'';
+  const upn=acct.username||acct.userPrincipalName||(acct.idTokenClaims&&(acct.idTokenClaims.preferred_username||acct.idTokenClaims.upn||acct.idTokenClaims.email))||'';
+  const email=acct.mail||acct.email||upn||'';
+  if(!name&&!upn) return false;
+  if(name) m365.name=name;
+  if(upn) m365.upn=upn;
+  if(email) m365.email=email;
+  if(acct.department) m365.dept=acct.department;
+  if(acct.jobTitle) m365.jobTitle=acct.jobTitle;
+  return true;
+}
+
+/** อ่านบัญชีจาก localStorage โดยตรง — ไม่พึ่ง MSAL version บนหน้านี้ */
+function peekCachedM365(){
+  try{
+    const dev=localStorage.getItem('dev_m365_account');
+    if(dev){
+      const a=JSON.parse(dev);
+      if(a&&(a.username||a.name)) return a;
+    }
+  }catch(e){}
+  let best=null;
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i); if(!k) continue;
+      const v=localStorage.getItem(k); if(!v||v.charAt(0)!=='{') continue;
+      let o; try{ o=JSON.parse(v); }catch(e){ continue; }
+      if(!o||typeof o!=='object') continue;
+      const upn=o.username||o.userPrincipalName||'';
+      const name=o.name||o.displayName||'';
+      if(!o.homeAccountId) continue;
+      if(!upn && !name) continue;
+      if(upn && upn.indexOf('@')<0 && !name) continue;
+      /* ชอบบัญชีที่มีชื่อแสดงผล */
+      if(!best || (name && !best.name) || (String(k).indexOf(MSAL_CLIENT_ID)>=0)) best=o;
+    }
+  }catch(e){}
+  return best;
+}
+
+async function enrichFromGraph(accessToken){
+  if(!accessToken) return;
+  try{
+    const me=await fetch('https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName,jobTitle,department',{
+      headers:{Authorization:'Bearer '+accessToken}
+    }).then(r=>r.ok?r.json():null);
+    if(!me) return;
+    if(me.displayName) m365.name=me.displayName;
+    if(me.department) m365.dept=me.department;
+    if(me.jobTitle) m365.jobTitle=me.jobTitle;
+    if(me.userPrincipalName) m365.upn=me.userPrincipalName;
+    if(me.mail) m365.email=me.mail;
+  }catch(e){}
+}
+
 async function loadM365Quiet(){
   if(m365Ready) return m365Ready;
   m365Ready=(async()=>{
-    if(typeof msal==='undefined') return;
-    if(location.protocol!=='http:'&&location.protocol!=='https:') return;
+    /* 1) ข้อความจากหน้า /survey (React + MSAL ของแอป) */
     try{
-      const pca=new msal.PublicClientApplication({
-        auth:{
-          clientId:MSAL_CLIENT_ID,
-          authority:'https://login.microsoftonline.com/'+MSAL_TENANT,
-          redirectUri:location.origin
-        },
-        cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}
-      });
-      await pca.initialize();
-      let acct=pca.getActiveAccount()||pca.getAllAccounts()[0]||null;
-      if(!acct){
-        try{
-          const silent=await pca.ssoSilent({scopes:['openid','profile','User.Read']});
-          acct=silent.account;
-          if(acct) pca.setActiveAccount(acct);
-        }catch(e){ /* ไม่มี session — เงียบไว้ ไม่เด้งล็อกอิน */ }
-      }
-      if(!acct) return;
-      m365.name=acct.name||'';
-      m365.email=acct.username||'';
-      m365.upn=acct.username||'';
-      try{
-        const tok=await pca.acquireTokenSilent({scopes:['User.Read'],account:acct});
-        const me=await fetch('https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName,jobTitle,department',{
-          headers:{Authorization:'Bearer '+tok.accessToken}
-        }).then(r=>r.ok?r.json():null);
-        if(me){
-          if(me.displayName) m365.name=me.displayName;
-          if(me.department) m365.dept=me.department;
-          if(me.jobTitle) m365.jobTitle=me.jobTitle;
-          if(me.userPrincipalName) m365.upn=me.userPrincipalName;
-          if(me.mail) m365.email=me.mail;
-        }
-      }catch(e){ /* มีชื่อจากบัญชีพอแล้ว */ }
+      if(window.__SURVEY_M365__) setM365FromAccount(window.__SURVEY_M365__);
+    }catch(e){}
+
+    /* 2) แกะ cache ที่แอป (MSAL v4) เขียนไว้ */
+    setM365FromAccount(peekCachedM365());
+
+    if(location.protocol!=='http:'&&location.protocol!=='https:'){
       applyM365ToForm();
-    }catch(e){ /* ไม่พังแบบสำรวจ */ }
+      return;
+    }
+
+    /* 3) ลอง MSAL บนหน้านี้ — รองรับทั้ง global จาก CDN v2/v4 */
+    try{
+      const MsalLib=window.msal||window.msalBrowser;
+      const Ctor=MsalLib&&MsalLib.PublicClientApplication;
+      if(typeof Ctor==='function'){
+        const pca=new Ctor({
+          auth:{
+            clientId:MSAL_CLIENT_ID,
+            authority:'https://login.microsoftonline.com/'+MSAL_TENANT,
+            redirectUri:location.origin
+          },
+          cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}
+        });
+        if(pca.initialize) await pca.initialize();
+        let acct=(pca.getActiveAccount&&pca.getActiveAccount())||null;
+        const all=pca.getAllAccounts?pca.getAllAccounts():[];
+        if(!acct&&all&&all.length) acct=all[0];
+        if(!acct){
+          try{
+            const silent=await pca.ssoSilent({scopes:['openid','profile','User.Read']});
+            acct=silent&&silent.account;
+            if(acct&&pca.setActiveAccount) pca.setActiveAccount(acct);
+          }catch(e){}
+        }
+        if(acct){
+          setM365FromAccount(acct);
+          try{
+            const tok=await pca.acquireTokenSilent({scopes:['User.Read'],account:acct});
+            await enrichFromGraph(tok&&tok.accessToken);
+          }catch(e){}
+        }
+      }
+    }catch(e){}
+
+    applyM365ToForm();
   })();
   return m365Ready;
 }
+
+window.addEventListener('message',function(ev){
+  try{
+    if(ev.origin!==location.origin) return;
+    const d=ev.data;
+    if(!d||d.type!=='survey-m365'||!d.payload) return;
+    window.__SURVEY_M365__=d.payload;
+    setM365FromAccount(d.payload);
+    if(d.payload.accessToken) enrichFromGraph(d.payload.accessToken).then(applyM365ToForm);
+    else applyM365ToForm();
+  }catch(e){}
+});
+
 const show=id=>document.getElementById(id).classList.remove('hidden');
 const hide=id=>document.getElementById(id).classList.add('hidden');
 
@@ -688,7 +767,7 @@ async function submitSurvey(){
         starId:A.star||null,
         who:w,
         labels, kinds,
-        m365: m365.upn ? { name:m365.name, email:m365.email, upn:m365.upn, dept:m365.dept, jobTitle:m365.jobTitle } : null,
+        m365: (m365.upn||m365.name||m365.email) ? { name:m365.name, email:m365.email, upn:m365.upn, dept:m365.dept, jobTitle:m365.jobTitle } : null,
         website: hp?hp.value:''
       })
     });
