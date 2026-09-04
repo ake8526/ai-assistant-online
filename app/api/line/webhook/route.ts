@@ -14,6 +14,7 @@ import {
   handleLineSurveyPostback,
   handleLineSurveyText,
   isSurveyAction,
+  surveyActionLabel,
 } from "@/lib/lineSurvey";
 import { getNewsPrefs, loadNewsDraft } from "@/lib/newsPrefs";
 import { getSetting, setSetting, deleteSetting, savePendingLineLocation, logChatTurn } from "@/lib/store";
@@ -1512,18 +1513,21 @@ async function handleTextMessage(ev: LineEvent): Promise<void> {
     }
 
     // LINE chat survey (pilot) — before RSVP so short confirms / taps stay in survey
-    if (await handleLineSurveyText(upn, text, ev.replyToken)) {
-      after(async () => {
-        await logChatTurn({
-          session_id: upn,
-          user_upn: upn,
-          channel: "line",
-          role: "assistant",
-          content: "(แบบสำรวจ LINE)",
-          metadata: { intent: "survey_chat" },
+    {
+      const surveyLog = await handleLineSurveyText(upn, text, ev.replyToken);
+      if (surveyLog !== null) {
+        after(async () => {
+          await logChatTurn({
+            session_id: upn,
+            user_upn: upn,
+            channel: "line",
+            role: "assistant",
+            content: surveyLog,
+            metadata: { intent: "survey_chat" },
+          });
         });
-      });
-      return;
+        return;
+      }
     }
 
     // Meeting RSVP / reschedule by text — before news onboarding
@@ -1800,8 +1804,10 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     trace("receive", `กดปุ่ม: ${act || "?"}`);
 
     // Log incoming user postback action synchronously
+    const surveyLabel = isSurveyAction(act) ? surveyActionLabel(act, data) : null;
     const userActionText =
       ev.postback?.displayText ||
+      surveyLabel ||
       (act === "canceldraft"
         ? "ยกเลิกการนัด"
         : act === "rmppl"
@@ -1836,14 +1842,14 @@ async function handlePostback(ev: LineEvent): Promise<void> {
 
     // LINE chat survey (pilot) — before meeting/booking so taps stay in survey
     if (isSurveyAction(act)) {
-      await handleLineSurveyPostback(upn, data, ev.replyToken);
+      const surveyLog = await handleLineSurveyPostback(upn, data, ev.replyToken);
       after(async () => {
         await logChatTurn({
           session_id: upn,
           user_upn: upn,
           channel: "line",
           role: "assistant",
-          content: "(แบบสำรวจ LINE)",
+          content: surveyLog,
           metadata: { intent: "survey_chat", action: act },
         });
       });

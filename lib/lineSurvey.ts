@@ -369,6 +369,7 @@ async function send(
   messages: object[],
   replyToken?: string
 ): Promise<void> {
+  noteSurveyLog(summarizeMessages(messages));
   if (via === "reply" && replyToken) {
     await replyLineMessages(replyToken, messages.slice(0, 5));
     return;
@@ -376,6 +377,110 @@ async function send(
   const lineId = await getLineId(upn);
   if (!lineId) throw new Error("ยังไม่ได้เชื่อม LINE");
   await pushLineMessages(lineId, messages.slice(0, 5));
+}
+
+/** Readable label for monitor/chat_logs when user taps a survey postback. */
+export function surveyActionLabel(act: string, data: URLSearchParams): string | null {
+  switch (act) {
+    case "svstart":
+      return "เริ่มสำรวจ";
+    case "svcancel":
+      return "ยกเลิกแบบสำรวจ";
+    case "svline":
+      return "ตอบในแชท LINE";
+    case "svweb":
+      return "เปิดแบบบนเว็บ";
+    case "svtry":
+      return "ลองคำสั่งตัวอย่าง";
+    case "svskip":
+      return "ให้คะแนนเลย";
+    case "svsubmit":
+      return "ส่งคำตอบแบบสำรวจ";
+    case "svagain":
+      return "เริ่มสำรวจใหม่";
+    case "svrate": {
+      const v = parseInt(data.get("v") || "", 10);
+      const s = SCALE.find((x) => x.v === v);
+      return s ? `ให้คะแนน: ${scaleLabel(s)}` : `ให้คะแนน: ${data.get("v") || "?"}`;
+    }
+    case "svstar": {
+      const id = decodeURIComponent(data.get("id") || "");
+      const q = SURVEY_Q.find((x) => x.id === id);
+      return q ? `เลือกดาว: ${q.t}` : "เลือกดาว";
+    }
+    default:
+      return null;
+  }
+}
+
+let lastSurveyLog = "";
+
+function resetSurveyLog() {
+  lastSurveyLog = "";
+}
+
+function noteSurveyLog(s: string) {
+  const t = (s || "").trim();
+  if (!t) return;
+  lastSurveyLog = lastSurveyLog ? `${lastSurveyLog}\n——\n${t}` : t;
+}
+
+/** Consume the last survey reply summary for chat_logs. */
+export function takeSurveyLog(): string {
+  const s = lastSurveyLog.trim() || "(แบบสำรวจ LINE)";
+  lastSurveyLog = "";
+  return s.slice(0, 4000);
+}
+
+function summarizeMessages(messages: object[]): string {
+  const parts: string[] = [];
+  for (const raw of messages) {
+    const m = raw as {
+      type?: string;
+      text?: string;
+      altText?: string;
+      contents?: unknown;
+      template?: { text?: string; type?: string };
+    };
+    if (m.type === "text" && m.text) {
+      parts.push(m.text);
+      continue;
+    }
+    if (m.type === "flex") {
+      parts.push(summarizeFlex(m.altText || "", m.contents));
+      continue;
+    }
+    if (m.type === "template") {
+      parts.push(m.altText || m.template?.text || "[ปุ่มลิงก์]");
+      continue;
+    }
+  }
+  return parts.join("\n\n");
+}
+
+function summarizeFlex(altText: string, contents: unknown): string {
+  const c = contents as {
+    header?: { contents?: { text?: string }[] };
+    body?: { contents?: unknown };
+  } | null;
+  if (!c) return altText || "[การ์ด]";
+  const title = c.header?.contents?.[0]?.text || altText || "การ์ด";
+  const sub = c.header?.contents?.[1]?.text || "";
+  const texts: string[] = [];
+  const walk = (node: unknown) => {
+    if (!node) return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node !== "object") return;
+    const o = node as { type?: string; text?: string; contents?: unknown };
+    if (o.type === "text" && o.text) texts.push(o.text);
+    if (o.contents) walk(o.contents);
+  };
+  walk(c.body?.contents);
+  const uniq = [...new Set(texts)].slice(0, 14);
+  return [`[การ์ด] ${title}`, sub, ...uniq].filter(Boolean).join("\n");
 }
 
 function introMessage(): object {
@@ -610,72 +715,74 @@ function isStartText(text: string): boolean {
 
 /**
  * Text handler — call early (before RSVP) when pilot starts, or whenever session is active.
- * Returns true if consumed.
+ * Returns assistant log text if consumed, otherwise null.
  */
 export async function handleLineSurveyText(
   upn: string,
   text: string,
   replyToken: string
-): Promise<boolean> {
+): Promise<string | null> {
+  resetSurveyLog();
   const t = (text || "").trim();
-  if (!t) return false;
+  if (!t) return null;
 
   if (isCancelText(t)) {
     const sess = await loadSession(upn);
-    if (!sess && !(await isSurveyPilot(upn))) return false;
+    if (!sess && !(await isSurveyPilot(upn))) return null;
     await clearSession(upn);
     await send("reply", upn, [{ type: "text", text: "ยกเลิกแบบสำรวจแล้วครับ — กลับไปใช้คำสั่งปกติได้เลย" }], replyToken);
-    return true;
+    return takeSurveyLog();
   }
 
   if (isStartText(t)) {
-    if (!(await isSurveyPilot(upn))) return false;
+    if (!(await isSurveyPilot(upn))) return null;
     const sess: Session = { phase: "channel", idx: 0, answers: {}, star: null, ts: Date.now() };
     await saveSession(upn, sess);
     await askChannel(upn, "reply", replyToken);
-    return true;
+    return takeSurveyLog();
   }
 
   const sess = await loadSession(upn);
-  if (!sess) return false;
+  if (!sess) return null;
   // Active survey: don't leak into RSVP / booking / LLM
   if (sess.phase === "intro") {
     await send("reply", upn, [introMessage()], replyToken);
-    return true;
+    return takeSurveyLog();
   }
   if (sess.phase === "channel") {
     // User may have opened web via URI — don't trap free-text forever
     await send("reply", upn, [channelMessage()], replyToken);
-    return true;
+    return takeSurveyLog();
   }
   if (sess.phase === "try") {
     const q = SURVEY_Q[sess.idx];
     if (q) await send("reply", upn, [tryMessage(q, sess.idx)], replyToken);
     else await askTry(upn, "reply", replyToken);
-    return true;
+    return takeSurveyLog();
   }
   if (sess.phase === "rate") {
     const q = SURVEY_Q[sess.idx];
     if (q) await send("reply", upn, [rateMessage(q, sess.idx)], replyToken);
     else await askRate(upn, "reply", replyToken);
-    return true;
+    return takeSurveyLog();
   }
   if (sess.phase === "star") {
     await send("reply", upn, [starMessage(sess)], replyToken);
-    return true;
+    return takeSurveyLog();
   }
   if (sess.phase === "done") {
     await send("reply", upn, [doneMessage(sess)], replyToken);
-    return true;
+    return takeSurveyLog();
   }
-  return true;
+  return takeSurveyLog();
 }
 
 export async function handleLineSurveyPostback(
   upn: string,
   data: URLSearchParams,
   replyToken: string
-): Promise<void> {
+): Promise<string> {
+  resetSurveyLog();
   const act = data.get("a") || "";
   if (!(await isSurveyPilot(upn)) && act !== "svcancel") {
     await send(
@@ -684,24 +791,24 @@ export async function handleLineSurveyPostback(
       [{ type: "text", text: "แบบสำรวจใน LINE ยังเปิดเฉพาะกลุ่มทดลองครับ" }],
       replyToken
     );
-    return;
+    return takeSurveyLog();
   }
 
   if (act === "svcancel") {
     await clearSession(upn);
     await send("reply", upn, [{ type: "text", text: "ยกเลิกแบบสำรวจแล้วครับ" }], replyToken);
-    return;
+    return takeSurveyLog();
   }
 
   if (act === "svagain") {
     await clearSession(upn);
     await startLineSurvey(upn, "reply", replyToken);
-    return;
+    return takeSurveyLog();
   }
 
   if (act === "svstart") {
     await askChannel(upn, "reply", replyToken);
-    return;
+    return takeSurveyLog();
   }
 
   if (act === "svline") {
@@ -719,7 +826,7 @@ export async function handleLineSurveyPostback(
       replyToken
     );
     await askTry(upn, "push");
-    return;
+    return takeSurveyLog();
   }
 
   if (act === "svweb") {
@@ -736,20 +843,20 @@ export async function handleLineSurveyPostback(
       ],
       replyToken
     );
-    return;
+    return takeSurveyLog();
   }
 
   let sess = await loadSession(upn);
   if (!sess) {
     await startLineSurvey(upn, "reply", replyToken);
-    return;
+    return takeSurveyLog();
   }
 
   if (act === "svtry") {
     const q = SURVEY_Q[sess.idx];
     if (!q) {
       await askTry(upn, "reply", replyToken);
-      return;
+      return takeSurveyLog();
     }
     const demoCmd = q.demoU || q.say || "ตัวอย่างคำสั่ง";
     const demoAns = clip(q.demoB || "(ตัวอย่าง)", 4500);
@@ -766,57 +873,58 @@ export async function handleLineSurveyPostback(
     );
     // follow-up rate via push (reply token already used)
     await askRate(upn, "push");
-    return;
+    return takeSurveyLog();
   }
 
   if (act === "svskip") {
     await askRate(upn, "reply", replyToken);
-    return;
+    return takeSurveyLog();
   }
 
   if (act === "svrate") {
     const v = parseInt(data.get("v") || "", 10);
     if (!Number.isFinite(v) || v < 0 || v > 5) {
       await askRate(upn, "reply", replyToken);
-      return;
+      return takeSurveyLog();
     }
     const q = SURVEY_Q[sess.idx];
     if (!q) {
       await askTry(upn, "reply", replyToken);
-      return;
+      return takeSurveyLog();
     }
     sess.answers[q.id] = v;
     sess.idx += 1;
     await saveSession(upn, sess);
     const ack =
       v >= 5 ? "รับทราบครับ — อยากได้มาก 🔥" : v >= 4 ? "จดไว้แล้วครับ 👍" : v <= 0 ? "โอเคครับ จะไม่เร่งอันนี้" : "รับทราบครับ";
+    const scored = `${ack}\n(บันทึก: ข้อ ${q.id} · ${q.t} → ${v}/5)`;
     if (sess.idx >= SURVEY_Q.length) {
       sess.phase = "star";
       await saveSession(upn, sess);
-      await send("reply", upn, [{ type: "text", text: ack + "\nเหลือเลือกดาวอีกนิดเดียว" }, starMessage(sess)], replyToken);
-      return;
+      await send("reply", upn, [{ type: "text", text: scored + "\nเหลือเลือกดาวอีกนิดเดียว" }, starMessage(sess)], replyToken);
+      return takeSurveyLog();
     }
-    await send("reply", upn, [{ type: "text", text: ack + "\nต่อไปข้อถัดไป…" }], replyToken);
+    await send("reply", upn, [{ type: "text", text: scored + "\nต่อไปข้อถัดไป…" }], replyToken);
     await askTry(upn, "push");
-    return;
+    return takeSurveyLog();
   }
 
   if (act === "svstar") {
     const id = decodeURIComponent(data.get("id") || "");
     if (!SURVEY_Q.some((q) => q.id === id)) {
       await send("reply", upn, [starMessage(sess)], replyToken);
-      return;
+      return takeSurveyLog();
     }
     sess.star = id;
     sess.phase = "done";
     await saveSession(upn, sess);
     await send("reply", upn, [doneMessage(sess)], replyToken);
-    return;
+    return takeSurveyLog();
   }
 
   if (act === "svsubmit") {
     await submitSession(upn, sess, replyToken);
-    return;
+    return takeSurveyLog();
   }
 
   // unknown — re-prompt
@@ -826,6 +934,7 @@ export async function handleLineSurveyPostback(
   else if (sess.phase === "star") await send("reply", upn, [starMessage(sess)], replyToken);
   else if (sess.phase === "done") await send("reply", upn, [doneMessage(sess)], replyToken);
   else await startLineSurvey(upn, "reply", replyToken);
+  return takeSurveyLog();
 }
 
 async function submitSession(upn: string, sess: Session, replyToken: string): Promise<void> {
