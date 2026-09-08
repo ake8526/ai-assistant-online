@@ -19,6 +19,13 @@ export interface Story {
   kind: "rss" | "youtube" | "facebook";
   /** Natural bullet points (หัวข้อย่อย) — preferred display form. */
   bullets: string[];
+  /**
+   * ข่าวที่เล่าเป็นเรื่องเดียวจบ ตั้งแต่เริ่มจนจบ — รูปแบบหลักของหน้าอ่านข่าว
+   *
+   * หัวข้อย่อยตอบได้แค่ "มีอะไรบ้าง" แต่ไม่เคยตอบว่า "แล้วมันจบยังไง" คนอ่าน
+   * ต้องเอาแต่ละข้อมาต่อกันเอง ซึ่งเป็นงานที่เราควรทำให้เสร็จก่อนส่ง
+   */
+  story?: string;
   /** @deprecated kept for older clients; prefer bullets */
   whatHappened: string;
   cause: string;
@@ -62,6 +69,46 @@ function storyBullets(s: Story): string[] {
   return [s.whatHappened, s.cause, s.progress, s.conclusion].filter((b) => (b || "").trim());
 }
 
+/**
+ * เก็บกวาดความเรียงก่อนเอาไปแสดง
+ *
+ * ถึงจะสั่งไปแล้วว่าห้ามถามกลับ โมเดลก็ยังชอบปิดท้ายด้วย "อยากให้สรุปเพิ่มไหม"
+ * อยู่ดี ซึ่งบนหน้าเว็บที่ตอบกลับไม่ได้ยิ่งดูประหลาด จึงตัดประโยคปิดท้ายแบบนั้น
+ * ทิ้งด้วยโค้ดอีกชั้น และดึงขีดนำหน้าบรรทัดออกเผื่อมันแอบเขียนเป็นหัวข้อย่อย
+ */
+export function cleanNarrative(text: string): string {
+  let t = (text || "").replace(/\r/g, "").trim();
+  if (!t) return "";
+  t = t
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:[-•*—–]|\d+[.)])\s+/, "").trim())
+    .join("\n");
+  const lines = t.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const cleaned = lines.map((para) => {
+    const sentences = para.split(/(?<=[.!?。ๆ])\s+/);
+    while (sentences.length > 1) {
+      const last = sentences[sentences.length - 1]!.trim();
+      const asks =
+        /[?？]\s*$/.test(last) ||
+        /(อยากให้|ต้องการให้|สนใจให้|ให้ผม|ให้ฉัน).{0,40}(สรุป|ขยาย|เล่า|อธิบาย|หา)/.test(last) ||
+        /(บอกได้เลย|แจ้งได้เลย|ถามเพิ่มได้|สอบถามเพิ่มเติม)/.test(last);
+      if (!asks) break;
+      sentences.pop();
+    }
+    return sentences.join(" ").trim();
+  });
+  return cleaned.filter(Boolean).join("\n\n").trim();
+}
+
+/** ประโยคแรก ๆ ของความเรียง เอาไว้ให้ฝั่งที่ยังแสดงเป็นข้อ ๆ ใช้ */
+function narrativeSentences(text: string, max = 4): string[] {
+  return (text || "")
+    .split(/(?<=[.!?。])\s+|\n+/)
+    .map((x) => x.trim())
+    .filter((x) => x.length > 12)
+    .slice(0, max);
+}
+
 /** Drop meta lines that admit there is no content (common LLM failure mode). */
 function isHollowBullet(b: string): boolean {
   const t = b.trim();
@@ -98,11 +145,18 @@ function clipComplete(text: string, max = 320): string {
 }
 
 function cleanBullet(b: string): string {
-  return (b || "")
-    .replace(/\s+/g, " ")
-    .replace(/\[\.\.\.\]/g, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  return (
+    (b || "")
+      .replace(/\s+/g, " ")
+      .replace(/\[\.\.\.\]/g, "")
+      /* WordPress ต่อท้ายทุกบทความใน RSS ว่า "The post <ชื่อ> appeared first on <เว็บ>"
+         พอดึงเนื้อหาต้นฉบับไม่ได้ ประโยคนี้จะกลายเป็นตัวข่าวเสียเอง — เคยโผล่บน
+         หน้าอ่านข่าวจริงว่า "The post พร้อมรับมหกรรมพืชสวนโลก appeared first on ." */
+      .replace(/The post .*?appeared first on[^.]*\.?/gi, " ")
+      .replace(/อ่านต่อที่|อ่านข่าวต้นฉบับ|ที่มา\s*:\s*$/gi, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+  );
 }
 
 function isPaywalledSnippet(s: string): boolean {
@@ -626,7 +680,13 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
     trace("fetch", `📰 ข้าม ${unreadable.length} เรื่อง · อ่านต้นฉบับไม่ได้`);
   }
   trace("fetch", `📰 อ่านบทความ · ${withText.length} เรื่อง`);
-  type StorySummary = { headline?: string; points?: string[]; blurb?: string; bullets?: string[] };
+  type StorySummary = {
+    headline?: string;
+    story?: string;
+    points?: string[];
+    blurb?: string;
+    bullets?: string[];
+  };
   const summaries: Record<string, StorySummary> = {};
 
   const similarToTitle = (text: string, title: string) => {
@@ -642,29 +702,34 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
     return hit / tokens.length >= 0.7;
   };
 
+  /* เดิมสั่งให้ตอบเป็นหัวข้อย่อย 3–5 ข้อ ซึ่งอ่านแล้วได้เป็นชิ้น ๆ ไม่ได้เรื่อง
+     ที่ปะติดปะต่อกัน ตอนนี้ขอเป็นการเล่าเรื่องเดียวจบ เหมือนคนอ่านข่าวมาแล้ว
+     มาเล่าให้ฟัง — ยังเก็บ points ไว้เป็นทางถอยเผื่อรุ่นไหนไม่ยอมเล่ายาว */
   const NEWS_WRITER_SYSTEM =
-    "คุณเป็นบรรณาธิการสรุปข่าวให้หัวหน้าอ่านบน LINE เป็นภาษาไทย\n" +
-    "เป้าหมาย: อ่านแล้วรู้ว่าเกิดอะไร สำคัญยังไง มีตัวเลข/ผลกระทบอะไร — ห้ามแค่เขียนหัวข่าวใหม่\n" +
+    "คุณอ่านข่าวมาแล้วมาเล่าให้หัวหน้าฟังเป็นภาษาไทย\n" +
+    "เล่าให้จบเป็นเรื่องเดียว: เรื่องนี้เริ่มจากอะไร เกิดอะไรขึ้นระหว่างทาง แล้วตอนนี้จบลงตรงไหน\n" +
     "ตอบ JSON เท่านั้น โดยใช้เลขตาม # ที่ให้มา:\n" +
-    '{"0":{"headline":"...","points":["...","..."]},"1":{...}}\n' +
+    '{"0":{"headline":"...","story":"..."},"1":{...}}\n' +
     "กติกา:\n" +
     "- ทุกฟิลด์เป็นภาษาไทย (ยกเว้นชื่อเฉพาะ/ตัวเลข)\n" +
-    "- headline = 1 ประโยค สรุปเหตุการณ์จริงจากเนื้อหา + ทำไมควรรู้ (ห้ามคัดลอก/พาราเฟรสหัวข้อข่าว)\n" +
-    "- points = 3–5 ข้อ จากเนื้อหา: ข้อเท็จจริง ตัวเลข สาเหตุ/ผลกระทบ สิ่งที่ต้องจับตา\n" +
-    "- แต่ละ point เป็นประโยคสมบูรณ์ มีสาระ ไม่ซ้ำ headline และไม่ใช่ประโยคกลางๆ\n" +
-    "- ถ้าเนื้อหายาวพอ ห้ามสรุปสั้นเหลือ 1–2 บรรทัดลอยๆ\n" +
+    "- headline = 1 ประโยค บอกว่าเกิดอะไรขึ้น (ห้ามคัดลอก/พาราเฟรสหัวข้อข่าว)\n" +
+    "- story = ความเรียงเล่าเรื่อง 4–8 ประโยค ร้อยต่อกันเป็นย่อหน้าเดียวหรือสองย่อหน้า\n" +
+    "  ใส่ชื่อคน หน่วยงาน ตัวเลข วันเวลา และผลกระทบตามที่มีในเนื้อหา\n" +
+    "  เขียนแบบเล่าให้ฟัง ไม่ใช่หัวข้อย่อย ไม่ใช้ขีดนำหน้าบรรทัด\n" +
+    "- ห้ามลงท้ายด้วยคำถามย้อนกลับ ห้ามชวนให้ถามต่อ ห้ามเสนอว่าจะสรุปเพิ่ม\n" +
     "- ห้ามเขียนว่า “ไม่มีรายละเอียด…” “ไม่ระบุ…” เด็ดขาด\n" +
-    "- ห้ามแต่งตัวเลข/เหตุการณ์ที่ไม่มีในเนื้อหา";
+    "- ห้ามแต่งตัวเลข/เหตุการณ์ที่ไม่มีในเนื้อหา — เนื้อหามีเท่าไหร่เล่าเท่านั้น";
 
   const YT_WRITER_SYSTEM =
     "คุณสรุปคลิป YouTube ให้หัวหน้าอ่านบน LINE เป็นภาษาไทย\n" +
     "เป้าหมาย: อ่านแล้วรู้ว่าคลิปนี้พูด/เล่า/โชว์อะไร เป็นเรื่องเกี่ยวกับอะไร โดยไม่ต้องเปิดดู\n" +
     "ตอบ JSON เท่านั้น:\n" +
-    '{"0":{"headline":"...","points":["...","..."]}}\n' +
+    '{"0":{"headline":"...","story":"..."}}\n' +
     "กติกา:\n" +
     "- ใช้ถอดเสียง/ซับไตเติลเป็นหลัก ถ้ามี — คำบรรยายเป็นข้อมูลเสริม\n" +
     "- headline = คลิปนี้เกี่ยวกับอะไรใน 1 ประโยค (ห้ามคัดลอกชื่อคลิป)\n" +
-    "- points = 3–5 ข้อ: ประเด็นหลักที่พูดในคลิป ข้อเท็จจริง/ตัวอย่างที่ยก มุมสรุปท้ายคลิป\n" +
+    "- story = ความเรียง 4–8 ประโยค เล่าว่าคลิปเปิดเรื่องยังไง พูดถึงอะไรบ้าง แล้วสรุปว่าอะไร\n" +
+    "  เขียนแบบเล่าให้ฟัง ไม่ใช่หัวข้อย่อย และห้ามลงท้ายด้วยคำถามย้อนกลับ\n" +
     "- ห้ามสรุปเป็นแค่ชื่อช่อง/โปรโมต/ลิงก์โซเชียล\n" +
     "- ถ้ามีแค่ชื่อคลิป: บอกตรงๆ ใน headline ว่าข้อมูลไม่พอสรุปสาระ แล้ว points 1 ข้อจากชื่อเท่านั้น\n" +
     "- ห้ามเดาสาระที่ไม่มีในถอดเสียง/คำบรรยาย";
@@ -754,13 +819,18 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
       const s = summaries[String(row.i)];
       const hl = String(s?.headline || "").trim();
       const pts = (s?.points || s?.bullets || []).filter((b) => String(b || "").trim());
+      const narrative = String(s?.story || "").trim();
       const bodyLen = (row.it.full || row.it.summary || "").length;
-      const weak = !hl || similarToTitle(hl, row.it.title) || (bodyLen > 400 && pts.length < 2);
+      /* เนื้อหายาวแต่เล่ากลับมาสั้นจู๋ = ยังไม่ได้เล่า ให้ลองใหม่รอบเดียว */
+      const weak =
+        !hl ||
+        similarToTitle(hl, row.it.title) ||
+        (bodyLen > 400 && narrative.length < 180 && pts.length < 2);
       if (weak) {
         await summarizeBatch(
           [row],
           NEWS_WRITER_SYSTEM +
-            "\n\nรอบแก้: ห้ามเขียนคล้ายหัวข้อ — ต้องบอกว่าเกิดอะไร มีใครเกี่ยวข้อง ตัวเลข/ผลกระทบจากเนื้อหา อย่างน้อย 3 points",
+            "\n\nรอบแก้: ห้ามเขียนคล้ายหัวข้อ — ต้องเล่าว่าเกิดอะไร มีใครเกี่ยวข้อง ตัวเลข/ผลกระทบจากเนื้อหา ให้ครบเป็นเรื่องเดียวจบ",
           true
         );
       }
@@ -772,6 +842,7 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
   for (let i = 0; i < withText.length; i++) {
     const it = withText[i];
     const s = summaries[String(i)] || {};
+    const narrative = cleanNarrative(String(s.story || ""));
     const headline = cleanBullet(String(s.headline || s.blurb || ""));
     const points = (s.points || s.bullets || [])
       .map((b) => cleanBullet(String(b || "")))
@@ -795,7 +866,13 @@ export async function buildDigest(upn: string, opts: DigestOptions = {}): Promis
       title: it.title,
       source: it.feedLabel,
       kind: it.kind as Story["kind"],
-      bullets: finalBullets,
+      /* หน้าเว็บใช้ความเรียง แต่ทาง LINE (formatStoriesText) ยังอ่าน bullets อยู่
+         พอเปลี่ยน prompt มาขอความเรียง points ก็หายไป bullets เลยเหลือแค่หัวข้อ
+         เดียวโดด ๆ — ตัดความเรียงเป็นประโยคใส่กลับให้ ทางนั้นจะได้ไม่กลวง */
+      bullets: narrative
+        ? [finalBullets[0] || headline, ...narrativeSentences(narrative)].filter(Boolean).slice(0, 5)
+        : finalBullets,
+      story: narrative,
       whatHappened: finalBullets[0] || "",
       cause: finalBullets[1] || "",
       progress: finalBullets[2] || "",

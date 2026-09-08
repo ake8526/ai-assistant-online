@@ -18,6 +18,11 @@ article{background:#171718;border:1px solid #2a2a2c;border-radius:12px;padding:1
 .topic{color:#f0b429;font-size:13px;letter-spacing:.05em;margin-bottom:5px}
 h2{font-size:17.5px;line-height:1.45;font-weight:600;margin-bottom:9px}
 ul{margin:0 0 12px 19px}
+/* ความเรียงคือเนื้อหาหลักของหน้านี้ จึงให้บรรทัดห่างกว่าข้อความทั่วไป อ่านบนมือถือยาว ๆ ได้สบายตา */
+.story{font-size:16.5px;line-height:1.9;color:#d9d9d9;margin:0 0 12px}
+.thin{font-size:13px;color:#8a8a8a;margin:0 0 10px}
+.story p{margin:0 0 11px}
+.story p:last-child{margin-bottom:0}
 li{margin-bottom:6px;font-size:16px;color:#d4d4d4}
 a.src{display:inline-block;color:#7dd3fc;font-size:15px;text-decoration:none;border:1px solid #1e3a8a;
   border-radius:8px;padding:4px 11px}
@@ -65,12 +70,30 @@ export default async function NewsPage({ params }: { params: Promise<{ token: st
           <article key={i}>
             {s.topic && <div className="topic">{s.topic}</div>}
             <h2>{s.headline}</h2>
-            {!!s.points.length && (
-              <ul>
-                {s.points.map((p, j) => (
-                  <li key={j}>{p}</li>
+            {/* เปิดต้นฉบับไม่ได้ = ไม่มีเนื้อหาให้เล่า พูดตรง ๆ ดีกว่าปล่อยให้
+                ดูเหมือนสรุปมาแล้วแต่สรุปได้แค่นี้ */}
+            {!s.story && (
+              <div className="thin">
+                {s.thin
+                  ? "เปิดต้นฉบับไม่ได้ — ย่อจากหัวข้อที่ฟีดส่งมาเท่านั้น"
+                  : "ข่าวนี้ยังเล่าเป็นเรื่องให้ไม่ได้ — กดอ่านต้นฉบับด้านล่างได้เลย"}
+              </div>
+            )}
+            {/* ความเรียงมาก่อน — หัวข้อย่อยเหลือไว้เฉพาะข่าวเก่าที่เก็บไว้ก่อนเปลี่ยนแบบ */}
+            {s.story ? (
+              <div className="story">
+                {s.story.split(/\n{2,}/).map((para, j) => (
+                  <p key={j}>{para}</p>
                 ))}
-              </ul>
+              </div>
+            ) : (
+              !!s.points.length && (
+                <ul>
+                  {s.points.map((p, j) => (
+                    <li key={j}>{p}</li>
+                  ))}
+                </ul>
+              )
             )}
             {s.link && (
               <a className="src" href={s.link} target="_blank" rel="noopener noreferrer">

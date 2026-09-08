@@ -23,6 +23,8 @@ function secret(): string {
 export type NewsPageStory = {
   topic: string;
   headline: string;
+  /** ความเรียงเล่าเรื่อง — รูปแบบหลัก points เป็นทางถอยของข้อมูลเก่า */
+  story?: string;
   points: string[];
   link: string;
   /** Written from the headline and blurb because the source blocked the fetch. */
@@ -92,10 +94,13 @@ export function toPageStories(stories: Story[]): NewsPageStory[] {
     )
       .map((b) => (b || "").trim())
       .filter(Boolean);
+    const story = (s.story || "").trim();
     return {
       topic: (s.source || "").replace(/^หัวข้อ\s*·\s*/u, "").trim() || s.source || "",
       headline: bullets[0] || s.title || "",
-      points: bullets.slice(1, 6),
+      story,
+      // มีความเรียงแล้วไม่ต้องโชว์หัวข้อย่อยซ้ำอีก — เก็บไว้เฉพาะตอนที่เล่าไม่มา
+      points: story ? [] : bullets.slice(1, 6),
       link: s.rawLink || s.shortLink || "",
       thin: !!s.thin,
     };
@@ -108,10 +113,18 @@ export function newsFooter(count: number, url: string): string {
   return [`📰 ข่าวเช้า ${count} เรื่อง`, `อ่านที่นี่ 👉 ${url}`].join("\n");
 }
 
+export type MorningHalf = { key: "am" | "pm" | "all"; label: string; count: number };
+
 /**
- * The morning message as one bubble: the agenda in full (people reply to it),
- * the news as a link (people only read it). Used by /test today; the scheduled
- * send moves onto it once the shape has been lived with.
+ * The morning message as one bubble.
+ *
+ * It used to paste the whole agenda in. That made the single most-read message
+ * of the day a wall that LINE folds behind "See more" — and the news link,
+ * being last, sat inside the folded part where nobody found it.
+ *
+ * So it now says only how many meetings there are and offers the half-day the
+ * reader asks for. Opening a half is a reply, and replies are free, while every
+ * proactive line costs one of the 300 pushes the month allows.
  */
 export async function buildMorningPreview(
   upn: string,
@@ -121,9 +134,10 @@ export async function buildMorningPreview(
   newsUrl: string;
   newsCount: number;
   agendaChars: number;
+  halves: MorningHalf[];
   choices: { index: number; label: string }[];
 }> {
-  const { buildMorningAgenda } = await import("@/lib/brief");
+  const { buildMorningAgenda, splitDayHalves } = await import("@/lib/brief");
   const { withDelegatedGraph } = await import("@/lib/msGraphOAuth");
   const { loadNewsPrewarm } = await import("@/lib/morningCache");
   const { buildDigest } = await import("@/lib/digest");
@@ -166,10 +180,37 @@ export async function buildMorningPreview(
   await saveNewsPage(id, { dateLabel, stories, note: digest.note, createdAt: Date.now() });
   const newsUrl = buildNewsUrl(id);
 
+  const { allDay, am, pm, cancelled } = splitDayHalves(agenda.events);
+  /* นับเฉพาะนัดที่ยังมีอยู่จริง และนับทุกใบครั้งเดียว — นัดทั้งวันเป็นกลุ่มของ
+     ตัวเอง ไม่ใส่ทั้งเช้าและบ่าย ไม่งั้นผลรวมของสามกลุ่มจะเกินจำนวนจริง */
+  const total = allDay.length + am.length + pm.length;
+  const halves: MorningHalf[] = [];
+  if (allDay.length) halves.push({ key: "all", label: "ทั้งวัน", count: allDay.length });
+  if (am.length) halves.push({ key: "am", label: "ช่วงเช้า", count: am.length });
+  if (pm.length) halves.push({ key: "pm", label: "ช่วงบ่าย", count: pm.length });
+
+  /* บอกจำนวนก่อน แล้วค่อยให้เลือกดู — และเมื่อมีกลุ่มเดียวก็บอกไปตรง ๆ ว่ากลุ่มไหน
+     ถามว่า "เช้าหรือบ่าย" ทั้งที่มีแต่บ่าย เป็นคำถามที่คนตอบแล้วรู้สึกว่าไม่ได้ฟัง */
+  const cancelNote = cancelled.length ? `\n(อีก ${cancelled.length} รายการถูกยกเลิกแล้ว ไม่นับให้)` : "";
+  let agendaLine: string;
+  if (!total) {
+    agendaLine = `📅 วันนี้ไม่มีนัดในปฏิทินครับ${cancelNote}`;
+  } else if (halves.length === 1) {
+    const only = halves[0]!;
+    const what = only.key === "all" ? "นัดทั้งวัน" : `นัด${only.label}`;
+    agendaLine = [`📅 วันนี้มี${what} ${only.count} เรื่อง${cancelNote}`, "ดูรายการเลยไหมครับ?"].join("\n");
+  } else {
+    const parts = halves.map((h) => `${h.label} ${h.count}`).join(" · ");
+    agendaLine = [
+      `📅 วันนี้มีนัด ${total} เรื่อง — ${parts}${cancelNote}`,
+      "อยากดูช่วงไหนก่อนครับ?",
+    ].join("\n");
+  }
+
   const message = [
-    "🌅 สรุปตารางเช้า",
+    "🌅 สรุปเช้านี้",
     "",
-    agenda.text.trim(),
+    agendaLine,
     "",
     "─────────────",
     newsFooter(stories.length, newsUrl),
@@ -180,6 +221,7 @@ export async function buildMorningPreview(
     newsUrl,
     newsCount: stories.length,
     agendaChars: agenda.text.length,
+    halves,
     choices: agenda.choices.map((c) => ({ index: c.index, label: c.label || "" })),
   };
 }

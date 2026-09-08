@@ -256,6 +256,14 @@ export type CommandResult = {
   uri_actions?: { label: string; uri: string }[];
   /** LINE quick-reply follow-ups (message actions). */
   suggestions?: { label: string; text: string }[];
+  /**
+   * ปุ่มลัดแบบ postback — ต่างจาก suggestions ตรงที่ไม่ได้ส่งข้อความเข้าไปให้
+   * ตัวแยกเจตนาอ่าน จึงไม่มีทางถูกคำสั่งอื่นแย่งไป
+   *
+   * ใช้กับปุ่มที่คำพูดของมันซ้ำกับคำสั่งอื่นในระบบ เช่น "ช่วงเช้า"/"ช่วงบ่าย"
+   * ซึ่งไปพ้องกับการหาเวลาว่างและการถามตารางตามช่วงเวลาเต็มไปหมด
+   */
+  postbacks?: { label: string; data: string; displayText: string }[];
   /** A Flex card to send instead of the plain text bubble (LINE only). */
   flex?: { altText: string; contents: object };
   /** Show OneDrive folder path in file list (detailText). */
@@ -4846,6 +4854,53 @@ async function pickedPersonName(data: URLSearchParams, mail: string): Promise<st
 export async function handleSelection(userUpn: string, data: URLSearchParams): Promise<CommandResult> {
   const a = data.get("a") || "";
   try {
+    /* ครึ่งวันที่ขอดูจากข้อความเช้า — เลขที่โชว์ยังเป็นเลขของทั้งวัน ปุ่ม
+       "เตรียมนัด N" ที่แนบไปจึงอ้างนัดตัวเดียวกับที่ผู้ใช้เห็นตรงหน้า */
+    if (a === "half") {
+      const raw = data.get("h") || "am";
+      const want: "am" | "pm" | "all" = raw === "pm" ? "pm" : raw === "all" ? "all" : "am";
+      const { buildMorningAgenda, splitDayHalves, formatHalfDay } = await import("@/lib/brief");
+      const { withDelegatedGraph } = await import("@/lib/msGraphOAuth");
+      const { result: agenda } = await withDelegatedGraph(userUpn, () => buildMorningAgenda(userUpn));
+      const halves = splitDayHalves(agenda.events);
+      const LABEL = { am: "ช่วงเช้า", pm: "ช่วงบ่าย", all: "ทั้งวัน" } as const;
+      const picked = want === "pm" ? halves.pm : want === "all" ? halves.allDay : halves.am;
+      const label = LABEL[want];
+      if (!picked.length) {
+        return { intent: "get_brief", reply: `ไม่มีนัด${label}ครับ` };
+      }
+      /* ปุ่มพาไปกลุ่มที่เหลือ จะได้ไม่ต้องย้อนกลับไปหาข้อความเช้าเพื่อกดอีกกลุ่ม */
+      const others = (["all", "am", "pm"] as const)
+        .filter((k) => k !== want)
+        .map((k) => ({
+          key: k,
+          label: LABEL[k],
+          count: (k === "all" ? halves.allDay : k === "am" ? halves.am : halves.pm).length,
+        }))
+        .filter((o) => o.count > 0);
+      return {
+        intent: "get_brief",
+        reply: formatHalfDay(picked, label),
+        postbacks: [
+          ...picked.slice(0, 10).map((h) => {
+            /* รูปแบบเดียวกับปุ่มในข้อความเช้าเดิม (lib/brief.ts) — LINE จำกัด
+               postback data ที่ 300 ตัวอักษร ยาวเกินก็ตัด id ทิ้ง เหลือเลขไว้
+               ให้ resolveAgendaEntry ไปหาเอาจาก snapshot ของวันนั้น */
+            const withId = `a=prep&i=${h.n}&id=${encodeURIComponent(h.ev.id || "")}`;
+            return {
+              label: `${h.n}`,
+              data: withId.length <= 300 ? withId : `a=prep&i=${h.n}`,
+              displayText: `เตรียมนัด ${h.n}`,
+            };
+          }),
+          ...others.map((o) => ({
+            label: `${o.label} (${o.count})`,
+            data: `a=half&h=${o.key}`,
+            displayText: `ดูนัด${o.label}`,
+          })),
+        ],
+      };
+    }
     if (a === "done") {
       const tid = Number(data.get("t") || "");
       if (!tid) return { intent: "error", reply: "ข้อมูลไม่ครบ ลองใหม่อีกครั้งครับ" };
@@ -6435,15 +6490,14 @@ async function handleParsed(
         // No explanatory footer: a preview has to look exactly like the message
         // it previews, or it is not showing what will actually arrive.
         reply: p.message,
-        // The real morning message offers a button per meeting; a preview
-        // without them cannot show whether that still works.
-        suggestions: [
-          ...p.choices.slice(0, 3).map((c) => ({
-            label: `เตรียมนัด ${c.index}`,
-            text: `เตรียมนัด ${c.index}`,
-          })),
-          { label: "ดูแบบสรุปประชุม", text: "/test ประชุม" },
-        ],
+        // ปุ่มครึ่งวันเป็น postback ไม่ใช่ข้อความ — คำว่า "ช่วงเช้า"/"ช่วงบ่าย"
+        // ชนกับคำสั่งหาเวลาว่างและถามตารางตามช่วงเวลาหลายที่ ถ้าส่งเป็นข้อความ
+        // มีโอกาสถูกตีความเป็นคำสั่งอื่นแล้วผู้ใช้ได้คำตอบผิดเรื่อง
+        postbacks: p.halves.map((h) => ({
+          label: `${h.label} (${h.count})`,
+          data: `a=half&h=${h.key}`,
+          displayText: `ดูนัด${h.label}`,
+        })),
       };
     } catch (e) {
       return {

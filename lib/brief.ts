@@ -74,6 +74,69 @@ function eventTimeRange(ev: GraphEvent): string {
   return b ? `${a}–${b}` : a;
 }
 
+/**
+ * แบ่งนัดของวันเป็นครึ่งเช้า/ครึ่งบ่าย โดยจำเลขของทั้งวันติดไปด้วย
+ *
+ * เกณฑ์คือเวลาที่ "เริ่ม" ก่อนเที่ยงคือเช้า — ประชุม 11:30–13:00 จึงนับเป็นเช้า
+ * ที่เดียว ไม่โผล่สองครั้ง เพราะคนถามว่า "เช้ามีอะไร" หมายถึงต้องไปนั่งตอนไหน
+ * ไม่ใช่ว่ามันกินเวลาคาบไปถึงไหน
+ *
+ * นัดทั้งวัน (isAllDay) ไม่มีเวลาเริ่มที่ใช้ตัดสินได้ และเป็นเรื่องที่เกี่ยวกับ
+ * ทั้งสองครึ่ง จึงใส่ไว้ทั้งสองฝั่ง — เลขเดิมติดไปด้วยทั้งคู่ กดเลขไหนก็ตรงตัวเดิม
+ */
+export type DayEntry = { ev: GraphEvent; n: number };
+export type DayHalves = {
+  /** นัดทั้งวัน — กลุ่มของตัวเอง ไม่ยัดเข้าเช้าหรือบ่าย */
+  allDay: DayEntry[];
+  am: DayEntry[];
+  pm: DayEntry[];
+  /** รายการที่ผู้จัดยกเลิกไปแล้วแต่ยังค้างอยู่ในปฏิทิน — ไม่นับเป็นนัด */
+  cancelled: DayEntry[];
+};
+
+/**
+ * Outlook ไม่ได้ลบนัดที่ถูกยกเลิกออกจากปฏิทินผู้เข้าร่วม แค่เติมคำว่า
+ * "Canceled:" หน้าหัวข้อไว้ ถ้านับรวมไปด้วย ข้อความเช้าจะบอกว่า "วันนี้มีนัด
+ * 1 เรื่อง" ทั้งที่ทั้งวันไม่มีอะไรต้องไป — เจอของจริงตอนทดสอบ 4 ก.ย. 2569
+ * (Canceled: PI workshop) ซึ่งเป็นนัดเดียวของวันนั้น
+ */
+export function isCancelledEvent(ev: GraphEvent): boolean {
+  return /^\s*(?:canceled|cancelled|ยกเลิก)\s*[:：]/i.test(ev.subject || "");
+}
+
+export function splitDayHalves(events: GraphEvent[]): DayHalves {
+  const allDay: DayEntry[] = [];
+  const am: DayEntry[] = [];
+  const pm: DayEntry[] = [];
+  const cancelled: DayEntry[] = [];
+  events.forEach((ev, i) => {
+    const entry = { ev, n: i + 1 };
+    if (isCancelledEvent(ev)) {
+      cancelled.push(entry);
+      return;
+    }
+    if (ev.isAllDay) {
+      allDay.push(entry);
+      return;
+    }
+    const sd = ev.start?.dateTime ? parseWall(ev.start.dateTime) : null;
+    // อ่านเวลาเริ่มไม่ออก = ไม่มีข้อมูลพอจะบอกว่าครึ่งไหน ให้ไปอยู่กับเช้าไว้ก่อน
+    // ดีกว่าหายไปจากทุกกลุ่มแล้วจำนวนที่บอกไม่ตรงกับที่กดดูได้
+    if (!sd || minutesOfDay(sd) < 12 * 60) am.push(entry);
+    else pm.push(entry);
+  });
+  return { allDay, am, pm, cancelled };
+}
+
+/** รายการนัดของกลุ่มหนึ่ง โดยเลขยังเป็นเลขของทั้งวัน */
+export function formatHalfDay(half: DayEntry[], label: string): string {
+  return formatAgendaList(
+    half.map((h) => h.ev),
+    label,
+    { numbers: half.map((h) => h.n) }
+  );
+}
+
 export function stripHtml(html: string): string {
   return html
     .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
@@ -134,13 +197,18 @@ function usefulBodyPreview(raw: string | undefined): string {
 export function formatAgendaList(
   events: GraphEvent[],
   periodLabel = "วันนี้",
-  opts: { askPrep?: boolean } = {}
+  opts: { askPrep?: boolean; numbers?: number[] } = {}
 ): string {
   const askPrep = opts.askPrep !== false;
+  /* เลขที่โชว์ต้องเป็นเลขของ "ทั้งวัน" เสมอ ไม่ใช่ลำดับใน array ที่ส่งเข้ามา
+     เพราะปุ่ม "เตรียมนัด N" อ้างเลขชุดเดียวกันทั้งวัน — พอแสดงเฉพาะครึ่งวันแล้ว
+     ปล่อยให้นับ 1 ใหม่ ผู้ใช้จะกดเลข 1 แล้วได้นัดคนละอันกับที่เห็นตรงหน้า */
+  const numberAt = (i: number) => opts.numbers?.[i] ?? i + 1;
   if (!events.length) {
     return `🌅 ตาราง${periodLabel}\n\nยังไม่มีนัดในปฏิทินครับ — พักผ่อนหรือจัดงานอื่นได้เลย 👍`;
   }
   const lines = [`🌅 ตาราง${periodLabel} — มี ${events.length} นัด`, ""];
+  const shown = events.map((_, i) => numberAt(i));
   events.forEach((ev, i) => {
     const subj = (ev.subject || "(ไม่มีหัวข้อ)").trim();
     const who = ev.organizer?.emailAddress?.name || ev.organizer?.emailAddress?.address || "";
@@ -152,7 +220,7 @@ export function formatAgendaList(
       .filter(Boolean)
       .slice(0, 4)
       .join(", ");
-    lines.push(`${i + 1}) ${eventTimeRange(ev)} — ${subj}`);
+    lines.push(`${numberAt(i)}) ${eventTimeRange(ev)} — ${subj}`);
     if (who) lines.push(`   ผู้จัด: ${who}`);
     if (loc) lines.push(`   สถานที่: ${loc}`);
     if (people) lines.push(`   ผู้เข้าร่วม: ${people}`);
@@ -162,11 +230,12 @@ export function formatAgendaList(
   });
   if (askPrep) {
     lines.push("อยากให้ช่วยแนะนำเตรียมตัวนัดไหนดีครับ?");
+    const first = shown[0] ?? 1;
     if (events.length === 1) {
-      lines.push("กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด 1”");
+      lines.push(`กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด ${first}”`);
     } else {
       lines.push(
-        `กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด 1” / “แนะนำประชุม ${Math.min(2, events.length)}”`
+        `กดหมายเลขด้านล่าง หรือพิมพ์ เช่น “เตรียมนัด ${first}” / “แนะนำประชุม ${shown[1] ?? first}”`
       );
     }
   }

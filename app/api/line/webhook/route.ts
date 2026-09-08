@@ -266,6 +266,24 @@ function quickReplyFor(res: CommandResult, upn?: string, cardHandled = false): {
     }
   }
 
+  /* ปุ่ม postback ที่หน้าคำสั่งขอมา — มาก่อน suggestions เพราะมันคือตัวเลือกหลักของคำตอบนั้น
+     ไม่ใช่ข้อเสนอต่อท้าย */
+  if (!cardHandled && Array.isArray(res.postbacks)) {
+    for (const b of res.postbacks) {
+      if (!b?.label || !b?.data || items.length >= 13) break;
+      if (b.data.length > 300) continue;
+      items.push({
+        type: "action",
+        action: {
+          type: "postback",
+          label: truncate(b.label, 20),
+          data: b.data,
+          displayText: truncate(b.displayText || b.label, 60),
+        },
+      });
+    }
+  }
+
   // Follow-up suggestions (message taps) when no selection buttons above
   if (!cardHandled && !items.length && Array.isArray(res.suggestions) && res.suggestions.length) {
     for (const s of res.suggestions.slice(0, 12)) {
