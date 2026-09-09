@@ -6484,7 +6484,12 @@ async function handleParsed(
     trace("compose", "ตัวอย่างข้อความเช้า (ตาราง + ข่าว)");
     const { buildMorningPreview } = await import("@/lib/newsPage");
     try {
-      const p = await buildMorningPreview(userUpn);
+      /* ให้ตัวอย่างตรงกับของจริง: คนที่ปิดข่าวไว้ต้องเห็นแบบไม่มีบรรทัดข่าว
+         ไม่งั้น /test โชว์สิ่งที่เขาจะไม่มีวันได้รับ */
+      const { getNotifyConfig, bkkNowParts } = await import("@/lib/notify");
+      const cfgNow = await getNotifyConfig(userUpn);
+      const withNewsNow = cfgNow.news.enabled && cfgNow.news.days.includes(bkkNowParts().day);
+      const p = await buildMorningPreview(userUpn, { withNews: withNewsNow });
       return {
         intent: "preview_morning",
         // No explanatory footer: a preview has to look exactly like the message

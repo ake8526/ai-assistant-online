@@ -128,35 +128,57 @@ export type MorningHalf = { key: "am" | "pm" | "all"; label: string; count: numb
  */
 export async function buildMorningPreview(
   upn: string,
-  opts: { fastNews?: boolean } = {}
+  opts: { fastNews?: boolean; withNews?: boolean } = {}
 ): Promise<{
   message: string;
+  /** ตารางแบบเต็มสำหรับกล่องในแอป ซึ่งมีที่ให้อ่านไม่เหมือนในแชท */
+  agendaText: string;
+  /** ข่าวดิบที่ส่งไปจริง — ผู้เรียกต้องเอาไปทำเครื่องหมายว่าส่งแล้ว
+   *  ไม่งั้นพรุ่งนี้ buildDigest จะหยิบข่าวชุดเดิมมาส่งซ้ำ */
+  delivered: Story[];
   newsUrl: string;
   newsCount: number;
   agendaChars: number;
   halves: MorningHalf[];
   choices: { index: number; label: string }[];
 }> {
-  const { buildMorningAgenda, splitDayHalves } = await import("@/lib/brief");
+  const { buildMorningAgenda, splitDayHalves, loadAgendaSnapshot } = await import("@/lib/brief");
   const { withDelegatedGraph } = await import("@/lib/msGraphOAuth");
-  const { loadNewsPrewarm } = await import("@/lib/morningCache");
+  const { loadNewsPrewarm, loadBriefPrewarm } = await import("@/lib/morningCache");
   const { buildDigest } = await import("@/lib/digest");
   const { nowWall } = await import("@/lib/time");
 
-  const { result: agenda } = await withDelegatedGraph(upn, () => buildMorningAgenda(upn));
+  /* ใช้ตารางที่ /api/morning/prewarm เตรียมไว้ตั้งแต่ 06:5x ถ้ามี — นาทีที่ต้องส่ง
+     ไม่ควรเสียเวลารอ Graph ตอบ ยิ่งมีผู้ใช้หลายคนยิ่งบวกกันจนเลยเวลาที่ตั้งไว้
+
+     กับดักที่ต้องระวัง: loadBriefPrewarm คืน events เป็น [] โดยตั้งใจ (คอมเมนต์
+     ในไฟล์นั้นบอกว่าตัวเต็มอยู่ใน agenda snapshot) ถ้าเอาไปนับครึ่งวันตรง ๆ จะได้
+     "ไม่มีนัด" ทุกเช้าทั้งที่มีนัด จึงต้องหยิบ events จาก snapshot มาประกบเสมอ
+     และถ้า snapshot ว่างก็ถอยไปดึงสด ดีกว่าบอกผิดว่าไม่มีอะไร */
+  const warm = await loadBriefPrewarm(upn);
+  const warmEvents = warm ? await loadAgendaSnapshot(upn) : [];
+  const agenda =
+    warm && warmEvents.length
+      ? { ...warm.agenda, events: warmEvents }
+      : (await withDelegatedGraph(upn, () => buildMorningAgenda(upn))).result;
 
   // The page has room and is not on the morning's clock, so it is built with the
   // thorough reader: 15s to fetch each article instead of 8, and 28s for the
   // writer instead of 14. The fast path was producing bullets that only restated
   // the headline — "เหมือนเอาแค่หัวข้อมา", which is exactly what a summary is not.
-  const cached = await loadNewsPrewarm(upn);
+  /* ปิดข่าวไว้ก็ไม่ต้องไปดึงข่าวเลย — ไม่ใช่ดึงมาแล้วค่อยไม่แสดง
+     (มีคนตั้งไว้แบบนั้นจริง คนหนึ่งเอาแต่ตาราง ไม่เอาข่าว) */
+  const wantNews = opts.withNews !== false;
+  const cached = wantNews ? await loadNewsPrewarm(upn) : null;
   // A LINE reply token is only good for about a minute, and the thorough read
   // takes ~25s. Cap it: past the limit, say so rather than letting the whole
   // reply fail and leave the user with nothing.
   const NEWS_BUDGET_MS = 35_000;
   let timedOut = false;
   let digest = cached;
-  if (!digest) {
+  if (!wantNews) {
+    digest = { stories: [], skipped: [], note: "" };
+  } else if (!digest) {
     const built = await Promise.race([
       buildDigest(upn, { fast: !!opts.fastNews }),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), NEWS_BUDGET_MS)),
@@ -211,13 +233,13 @@ export async function buildMorningPreview(
     "🌅 สรุปเช้านี้",
     "",
     agendaLine,
-    "",
-    "─────────────",
-    newsFooter(stories.length, newsUrl),
+    ...(wantNews ? ["", "─────────────", newsFooter(stories.length, newsUrl)] : []),
   ].join("\n");
 
   return {
     message,
+    agendaText: agenda.text,
+    delivered: digest.stories || [],
     newsUrl,
     newsCount: stories.length,
     agendaChars: agenda.text.length,

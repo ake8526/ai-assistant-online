@@ -8,11 +8,15 @@ import { nowWall } from "@/lib/time";
 export type NotifyKind = "brief" | "news";
 
 export const NOTIFY_DEFAULTS: Record<NotifyKind, { enabled: boolean; time: string; days: number[] }> = {
-  // days: 0=Sun … 6=Sat — news first, brief one minute later (its quick-reply
-  // number buttons must sit on the newest message). The times are the times the
-  // message must ARRIVE, not when work starts: /api/morning/prewarm builds both
-  // payloads before 07:00 so these ticks are pure pushes.
-  brief: { enabled: true, time: "07:01", days: [1, 2, 3, 4, 5] },        // จ–ศ · ข่าว + 1 นาที
+  // days: 0=Sun … 6=Sat. The times are the times the message must ARRIVE, not
+  // when work starts: /api/morning/prewarm builds the payload before 07:00 so
+  // these ticks are pure pushes.
+  //
+  // ตารางกับข่าวรวมเป็นข้อความเดียวแล้ว เวลาที่ใช้จริงคือของ brief ส่วน news
+  // เหลือหน้าที่แค่บอกว่า "วันนี้เอาข่าวด้วยไหม" — เดิม brief ตั้ง 07:01 เพื่อให้
+  // มาทีหลังข่าวหนึ่งนาที (ปุ่มเลขต้องอยู่บนข้อความล่าสุด) พอเหลือข้อความเดียว
+  // เหตุผลนั้นก็หมดไป จึงคืนเป็น 07:00 ให้ตรงเวลากลม ๆ ที่คนตั้งใจ
+  brief: { enabled: true, time: "07:00", days: [1, 2, 3, 4, 5] },        // จ–ศ
   news: { enabled: true, time: "07:00", days: [1, 2, 3, 4, 5] },         // จ–ศ
 };
 
@@ -60,6 +64,8 @@ export const NOTIFY_SETTING_KEYS = [
   "news_count",
 ];
 
+/** @deprecated ไม่ต้องเลื่อนตารางหนีข่าวแล้ว เหลือไว้เผื่อโค้ดเก่าอ้างถึง */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function addOneMinute(t: string): string {
   const [hh, mm] = t.split(":").map((x) => parseInt(x, 10));
   const total = (hh || 0) * 60 + (mm || 0) + 1;
@@ -82,10 +88,9 @@ export function notifyConfigFromSettings(rows: Record<string, string>): NotifyCo
   const brief = kind("brief");
   const news = kind("news");
   news.count = clampNewsCount(rows.news_count ?? NEWS_COUNT_DEFAULT);
-  // The agenda must land AFTER the news — its quick-reply numbers belong on the
-  // newest message. Users (and the settings UI) often store the same minute for
-  // both; shift the agenda by a minute rather than letting them race.
-  if (brief.time === news.time && news.enabled) brief.time = addOneMinute(news.time);
+  /* เดิมเลื่อนตารางไปทีหลังข่าวหนึ่งนาที เพราะเป็นคนละข้อความและปุ่มเลขต้องอยู่
+     บนใบล่าสุด ตอนนี้เป็นข้อความเดียว การเลื่อนจึงเหลือแต่ผลข้างเคียง: คนตั้ง
+     07:00 แล้วได้ 07:01 ทั้งที่ไม่มีอะไรให้รอ — ใช้เวลาที่เขาตั้งไว้ตรง ๆ */
   return { brief, news };
 }
 
@@ -174,6 +179,8 @@ export async function alreadySentToday(upn: string, kind: NotifyKind): Promise<b
 export const NOTIFY_STATE_KEYS = [...NOTIFY_SETTING_KEYS, "news_last_sent", "brief_last_sent"];
 
 /** Keep the agenda behind the news: same-day ordering + the minimum gap. */
+/** @deprecated ข่าวรวมอยู่ในข้อความเดียวกับตารางแล้ว ไม่มีอะไรให้รอ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function briefMustWaitForNews(
   rows: Record<string, string>,
   news: KindConfig,
@@ -205,7 +212,8 @@ export function isDueFromState(rows: Record<string, string>, kind: NotifyKind): 
   if (at.min < dueMin - NOTIFY_EARLY_SLACK_MIN) return false;
   if (at.min > dueMin + NOTIFY_LATE_CUTOFF_MIN) return false; // too late to be today's delivery
   if (sentDate(rows[`${kind}_last_sent`] ?? null) === at.date) return false; // once per day
-  if (kind === "brief" && briefMustWaitForNews(rows, all.news, at, dueMin)) return false;
+  /* ไม่ต้องรอข่าวอีกแล้ว — ข่าวไปอยู่ในข้อความเดียวกับตาราง ถ้ายังรออยู่
+     ทุกคนจะถูกถ่วงไปจนหมดช่วงผ่อนผัน แล้วค่อยได้ข้อความ ซึ่งช้ากว่าที่ตั้งไว้ */
   return true;
 }
 
