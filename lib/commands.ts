@@ -13,6 +13,7 @@ import {
   quickLinkMeetingIntent,
 } from "@/lib/meetingLink";
 import { buildDigest, formatDigestSkippedNote, formatStoriesText, rememberDeliveredStories, type DigestResult } from "@/lib/digest";
+import { parseYouTubeTarget } from "@/lib/videoAsk";
 import { claimDigestPush, clearDigestClaim, kickLineDigest } from "@/lib/digestKick";
 import { sendLine } from "@/lib/line";
 import { runWithTrace, trace } from "@/lib/trace";
@@ -284,7 +285,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 ผู้ใช้จะพิมพ์คำสั่งภาษาไทย/อังกฤษ ให้ตอบกลับเป็น JSON เท่านั้น:
 
 {
-  "intent": "<หนึ่งใน: who_are_you | get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | list_delegated_tasks | sick_day | weekly_report | weekly_report_toggle | catch_up | room_availability | add_task | complete_task | summarize_meetings | find_meeting_time | book_self_calendar | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | list_meeting_materials | unlink_meeting_material | unknown>",
+  "intent": "<หนึ่งใน: who_are_you | get_brief | prep_meeting | get_news | list_feeds | add_feed | remove_feed | edit_feed | list_meetings | my_availability | list_tasks | list_delegated_tasks | sick_day | weekly_report | weekly_report_toggle | catch_up | room_availability | add_task | complete_task | summarize_meetings | find_meeting_time | book_self_calendar | cancel_meeting | open_map | open_map_home | plan_commute | set_work_location | set_home_location | show_work_location | clear_work_location | search_files | summarize_file | find_duplicate_nicknames | link_meeting_file | link_meeting_url | summarize_video | list_meeting_materials | unlink_meeting_material | unknown>",
   "params": { ... }
 }
 
@@ -318,6 +319,7 @@ const INTENT_SYSTEM = `คุณคือตัวแยกเจตนา (inte
 - find_duplicate_nicknames = หาว่าในองค์กรมีคนชื่อเล่นซ้ำกันกี่คน/ใครบ้าง (จากชื่อที่แสดงในไดเรกทอรี) — เช่น "ชื่อเล่นซ้ำกี่คน", "ในองค์กรมีคนชื่อเล่นซ้ำกันไหม", "ใครชื่อเล่นซ้ำบ้าง"
 - link_meeting_file = ผูกไฟล์ OneDrive กับนัดที่มีอยู่แล้ว (ยังไม่ได้อยู่ในปฏิทินแนบ) — เช่น "ผูกไฟล์นัด 1", "แนบอัน 2 กับนัด 1", "อันแรกผูกกับ งบ Q3.xlsx", "ผูกไฟล์นี้กับนัด Weekly"
 - link_meeting_url = ผูกลิงก์กับนัด — เช่น "แนบลิงก์นัด 2 https://..."
+- summarize_video = ดูคลิป YouTube แล้วเล่าให้ฟัง — เช่น "สรุปคลิปนี้ <ลิงก์>", "คลิปล่าสุดของช่องนี้ <ลิงก์ช่อง>" (ต้องมีลิงก์ YouTube เท่านั้น ถ้าไม่มีลิงก์ห้ามใช้)
 - list_meeting_materials = ดูไฟล์/ลิงก์ที่ผูกกับนัด — เช่น "เอกสารนัด 1"
 - unlink_meeting_material = เลิกผูกไฟล์/ลิงก์ออกจากนัด — เช่น "เลิกแนบนัด 1 ไฟล์ 2"
 
@@ -891,6 +893,14 @@ function hasMorningWord(text: string): boolean {
 function quickFeedIntent(text: string): { intent: string; params: Record<string, unknown> } | null {
   const t = text.trim().replace(/\s+/g, " ");
   if (!t) return null;
+
+  /* ลิงก์ YouTube ที่ส่งมาลอย ๆ หรือมีคำว่า "สรุป/ดูให้หน่อย" นำหน้า
+     parseYouTubeTarget กันคำสั่งของงานอื่นไว้ให้แล้ว (แนบลิงก์นัด / เพิ่มแหล่งข่าว)
+     จึงไม่ไปแย่งงานพวกนั้น และไม่ต้องเรียก AI เพื่อรู้ว่านี่คือลิงก์ยูทูบ */
+  if (/https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i.test(t)) {
+    const target = parseYouTubeTarget(t);
+    if (target) return { intent: "summarize_video", params: { url: target.url, kind: target.kind } };
+  }
 
   // /test — preview what the morning message will look like. A reply, so it
   // costs no quota; "/test ประชุม" previews the meeting-summary shape instead.
@@ -6810,6 +6820,68 @@ async function handleParsed(
         `จะแนบเข้านัดล่าสุดที่เพิ่งสร้าง (หรือนัด ${mi} ในตารางวันนี้)\n\n` +
         "หรือพิมพ์ “แนบรูป ส่งนัด …” เพื่อจองนัดใหม่พร้อมแนบรูป",
     };
+  }
+
+  if (intent === "summarize_video") {
+    const raw = String((params as { url?: string }).url || "").trim();
+    const target = parseYouTubeTarget(raw) || parseYouTubeTarget(text);
+    if (!target) {
+      return {
+        intent: "summarize_video",
+        reply: "ส่งลิงก์คลิปหรือลิงก์ช่อง YouTube มาได้เลยครับ เดี๋ยวดูให้แล้วเล่าให้ฟัง",
+      };
+    }
+    const { summarizeYouTube, latestVideoOfChannel } = await import("@/lib/videoAsk");
+
+    let watchUrl = target.kind === "video" ? target.url : "";
+    let heading = "";
+    if (target.kind === "channel") {
+      trace("fetch", "หาคลิปล่าสุดของช่อง", "start");
+      let latest: Awaited<ReturnType<typeof latestVideoOfChannel>> = null;
+      try {
+        latest = await latestVideoOfChannel(target.url);
+      } catch (e) {
+        console.warn("[video] channel", String(e).slice(0, 120));
+      }
+      if (!latest) {
+        return {
+          intent: "summarize_video",
+          reply:
+            "เปิดหน้าช่องนี้ไม่ได้ครับ อาจเป็นช่องส่วนตัวหรือลิงก์ไม่ถูก\n" +
+            "ลองส่งลิงก์คลิปตรง ๆ มาแทนได้ครับ",
+        };
+      }
+      watchUrl = `https://www.youtube.com/watch?v=${latest.videoId}`;
+      heading = [latest.channel ? `📺 ${latest.channel} — คลิปล่าสุด` : "📺 คลิปล่าสุดของช่อง", latest.title]
+        .filter(Boolean)
+        .join("\n");
+      trace("fetch", `คลิปล่าสุด · ${latest.title || latest.videoId}`);
+    }
+
+    try {
+      const out = await summarizeYouTube(watchUrl);
+      return {
+        intent: "summarize_video",
+        reply: [
+          heading,
+          out.text,
+          out.cappedMin ? `(คลิปยาว — ดูให้เฉพาะ ${out.cappedMin} นาทีแรก)` : "",
+          `▶️ ${watchUrl}`,
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+          .trim(),
+        suggestions: [{ label: "ข่าววันนี้", text: "ข่าววันนี้" }],
+      };
+    } catch (e) {
+      /* คลิปเฉพาะสมาชิก/ส่วนตัว/จำกัดอายุ จะมาลงตรงนี้ — บอกเหตุผลที่พบบ่อยไว้
+         ดีกว่าบอกแค่ว่า "ไม่สำเร็จ" แล้วให้เขาเดาเอง */
+      const why = /permission|private|unsupported|not accessible|403|forbidden/i.test(String(e))
+        ? "คลิปนี้ไม่ใช่คลิปสาธารณะ (เช่น เฉพาะสมาชิกช่อง ส่วนตัว หรือจำกัดอายุ) จึงเข้าไปดูให้ไม่ได้ครับ"
+        : "ดูคลิปนี้ไม่ได้ครับ — ลิงก์อาจไม่ถูก คลิปถูกลบ หรือไม่ใช่คลิปสาธารณะ";
+      console.warn("[video] summarize", String(e).slice(0, 200));
+      return { intent: "summarize_video", reply: `${why}\n▶️ ${watchUrl}` };
+    }
   }
 
   if (intent === "link_meeting_url") {
