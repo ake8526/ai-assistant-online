@@ -124,6 +124,7 @@ import {
   periodRange,
   resolveDay,
   resolveThaiDateInText,
+  resolveThaiDateRangeInText,
   resolveThaiMonthRange,
   resolveWeekday,
   startOfDay,
@@ -3966,10 +3967,26 @@ const SELF_BOOK_DURATION_SUGGESTIONS = [
   { label: "2 ชม.", text: "2 ชม." },
 ];
 
+/** ตัดเศษวันที่ที่ติดมาข้างหน้าหัวข้อ เช่น "5 ต ค อบรม" -> "อบรม" */
+function stripLeadingDateWords(raw: string): string {
+  /* จุดในตัวย่อเดือนถูกแทนด้วยช่องว่างก่อน ("ต.ค." -> "ต ค") จะได้เขียนรูปแบบเดียว
+     ครอบคลุมทั้ง "5 ต.ค." และ "5 ต ค" ที่หลุดมาจากตัวแยกคำ */
+  const t = (raw || "").replace(/[.]/g, " ").replace(/ +/g, " ").trim();
+  const LEADING_DATE =
+    /^(?:วันที่ )?\d{1,2}(?: ?(?:[-–—]|ถึง) ?\d{1,2})?(?: (?:ม ?ค|ก ?พ|มี ?ค|เม ?ย|พ ?ค|มิ ?ย|ก ?ค|ส ?ค|ก ?ย|ต ?ค|พ ?ย|ธ ?ค|มกรา\w*|กุมภา\w*|มีนา\w*|เมษา\w*|พฤษภา\w*|มิถุนา\w*|กรกฎา\w*|สิงหา\w*|กันยา\w*|ตุลา\w*|พฤศจิกา\w*|ธันวา\w*))?(?: \d{4}| \d{1,2})? */u;
+  const out = t.replace(LEADING_DATE, "").trim();
+  // ตัดแล้วไม่เหลืออะไรเป็นชิ้นเป็นอัน แปลว่าทั้งก้อนคือวันที่ เก็บของเดิมไว้ดีกว่าได้หัวข้อว่าง
+  return (out.length >= 2 ? out : t).trim();
+}
+
 function selfBookWindowFromParams(
   params: Record<string, unknown>,
   text: string
-): { start: Date; end: Date; label: string } | null {
+): { start: Date; end: Date; label: string; days?: number } | null {
+  /* ช่วงวันที่เขียนมาในประโยคชนะทุกอย่าง — "วันที่ 21-22" เป็นคำที่ผู้ใช้พิมพ์เอง
+     ไม่ใช่ค่าที่ระบบอนุมานมา จึงไม่ควรถูกค่าที่เดามาทับ */
+  const range = resolveThaiDateRangeInText(text);
+  if (range) return range;
   const dayStart = String(params.day_start || "");
   if (dayStart) {
     const d = parseWall(dayStart);
@@ -3990,7 +4007,10 @@ async function runSelfBookCalendar(
   text: string,
   params: Record<string, unknown>
 ): Promise<CommandResult> {
-  const subject = String(params.subject || params.note || "จองเวลา").trim().slice(0, 200) || "จองเวลา";
+  /* หัวข้อที่ได้มาบางทีติดเศษวันที่ไว้ข้างหน้า — "จองตารางวันที่ 3-5 ต.ค. อบรม"
+     เคยได้หัวข้อว่า "5 ต ค อบรม" ซึ่งไปโผล่บนปฏิทินแบบนั้นจริง ๆ */
+  const subject =
+    stripLeadingDateWords(String(params.subject || params.note || "จองเวลา")).slice(0, 200) || "จองเวลา";
   const window = selfBookWindowFromParams(params, text);
   if (!window) {
     return {
@@ -4001,16 +4021,29 @@ async function runSelfBookCalendar(
     };
   }
 
+  /* ช่วงหลายวันคือของทั้งวันโดยธรรมชาติ — "ไปหัวหินวันที่ 21-22" ไม่มีใครหมายถึง
+     ประชุมครึ่งชั่วโมงสองวันติด ถ้าไม่ถือเป็นทั้งวันระบบจะไปถามหาเวลาเริ่มแทน */
   const allDay =
-    !!params.all_day || /(?:ทั้งวัน|ตลอดวัน|all\s*day)/i.test(text);
+    !!params.all_day ||
+    /(?:ทั้งวัน|ตลอดวัน|all\s*day)/i.test(text) ||
+    ((window.days || 1) > 1 && parseHHMM(params.at) == null && parseClockToMinutes(text) == null);
 
   if (allDay) {
     const dayStart = startOfDay(window.start);
-    const dayEnd = startOfDay(addDays(window.start, 1));
+    /* งานทั้งวันของ Outlook จบที่ "เที่ยงคืนของวันถัดจากวันสุดท้าย" — ช่วง 21-22
+       จึงเป็น 21 ถึงเที่ยงคืนวันที่ 23 ไม่ใช่วันที่ 22 ไม่งั้นจะหายไปวันหนึ่ง */
+    const lastDay = window.days && window.days > 1 ? startOfDay(window.end) : dayStart;
+    const dayEnd = startOfDay(addDays(lastDay, 1));
+    const spanDays = Math.max(1, Math.round((dayEnd.getTime() - dayStart.getTime()) / 86400000));
     const exact = {
       start: wallIso(dayStart),
       end: wallIso(dayEnd),
-      label: `${fmtDayHeader(dayStart)} (ทั้งวัน)`,
+      /* ช่วงวันใช้ fmtDate ทั้งสองฝั่ง — fmtDayHeader เติมชื่อวันให้เฉพาะบางวัน
+         ทำให้ได้ป้ายลักลั่นแบบ "03/10/2026 วันเสาร์ – 05/10/2026" */
+      label:
+        spanDays > 1
+          ? `${fmtDate(dayStart)} – ${fmtDate(lastDay)} (${spanDays} วัน)`
+          : `${fmtDayHeader(dayStart)} (ทั้งวัน)`,
     };
     return {
       intent: "confirm_meeting",
@@ -4020,7 +4053,7 @@ async function runSelfBookCalendar(
         `🕐 ${exact.label}\n` +
         `(ไม่มีผู้เข้าร่วม — จองเฉพาะตัวเอง)`,
       slots: [exact],
-      meeting: { attendees: [], duration: 24 * 60, subject, all_day: true },
+      meeting: { attendees: [], duration: spanDays * 24 * 60, subject, all_day: true },
       pending_self_book: null,
     };
   }

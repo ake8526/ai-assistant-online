@@ -442,10 +442,73 @@ export function resolveThaiDateInText(text: string): { start: Date; end: Date; l
     }
   }
 
-  const bare = t.match(/(?:วันที่\s*)(\d{1,2})(?!\s*[\/\-]|\s*(?:ม\.?ค|ก\.?พ|มี\.?ค|เม\.?ย|พ\.?ค|มิ\.?ย|ก\.?ค|ส\.?ค|ก\.?ย|ต\.?ค|พ\.?ย|ธ\.?ค|มกร|กุมภ|มีน|เมษ|พฤษ|มิถุ|กรก|สิงห|กันย|ตุล|พฤศ|ธันว))/iu);
+  /* (?!\d) ต้องมาก่อน lookahead ตัวอื่นเสมอ — ไม่งั้น regex จะถอยไปจับเลขไม่ครบ
+     ของจริงที่เจอ 11 ก.ย. 2569: "ไปหัวหินวันที่21-22" ตัว \d{1,2} จับ "21" ได้ก่อน
+     แต่โดน lookahead ขีดกลางปัดตก มันเลยถอยไปจับ "2" ตัวเดียว แล้วได้วันที่ 2
+     ของเดือนถัดไป (2 ต.ค.) ซึ่งไม่มีอะไรในประโยคพูดถึงเลย */
+  const bare = t.match(/(?:วันที่\s*)(\d{1,2})(?!\d)(?!\s*[\/\-–—]|\s*(?:ม\.?ค|ก\.?พ|มี\.?ค|เม\.?ย|พ\.?ค|มิ\.?ย|ก\.?ค|ส\.?ค|ก\.?ย|ต\.?ค|พ\.?ย|ธ\.?ค|มกร|กุมภ|มีน|เมษ|พฤษ|มิถุ|กรก|สิงห|กันย|ตุล|พฤศ|ธันว))/iu);
   if (bare) return resolveDay(bare[1]!);
 
   return null;
+}
+
+
+/**
+ * ช่วงวันแบบ "วันที่ 21-22" หรือ "21-22 ก.ย." — คืนวันเริ่มถึงวันจบ
+ *
+ * ต้องมีคำว่า "วันที่" นำหน้า หรือมีชื่อเดือนตามหลัง อย่างใดอย่างหนึ่งเสมอ
+ * เพราะเลขคู่ที่คั่นด้วยขีดในประโยคไทยส่วนใหญ่เป็น "ช่วงเวลา" ไม่ใช่ "ช่วงวัน" —
+ * "กันเวลาวันจันทร์ 9-12 ทำรายงาน" คือเก้าโมงถึงเที่ยง ไม่ใช่วันที่ 9 ถึง 12
+ * ถ้าไม่บังคับให้มีตัวยึด ฟังก์ชันนี้จะไปแย่งการจองแบบระบุชั่วโมงทันที
+ */
+export function resolveThaiDateRangeInText(
+  text: string
+): { start: Date; end: Date; label: string; days: number } | null {
+  const t = (text || "").trim();
+  if (!t) return null;
+
+  const MONTHS =
+    "ม\\.?ค\\.?|ก\\.?พ\\.?|มี\\.?ค\\.?|เม\\.?ย\\.?|พ\\.?ค\\.?|มิ\\.?ย\\.?|ก\\.?ค\\.?|ส\\.?ค\\.?|ก\\.?ย\\.?|ต\\.?ค\\.?|พ\\.?ย\\.?|ธ\\.?ค\\.?|มกร(?:า(?:คม)?)?|กุมภ(?:า(?:พันธ์)?)?|มีน(?:า(?:คม)?)?|เมษ(?:า(?:ยน)?)?|พฤษ(?:ภ(?:า(?:คม)?)?)?|มิถุ(?:น(?:า(?:ยน)?)?)?|กรก(?:ฎ(?:า(?:คม)?)?)?|สิงห(?:า(?:คม)?)?|กันย(?:า(?:ยน)?)?|ตุล(?:า(?:คม)?)?|พฤศ(?:จ(?:ิ(?:ก(?:า(?:ยน)?)?)?)?)?|ธันว(?:า(?:คม)?)?";
+
+  const re = new RegExp(
+    "(วันที่\\s*)?(\\d{1,2})(?!\\d)\\s*(?:-|–|—|ถึง|to)\\s*(\\d{1,2})(?!\\d)(?:\\s*(" +
+      MONTHS +
+      "))?(?:\\s*(?:พ\\.?\\s*ศ\\.?\\s*)?(\\d{4}|\\d{2}))?",
+    "iu"
+  );
+  const m = t.match(re);
+  if (!m) return null;
+
+  const anchoredByWord = !!m[1];
+  const monthTok = m[4];
+  if (!anchoredByWord && !monthTok) return null; // เลขคู่ลอย ๆ = ช่วงเวลา ไม่ใช่ช่วงวัน
+
+  const d1 = Number(m[2]);
+  const d2 = Number(m[3]);
+  if (!(d1 >= 1 && d1 <= 31 && d2 >= 1 && d2 <= 31)) return null;
+  if (d2 <= d1) return null; // ช่วงต้องเดินหน้า "22-21" ไม่ใช่ช่วงวัน
+
+  let start: Date | null = null;
+  if (monthTok) {
+    const mo = thaiMonthNum(monthTok);
+    if (!mo) return null;
+    let y = m[5] ? Number(m[5]) : nowWall().getUTCFullYear();
+    if (y > 2400) y -= 543;
+    else if (y < 100) y += y > 50 ? 1900 : 2000;
+    start = new Date(Date.UTC(y, mo - 1, d1));
+  } else {
+    const r = resolveDay(String(d1));
+    start = r ? startOfDay(r.start) : null;
+  }
+  if (!start || isNaN(start.getTime())) return null;
+
+  /* วันจบอยู่เดือนเดียวกับวันเริ่มเสมอ — "21-22" ไม่มีทางข้ามเดือน ถ้าเลขวันจบ
+     เกินจำนวนวันของเดือนนั้นก็ถือว่าไม่ใช่ช่วงวัน */
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), d2));
+  if (isNaN(end.getTime()) || end.getUTCMonth() !== start.getUTCMonth()) return null;
+
+  const days = d2 - d1 + 1;
+  return { start, end: endOfDay(end), label: `${fmtDate(start)} – ${fmtDate(end)} (${days} วัน)`, days };
 }
 
 const WEEKDAYS: Record<string, number> = {
