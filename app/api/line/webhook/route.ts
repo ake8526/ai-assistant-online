@@ -34,7 +34,7 @@ import { addMeetingMaterial } from "@/lib/meetingMaterials";
 import { attachLineImageToMeeting, clearMeetingPhotoContext, clearPendingLinePhoto, loadPendingLinePhoto, saveLastBookedEvent, savePendingLinePhoto } from "@/lib/meetingLink";
 import { buildShortFileOpenUrl } from "@/lib/fileOpenLink";
 import { personPickData, pickerFlexFor, slotPickData, type Choice, type Slot } from "@/lib/linePickers";
-import { parseWall, wallIso, fmtDate, fmtDateTime, fmtTime, periodRange, nowWall, addMinutes, parseHHMM } from "@/lib/time";
+import { parseWall, wallIso, fmtDate, fmtDateTime, fmtTime, periodRange, nowWall, addDays, addMinutes, parseHHMM } from "@/lib/time";
 import {
   appendChatTurns,
   chatMemoryExpired,
@@ -708,7 +708,15 @@ const clearDraft = (upn: string) => deleteSetting(upn, DRAFT_KEY);
 function draftWhen(d: Draft): string {
   if (d.allDay) {
     const s = parseWall(d.start);
-    return s ? `${fmtDate(s)} (ทั้งวัน)` : `${d.start} (ทั้งวัน)`;
+    if (!s) return `${d.start} (ทั้งวัน)`;
+    /* งานทั้งวันของ Outlook จบที่เที่ยงคืนของวันถัดจากวันสุดท้าย ป้ายจึงต้องถอย
+       กลับมาหนึ่งวันก่อนแสดง — ของเดิมโชว์แต่วันเริ่ม ทำให้การจอง 21-22 ขึ้นว่า
+       "21/09/2026 (ทั้งวัน)" ผู้ใช้จึงเห็นเหมือนระบบตัดวันที่ 22 ทิ้งทั้งที่จองถูก */
+    const e = parseWall(d.end);
+    const lastDay = e ? addDays(e, -1) : null;
+    const days = e ? Math.round((e.getTime() - s.getTime()) / 86400000) : 1;
+    if (lastDay && days > 1) return `${fmtDate(s)} – ${fmtDate(lastDay)} (${days} วัน)`;
+    return `${fmtDate(s)} (ทั้งวัน)`;
   }
   const s = parseWall(d.start), e = parseWall(d.end);
   return s && e ? `${fmtDateTime(s)}-${fmtTime(e)}` : `${d.start} - ${d.end}`;
