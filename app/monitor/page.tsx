@@ -1701,6 +1701,9 @@ function MonitorRoom({
             </div>
             <div className="badge">STATUS <b ref={(el) => { hudRef.current = el; }}>{status}</b></div>
             <a className="layout-switch" href="/monitor/log" title="ดู log การทำงานย้อนหลัง">LOG ย้อนหลัง</a>
+            {/* ผลแบบสำรวจอยู่คนละหน้าและไม่มีทางเข้าจากที่ไหนเลยนอกจากพิมพ์ URL เอง
+                วางไว้ข้าง LOG เพราะเป็นของชุดเดียวกัน — หน้าที่เปิดดูย้อนหลัง ไม่ใช่ของสด */}
+            <a className="layout-switch" href="/monitor/survey" title="ดูคำตอบแบบสำรวจฟังก์ชันที่พนักงานส่งมา">ผลสำรวจ</a>
             {stagesRight ? (
               <a className="layout-switch" href="/monitor">← เลย์เอาต์ปัจจุบัน</a>
             ) : (
